@@ -149,6 +149,16 @@ pub trait ProjectService: Send + Sync {
     ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
         Err(AppError::Unavailable("project_spaces_not_supported".into()))
     }
+    async fn space_operation(
+        &self,
+        _key: &ProjectKey,
+        _operation: uuid::Uuid,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<domain::project_spaces::ProjectSpaceOperationReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "project_space_receipts_not_supported".into(),
+        ))
+    }
     async fn replace_spaces(
         &self,
         _key: &ProjectKey,

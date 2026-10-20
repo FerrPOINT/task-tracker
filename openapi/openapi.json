@@ -9606,11 +9606,26 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid identifier or command"
+          },
+          "401": {
+            "description": "Fresh central token required"
+          },
           "403": {
             "description": "Registered exact-scope reader and original actor admission required"
           },
+          "404": {
+            "description": "Requested resource unavailable"
+          },
           "409": {
             "description": "Policy revision changed"
+          },
+          "422": {
+            "description": "Invalid strict request schema"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -9700,8 +9715,20 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid identifier or command"
+          },
+          "401": {
+            "description": "Fresh central token required"
+          },
           "403": {
             "description": "Space admission denied"
+          },
+          "404": {
+            "description": "Requested resource unavailable"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -9746,11 +9773,26 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid identifier or command"
+          },
+          "401": {
+            "description": "Fresh central token required"
+          },
           "403": {
             "description": "Project management denied"
           },
+          "404": {
+            "description": "Requested resource unavailable"
+          },
           "409": {
             "description": "Revision or original operation conflict"
+          },
+          "422": {
+            "description": "Invalid strict request schema"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -9779,6 +9821,21 @@
         "responses": {
           "200": {
             "description": "",
+            "headers": {
+              "x-pdlc-admission-policy-revision": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "description": "Original policy revision for this same bounded proof"
+              },
+              "x-pdlc-project-spaces-can-change": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "description": "Bounded UI hint; PUT rechecks all authority"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -9845,8 +9902,86 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid identifier or command"
+          },
+          "401": {
+            "description": "Fresh central token required"
+          },
+          "403": {
+            "description": "Admission or operation scope denied"
+          },
+          "404": {
+            "description": "Requested resource unavailable"
+          },
           "409": {
             "description": "Link revision or lifecycle conflict"
+          },
+          "422": {
+            "description": "Invalid strict request schema"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/spaces/operations/{operation_id}": {
+      "get": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "summary": "Read-only reconciliation is valid even when archive has closed new writes.\nIt addresses this original identity's durable receipt, never a different author.",
+        "operationId": "get_project_space_operation_receipt_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSpaceOperationReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project or operation"
+          },
+          "401": {
+            "description": "Central human required"
+          },
+          "403": {
+            "description": "Current project reading denied"
+          },
+          "404": {
+            "description": "No committed receipt found; outcome remains unknown"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -9882,6 +10017,24 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid project request"
+          },
+          "401": {
+            "description": "Central human required"
+          },
+          "403": {
+            "description": "Project admission or management denied"
+          },
+          "404": {
+            "description": "Project or projection unavailable"
+          },
+          "409": {
+            "description": "Project revision or lifecycle conflict"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -9927,6 +10080,24 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid identifier or command"
+          },
+          "401": {
+            "description": "Fresh central token required"
+          },
+          "403": {
+            "description": "Admission or operation scope denied"
+          },
+          "404": {
+            "description": "Requested resource unavailable"
+          },
+          "409": {
+            "description": "Revision or lifecycle conflict"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
           }
         },
         "security": [
@@ -18506,6 +18677,46 @@
         },
         "additionalProperties": false
       },
+      "ProjectSpaceOperationReceipt": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "project",
+          "operation_id",
+          "applied",
+          "applied_revision",
+          "change",
+          "validity"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "applied_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ReplaceProjectSpaces"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectRef"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProjectSpaceProjectionStatus": {
         "type": "object",
         "description": "Delivery status contains durable metadata, never an admission or write grant.",
@@ -18973,7 +19184,8 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "minimum": 1
           },
           "operation_id": {
             "type": "string",
@@ -18983,7 +19195,9 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SpaceRef"
-            }
+            },
+            "maxItems": 1000,
+            "minItems": 1
           }
         },
         "additionalProperties": false

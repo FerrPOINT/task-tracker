@@ -194,6 +194,40 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         let links = self.projects.project_spaces(project.id).await?;
         actor.confirm_links(links)
     }
+    async fn space_operation(
+        &self,
+        key: &ProjectKey,
+        operation: uuid::Uuid,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<domain::project_spaces::ProjectSpaceOperationReceipt, AppError> {
+        if operation.is_nil() {
+            return Err(AppError::invalid_input("invalid_project_space_operation"));
+        }
+        let project = self.projects.get_by_key(key).await?;
+        let links = actor.confirm_links(self.projects.project_spaces(project.id).await?)?;
+        let stored = self
+            .projects
+            .project_space_operation(project.id, operation, actor.identity())
+            .await?
+            .ok_or_else(|| AppError::not_found("project_space_operation", operation))?;
+        actor.require_read(&links)?;
+        let receipt = domain::project_spaces::ProjectSpaceOperationReceipt {
+            schema_version: 1,
+            project: stored.project,
+            operation_id: stored.operation_id,
+            applied: true,
+            applied_revision: stored.applied_revision,
+            change: stored.change,
+            validity: links.validity,
+        };
+        if receipt.project != links.project || receipt.operation_id != operation || !receipt.valid()
+        {
+            return Err(AppError::Unavailable(
+                "invalid_project_space_receipt".into(),
+            ));
+        }
+        Ok(receipt)
+    }
     async fn replace_spaces(
         &self,
         key: &ProjectKey,

@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useVisibleSpaces } from './useVisibleSpaces'
-import { acceptSpaceSession, useSpaceSession } from '@/shared/auth/space-session'
+import {
+  acceptSpaceSession,
+  observeSpacePolicy,
+  useSpaceSession,
+} from '@/shared/auth/space-session'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 import type { VisibleSpaceCatalog } from '@/api/space-catalog'
 
@@ -127,4 +131,16 @@ describe('visible catalog original validity', () => {
     await waitFor(() => expect(screen.getByTestId('catalog')).toHaveTextContent('unavailable'))
     expect(read).toHaveBeenCalledTimes(2)
   })
+})
+
+it('hides a late page from an older known policy revision', async () => {
+  login()
+  const old = page()
+  old.validity.valid_until = old.validity.observed_at + 30
+  read.mockResolvedValue(old)
+  mount()
+  await waitFor(() => expect(screen.getByTestId('catalog')).toHaveTextContent('central-a'))
+  act(() => observeSpacePolicy(old.identity, 2))
+  expect(screen.getByTestId('catalog')).toHaveTextContent('unavailable')
+  expect(useSpaceSession.getState().session?.policyRevision).toBe(2)
 })

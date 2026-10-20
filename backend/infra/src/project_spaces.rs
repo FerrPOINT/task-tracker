@@ -429,3 +429,43 @@ pub async fn visible_project_ids<C: ConnectionTrait>(
         })
         .collect()
 }
+
+/// Receipt existence proves the canonical transaction committed. Absence is not a rejection proof.
+pub async fn operation<C: ConnectionTrait>(
+    db: &C,
+    project: ProjectId,
+    operation: Uuid,
+    actor: &CentralIdentity,
+) -> Result<Option<domain::project_spaces::StoredProjectSpaceOperation>, AppError> {
+    if operation.is_nil() || !actor.valid() {
+        return Err(AppError::invalid_input("invalid_project_space_operation"));
+    }
+    let identity = serde_json::to_value(actor).map_err(|e| AppError::Internal(e.to_string()))?;
+    let row = db.query_one(statement(
+        "SELECT o.requested_change,b.revision AS applied_revision FROM tracker_project_space_operations o JOIN tracker_project_space_outbox b ON b.operation_id=o.projection_operation_id AND b.project_id=o.project_id WHERE o.project_id=$1 AND o.operation_id=$2 AND o.actor_identity=$3::jsonb",
+        [project.as_uuid().into(),operation.into(),identity.into()],
+    )).await.map_err(crate::db_error::map)?;
+    let Some(row) = row else { return Ok(None) };
+    let change: domain::project_spaces::ReplaceProjectSpaces = serde_json::from_value(
+        row.try_get("", "requested_change")
+            .map_err(crate::db_error::map)?,
+    )
+    .map_err(|_| AppError::Unavailable("invalid_project_space_receipt".into()))?;
+    let revision: i64 = row
+        .try_get("", "applied_revision")
+        .map_err(crate::db_error::map)?;
+    if change.operation_id != operation
+        || change.validate().is_err()
+        || revision < change.expected_revision
+    {
+        return Err(AppError::Unavailable(
+            "invalid_project_space_receipt".into(),
+        ));
+    }
+    Ok(Some(domain::project_spaces::StoredProjectSpaceOperation {
+        project: project_ref(project)?,
+        operation_id: operation,
+        applied_revision: revision,
+        change,
+    }))
+}

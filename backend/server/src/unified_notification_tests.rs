@@ -13,7 +13,7 @@ use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use shared::{BoardId, ProjectId, ProjectKey, UserId, space_access::*};
 use std::sync::{
     Mutex, RwLock,
-    atomic::{AtomicBool, AtomicI64, Ordering},
+    atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
 };
 use uuid::Uuid;
 #[derive(Default)]
@@ -36,6 +36,8 @@ struct ProtocolState {
     selected: RwLock<Vec<SpaceRef>>,
     until: AtomicI64,
     revision: AtomicI64,
+    shadow_checks: AtomicUsize,
+    shadow_initial_until: AtomicI64,
 }
 fn authorized(headers: &HeaderMap) -> bool {
     headers.get("authorization").and_then(|h| h.to_str().ok())
@@ -134,13 +136,17 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         mail.clone(),
     );
     let mut projects = Vec::new();
-    for key in ["READAB", "READB"] {
+    for key in ["READAB", "READB", "OTHEROWNER"] {
         let p = domain::Project {
             id: ProjectId::new(),
             key: ProjectKey::new(key),
             name: key.into(),
             description: None,
-            owner_id: user.id,
+            owner_id: if key == "OTHEROWNER" {
+                legacy.id
+            } else {
+                user.id
+            },
             default_board_id: BoardId::new(),
             created_at: shared::now(),
             updated_at: shared::now(),
@@ -176,12 +182,14 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
     for space in [&a, &b] {
         db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state) VALUES($1,$2,1,'active')",[space.registry_instance_id.into(),space.space_id.into()])).await.unwrap();
     }
-    for (project, space) in [(projects[0], &a), (projects[0], &b), (projects[1], &b)] {
+    for (project, space) in [
+        (projects[0], &a),
+        (projects[0], &b),
+        (projects[1], &b),
+        (projects[2], &a),
+    ] {
         db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES($1,$2,$3)",[project.as_uuid().into(),space.registry_instance_id.into(),space.space_id.into()])).await.unwrap();
     }
-    db.execute_unprepared("UPDATE tracker_space_admission_state SET active=true")
-        .await
-        .unwrap();
     for recipient in [user.id, legacy.id] {
         ctx.repos
             .notification_settings
@@ -209,13 +217,60 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         selected: RwLock::new(vec![a.clone()]),
         until: AtomicI64::new(chrono_now() + 3),
         revision: AtomicI64::new(1),
+        shadow_checks: AtomicUsize::new(0),
+        shadow_initial_until: AtomicI64::new(0),
     });
     let profile_state = state.clone();
     let identity_state = state.clone();
     let admission_state = state.clone();
-    let router=Router::new().route("/oidc/jwks",get(||async{Json(serde_json::json!({"keys":[]}))})).route("/auth/tokens/introspect",get(move |headers:HeaderMap|{let _state=profile_state.clone();async move{assert!(authorized(&headers));Json(serde_json::json!({"sub":"notification-machine","email":"machine@example.test","scopes":["admin-panel:read"],"subject_role":"service_account","observed_at":shared::now(),"expires_at":shared::now()+std::time::Duration::from_secs(300)}))}}))
-    .route("/auth/identities/{id}",get(move |headers:HeaderMap,Path(id):Path<Uuid>|{let state=identity_state.clone();async move{assert!(authorized(&headers));if id!=state.target{return Err(StatusCode::NOT_FOUND);}Ok(Json(IdentityConfirmation{identity:CentralIdentity{issuer:state.issuer.clone(),subject:id.to_string()},active:state.active.load(Ordering::SeqCst),validity:validity(chrono_now()+60)}))}}))
-    .route("/admission",post(move |headers:HeaderMap,Json(request):Json<SpaceAdmissionRequest>|{let state=admission_state.clone();async move{assert!(authorized(&headers));assert_eq!(request.identity.subject,state.target.to_string(),"processor privileges must never replace recipient admission");Json(SpaceAdmission{schema_version:1,identity:request.identity,identity_active:true,policy_revision:state.revision.load(Ordering::SeqCst),policy:SpaceAccessPolicy::Selected{spaces:state.selected.read().unwrap().clone()},validity:validity(state.until.load(Ordering::SeqCst)),spaces:state.spaces.iter().filter(|s|request.spaces.contains(s)).map(|s|ConfirmedSpace{space:s.clone(),revision:1,state:SpaceState::Active}).collect()})}}));
+    let router = Router::new()
+        .route("/oidc/jwks",get(||async{Json(serde_json::json!({"keys":[]}))}))
+        .route("/auth/tokens/introspect",get(move |headers:HeaderMap|{
+            let state=profile_state.clone();
+            async move {
+                let token=headers.get("authorization").and_then(|v|v.to_str().ok()).unwrap_or("");
+                let (subject,email,role,scopes)=if authorized(&headers){
+                    ("notification-machine".to_string(),"machine@example.test","service_account",vec!["admin-panel:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-shadow-read"{
+                    if state.shadow_checks.fetch_add(1,Ordering::SeqCst)>0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+                    }
+                    (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-human-read"{
+                    (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-human-write"{
+                    (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read","task-tracker:write"])
+                }else{return (StatusCode::UNAUTHORIZED,Json(serde_json::json!({})))};
+                let observed_at=shared::now();
+                if token=="Bearer sdlc_pat_synthetic-shadow-read" {
+                    let _=state.shadow_initial_until.compare_exchange(0,observed_at.timestamp()+60,Ordering::SeqCst,Ordering::SeqCst);
+                }
+                (StatusCode::OK,Json(serde_json::json!({"sub":subject,"email":email,"display_name":"Recipient",
+                    "scopes":scopes,"subject_role":role,"observed_at":observed_at,
+                    "expires_at":observed_at+std::time::Duration::from_secs(300)})))
+            }
+        }))
+        .route("/auth/identities/{id}",get(move |headers:HeaderMap,Path(id):Path<Uuid>|{
+            let state=identity_state.clone();
+            async move{
+                assert!(authorized(&headers));if id!=state.target{return Err(StatusCode::NOT_FOUND);}
+                Ok(Json(IdentityConfirmation{identity:CentralIdentity{issuer:state.issuer.clone(),subject:id.to_string()},
+                    active:state.active.load(Ordering::SeqCst),validity:validity(chrono_now()+60)}))
+            }
+        }))
+        .route("/admission",post(move |headers:HeaderMap,Json(request):Json<SpaceAdmissionRequest>|{
+            let state=admission_state.clone();
+            async move{
+                assert!(authorized(&headers));assert_eq!(request.identity.subject,state.target.to_string(),
+                    "processor privileges must never replace the original identity");
+                Json(SpaceAdmission{schema_version:1,identity:request.identity,identity_active:true,
+                    policy_revision:state.revision.load(Ordering::SeqCst),
+                    policy:SpaceAccessPolicy::Selected{spaces:state.selected.read().unwrap().clone()},
+                    validity:validity(state.until.load(Ordering::SeqCst)),
+                    spaces:state.spaces.iter().filter(|s|request.spaces.contains(s))
+                        .map(|s|ConfirmedSpace{space:s.clone(),revision:1,state:SpaceState::Active}).collect()})
+            }
+        }));
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     // A dedicated ignored native process owns these synthetic variables/OnceCells.
     unsafe {
@@ -231,6 +286,57 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
             "notification-machine",
         );
     }
+    let ctx = Arc::new(ctx);
+    let api_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let api_origin = format!("http://{}", api_listener.local_addr().unwrap());
+    let api_app = api::router(ctx.clone()).with_state(ctx.clone());
+    let api_server = tokio::spawn(async move {
+        axum::serve(
+            api_listener,
+            api_app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+    // Staged V2 routes still preserve the middleware's original authorization
+    // window even when they must fetch their own space proof.
+    state.until.store(chrono_now() + 120, Ordering::SeqCst);
+    let shadow = http
+        .get(format!("{api_origin}/api/v2/projects/OTHEROWNER/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-shadow-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(shadow.status(), StatusCode::OK);
+    assert!(
+        state.shadow_checks.load(Ordering::SeqCst) >= 2,
+        "exercise the staged route's second verification"
+    );
+    let shadow_until = shadow.headers()["x-pdlc-admission-valid-until"]
+        .to_str()
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
+    let shadow_links: ConfirmedProjectSpaces = shadow.json().await.unwrap();
+    let initial_until = state.shadow_initial_until.load(Ordering::SeqCst);
+    assert!(initial_until > 0);
+    assert!(
+        shadow_until <= initial_until,
+        "headers cannot extend the original middleware confirmation"
+    );
+    assert!(
+        shadow_links.validity.valid_until <= initial_until,
+        "a second verification must not renew the response body"
+    );
+    println!("Native staged V2 original-window preservation PASS");
+    db.execute_unprepared("UPDATE tracker_space_admission_state SET active=true")
+        .await
+        .unwrap();
+    state.until.store(chrono_now() + 3, Ordering::SeqCst);
     run_digest_cycle(&ctx, shared::now()).await.unwrap();
     let sent = mail.0.lock().unwrap().clone();
     assert_eq!(sent.len(), 1);
@@ -251,7 +357,7 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
     *state.selected.write().unwrap() = vec![];
     state.revision.store(2, Ordering::SeqCst);
     tokio::time::sleep(std::time::Duration::from_millis(3100)).await;
-    state.until.store(chrono_now() + 60, Ordering::SeqCst);
+    state.until.store(chrono_now() + 3, Ordering::SeqCst);
     run_digest_cycle(&ctx, shared::now()).await.unwrap();
     assert_eq!(mail.0.lock().unwrap().len(), 1);
     assert_eq!(
@@ -259,6 +365,191 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         2,
         "denied historical messages remain unread, not deleted"
     );
+    tokio::time::sleep(std::time::Duration::from_millis(3100)).await;
+    *state.selected.write().unwrap() = vec![a.clone()];
+    state.revision.store(3, Ordering::SeqCst);
+    state.until.store(chrono_now() + 30, Ordering::SeqCst);
+    let read = http
+        .get(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .header("x-pdlc-project-spaces-can-change", "true")
+        .header("x-pdlc-admission-policy-revision", "999999")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(read.status(), StatusCode::OK);
+    assert_eq!(
+        read.headers()["x-pdlc-project-spaces-can-change"],
+        "false",
+        "neither owner_id nor a supplied header grants write scope"
+    );
+    assert_eq!(
+        read.headers()["x-pdlc-admission-policy-revision"],
+        state.revision.load(Ordering::SeqCst).to_string(),
+        "request headers never choose policy revision"
+    );
+    let header_until = read.headers()["x-pdlc-admission-valid-until"]
+        .to_str()
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
+    let confirmed: ConfirmedProjectSpaces = read.json().await.unwrap();
+    assert_eq!(confirmed.project.project_id, projects[0].as_uuid());
+    assert_eq!(
+        confirmed.spaces.len(),
+        2,
+        "the hidden B association remains, without reading B content"
+    );
+    assert!(confirmed.validity.valid_until <= state.until.load(Ordering::SeqCst));
+    assert!(header_until <= state.until.load(Ordering::SeqCst));
+    assert!(confirmed.validity.valid_until > chrono_now());
+    let denied_change=http.put(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .json(&serde_json::json!({"operation_id":Uuid::new_v4(),"expected_revision":confirmed.revision,"spaces":[a]}))
+        .send().await.unwrap();
+    assert_eq!(denied_change.status(), StatusCode::FORBIDDEN);
+    drop(denied_change);
+    let writer = http
+        .get(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-write")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(writer.status(), StatusCode::OK);
+    assert_eq!(writer.headers()["x-pdlc-project-spaces-can-change"], "true");
+    let writer_links: ConfirmedProjectSpaces = writer.json().await.unwrap();
+    assert_eq!(
+        writer_links.spaces, confirmed.spaces,
+        "rejected read PAT did not mutate associations"
+    );
+    let other = http
+        .get(format!("{api_origin}/api/v2/projects/OTHEROWNER/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-write")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other.status(), StatusCode::OK);
+    assert_eq!(
+        other.headers()["x-pdlc-project-spaces-can-change"],
+        "false",
+        "admission/read+write is not project ownership"
+    );
+    let _: ConfirmedProjectSpaces = other.json().await.unwrap();
+    let committed_operation = Uuid::new_v4();
+    let committed_change = serde_json::json!({"operation_id":committed_operation,"expected_revision":writer_links.revision,"spaces":writer_links.spaces});
+    let committed = http
+        .put(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-write")
+        .json(&committed_change)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(committed.status(), StatusCode::OK);
+    let _: ConfirmedProjectSpaces = committed.json().await.unwrap();
+    let lifecycle_url = format!("{api_origin}/api/v2/projects/READAB/lifecycle");
+    let lifecycle: shared::project_spaces::ProjectLifecycle = http
+        .get(&lifecycle_url)
+        .bearer_auth("sdlc_pat_synthetic-human-write")
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let archived=http.put(&lifecycle_url).bearer_auth("sdlc_pat_synthetic-human-write")
+        .json(&serde_json::json!({"operation_id":Uuid::new_v4(),"expected_revision":lifecycle.revision,"archived":true}))
+        .send().await.unwrap();
+    assert_eq!(archived.status(), StatusCode::OK);
+    assert!(
+        archived
+            .json::<shared::project_spaces::ProjectLifecycle>()
+            .await
+            .unwrap()
+            .archived
+    );
+    let readonly = http
+        .get(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-write")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(readonly.status(), StatusCode::OK);
+    assert_eq!(
+        readonly.headers()["x-pdlc-project-spaces-can-change"],
+        "false",
+        "project archive independently closes changes"
+    );
+    let readonly_links: ConfirmedProjectSpaces = readonly.json().await.unwrap();
+    assert_eq!(
+        readonly_links.spaces, confirmed.spaces,
+        "archive preserves associations"
+    );
+    let receipt = http
+        .get(format!(
+            "{api_origin}/api/v2/projects/READAB/spaces/operations/{committed_operation}"
+        ))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        receipt.status(),
+        StatusCode::OK,
+        "archive and read-only scope must not hide an authored committed receipt"
+    );
+    let receipt: domain::project_spaces::ProjectSpaceOperationReceipt =
+        receipt.json().await.unwrap();
+    assert!(receipt.valid());
+    assert!(receipt.applied);
+    assert_eq!(receipt.operation_id, committed_operation);
+    assert_eq!(
+        serde_json::to_value(&receipt.change).unwrap(),
+        committed_change
+    );
+    assert!(receipt.validity.valid_until <= state.until.load(Ordering::SeqCst));
+    let foreign_actor = CentralIdentity {
+        issuer: origin.clone(),
+        subject: Uuid::new_v4().to_string(),
+    };
+    assert!(
+        ctx.repos
+            .projects
+            .project_space_operation(projects[0], committed_operation, &foreign_actor)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let original_actor = CentralIdentity {
+        issuer: origin.clone(),
+        subject: target.to_string(),
+    };
+    assert!(
+        ctx.repos
+            .projects
+            .project_space_operation(projects[2], committed_operation, &original_actor)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let absent = http
+        .get(format!(
+            "{api_origin}/api/v2/projects/READAB/spaces/operations/{}",
+            Uuid::new_v4()
+        ))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(absent.status(), StatusCode::NOT_FOUND);
+    drop(absent);
+    println!(
+        "Native HTTP management/receipt: scope/owner/archive/author/project/original deadline PASS"
+    );
+    drop(http);
+    api_server.abort();
+    let _ = api_server.await;
     server.abort();
     drop(ctx);
     repo_pool.close().await;

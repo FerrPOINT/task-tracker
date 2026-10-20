@@ -135,7 +135,7 @@ fn visible(
     }
     Ok(result)
 }
-#[utoipa::path(operation_id="query_project_contexts_v2",post,path="/api/v2/project-contexts/query",request_body=ProjectSpaceContextQuery,responses((status=200,body=ProjectSpaceContextBatch),(status=403,description="Registered exact-scope reader and original actor admission required"),(status=409,description="Policy revision changed")),security(("bearer"=[])))]
+#[utoipa::path(operation_id="query_project_contexts_v2",post,path="/api/v2/project-contexts/query",request_body=ProjectSpaceContextQuery,responses((status=200,body=ProjectSpaceContextBatch),(status=403,description="Registered exact-scope reader and original actor admission required"),(status=409,description="Policy revision changed"),(status=400,description="Invalid identifier or command"),(status=401,description="Fresh central token required"),(status=404,description="Requested resource unavailable"),(status=422,description="Invalid strict request schema"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn query(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(reader): Extension<RegisteredSpaceReader>,

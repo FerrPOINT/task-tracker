@@ -1999,8 +1999,16 @@ POST и DELETE связей архивного проекта возвращаю
   до1000 уникальных ненулевых SpaceRef. Project/default board/первые links атомарны.
 - GET `/api/v2/projects/{project_key}/spaces`: canonical ProjectRef, revision,
   полный links-набор и original Tracker validity; ANY admission открывает Project,
-  но не документы других Space.
-- PUT того же пути: expected_revision + непустой полный spaces[]. Существующий
+  но не документы других Space. Response headers
+  x-pdlc-project-spaces-can-change и x-pdlc-admission-policy-revision — UI hints
+  из того же current proof; входящие одноимённые headers не дают полномочий.
+  Строгий ConfirmedProjectSpaces не расширяется.
+- GET /api/v2/projects/{project_key}/spaces/operations/{operation_id}: отдельный
+  ProjectSpaceOperationReceipt schema1 для committed операции текущего автора.
+  Нужен текущий project read, не write. Архив проекта не скрывает квитанцию;
+  чужой автор/проект её не получает. 404 не доказывает откат или отсутствие
+  выполняющейся транзакции. Квитанция не является grant или ACK Wiki.
+- PUT /api/v2/projects/{project_key}/spaces: expected_revision + непустой полный spaces[]. Существующий
   owner role, разрешённое активное Space прежнего Project и активный допуск ко
   всем новым links обязательны. Срок/owner/catalog проверяются после row wait;
   catalog locks удерживаются до commit. Ни primary, ни первый Space не выбираются.
@@ -2009,6 +2017,9 @@ POST и DELETE связей архивного проекта возвращаю
 операторская конфигурация с зарегистрированным узким Admin machine PAT. Exact
 central-subject/local-user mapping подтверждается по profiles, не email. PAT
 scopes остаются дополнительным ограничением. Success ответы no-store.
+UI settings сохраняет исходный payload/ключ до PUT; read-only receipt recovery
+не повторяет запись и не создаёт новый ключ. Неизвестный исход остаётся в журнале.
+[Сценарии и политика кеша](PROJECT_SPACES_UI_V2.md).
 После активации storage guard старый POST v1 без spaces возвращает понятный отказ
 project_spaces_required_use_v2. До общего compatible cohort activation запрещена.
 Новые source API ещё требуют native/API/UI/migration qualification; это не live

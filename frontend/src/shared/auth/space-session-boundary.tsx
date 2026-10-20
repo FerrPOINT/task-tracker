@@ -17,7 +17,13 @@ function ActiveBoundary({ children }: { children: ReactNode }) {
   const cache = useQueryClient()
   const key = JSON.stringify(
     session
-      ? [session.identity.issuer, session.identity.subject, session.userId, session.isSystemAdmin]
+      ? [
+          session.identity.issuer,
+          session.identity.subject,
+          session.userId,
+          session.isSystemAdmin,
+          session.policyEpoch,
+        ]
       : null,
   )
   const [accepted, setAccepted] = useState(key)

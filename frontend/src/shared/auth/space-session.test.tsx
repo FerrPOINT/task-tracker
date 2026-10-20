@@ -4,7 +4,12 @@ import { useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { SsoSession } from '@pdlc/ui/sso'
 import { useAuthStore, ssoConfig } from './store'
-import { acceptSpaceSession, useSpaceSession } from './space-session'
+import {
+  acceptSpaceSession,
+  observeSpacePolicy,
+  isCurrentSpaceActor,
+  useSpaceSession,
+} from './space-session'
 import { SpaceSessionBoundary } from './space-session-boundary'
 
 const clients: QueryClient[] = []
@@ -155,4 +160,46 @@ describe('central/local identity and cache boundary', () => {
     expect(screen.getByLabelText('Draft')).toHaveValue('legacy draft')
     expect(client.getQueryData(['legacy'])).toBe('A')
   })
+})
+
+describe('monotonic policy revision', () => {
+  it('clears unversioned cache at first confirmation and again after a policy change', () => {
+    login()
+    const { client } = mount()
+    const identity = useSpaceSession.getState().session!.identity
+    client.setQueryData(['private-data'], 'A')
+    fireEvent.change(screen.getByLabelText('Draft'), { target: { value: 'draft' } })
+    act(() => observeSpacePolicy(identity, 1))
+    expect(client.getQueryData(['private-data'])).toBeUndefined()
+    expect(screen.getByLabelText('Draft')).toHaveValue('')
+    client.setQueryData(['private-data'], 'current-policy-data')
+    fireEvent.change(screen.getByLabelText('Draft'), { target: { value: 'new draft' } })
+    act(() => observeSpacePolicy(identity, 2))
+    expect(client.getQueryData(['private-data'])).toBeUndefined()
+    expect(screen.getByLabelText('Draft')).toHaveValue('')
+    expect(useSpaceSession.getState().session?.policyRevision).toBe(2)
+    expect(useSpaceSession.getState().session?.policyEpoch).toBe(2)
+  })
+  it('never accepts a lower revision or a different actor and preserves the revision on token refresh', () => {
+    login()
+    const identity = useSpaceSession.getState().session!.identity
+    observeSpacePolicy(identity, 4)
+    observeSpacePolicy(identity, 1)
+    observeSpacePolicy({ ...identity, subject: 'other' }, 9)
+    login('central-a', 'local-a', 'refresh')
+    expect(useSpaceSession.getState().session).toMatchObject({ policyRevision: 4, policyEpoch: 1 })
+  })
+})
+
+it('fences delayed commands by actor/role/policy while permitting a fresh token for the same context', () => {
+  login()
+  const original = useSpaceSession.getState().session!
+  expect(isCurrentSpaceActor(original)).toBe(true)
+  login('central-a', 'local-a', 'refresh')
+  expect(isCurrentSpaceActor(original)).toBe(true)
+  observeSpacePolicy(original.identity, 1)
+  expect(isCurrentSpaceActor(original)).toBe(false)
+  const current = useSpaceSession.getState().session!
+  login('central-b', 'local-b', 'fixture-b')
+  expect(isCurrentSpaceActor(current)).toBe(false)
 })

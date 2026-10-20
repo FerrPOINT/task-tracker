@@ -35,7 +35,10 @@ api.use({
   },
   onResponse: ({ request, response }) => {
     if (response.status === 401 && shouldIntercept401(request)) {
-      void refreshAccessToken()
+      const token = useAuthStore.getState().token
+      const current = token ? 'Bearer ' + token : null
+      // A late failure from a previous session must not log out its successor.
+      if (request.headers.get('authorization') === current) void refreshAccessToken()
     }
     return response
   },

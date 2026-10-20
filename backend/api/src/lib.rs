@@ -189,6 +189,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::project_contexts::query,
         routes::project_lifecycle::get,
         routes::project_lifecycle::change,
+        routes::project_spaces::operation_receipt,
         routes::project_spaces::projection_status,
         routes::project_spaces::reconcile_projection,
 
@@ -809,6 +810,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/projects/{project_key}/spaces",
             get(routes::project_spaces::get).put(routes::project_spaces::replace),
+        )
+        .route(
+            "/projects/{project_key}/spaces/operations/{operation_id}",
+            get(routes::project_spaces::operation_receipt),
         )
         .route(
             "/projects/{project_key}/spaces/projection",
@@ -1573,6 +1578,33 @@ mod openapi_contract_tests {
                 create.get(status).is_some(),
                 "missing create response {status}"
             );
+        }
+        assert!(value["paths"]["/api/v2/projects/{project_key}/spaces"]["get"]["responses"]["200"]["headers"]
+            .get("x-pdlc-project-spaces-can-change").is_some());
+        for (path, method) in [
+            ("/api/v2/projects/{project_key}/spaces", "get"),
+            ("/api/v2/projects/{project_key}/spaces", "put"),
+            ("/api/v2/projects/{project_key}/spaces/projection", "get"),
+            (
+                "/api/v2/projects/{project_key}/spaces/projection/reconcile",
+                "post",
+            ),
+            ("/api/v2/projects/{project_key}/lifecycle", "get"),
+            ("/api/v2/projects/{project_key}/lifecycle", "put"),
+            ("/api/v2/project-contexts/query", "post"),
+            (
+                "/api/v2/projects/{project_key}/spaces/operations/{operation_id}",
+                "get",
+            ),
+        ] {
+            for status in ["403", "503"] {
+                assert!(
+                    value["paths"][path][method]["responses"]
+                        .get(status)
+                        .is_some(),
+                    "missing {status} contract: {method} {path}"
+                );
+            }
         }
         assert!(value["paths"]["/api/v2/spaces/visible"]["get"].is_object());
         assert!(value["paths"]["/api/v2/projects/{project_key}/spaces"]["put"].is_object());

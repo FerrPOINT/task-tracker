@@ -119,6 +119,11 @@ impl SpaceActor {
     pub fn valid_until(&self) -> i64 {
         self.window.valid_until()
     }
+    /// A later verification can only shorten the original request's monotonic window.
+    pub fn restrict_deadline(mut self, deadline: std::time::Instant) -> Self {
+        self.window = self.window.restrict_deadline(deadline);
+        self
+    }
     pub fn require_read(&self, links: &ConfirmedProjectSpaces) -> Result<(), AppError> {
         if self.is_current()
             && self.admission.can_read_project(
@@ -519,11 +524,14 @@ pub(crate) mod request_context_tests {
                 .valid_until,
             now + 5
         );
-        let mut expired_actor = actor.clone();
-        expired_actor.window = expired_actor
-            .window
-            .restrict_deadline(std::time::Instant::now());
-        assert!(expired_actor.confirm_links(links.clone()).is_err());
+        let expired_actor = actor.clone().restrict_deadline(std::time::Instant::now());
+        assert!(expired_actor.clone().confirm_links(links.clone()).is_err());
+        let renewed = expired_actor
+            .restrict_deadline(std::time::Instant::now() + std::time::Duration::from_secs(60));
+        assert!(
+            !renewed.is_current(),
+            "a downstream service cannot renew the original deadline"
+        );
         actor.require_read(&links).unwrap();
         assert_eq!(actor.readable_spaces().unwrap(), vec![a.clone()]);
         assert!(actor.require_project_write(&links).is_err());

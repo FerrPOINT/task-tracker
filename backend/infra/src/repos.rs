@@ -591,6 +591,14 @@ impl ProjectRepository for ProjectRepo {
     ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
         crate::project_spaces::get(self.db.as_ref(), project).await
     }
+    async fn project_space_operation(
+        &self,
+        project: ProjectId,
+        operation: Uuid,
+        actor: &shared::space_access::CentralIdentity,
+    ) -> Result<Option<domain::project_spaces::StoredProjectSpaceOperation>, AppError> {
+        crate::project_spaces::operation(self.db.as_ref(), project, operation, actor).await
+    }
     async fn replace_project_spaces(
         &self,
         project: ProjectId,

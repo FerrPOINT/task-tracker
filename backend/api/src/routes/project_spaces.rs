@@ -54,7 +54,8 @@ pub(crate) async fn actor(
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::Unauthorized)?;
-    if let Some(frame) = app::space_access::current_request_for(user)? {
+    let frame = app::space_access::current_request_for(user)?;
+    if let Some(frame) = &frame {
         if let Some(actor) = frame.spaces() {
             return Ok(actor.clone());
         }
@@ -98,12 +99,25 @@ pub(crate) async fn actor(
     {
         return Err(AppError::Unauthorized);
     }
-    let admission = client()
+    let mut admission = client()
         .await?
         .confirm_many(&BRIDGE, &verified, spaces)
         .await
         .map_err(|_| AppError::Unavailable("space_admission_unavailable".into()))?;
-    app::space_access::SpaceActor::verified(user, &verified, admission)
+    if let Some(frame) = &frame {
+        admission.validity = admission
+            .validity
+            .attenuate(frame.valid_until())
+            .ok_or(AppError::Forbidden)?;
+    }
+    let mut actor = app::space_access::SpaceActor::verified(user, &verified, admission)?;
+    if let Some(frame) = frame {
+        actor = actor.restrict_deadline(frame.monotonic_deadline());
+    }
+    if !actor.is_current() {
+        return Err(AppError::Forbidden);
+    }
+    Ok(actor)
 }
 pub(crate) fn no_store<T: serde::Serialize>(
     value: T,
@@ -146,27 +160,47 @@ pub async fn create(
     Ok((StatusCode::CREATED, headers, value))
 }
 
-#[utoipa::path(operation_id="get_project_spaces_v2",get,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),responses((status=200,body=ConfirmedProjectSpaces),(status=400,description="Invalid project key"),(status=401,description="Central human required"),(status=403,description="Project read admission denied"),(status=404,description="Project unavailable"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
+#[utoipa::path(operation_id="get_project_spaces_v2",get,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),responses((status=200,body=ConfirmedProjectSpaces,headers(("x-pdlc-project-spaces-can-change"=bool,description="Bounded UI hint; PUT rechecks all authority"),("x-pdlc-admission-policy-revision"=i64,description="Original policy revision for this same bounded proof"))),(status=400,description="Invalid project key"),(status=401,description="Central human required"),(status=403,description="Project read admission denied"),(status=404,description="Project unavailable"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn get(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Path(value): Path<String>,
-) -> Result<
-    (
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<ConfirmedProjectSpaces>,
-    ),
-    AppError,
-> {
+) -> Result<(HeaderMap, Json<ConfirmedProjectSpaces>), AppError> {
     let key = key(&value)?;
     let project = ctx.repos.projects.get_by_key(&key).await?;
     let links = ctx.repos.projects.project_spaces(project.id).await?;
     let actor = actor(&ctx, &headers, &claims, "GET", &links.spaces).await?;
-    Ok(no_store(ctx.services.project.spaces(&key, &actor).await?))
+    let confirmed = ctx.services.project.spaces(&key, &actor).await?;
+    let lifecycle = ctx.repos.projects.project_lifecycle(project.id).await?;
+    if lifecycle.project != confirmed.project {
+        return Err(AppError::Unavailable(
+            "project_lifecycle_identity_mismatch".into(),
+        ));
+    }
+    actor.require_read(&confirmed)?;
+    // This is a bounded UI hint; PUT independently rechecks roles, scope and
+    // current lifecycle under its transaction locks.
+    let can_change = project.owner_id == actor.user()
+        && !lifecycle.archived
+        && actor.require_project_write(&confirmed).is_ok();
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        "private, no-store".parse().unwrap(),
+    );
+    response_headers.insert(
+        "x-pdlc-project-spaces-can-change",
+        if can_change { "true" } else { "false" }.parse().unwrap(),
+    );
+    response_headers.insert(
+        "x-pdlc-admission-policy-revision",
+        actor.policy_revision().to_string().parse().unwrap(),
+    );
+    Ok((response_headers, Json(confirmed)))
 }
 
-#[utoipa::path(operation_id="replace_project_spaces_v2",put,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),request_body=ReplaceProjectSpaces,responses((status=200,body=ConfirmedProjectSpaces),(status=409,description="Link revision or lifecycle conflict")),security(("bearer"=[])))]
+#[utoipa::path(operation_id="replace_project_spaces_v2",put,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),request_body=ReplaceProjectSpaces,responses((status=200,body=ConfirmedProjectSpaces),(status=409,description="Link revision or lifecycle conflict"),(status=400,description="Invalid identifier or command"),(status=401,description="Fresh central token required"),(status=403,description="Admission or operation scope denied"),(status=404,description="Requested resource unavailable"),(status=422,description="Invalid strict request schema"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn replace(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
@@ -221,7 +255,7 @@ mod tests {
     }
 }
 
-#[utoipa::path(operation_id="get_project_space_projection_v2",get,path="/api/v2/projects/{project_key}/spaces/projection",params(("project_key"=String,Path)),responses((status=200,body=domain::project_spaces::ProjectSpaceProjectionStatus)),security(("bearer"=[])))]
+#[utoipa::path(operation_id="get_project_space_projection_v2",get,path="/api/v2/projects/{project_key}/spaces/projection",params(("project_key"=String,Path)),responses((status=200,body=domain::project_spaces::ProjectSpaceProjectionStatus),(status=400,description="Invalid project request"),(status=401,description="Central human required"),(status=403,description="Project admission or management denied"),(status=404,description="Project or projection unavailable"),(status=409,description="Project revision or lifecycle conflict"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn projection_status(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
@@ -247,7 +281,7 @@ pub async fn projection_status(
     actor.require_read(&links)?;
     Ok(no_store(status))
 }
-#[utoipa::path(operation_id="reconcile_project_space_projection_v2",post,path="/api/v2/projects/{project_key}/spaces/projection/reconcile",params(("project_key"=String,Path)),responses((status=200,body=domain::project_spaces::ProjectSpaceProjectionStatus),(status=202,body=domain::project_spaces::ProjectSpaceProjectionStatus,description="Durable delivery remains pending")),security(("bearer"=[])))]
+#[utoipa::path(operation_id="reconcile_project_space_projection_v2",post,path="/api/v2/projects/{project_key}/spaces/projection/reconcile",params(("project_key"=String,Path)),responses((status=200,body=domain::project_spaces::ProjectSpaceProjectionStatus),(status=202,body=domain::project_spaces::ProjectSpaceProjectionStatus,description="Durable delivery remains pending"),(status=400,description="Invalid identifier or command"),(status=401,description="Fresh central token required"),(status=403,description="Admission or operation scope denied"),(status=404,description="Requested resource unavailable"),(status=409,description="Revision or lifecycle conflict"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn reconcile_projection(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
@@ -284,5 +318,42 @@ pub async fn reconcile_projection(
         },
         headers,
         body,
+    ))
+}
+
+/// Read-only reconciliation is valid even when archive has closed new writes.
+/// It addresses this original identity's durable receipt, never a different author.
+#[utoipa::path(operation_id="get_project_space_operation_receipt_v2",get,
+path="/api/v2/projects/{project_key}/spaces/operations/{operation_id}",
+params(("project_key"=String,Path),("operation_id"=uuid::Uuid,Path)),
+responses((status=200,body=domain::project_spaces::ProjectSpaceOperationReceipt),
+(status=400,description="Invalid project or operation"),(status=401,description="Central human required"),
+(status=403,description="Current project reading denied"),(status=404,description="No committed receipt found; outcome remains unknown"),
+(status=503,description="Fresh owner confirmation unavailable")),
+security(("bearer"=[])))]
+pub async fn operation_receipt(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
+    headers: HeaderMap,
+    Path((value, operation)): Path<(String, uuid::Uuid)>,
+) -> Result<
+    (
+        [(axum::http::header::HeaderName, &'static str); 1],
+        Json<domain::project_spaces::ProjectSpaceOperationReceipt>,
+    ),
+    AppError,
+> {
+    if operation.is_nil() {
+        return Err(AppError::invalid_input("invalid_project_space_operation"));
+    }
+    let key = key(&value)?;
+    let project = ctx.repos.projects.get_by_key(&key).await?;
+    let links = ctx.repos.projects.project_spaces(project.id).await?;
+    let actor = actor(&ctx, &headers, &claims, "GET", &links.spaces).await?;
+    Ok(no_store(
+        ctx.services
+            .project
+            .space_operation(&key, operation, &actor)
+            .await?,
     ))
 }

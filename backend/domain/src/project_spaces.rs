@@ -6,7 +6,9 @@ use shared::{AppError, space_access::SpaceRef};
 #[serde(deny_unknown_fields)]
 pub struct ReplaceProjectSpaces {
     pub operation_id: uuid::Uuid,
+    #[schema(minimum = 1)]
     pub expected_revision: i64,
+    #[schema(min_items = 1, max_items = 1000)]
     pub spaces: Vec<SpaceRef>,
 }
 impl ReplaceProjectSpaces {
@@ -262,5 +264,36 @@ mod lifecycle_command_tests {
         command.expected_revision = 1;
         command.operation_id = uuid::Uuid::nil();
         assert!(command.validate().is_err());
+    }
+}
+
+/// Committed metadata from this owner's operation table; no authorization TTL is manufactured here.
+pub struct StoredProjectSpaceOperation {
+    pub project: shared::space_access::ProjectRef,
+    pub operation_id: uuid::Uuid,
+    pub applied_revision: i64,
+    pub change: ReplaceProjectSpaces,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectSpaceOperationReceipt {
+    pub schema_version: u32,
+    pub project: shared::space_access::ProjectRef,
+    pub operation_id: uuid::Uuid,
+    pub applied: bool,
+    pub applied_revision: i64,
+    pub change: ReplaceProjectSpaces,
+    pub validity: shared::space_access::AdmissionValidity,
+}
+impl ProjectSpaceOperationReceipt {
+    pub fn valid(&self) -> bool {
+        self.schema_version == 1
+            && self.project.valid()
+            && !self.operation_id.is_nil()
+            && self.applied
+            && self.change.operation_id == self.operation_id
+            && self.change.validate().is_ok()
+            && self.applied_revision >= self.change.expected_revision
+            && self.validity.valid()
     }
 }

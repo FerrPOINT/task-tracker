@@ -192,6 +192,16 @@ pub trait ProjectRepository: Send + Sync {
     ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
         Err(AppError::Unavailable("project_spaces_not_supported".into()))
     }
+    async fn project_space_operation(
+        &self,
+        _project: ProjectId,
+        _operation: uuid::Uuid,
+        _actor: &shared::space_access::CentralIdentity,
+    ) -> Result<Option<crate::project_spaces::StoredProjectSpaceOperation>, AppError> {
+        Err(AppError::Unavailable(
+            "project_space_receipts_not_supported".into(),
+        ))
+    }
     async fn replace_project_spaces(
         &self,
         _project: ProjectId,
