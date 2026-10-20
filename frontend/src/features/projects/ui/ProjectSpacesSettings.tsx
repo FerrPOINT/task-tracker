@@ -1,3 +1,4 @@
+import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, ErrorState, LoadingState } from '@pdlc/ui/ui'
@@ -32,6 +33,7 @@ export function ProjectSpacesSettings({ project }: { project: Project }) {
     session.identity,
     session.userId,
     session.policyEpoch,
+    session.contextEpoch,
     project.id,
   ])
   return (
@@ -121,6 +123,7 @@ function Management({ project, session }: { project: Project; session: SpaceSess
       setDraft(null)
       await cache.invalidateQueries({ queryKey: key })
       await cache.invalidateQueries({ queryKey: projectionKey })
+      await cache.invalidateQueries({ queryKey: visibleProjectKeys.identity(session.identity) })
     },
   })
   const save = useMutation({
@@ -134,6 +137,7 @@ function Management({ project, session }: { project: Project; session: SpaceSess
       // A replay receipt is not a renewed permission. Read the current owner hint.
       await cache.invalidateQueries({ queryKey: key })
       await cache.invalidateQueries({ queryKey: projectionKey })
+      await cache.invalidateQueries({ queryKey: visibleProjectKeys.identity(session.identity) })
     },
   })
   if (restored && !restored.success)

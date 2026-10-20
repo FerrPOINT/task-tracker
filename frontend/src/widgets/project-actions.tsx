@@ -1,3 +1,5 @@
+import { ProjectLink } from '@/shared/lib/project-navigation'
+import { withSpaceContext } from '@/shared/lib/space-location'
 import { Settings, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -31,9 +33,12 @@ export function ProjectActionItems({
         <DropdownMenuItem key={to} asChild>
           <Link
             to={
-              import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+              import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
+              import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'
                 ? withNamespaceLocation(to, project.namespace ?? null, search)
-                : to
+                : import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+                  ? withSpaceContext(to, search)
+                  : to
             }
             onClick={onNavigate}
             aria-current={pathname === to ? 'page' : undefined}
@@ -47,7 +52,8 @@ export function ProjectActionItems({
   )
 }
 export function ProjectCardActionItems({ project }: { project: Project & { id: string } }) {
-  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
+    import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true' ? (
     <BoundCardActionItems project={project} />
   ) : (
     <ProjectActionItems project={project} />
@@ -62,14 +68,15 @@ export function ProjectCardLink({
   children: ReactNode
   className?: string
 }) {
-  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
+    import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true' ? (
     <BoundCardLink project={project} className={className}>
       {children}
     </BoundCardLink>
   ) : (
-    <Link to={`/projects/${encodeURIComponent(project.key)}/board`} className={className}>
+    <ProjectLink to={`/projects/${encodeURIComponent(project.key)}/board`} className={className}>
       {children}
-    </Link>
+    </ProjectLink>
   )
 }
 function BoundCardLink({
@@ -137,7 +144,8 @@ export function ProjectActions({
     <Button asChild variant="ghost" size="icon" className="h-11 w-11 hover:bg-transparent">
       <Link
         to={
-          import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+          import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
+          import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'
             ? withNamespaceLocation(to, project.namespace ?? null, search)
             : to
         }

@@ -7,6 +7,7 @@ import { useAuthStore, ssoConfig } from './store'
 import {
   acceptSpaceSession,
   observeSpacePolicy,
+  observeSpaceContext,
   isCurrentSpaceActor,
   useSpaceSession,
 } from './space-session'
@@ -202,4 +203,31 @@ it('fences delayed commands by actor/role/policy while permitting a fresh token 
   const current = useSpaceSession.getState().session!
   login('central-b', 'local-b', 'fixture-b')
   expect(isCurrentSpaceActor(current)).toBe(false)
+})
+
+it('invalidates cached data, unsaved forms and queued effects on an explicit space context change', async () => {
+  const sso = login()
+  const { client } = mount()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Draft' }), {
+    target: { value: 'old-space-draft' },
+  })
+  client.setQueryData(['old-space-private'], 'private')
+  const previous = useSpaceSession.getState().session!
+  await act(async () => {
+    observeSpaceContext(previous.identity, 'registry-a/space-a')
+  })
+  expect(screen.getByRole('textbox', { name: 'Draft' })).toHaveValue('')
+  expect(client.getQueryData(['old-space-private'])).toBeUndefined()
+  expect(isCurrentSpaceActor(previous)).toBe(false)
+  const current = useSpaceSession.getState().session!
+  await act(async () => {
+    useAuthStore.getState().setAuth({ token: 'refreshed', userId: 'local-a', email: sso.email })
+    acceptSpaceSession(
+      { ...sso, accessToken: 'refreshed', expiresAt: Date.now() + 90_000 },
+      { id: 'local-a' },
+    )
+  })
+  expect(useSpaceSession.getState().session?.contextKey).toBe(current.contextKey)
+  expect(useSpaceSession.getState().session?.contextEpoch).toBe(current.contextEpoch)
+  expect(isCurrentSpaceActor(current)).toBe(true)
 })

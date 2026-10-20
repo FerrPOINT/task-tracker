@@ -23,6 +23,7 @@ function ActiveBoundary({ children }: { children: ReactNode }) {
           session.userId,
           session.isSystemAdmin,
           session.policyEpoch,
+          session.contextEpoch,
         ]
       : null,
   )

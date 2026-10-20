@@ -1,3 +1,5 @@
+import { Link as RouterLink, useNavigate } from 'react-router'
+import { withSpaceContext } from './space-location'
 import { useCallback } from 'react'
 import {
   useLocation,
@@ -28,6 +30,8 @@ export function projectNavigationTarget(to: To, search: string): To {
 /** The catalog filter is independent of the verified Namespace of the open resource. */
 export function ProjectLink({ to, ...props }: LinkProps) {
   const { search } = useLocation()
+  if (import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true')
+    return <RouterLink to={withSpaceContext(to, search)} {...props} />
   return (
     <NamespaceLink
       to={
@@ -39,18 +43,23 @@ export function ProjectLink({ to, ...props }: LinkProps) {
 }
 
 export function useProjectNavigate(): NavigateFunction {
-  const navigate = useNamespaceNavigate()
+  const namespaceNavigate = useNamespaceNavigate()
+  const routerNavigate = useNavigate()
+  const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const navigate = v2 ? routerNavigate : namespaceNavigate
   const { search } = useLocation()
   return useCallback(
     (to: To | number, options?: NavigateOptions) => {
       if (typeof to === 'number') return navigate(to)
       return navigate(
-        import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
-          ? projectNavigationTarget(to, search)
-          : to,
+        v2
+          ? withSpaceContext(to, search)
+          : import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+            ? projectNavigationTarget(to, search)
+            : to,
         options,
       )
     },
-    [navigate, search],
+    [navigate, search, v2],
   ) as NavigateFunction
 }

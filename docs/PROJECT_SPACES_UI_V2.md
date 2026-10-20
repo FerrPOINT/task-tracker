@@ -104,3 +104,27 @@ Management GET возвращает x-pdlc-admission-policy-revision из тог
 Если v2 запрашивается в staging до общей activation и повторная token
 verification требуется отдельно, её validity и monotonic deadline сужаются
 исходным request frame. Повторная проверка не создаёт новое окно для ответа.
+
+## Каталог проектов и проверка маршрута
+
+Шапка Tracker использует два отдельных Base SearchableSelect, без вывода проекта
+из пространства. Общий Admin каталог читается через Tracker SDK relay. Переход
+пространства ведёт в список, включая Space без проектов; ProjectRef выбирается
+явно из серверного V2 каталога с отдельным поиском/страницами. Полный Tracker
+instance ID сохраняется отдельно от локального Project UUID. Имена не ключи.
+
+Список проектов использует server Space/q/count/page до pagination; sidebar и
+header не вызывают legacy Namespace reader в новом режиме. Прямой project route
+подтверждается exact project_key query внутри выбранного Space, без первого
+поискового совпадения/автоматического перенаправления. Invalid/duplicate/legacy
+URL context блокируется; explicit destination refs не переписываются.
+
+Router-owned context epoch очищает прежние query data/drafts и закрывает queued
+effects. Token refresh той же identity сохраняет context. Original expiry
+скрывает protected route при unanswered revalidation. Глобальный /admin помечен
+independent владельцем route и сохраняет собственные правила, включая outage
+каталога. Это не даёт дополнительных API полномочий.
+
+Scope этого этапа — Tracker navigation и его HTTP catalog. Cross-product service
+switcher, все legacy mutation callbacks после смены actor/context и машинные/V3
+surfaces требуют общей квалификации до activation; UI source tests не заменяют IAB.

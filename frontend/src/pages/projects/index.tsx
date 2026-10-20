@@ -30,10 +30,17 @@ import {
 export function ProjectsPage() {
   const { t } = useTranslation()
   const [offset, setOffset] = useState(0)
-  const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
+  const [search, setSearch] = useState('')
+  const spaceEnabled = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const {
+    data: projects,
+    isLoading,
+    error,
+    refetch,
+    catalog,
+  } = useProjects(offset, 50, spaceEnabled ? search : '')
   const [formOpen, setFormOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
-  const [search, setSearch] = useState('')
 
   const create = useCreateProject()
   const remove = useDeleteProject()
@@ -42,9 +49,11 @@ export function ProjectsPage() {
   if (error) return <ErrorState message={error.message} onRetry={() => void refetch()} />
 
   const normalizedSearch = search.trim().toLocaleLowerCase()
-  const filteredProjects = projects?.filter((project) =>
-    `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
-  )
+  const filteredProjects = spaceEnabled
+    ? projects
+    : projects?.filter((project) =>
+        `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
+      )
 
   return (
     <div className="space-y-4">
@@ -58,7 +67,7 @@ export function ProjectsPage() {
         </Button>
         <Button
           variant="outline"
-          disabled={(projects?.length ?? 0) < 50}
+          disabled={spaceEnabled ? !catalog?.has_more : (projects?.length ?? 0) < 50}
           onClick={() => setOffset(offset + 50)}
         >
           Далее
@@ -140,7 +149,12 @@ export function ProjectsPage() {
             placeholder={t('projects.search')}
             className="h-9 w-full pl-9 sm:w-64"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(
+                spaceEnabled ? Array.from(e.target.value).slice(0, 200).join('') : e.target.value,
+              )
+              if (spaceEnabled) setOffset(0)
+            }}
           />
         </div>
       </div>

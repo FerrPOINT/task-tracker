@@ -87,7 +87,11 @@ export const router = createProductRouter(
             { path: '/search', element: withSuspense(<SearchPage />) },
             { path: '/notifications', element: withSuspense(<NotificationsPage />) },
             { path: '/reports', element: withSuspense(<ReportsPage />) },
-            { path: '/admin', element: withSuspense(<AdminPage />) },
+            {
+              path: '/admin',
+              handle: { spaceAdmission: 'independent' },
+              element: withSuspense(<AdminPage />),
+            },
             { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
             { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },
           ],

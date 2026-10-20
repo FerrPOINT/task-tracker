@@ -10,6 +10,8 @@ export interface SpaceSession {
   isSystemAdmin: boolean
   policyRevision: number | null
   policyEpoch: number
+  contextKey: string | null
+  contextEpoch: number
 }
 export const useSpaceSession = create<{ session: SpaceSession | null }>(() => ({ session: null }))
 /** Only the validated SSO flow supplies the central subject; local profile IDs remain local. */
@@ -43,6 +45,8 @@ export function acceptSpaceSession(
       isSystemAdmin: profile.is_system_admin === true,
       policyRevision: same ? previous.policyRevision : null,
       policyEpoch: same ? previous.policyEpoch : 0,
+      contextKey: same ? previous.contextKey : null,
+      contextEpoch: same ? previous.contextEpoch : 0,
     },
   })
 }
@@ -70,6 +74,22 @@ export function observeSpacePolicy(identity: CatalogIdentity, revision: number):
   })
 }
 
+/** Router-owned explicit context invalidates queued effects, without deriving a Space from a Project. */
+export function observeSpaceContext(identity: CatalogIdentity, key: string): void {
+  const session = useSpaceSession.getState().session
+  if (
+    !session ||
+    session.expiresAt <= Date.now() ||
+    session.identity.issuer !== identity.issuer ||
+    session.identity.subject !== identity.subject ||
+    session.contextKey === key
+  )
+    return
+  useSpaceSession.setState({
+    session: { ...session, contextKey: key, contextEpoch: session.contextEpoch + 1 },
+  })
+}
+
 /** A paused UI request may resume only for the identity/context that initiated it. */
 export function isCurrentSpaceActor(expected: SpaceSession): boolean {
   const current = useSpaceSession.getState().session
@@ -81,6 +101,8 @@ export function isCurrentSpaceActor(expected: SpaceSession): boolean {
     current.userId === expected.userId &&
     current.isSystemAdmin === expected.isSystemAdmin &&
     current.policyEpoch === expected.policyEpoch &&
+    current.contextEpoch === expected.contextEpoch &&
+    current.contextKey === expected.contextKey &&
     useAuthStore.getState().userId === current.userId &&
     useAuthStore.getState().token,
   )

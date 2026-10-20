@@ -1,3 +1,4 @@
+import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
 import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
 import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@pdlc/ui/ui'
 import { useProjectDisclosures } from '@pdlc/ui/lib'
@@ -213,15 +214,17 @@ export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
   const routeProjectKey = useCurrentProjectKey()
-  const namespace = useNamespaceContext()
-  const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+  const spaceEnabled = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && !spaceEnabled
+  const namespace = useNamespaceContext(namespaceEnabled)
   const allProjects = !namespace.malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog(namespaceEnabled)
-  const projectKey = namespace.ref
-    ? namespace.query.isError
-      ? undefined
-      : namespace.query.data?.resource_key
-    : routeProjectKey
+  const projectKey =
+    namespaceEnabled && namespace.ref
+      ? namespace.query.isError
+        ? undefined
+        : namespace.query.data?.resource_key
+      : routeProjectKey
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
   const { data: projects = [] } = useProjects()
@@ -379,7 +382,9 @@ export function AppShell() {
             </>
           }
           context={
-            import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+            spaceEnabled ? (
+              <SpaceShellContext projectKey={projectKey} />
+            ) : namespaceEnabled ? (
               <NamespaceShellContext />
             ) : (
               <DropdownMenu modal={false}>
@@ -570,7 +575,11 @@ export function AppShell() {
         />
       )}
     >
-      {namespace.malformed ? (
+      {spaceEnabled ? (
+        <SpaceRouteOutlet projectKey={projectKey}>
+          <Outlet />
+        </SpaceRouteOutlet>
+      ) : namespace.malformed ? (
         <p role="alert" className="text-danger">
           Некорректная ссылка на проект.
         </p>

@@ -1,3 +1,6 @@
+import { useVisibleProjects } from './useVisibleProjects'
+import { readSpaceLocation } from '@/shared/lib/space-location'
+import { SpaceRequestError } from '@/api/space-catalog'
 import { useLocation } from 'react-router'
 import { parseNamespaceLocation } from '@pdlc/ui/lib'
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -333,11 +336,28 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   })
 }
 
-export function useProjects(offset = 0, limit = 100) {
-  return useQuery({
+export function useProjects(offset = 0, limit = 100, search = '') {
+  const context = readSpaceLocation(useLocation().search)
+  const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const visible = useVisibleProjects(
+    { space: context.space, offset, limit, q: search },
+    v2 && !context.invalid,
+  )
+  const legacy = useQuery({
     queryKey: [...projectKeys.all, offset, limit],
     queryFn: ({ signal }) => listProjects(offset, limit, signal),
+    enabled: !v2,
   })
+  if (!v2) return { ...legacy, catalog: undefined }
+  const unavailable = context.invalid || visible.unavailable
+  return {
+    ...visible,
+    data: visible.data?.projects,
+    catalog: visible.data,
+    isLoading: visible.isLoading && !unavailable,
+    isError: visible.isError || unavailable,
+    error: unavailable ? new SpaceRequestError(403) : visible.error,
+  }
 }
 
 export function useProjectDetails(key: string) {

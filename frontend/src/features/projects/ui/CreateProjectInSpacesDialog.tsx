@@ -1,3 +1,4 @@
+import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -57,7 +58,12 @@ export function CreateProjectInSpacesDialog(props: Props) {
           <ErrorState message="Для создания нужна подтверждённая центральная сессия." />
         ) : (
           <ProjectCommandRecovery
-            key={JSON.stringify([session.identity, session.userId, session.policyEpoch])}
+            key={JSON.stringify([
+              session.identity,
+              session.userId,
+              session.policyEpoch,
+              session.contextEpoch,
+            ])}
           >
             <CreateForm {...props} session={session} />
           </ProjectCommandRecovery>
@@ -99,6 +105,7 @@ function CreateForm({
     journal.clear()
     if (!alive.current || !isCurrentSpaceActor(session)) return
     void cache.invalidateQueries({ queryKey: projectKeys.all })
+    void cache.invalidateQueries({ queryKey: visibleProjectKeys.identity(session.identity) })
     onOpenChange(false)
     onCreated?.(project)
     if (navigateOnSuccess) navigate('/projects/' + encodeURIComponent(project.key) + '/board')

@@ -21,12 +21,12 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return response.json() as Promise<T>
 }
-export function useNamespaceContext() {
+export function useNamespaceContext(enabled = true) {
   const location = useLocation()
   const { ref, malformed } = projectNavigationScope(location.search)
   const query = useQuery({
     queryKey: ['namespace-context', ref?.registry_instance_id, ref?.namespace_id],
-    enabled: Boolean(ref) && !malformed,
+    enabled: enabled && Boolean(ref) && !malformed,
     queryFn: ({ signal }) =>
       get<ResourceContext>(
         `/api/v1/namespace-contexts/${ref!.registry_instance_id}/${ref!.namespace_id}`,
