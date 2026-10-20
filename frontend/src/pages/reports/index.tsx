@@ -221,22 +221,25 @@ export function ReportsPage() {
                 (sprintsQuery.isLoading || Boolean(sprintsQuery.error)) && sprints.length === 0
               }
               value={selectedSprintId}
-              onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
+              onValueChange={(nextValue) => updateParams({ sprint_id: nextValue || undefined })}
               className="w-auto max-w-full sm:w-64"
-            >
-              <option value="">
-                {sprintsQuery.isLoading && sprints.length === 0
-                  ? t('reports.loadingSprints')
-                  : sprints.length === 0 && !sprintsQuery.error
-                    ? t('reports.noSprints')
-                    : t('reports.selectSprint')}
-              </option>
-              {sprints.map((sprint) => (
-                <option key={sprint.id} value={sprint.id}>
-                  {sprint.name}
-                </option>
-              ))}
-            </Select>
+              options={[
+                {
+                  value: '',
+                  label: String(
+                    sprintsQuery.isLoading && sprints.length === 0
+                      ? t('reports.loadingSprints')
+                      : sprints.length === 0 && !sprintsQuery.error
+                        ? t('reports.noSprints')
+                        : t('reports.selectSprint'),
+                  ),
+                },
+                ...(sprints.map((sprint) => ({
+                  value: String(sprint.id),
+                  label: String(sprint.name),
+                })) ?? []),
+              ]}
+            />
           </div>
         )}
 

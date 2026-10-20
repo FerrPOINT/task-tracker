@@ -88,17 +88,17 @@ export function ProjectCustomFieldsPage() {
                   aria-label={t('customFields.fieldType')}
                   className="w-auto"
                   value={draft.field_type}
-                  onChange={(e) => {
+                  onValueChange={(nextValue) => {
                     create.reset()
-                    setDraft({ ...draft, field_type: e.target.value as CustomFieldType })
+                    setDraft({ ...draft, field_type: nextValue as CustomFieldType })
                   }}
-                >
-                  {types.map((type) => (
-                    <option key={type} value={type}>
-                      {t(`customFields.types.${type}`)}
-                    </option>
-                  ))}
-                </Select>
+                  options={[
+                    ...(types.map((type) => ({
+                      value: String(type),
+                      label: String(t(`customFields.types.${type}`)),
+                    })) ?? []),
+                  ]}
+                />
                 {needsOptions && (
                   <Input
                     aria-label={t('customFields.options')}

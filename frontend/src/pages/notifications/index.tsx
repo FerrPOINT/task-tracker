@@ -387,18 +387,19 @@ export function NotificationsPage() {
                     id="notification-frequency"
                     className="w-full"
                     value={displayedSettings.email_frequency}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updatePreference({
-                        email_frequency: event.target.value,
+                        email_frequency: nextValue,
                       })
                     }
                     disabled={updateSettings.isPending}
-                  >
-                    <option value="immediate">{t('notifications.frequencyImmediate')}</option>
-                    <option value="hourly">{t('notifications.frequencyHourly')}</option>
-                    <option value="daily">{t('notifications.frequencyDaily')}</option>
-                    <option value="never">{t('notifications.frequencyNone')}</option>
-                  </Select>
+                    options={[
+                      { value: 'immediate', label: String(t('notifications.frequencyImmediate')) },
+                      { value: 'hourly', label: String(t('notifications.frequencyHourly')) },
+                      { value: 'daily', label: String(t('notifications.frequencyDaily')) },
+                      { value: 'never', label: String(t('notifications.frequencyNone')) },
+                    ]}
+                  />
                 </div>
                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
                   <input

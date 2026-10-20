@@ -1,3 +1,4 @@
+import { choiceOptions, chooseValue } from '@/test/choice'
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -77,39 +78,43 @@ const columns: Board['columns'] = [
 ]
 
 describe('IssueMetaEditor', () => {
-  it('renders metadata select fields', () => {
+  it('renders metadata select fields', async () => {
     render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
     expect(screen.getByText(/status/i)).toBeInTheDocument()
     expect(screen.getByText(/priority/i)).toBeInTheDocument()
     expect(screen.getByText(/assignee/i)).toBeInTheDocument()
-    const options = Array.from(
-      (screen.getByLabelText(/priority/i) as HTMLSelectElement).options,
+    const options = (await choiceOptions(screen.getByLabelText(/priority/i))).map(
       (option) => option.value,
     )
     expect(options).toEqual(['Lowest', 'Low', 'Medium', 'High', 'Highest'])
     expect(screen.queryByRole('option', { name: /critical/i })).not.toBeInTheDocument()
   })
 
-  it('calls onChange when priority is changed', () => {
+  it('calls onChange when priority is changed', async () => {
     const onChange = vi.fn()
     render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
-    fireEvent.change(screen.getByDisplayValue('High'), { target: { value: 'Low' } })
+    await chooseValue(screen.getByLabelText(/priority/i), 'Low')
     expect(onChange).toHaveBeenCalledWith({ priority: 'Low' })
   })
 
-  it('offers every active directory user for assignment', () => {
+  it('offers every active directory user for assignment', async () => {
     render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
-    expect(screen.getByRole('option', { name: 'Charlie' })).toBeInTheDocument()
+    expect(
+      (await choiceOptions(screen.getByLabelText(/assignee/i))).some(
+        (option) => option.textContent === 'Charlie',
+      ),
+    ).toBe(true)
   })
 
-  it('keeps stale assignee visible as a disabled current option', () => {
+  it('keeps stale assignee visible as a disabled current option', async () => {
     const staleIssue = {
       ...issue,
       assignee_id: 'u4',
       assignee_name: 'Former User',
     }
     render(wrapper(<IssueMetaEditor issue={staleIssue} columns={columns} onChange={vi.fn()} />))
-    const option = screen.getByRole('option', { name: 'Former User' }) as HTMLOptionElement
-    expect(option.disabled).toBe(true)
+    fireEvent.keyDown(screen.getByLabelText(/assignee/i), { key: 'Enter' })
+    const option = await screen.findByRole('option', { name: 'Former User' })
+    expect(option).toHaveAttribute('data-disabled')
   })
 })

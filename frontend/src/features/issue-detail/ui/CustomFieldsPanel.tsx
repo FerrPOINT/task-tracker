@@ -1,3 +1,4 @@
+import { MultiSelect } from '@pdlc/ui/ui'
 import { Input, Select } from '@pdlc/ui/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -56,31 +57,30 @@ export function CustomFieldValueInput({
 
   if (field.field_type === 'select') {
     return (
-      <Select className="w-full" value={current} onChange={(e) => onSave(e.target.value)}>
-        <option value="">{t('customFields.selectPlaceholder')}</option>
-        {field.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </Select>
+      <Select
+        className="w-full"
+        value={current}
+        onValueChange={(nextValue) => onSave(nextValue)}
+        options={[
+          { value: '', label: String(t('customFields.selectPlaceholder')) },
+          ...(field.options.map((option) => ({ value: String(option), label: String(option) })) ??
+            []),
+        ]}
+      />
     )
   }
   if (field.field_type === 'multi-select') {
     const selected = Array.isArray(value) ? value.map(String) : []
     return (
-      <Select
-        multiple
+      <MultiSelect
         className="w-full"
         value={selected}
-        onChange={(e) => onSave(Array.from(e.target.selectedOptions, (o) => o.value))}
-      >
-        {field.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </Select>
+        onValueChange={(nextValues) => onSave(nextValues)}
+        options={[
+          ...(field.options.map((option) => ({ value: String(option), label: String(option) })) ??
+            []),
+        ]}
+      />
     )
   }
   const type =

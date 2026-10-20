@@ -102,16 +102,16 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           />
           <Select
             value={linkType}
-            onChange={(e) => setLinkType(e.target.value as (typeof LINK_TYPES)[number])}
+            onValueChange={(nextValue) => setLinkType(nextValue as (typeof LINK_TYPES)[number])}
             className="w-auto"
             aria-label={t('links.typeLabel')}
-          >
-            {LINK_TYPES.map((lt) => (
-              <option key={lt} value={lt}>
-                {t(`links.type.${lt}`)}
-              </option>
-            ))}
-          </Select>
+            options={[
+              ...(LINK_TYPES.map((lt) => ({
+                value: String(lt),
+                label: String(t(`links.type.${lt}`)),
+              })) ?? []),
+            ]}
+          />
           <Button
             type="button"
             size="sm"

@@ -1,3 +1,4 @@
+import { chooseValue } from '../../test/choice'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -117,7 +118,7 @@ describe('ProjectCustomFieldsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
 
     await user.type(screen.getByRole('textbox', { name: 'Название поля' }), '  Team  ')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Тип поля' }), 'select')
+    await chooseValue(screen.getByRole('combobox', { name: 'Тип поля' }), 'select')
     const optionsInput = screen.getByRole('textbox', { name: 'Варианты через запятую' })
     await user.type(optionsInput, 'Первый, Второй, Третий')
     expect(optionsInput).toHaveValue('Первый, Второй, Третий')
