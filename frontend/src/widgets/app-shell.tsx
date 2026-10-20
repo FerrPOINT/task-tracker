@@ -1,4 +1,22 @@
-import {AppShell as BaseAppShell, Button, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, ProjectAvatar, ProjectNavigationGroup, SidebarNavigationGroup, useSidebarDisclosure, SidebarItem, PlatformMark, ThemeMenuItems, PlatformHeader, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@pdlc/ui/ui'
+import {
+  AppShell as BaseAppShell,
+  Button,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  ProjectAvatar,
+  ProjectNavigationGroup,
+  SidebarNavigationGroup,
+  useSidebarDisclosure,
+  SidebarItem,
+  PlatformMark,
+  ThemeMenuItems,
+  PlatformHeader,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@pdlc/ui/ui'
 
 import { useProjectDisclosures } from '@pdlc/ui/lib'
 
@@ -29,8 +47,6 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-
-
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -41,7 +57,6 @@ import {
   useNotifications,
   useProjects,
 } from '@/shared/api/hooks'
-
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/

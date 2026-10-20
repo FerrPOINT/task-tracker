@@ -17,13 +17,13 @@ const wire = vi.hoisted(() => {
 vi.mock('@pdlc/ui/ui', async (original) => ({
   ...(await original<object>()),
   usePlatformServices: mocks.services,
+  toast: { error: mocks.error },
 }))
 vi.mock('@pdlc/ui/platform', async (original) => ({
   ...(await original<object>()),
   getPlatformProduct: mocks.product,
   platformNavigate: mocks.navigate,
 }))
-vi.mock('sonner', () => ({ toast: { error: mocks.error } }))
 
 const id = 'af51e677-f2f4-4af5-a4f3-5d8e35f0a719'
 let requests: Request[]

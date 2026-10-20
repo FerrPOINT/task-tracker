@@ -1,11 +1,9 @@
-import {ProjectAvatar, toast, Button, ConfirmDialog, ErrorState} from '@pdlc/ui/ui'
+import { ProjectAvatar, toast, Button, ConfirmDialog, ErrorState } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useState } from 'react'
-
-
 
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 

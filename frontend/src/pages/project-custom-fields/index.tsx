@@ -1,9 +1,22 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import {toast, Input, Select, Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow, Checkbox, Card, CardContent, CardHeader, CardTitle} from '@pdlc/ui/ui'
+import {
+  toast,
+  Input,
+  Select,
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  ResourceList,
+  ResourceListRow,
+  Checkbox,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@pdlc/ui/ui'
 import { Trash2 } from 'lucide-react'
-
 
 import {
   useCreateCustomField,

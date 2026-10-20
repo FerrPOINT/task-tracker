@@ -1,4 +1,4 @@
-import {ResourceList, ResourceListRow, LoadingState, usePlatformServices} from '@pdlc/ui/ui'
+import { ResourceList, ResourceListRow, LoadingState, usePlatformServices } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 

@@ -1,4 +1,4 @@
-import {Input, Button, Textarea} from '@pdlc/ui/ui'
+import { Input, Button, Textarea } from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -6,8 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import type { Issue } from '@/api/issue'
-
-
 
 const schema = z.object({
   summary: z.string().min(1),

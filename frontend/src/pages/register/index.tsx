@@ -3,9 +3,7 @@ import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
-import {Button, ErrorState, Input, PlatformMark} from '@pdlc/ui/ui'
-
-
+import { Button, ErrorState, Input, PlatformMark } from '@pdlc/ui/ui'
 
 import { useRegister } from '@/shared/api/hooks'
 

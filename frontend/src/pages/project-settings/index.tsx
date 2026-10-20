@@ -1,7 +1,15 @@
 import { useId, useState } from 'react'
 import { Outlet, useOutletContext, useParams, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import {toast, Textarea, Button, ErrorState, Input, LoadingState, ProjectAvatar} from '@pdlc/ui/ui'
+import {
+  toast,
+  Textarea,
+  Button,
+  ErrorState,
+  Input,
+  LoadingState,
+  ProjectAvatar,
+} from '@pdlc/ui/ui'
 
 import { useProjectDetails, useUpdateProject } from '@/shared/api/hooks'
 import { ProjectLink } from '@/shared/lib/project-navigation'

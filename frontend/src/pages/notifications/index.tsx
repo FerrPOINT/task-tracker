@@ -14,9 +14,20 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import {Select, Button, ResourceList, ResourceListRow, Checkbox, Switch, Card, CardContent, CardHeader, CardTitle, ErrorState, Label} from '@pdlc/ui/ui'
-
-
+import {
+  Select,
+  Button,
+  ResourceList,
+  ResourceListRow,
+  Checkbox,
+  Switch,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ErrorState,
+  Label,
+} from '@pdlc/ui/ui'
 
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 

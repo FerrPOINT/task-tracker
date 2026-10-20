@@ -1,13 +1,10 @@
-import {Select, ResourceList, ResourceListRow, Button, Input, toast} from '@pdlc/ui/ui'
+import { Select, ResourceList, ResourceListRow, Button, Input, toast } from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
-
-
-
 
 const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const
 

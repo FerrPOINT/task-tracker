@@ -2,9 +2,18 @@ import { useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
-import {Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Button, ConfirmDialog, Card, CardContent} from '@pdlc/ui/ui'
-
-
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Button,
+  ConfirmDialog,
+  Card,
+  CardContent,
+} from '@pdlc/ui/ui'
 
 import { formatDuration } from '@/shared/lib/time'
 import type { Worklog } from '@/entities/worklog/model'

@@ -4,11 +4,19 @@ import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
-import {Button, ResourceList, ResourceListRow, Input, Label, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, QueryState} from '@pdlc/ui/ui'
-
-
-
-
+import {
+  Button,
+  ResourceList,
+  ResourceListRow,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+  QueryState,
+} from '@pdlc/ui/ui'
 
 type TabValue = 'settings' | 'audit'
 

@@ -1,4 +1,11 @@
-import {Select, ResourceList, ResourceListRow, LoadingState, Button, usePlatformServices} from '@pdlc/ui/ui'
+import {
+  Select,
+  ResourceList,
+  ResourceListRow,
+  LoadingState,
+  Button,
+  usePlatformServices,
+} from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'

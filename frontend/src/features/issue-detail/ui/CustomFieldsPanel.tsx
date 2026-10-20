@@ -1,4 +1,4 @@
-import {MultiSelect, Input, Select, toast} from '@pdlc/ui/ui'
+import { MultiSelect, Input, Select, toast } from '@pdlc/ui/ui'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,7 +8,6 @@ import {
   useSetIssueCustomFieldValue,
 } from '@/shared/api/hooks'
 import type { CustomField } from '@/api/custom-fields'
-
 
 export function customFieldDateInputValue(value: unknown) {
   if (typeof value !== 'string') return ''

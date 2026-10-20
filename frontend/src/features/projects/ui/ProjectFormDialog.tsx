@@ -1,8 +1,16 @@
-import {ProjectAvatar, Button, Input, ErrorState, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle} from '@pdlc/ui/ui'
+import {
+  ProjectAvatar,
+  Button,
+  Input,
+  ErrorState,
+  Textarea,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@pdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-
-
 
 import type { Project, CreateProjectRequest, UpdateProjectRequest } from '@/api/project'
 

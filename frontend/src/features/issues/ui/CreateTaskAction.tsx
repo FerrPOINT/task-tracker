@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
-import { Button, usePlatformServices } from '@pdlc/ui/ui'
+import { Button, toast, usePlatformServices } from '@pdlc/ui/ui'
 import { getPlatformProduct, platformNavigate } from '@pdlc/ui/platform'
 import { LoaderCircle, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { getProject } from '@/api/project'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
