@@ -7,7 +7,7 @@
 | Группа | Версий файлов |
 |---|---:|
 | bug-search-work | 84 |
-| committed-work | 27 |
+| committed-work | 161 |
 | source-recovery | 50 |
 | ui-recovery | 95 |
 
@@ -34,3 +34,9 @@ Generated OpenAPI/client snapshots, screenshots, private QA evidence, caches и 
 
 Scoped `.gitattributes` сохраняет точные LF-байты `.source` при checkout,
 включая Windows с `core.autocrlf=true`; SHA-256 verifier переносим между ОС.
+
+Допроверены чистые worktrees из полного списка 826 путей. Исторические
+текстовые diffs сохранены дополнительно, включая combined resolution hunks
+локальных merge commits. Старые QA-комбинации и переименованные/rebased
+версии не являются новыми активными функциями: индекс сохраняет их для
+сверки с опубликованной историей, без автоматического применения к main.

@@ -1,0 +1,154 @@
+diff --git a/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs b/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
+index 572bfeb..a09aec6 100644
+--- a/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
++++ b/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
+@@ -1,7 +1,27 @@
+-//! Disposable PostgreSQL only; Fleet witness below is explicitly synthetic.
++//! Recovery regressions; PostgreSQL cases use disposable DBs and synthetic Fleet evidence.
+ use super::*;
+ use domain::sdlc_execution_lease::*;
+ 
++#[tokio::test]
++async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
++    let migrations = migration::Migrator::migrations();
++    let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
++    assert_eq!(names.len(), 29);
++    assert_eq!(names[27], "m20261017_0000097_task_source_binding");
++    assert_eq!(names[28], "m20261018_0000098_pm_unsubmitted_recovery");
++    let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
++    let error = migrations[28]
++        .down(&sea_orm_migration::SchemaManager::new(&db))
++        .await
++        .unwrap_err();
++    assert!(
++        error
++            .to_string()
++            .contains("PM recovery history is immutable; destructive rollback is disabled")
++    );
++    assert!(db.into_transaction_log().is_empty());
++}
++
+ struct InitialPm {
+     task: Uuid,
+     pm: Principal,
+diff --git a/handoff/PR169_EXECUTION_MANIFEST_20261018.md b/handoff/PR169_EXECUTION_MANIFEST_20261018.md
+new file mode 100644
+index 0000000..0d6ab6c
+--- /dev/null
++++ b/handoff/PR169_EXECUTION_MANIFEST_20261018.md
+@@ -0,0 +1,57 @@
++# PR169 Sole-Owner QA Execution Manifest
++
++Source-only preflight, not a runner. No Cargo, PostgreSQL, Docker, live/model calls, push or installation was executed. Execute only later under the sole QA owner with its existing resource/cleanup mechanism.
++
++## Frozen Inputs And Dependencies
++
++- Tracker PR169 fetched head: `ecc11ae5aeaaf7b4ccf7b057c25c444b00c6f598`; implementation parent `0608095be1383d521a97fc47b36f0fca2f40b143`. This branch adds only an owned test and this handoff/hook, not production code.
++- Fleet producer inspected with `git show`: `39853a3548f7bf718a0cb5efebe2ad496a8d95b8`. Do not substitute the dirty checkout HEAD.
++- Both SDK/Base pins: `2ad0834d06d3aa703fa1791a932bfc76650c8e42`. Required sibling `services-base/base-modules/rust/{pdlc-auth-core,pdlc-shared,pdlc-telemetry}`; the sibling here exists, is clean and has that exact HEAD. Preserve it.
++- Tracker `backend/Cargo.lock` SHA256: `f26e39ccf7f66356aba36d468a4a4889765dc61e604126fe407d300181bbc8b5`. Rust 1.88.0, edition 2024; locked dependencies, existing owner target/cache policy, >=30 GiB free before local QA. No pin/lock changes.
++- Direct Cargo targets are **app --lib, api --lib, infra --lib**, plus **api/gen-openapi**. Domain/shared/migration/Base are transitive dependencies. No server, CLI, frontend, `--workspace`, `--all-targets` or complete ignored suite is needed for this bounded packet.
++
++## Future Commands
++
++Working directory: the exact candidate's `backend`. Before each execution use the same selector with `-- --list` (PG: `-- --list --ignored`) and require the expected nonzero count below; a zero-test success is not a pass. Use the fully qualified names for single-test `--exact` commands. Commands below have NOT been run.
++
++```sh
++cargo test --locked -p app --lib sdlc_pm_unsubmitted::tests::
++cargo test --locked -p app --lib sdlc_configuration::tests::unsubmitted_pm_readback_
++cargo test --locked -p api --lib tests::unsubmitted_pm_recovery_schema_is_scheduler_only_and_has_no_caller_witness -- --exact
++cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_migration_0098_order_and_down_refusal_without_database -- --exact
++cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --exact --ignored --test-threads=1 --nocapture
++cargo test --locked -p infra --lib sdlc::lifecycle::regression_tests::draft_flow_tests::populated_upgrade_tests::populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --exact --ignored --test-threads=1 --nocapture
++```
++
++Expected counts, respectively: **3, 2, 1, 1, 1, 1**. The first four commands require no service env; HTTP tests bind only an ephemeral loopback stub. The new migration-order/down-refusal test uses MockDatabase and requires zero SQL log entries. It is NOT PG execution evidence.
++
++PG recovery command: set `TT_CANDIDATES_TEST_DATABASE_URL` to a separate owned, FRESH database ending `_candidates_test`, with `public.seaql_migrations` absent. The fixture applies all migrations itself, creates synthetic data and waits `pg_sleep(31)` to expire a real lease. It covers active denial, authority/revocation, stale fence/bad witness, raw expired update, same/different-key contention, lost ACK and original claim retention.
++
++Populated command: independently FRESH `TT_DRAFT_FLOW_TEST_DATABASE_URL`, ending `_draft_flow_test`, no migration ledger. It intentionally applies 0033, seeds actual business history, then advances through 0095/0096/0097. Never pre-run migration CLI, share either DB, disable triggers or reset accepted runtime state. Neither test needs DATABASE_URL, actual Fleet/Auth tokens or Hermes. PostgreSQL must support the existing `pg_current_xact_id()` contract; use the sole owner's qualified PG17 fixture. Cleanup only exact owned DB/resources in finally; retain evidence outside disposable targets.
++
++## Required Main Hooks And Predicates
++
++1. **Real pre-DB harness failure in ecc:** populated test still asserts `(19,26,28)` and last migration 0097; actual registry is 29 with 0098 last. It also compares the 0097 ledger against all registered names. Do not run or credit that selector as-is.
++2. `PR169_MAIN_HOOK.patch` is a proposed, NOT applied edit to that Main-owned populated child. It fixes those predicates, preserves the explicit 0097 boundary, adds the 0098 step with unchanged history/table set, NULL recovery on old operations, down refusal and idempotent rerun. History comparison excludes only the newly added nullable recovery column, which is checked separately. Validate/apply against ecc with `git apply --check --unidiff-zero handoff/PR169_MAIN_HOOK.patch`, then Main may apply with the same `--unidiff-zero` option, format and qualify it. No registration change is required: this selector already exists in CI.
++3. **Coverage limitation, not a pass:** the existing populated fixture explicitly has zero PM executions/leases at 0095. Even with the hook it proves populated legacy business-history upgrade, NOT preservation of a populated PM claim/heartbeat ledger across 0097 -> 0098. The sole owner must add/use a qualified pre-0098 populated PM fixture with nonzero lease/operation counts and identical lease IDs, holder, claimed_at, versions, hashes and original-key readback before claiming that gate. No such PG case was run or fabricated here.
++4. Migration 0098 source is additive: one nullable column on the immutable operation ledger, no new table/backfill. It validates old rows with their original holder/actor constraint; recovery inserts require current initial reservation, identity/ACL, expired CAS and same-transaction evidence, followed by atomic renewal. Existing resume exception remains. `down` unconditionally refuses, even on an empty installation; rollback success must NOT be expected. The new owned child test checks that refusal without a database; actual PG refusal/unchanged ledger is included in the proposed Main hook.
++
++## API And Fleet Compatibility
++
++Tracker GETs `/internal/runtime/v1/pm/runs/{session_run_id}/unsubmitted?barrier_id=<uuid>`. Fleet 398 registers exactly that GET, requires the query UUID and returns strict `PmUnsubmittedWitness`: contract_version, session_run_id, barrier_id, existing ten-field PmExecutionIdentity, lease_id, lease_version, owner_version. Tracker's alias and coordinate checks match all fields. Fleet's POST request has exactly Tracker's seven fields and identical `recover_unsubmitted_pm_execution_lease` hash domain; its coordinator uses Tracker recover-unsubmitted POST and original-key operations GET. Source wire compatibility: PASS, not an HTTP integration run.
++
++Auth is the existing Tracker `TASKTRACKER_SDLC__FLEET_URL` / `TASKTRACKER_SDLC__FLEET_READ_TOKEN` PAT. Fleet independently uses fresh Base introspection, exact configured reader subject, sole `fleet-control:read` scope and registered PM agent. The separate Workflow PM terminal readback secret is NOT accepted here. No new token/config. Fleet witness requires its durable barrier and never-submitted custody; journal absence alone is not proof.
++
++Existing generators, from EACH product's backend, write only to an owner evidence path outside source/target:
++
++```sh
++cargo run --locked -p api --bin gen-openapi > <absolute-evidence-path>/tracker-openapi.generated.json
++# In the separately frozen Fleet backend, same binary/target:
++cargo run --locked -p api --bin gen-openapi > <absolute-evidence-path>/fleet-openapi.generated.json
++```
++
++Compare generated JSON with each product's `../openapi/openapi.json` using `git diff --no-index -- <snapshot> <generated>`. No DATABASE_URL/server is required by Tracker's generator. Tracker snapshot includes the two recovery paths and strict request; its focused schema test checks source parity for those additions. **Fleet 398 snapshot lacks both this callback path and PmUnsubmittedWitness although source route/ApiDoc/DTO are registered.** Main owns Fleet snapshot regeneration/review; a clean drift gate must not be inferred. No snapshot was rewritten here.
++
++## Actually Checked
++
++Source selectors/counts, TOML target names, 29 migration registrations/order and Base/lock identity: PASS via read-only Python stdlib check. Wire paths/DTO/hash/auth and generator entry points inspected at exact SHAs. `git apply --check --unidiff-zero` for Main hook: PASS. Owned Rust child formatting and diff whitespace checked before commit. No Rust compilation/test, migration up/down, populated SQL, generator, Fleet callback or business acceptance is claimed. Main/sole QA owner retains all execution and publication decisions.
+diff --git a/handoff/PR169_MAIN_HOOK.patch b/handoff/PR169_MAIN_HOOK.patch
+new file mode 100644
+index 0000000..d13fa50
+--- /dev/null
++++ b/handoff/PR169_MAIN_HOOK.patch
+@@ -0,0 +1,52 @@
++diff --git a/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs b/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
++--- a/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
+++++ b/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
++@@ -51,3 +51,5 @@
++-        } else {
++-            "to_jsonb(t)"
++-        };
+++        } else if name == "sdlc_pm_lease_operations" {
+++            "to_jsonb(t)-'recovery'"
+++        } else {
+++            "to_jsonb(t)"
+++        };
++@@ -644,1 +646,1 @@
++-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 28));
+++    assert_eq!((accepted, predecessor, names.len()), (19, 26, 29));
++@@ -646,4 +648,5 @@
++-    assert_eq!(
++-        names.last().unwrap(),
++-        "m20261017_0000097_task_source_binding"
++-    );
+++    assert_eq!(names[predecessor + 1], "m20261017_0000097_task_source_binding");
+++    assert_eq!(
+++        names.last().unwrap(),
+++        "m20261018_0000098_pm_unsubmitted_recovery"
+++    );
++@@ -843,1 +846,1 @@
++-    let ledger_097 = ledger(&db, &names).await;
+++    let ledger_097 = ledger(&db, &names[..predecessor + 2]).await;
++@@ -986,3 +989,20 @@
++-    let before_rerun = history(&db, &all_tables, false).await;
++-    migration::Migrator::up(&db, None).await.unwrap();
++-    assert_eq!(ledger(&db, &names).await, ledger_097);
+++    let before_098 = history(&db, &all_tables, false).await;
+++    migration::Migrator::up(&db, Some(1)).await.unwrap();
+++    let ledger_098 = ledger(&db, &names).await;
+++    for entry in ledger_097.as_array().unwrap() {
+++        assert!(ledger_098.as_array().unwrap().contains(entry));
+++    }
+++    assert_eq!(tables(&db).await, all_tables);
+++    assert_eq!(history(&db, &all_tables, false).await, before_098);
+++    assert_eq!(scalar_json(&db,
+++        "SELECT to_jsonb(count(*)) AS value FROM sdlc_pm_lease_operations WHERE recovery IS NOT NULL",
+++        vec![]).await, json!(0));
+++    let error = migration::Migrator::down(&db, Some(1)).await.unwrap_err();
+++    assert!(error.to_string().contains(
+++        "PM recovery history is immutable; destructive rollback is disabled"
+++    ));
+++    assert_eq!(ledger(&db, &names).await, ledger_098);
+++    assert_eq!(history(&db, &all_tables, false).await, before_098);
+++    let before_rerun = history(&db, &all_tables, false).await;
+++    migration::Migrator::up(&db, None).await.unwrap();
+++    assert_eq!(ledger(&db, &names).await, ledger_098);

@@ -1,0 +1,232 @@
+diff --git a/.base-revision b/.base-revision
+index e560de2..9fcf157 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-0ffb99e209bb62031488cbae1b61c9a2e40faec9
++7e27713077f68c84cb5d5a02f720a594abc643df
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d75eac8..dc348da 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,11 @@
+ 
+ ## [Unreleased]
+ 
++- API 401 delegates sign-in navigation to the existing Base route guard,
++  retaining pathname/query/hash without replaying a failed write.
++  Draft recovery through reauthentication remains a separate acceptance item.
++  Browser evidence distinguishes reload bootstrap SSO from the subsequent 401 challenge.
++
+ - HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
+   дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
+ 
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 5bb5903..e918632 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -1576,6 +1576,81 @@ test.describe('Base project trash', () => {
+   })
+ })
+ 
++test.describe('Expired central session', () => {
++  for (const method of ['GET', 'POST'] as const) {
++    test(`preserves project URL after ${method} 401 without replaying the write`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      await installTrackerMocks(page)
++      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++      const target = `${app}/projects/DEMO/backlog?offset=100&source=board#sprint-context`
++      await page.goto(target)
++      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
++      await expect(create).toBeVisible()
++      await expect(page).toHaveURL(target)
++      let rejected = 0
++      const authorizations: Array<{ clientId: string | null; redirect: string | null }> = []
++      page.on('request', (request) => {
++        const url = new URL(request.url())
++        if (url.pathname === '/oidc/authorize')
++          authorizations.push({
++            clientId: url.searchParams.get('client_id'),
++            redirect: url.searchParams.get('redirect_uri'),
++          })
++      })
++      const path =
++        method === 'GET' ? '**/api/v1/projects/DEMO/backlog**' : '**/api/v1/projects/DEMO/sprints'
++      await page.route(path, (route) => {
++        if (route.request().method() !== method || rejected > 0) return route.fallback()
++        rejected++
++        return routeJson(route, { error: { message: 'Isolated expired session fixture' } }, 401)
++      })
++      let writes = 0
++      page.on('request', (request) => {
++        if (
++          request.method() === 'POST' &&
++          new URL(request.url()).pathname === '/api/v1/projects/DEMO/sprints'
++        )
++          writes++
++      })
++      if (method === 'GET') await page.reload()
++      else {
++        await create.click()
++        const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
++        await dialog.getByLabel('Название', { exact: false }).fill('Safe expired-session fixture')
++        await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
++      }
++      await expect.poll(() => rejected).toBe(1)
++      // Reload loses the in-memory token: one bootstrap SSO precedes the rejected GET.
++      const expectedAuthorizations = method === 'GET' ? 2 : 1
++      await expect.poll(() => authorizations.length).toBe(expectedAuthorizations)
++      await expect(page).toHaveURL(target)
++      await expect(create).toBeVisible()
++      expect(authorizations).toEqual(
++        Array.from({ length: expectedAuthorizations }, () => ({
++          clientId: 'task-tracker',
++          redirect: `${app}/sso/callback`,
++        })),
++      )
++      expect(writes).toBe(method === 'POST' ? 1 : 0)
++      await expect(page.getByRole('dialog', { name: 'Новый спринт', exact: true })).toHaveCount(0)
++      await testInfo.attach('expired-session-context', {
++        body: JSON.stringify({
++          method,
++          target,
++          rejected,
++          writes,
++          authorizations,
++          bootstrapSsoAfterReload: method === 'GET',
++          draftSafetyVerified: false,
++        }),
++        contentType: 'application/json',
++      })
++    })
++  }
++})
++
+ function routeJson(route: Route, body: unknown, status = 200) {
+   return route.fulfill({
+     status,
+diff --git a/frontend/src/api/client.test.ts b/frontend/src/api/client.test.ts
+index e8cdb47..25407bf 100644
+--- a/frontend/src/api/client.test.ts
++++ b/frontend/src/api/client.test.ts
+@@ -71,7 +71,7 @@ describe('API client transport', () => {
+     })
+ 
+     expect(authState.logout).toHaveBeenCalledOnce()
+-    expect(assign).toHaveBeenCalledWith('/login')
++    expect(assign).not.toHaveBeenCalled()
+     expect(fetchMock).not.toHaveBeenCalled()
+   })
+ })
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index 954ed90..4008e86 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -8,7 +8,7 @@ export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'incl
+ 
+ export async function refreshAccessToken(): Promise<boolean> {
+   useAuthStore.getState().logout()
+-  window.location.assign('/login')
++  // The existing Base route guard carries the full protected location to SSO.
+   return false
+ }
+ 
+diff --git a/frontend/src/shared/auth/expired-session.test.tsx b/frontend/src/shared/auth/expired-session.test.tsx
+new file mode 100644
+index 0000000..ec15697
+--- /dev/null
++++ b/frontend/src/shared/auth/expired-session.test.tsx
+@@ -0,0 +1,91 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
++import { createMemoryRouter, RouterProvider } from 'react-router'
++import { ThemeProvider } from '@sdlc/ui/lib'
++import { RequireAuth } from './require-auth'
++import { useAuthStore } from './store'
++import { LoginPage } from '@/pages/login'
++import { api } from '@/api/client'
++
++const beginSso = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
++vi.mock('@sdlc/ui/sso', async (original) => ({
++  ...(await original<typeof import('@sdlc/ui/sso')>()),
++  beginSso,
++}))
++
++describe('expired central session context', () => {
++  beforeEach(() => {
++    beginSso.mockReset().mockImplementation(() => new Promise<void>(() => {}))
++    useAuthStore.getState().setAuth({
++      token: 'isolated-test-token',
++      userId: 'safe-test-user',
++      email: 'safe@example.test',
++    })
++  })
++  afterEach(() => useAuthStore.getState().logout())
++
++  it.each(['GET', 'POST'] as const)(
++    'keeps the full address after %s 401 without replay',
++    async (method) => {
++      const transport = vi.fn(async () => new Response(null, { status: 401 }))
++      const address = '/projects/DEMO/backlog?offset=100&source=board#sprint-context'
++      const router = createMemoryRouter(
++        [
++          {
++            element: <RequireAuth />,
++            children: [
++              {
++                path: '/projects/:projectKey/backlog',
++                element: (
++                  <button
++                    onClick={() => {
++                      if (method === 'GET')
++                        void api.GET('/api/v1/dashboard', {
++                          fetch: transport,
++                          baseUrl: 'http://localhost:4173',
++                        })
++                      else
++                        void api.POST('/api/v1/projects/{project_key}/sprints', {
++                          params: { path: { project_key: 'DEMO' } },
++                          body: { name: 'Safe fixture sprint' },
++                          fetch: transport,
++                          baseUrl: 'http://localhost:4173',
++                        })
++                    }}
++                  >
++                    Request
++                  </button>
++                ),
++              },
++            ],
++          },
++          { path: '/login', element: <LoginPage /> },
++        ],
++        { initialEntries: [address] },
++      )
++      render(
++        <ThemeProvider>
++          <RouterProvider router={router} />
++        </ThemeProvider>,
++      )
++      await act(async () => {
++        fireEvent.click(screen.getByRole('button', { name: 'Request' }))
++      })
++      await waitFor(() =>
++        expect(beginSso).toHaveBeenCalledExactlyOnceWith(
++          expect.objectContaining({ clientId: 'task-tracker' }),
++          address,
++        ),
++      )
++      expect(router.state.location.pathname).toBe('/login')
++      expect(router.state.location.state.from).toMatchObject({
++        pathname: '/projects/DEMO/backlog',
++        search: '?offset=100&source=board',
++        hash: '#sprint-context',
++      })
++      expect(transport).toHaveBeenCalledTimes(1)
++      expect(useAuthStore.getState().token).toBeNull()
++      expect(localStorage.getItem('task-tracker-auth')).not.toContain('isolated-test-token')
++    },
++  )
++})

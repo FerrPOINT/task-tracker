@@ -1,0 +1,39 @@
+diff --git a/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs b/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
+index 0e95e62..e013547 100644
+--- a/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
++++ b/backend/infra/src/sdlc_populated_upgrade_pg_tests.rs
+@@ -705,6 +705,15 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
+     assert_eq!(count(&db, "issues").await, 3);
+     let legacy_projection = legacy_history_snapshot(&db, draft.task_id).await;
+ 
++    let retrofit_flow = "UPDATE sdlc_tasks SET state=state||'{\"flow\":\"single-task-v1\"}'::jsonb WHERE task_id=$1";
++    rejected(
++        &db,
++        retrofit_flow,
++        draft.task_id,
++        "queued Analysis requires guarded admission before lifecycle mutation",
++    )
++    .await;
++
+     migration::Migrator::up(&db, None).await.unwrap();
+     let ledger_096 = ledger(&db, &names).await;
+     for entry in ledger_095.as_array().unwrap() {
+@@ -823,9 +832,15 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
+         "append-only",
+     )
+     .await;
+-    // The retained095 Analysis gate runs before the new flow gate. Assert its
+-    // actual denial rather than falsely claiming this reaches the Draft guard.
+-    rejected(&db,"UPDATE sdlc_tasks SET state=state||'{\"flow\":\"single-task-v1\"}'::jsonb WHERE task_id=$1",draft.task_id,"queued Analysis requires guarded admission before lifecycle mutation").await;
++    // 096 replaces the Analysis gate; the same retrofit remains forbidden
++    // before it can reach the Draft flow guard, without a result or write permit.
++    rejected(
++        &db,
++        retrofit_flow,
++        draft.task_id,
++        "SDLC legacy Analysis requires exact accepted result and permit",
++    )
++    .await;
+     assert_eq!(history(&db, &old_tables, true).await, history_095);
+     assert_eq!(
+         legacy_history_snapshot(&db, draft.task_id).await,

@@ -1,0 +1,40 @@
+diff --git a/frontend/src/features/sdlc/ui/SdlcPanel.tsx b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+index 3544dc6..6fa6244 100644
+--- a/frontend/src/features/sdlc/ui/SdlcPanel.tsx
++++ b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+@@ -38,6 +38,7 @@ const eventLabels = {
+   'requirements.confirmed': 'requirementsConfirmed',
+   'analysis.intent_created': 'intentQueued',
+   'analysis.assignment_reserved': 'assignmentPrepared',
++  'analysis.result_accepted': 'resultAccepted',
+ } satisfies Record<MetadataEvent['event_type'], string>
+ 
+ function Field({ label, children }: { label: string; children: ReactNode }) {
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index f2045e9..3dc1729 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -103,7 +103,8 @@
+       "evidenceRecorded": "Readiness evidence recorded",
+       "requirementsConfirmed": "Requirements confirmed",
+       "intentQueued": "Analysis intent queued",
+-      "assignmentPrepared": "Analysis assignment prepared, awaiting admission"
++      "assignmentPrepared": "Analysis assignment prepared, awaiting admission",
++      "resultAccepted": "Analysis result accepted"
+     }
+   },
+   "navigation": {
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index 04cc985..7809355 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -103,7 +103,8 @@
+       "evidenceRecorded": "Readiness evidence сохранён",
+       "requirementsConfirmed": "Требования подтверждены",
+       "intentQueued": "Analysis intent поставлен в очередь",
+-      "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается"
++      "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается",
++      "resultAccepted": "Analysis result принят"
+     }
+   },
+   "navigation": {

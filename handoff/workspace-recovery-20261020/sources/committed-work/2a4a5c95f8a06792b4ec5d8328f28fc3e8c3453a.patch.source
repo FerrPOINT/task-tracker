@@ -1,0 +1,637 @@
+diff --git a/backend/api/src/middleware/sdlc_auth.rs b/backend/api/src/middleware/sdlc_auth.rs
+index 7ad2887..56f00f1 100644
+--- a/backend/api/src/middleware/sdlc_auth.rs
++++ b/backend/api/src/middleware/sdlc_auth.rs
+@@ -152,7 +152,11 @@ fn pm_request_policy(
+         ("POST", ["clarifications", question, "cancel"]) => {
+             app::sdlc::canonical_pm_uuid(question).is_some()
+         }
+-        _ => app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice()),
++        _ => {
++            app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice())
++                || (actor.scopes.contains("task-tracker:read")
++                    && app::sdlc_lifecycle::is_pm_feedback_message_read(method, parts.as_slice()))
++        }
+     };
+     if allowed {
+         Ok(())
+@@ -261,6 +265,37 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn pm_feedback_message_policy_is_exact_task_canonical_uuid_get_only() {
++        let (mut actor, task, _) = actor();
++        let message = Uuid::new_v4();
++        let base = format!("/api/v1/issues/{task}/sdlc/pm-feedback");
++        let path = format!("{base}/messages/{message}");
++        assert!(pm_request_policy(&actor, "GET", &path).is_err());
++        actor.scopes.insert("task-tracker:write".into());
++        assert!(pm_request_policy(&actor, "GET", &path).is_err());
++        actor.scopes.insert("task-tracker:read".into());
++        assert!(pm_request_policy(&actor, "GET", &path).is_ok());
++        for method in ["HEAD", "POST", "PUT", "PATCH", "DELETE"] {
++            assert!(pm_request_policy(&actor, method, &path).is_err());
++        }
++        for path in [
++            format!("{base}/messages"),
++            format!("{base}/messages/{message}/"),
++            format!("{base}/messages/{message}/extra"),
++            format!("{base}/messages/{}", message.to_string().to_uppercase()),
++            format!("{base}/messages/{}", Uuid::nil()),
++            format!("{base}/messages/not-a-uuid"),
++            format!("{base}/operations/owner-key"),
++            format!(
++                "/api/v1/issues/{}/sdlc/pm-feedback/messages/{message}",
++                Uuid::new_v4()
++            ),
++        ] {
++            assert!(pm_request_policy(&actor, "GET", &path).is_err(), "{path}");
++        }
++    }
++
+     #[test]
+     fn malformed_ambiguous_and_human_pm_grants_fail_closed() {
+         let (mut actor, task, scope) = actor();
+diff --git a/backend/api/src/routes/sdlc_delivery.rs b/backend/api/src/routes/sdlc_delivery.rs
+index adfa48b..d682f31 100644
+--- a/backend/api/src/routes/sdlc_delivery.rs
++++ b/backend/api/src/routes/sdlc_delivery.rs
+@@ -179,11 +179,49 @@ pub async fn feedback_operation(
+     ))
+ }
+ 
++// Parent registers GET /issues/{id}/sdlc/pm-feedback/messages/{message_id}
++// with get(feedback_message) here and adds this handler to ApiDoc in lib.rs.
++#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}",operation_id="read_single_task_pm_feedback_message",tag="sdlc",
++    params(("id"=Uuid,Path),("message_id"=Uuid,Path)),responses((status=200,body=PmFeedbackReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
++pub async fn feedback_message(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Path((task, message_id)): Path<(Uuid, Uuid)>,
++) -> Result<(HeaderMap, Json<PmFeedbackReceipt>), AppError> {
++    Ok((
++        no_store(),
++        Json(
++            service(&ctx)?
++                .pm_feedback_message(task, &actor, message_id)
++                .await?,
++        ),
++    ))
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use utoipa::OpenApi;
+ 
++    #[test]
++    fn saved_feedback_handler_contract_is_scoped_get_and_original_receipt() {
++        #[derive(utoipa::OpenApi)]
++        #[openapi(paths(feedback_message))]
++        struct FeedbackMessageContract;
++        let spec = serde_json::to_value(FeedbackMessageContract::openapi()).unwrap();
++        let path = &spec["paths"]["/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}"];
++        assert!(path["get"]["security"].is_array());
++        assert!(path.get("post").is_none());
++        assert_eq!(
++            path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
++            "#/components/schemas/PmFeedbackReceipt"
++        );
++        for status in ["401", "403", "404", "409"] {
++            assert!(path["get"]["responses"][status].is_object());
++        }
++        assert_eq!(no_store()[header::CACHE_CONTROL], "no-store");
++    }
++
+     #[test]
+     fn every_lifecycle_surface_is_documented_with_auth_and_typed_readback() {
+         let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+diff --git a/backend/app/src/sdlc_lifecycle.rs b/backend/app/src/sdlc_lifecycle.rs
+index c94d716..eb4ea1d 100644
+--- a/backend/app/src/sdlc_lifecycle.rs
++++ b/backend/app/src/sdlc_lifecycle.rs
+@@ -26,6 +26,21 @@ impl crate::sdlc::SdlcService {
+             .await
+     }
+ 
++    pub async fn pm_feedback_message(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        message_id: Uuid,
++    ) -> Result<PmFeedbackReceipt, AppError> {
++        authorize_pm_feedback_message_read(task, actor)?;
++        if message_id.is_nil() {
++            return Err(AppError::validation("invalid PM feedback message ID"));
++        }
++        self.lifecycle_repository()?
++            .pm_feedback_message(task, actor, message_id)
++            .await
++    }
++
+     fn lifecycle_repository(&self) -> Result<&dyn LifecycleRepository, AppError> {
+         self.repository.lifecycle_repository().ok_or_else(|| {
+             AppError::Unavailable("single-task lifecycle repository not configured".into())
+@@ -519,6 +534,61 @@ pub fn reconcile_terminal(
+     Ok(())
+ }
+ 
++/// Called only after the PM grant's own-task prefix has been validated.
++pub fn is_pm_feedback_message_read(method: &str, resource: &[&str]) -> bool {
++    matches!((method, resource), ("GET", ["pm-feedback", "messages", id])
++        if crate::sdlc::canonical_pm_uuid(id).is_some())
++}
++
++pub fn authorize_pm_feedback_message_read(task: Uuid, actor: &Principal) -> Result<(), AppError> {
++    if crate::sdlc::pm_grant_task(actor)? != Some(task)
++        || !actor.scopes.contains("task-tracker:read")
++    {
++        return Err(AppError::Forbidden);
++    }
++    Ok(())
++}
++
++pub fn exact_pm_feedback_message(
++    state: &domain::sdlc::TaskState,
++    message_id: Uuid,
++    saved_owner: &str,
++    receipt: &PmFeedbackReceipt,
++) -> Result<PmFeedbackReceipt, AppError> {
++    state.require_root()?;
++    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
++    let fence = domain::sdlc::MachineFence {
++        assignment_id: assignment.assignment_id,
++        execution_id: assignment.execution_id,
++        agent_id: assignment.agent_id,
++        assignment_version: assignment.version,
++    };
++    if message_id.is_nil()
++        || receipt.message_id != message_id
++        || receipt.tracker_instance_id != state.tracker_instance_id
++        || receipt.project_id != state.project_id
++        || receipt.task_id != state.task_id
++        || receipt.root_task_id != state.root_task_id
++        || receipt.owner_subject != state.owner_subject
++        || saved_owner != state.owner_subject
++        || receipt.fence != fence
++        || receipt.text.trim().is_empty()
++        || receipt.text.len() > 100_000
++        || receipt.text.contains('\0')
++        || receipt.content_hash
++            != crate::sdlc::canonical_hash(&serde_json::json!({"text":receipt.text}))?
++        || receipt.requirement_revision.is_some_and(|revision| {
++            !state
++                .revisions
++                .iter()
++                .any(|saved| saved.revision == revision)
++        })
++    {
++        return Err(AppError::conflict("pm_feedback_history_inconsistent"));
++    }
++    Ok(receipt.clone())
++}
++
+ /// New input only: historical operation replay must run before this gate.
+ pub fn validate_new_pm_feedback(state: &domain::sdlc::TaskState) -> Result<(), AppError> {
+     use domain::sdlc::{DraftSubmode, QuestionState, Stage};
+diff --git a/backend/app/src/sdlc_tests.rs b/backend/app/src/sdlc_tests.rs
+index dc1b988..8028faf 100644
+--- a/backend/app/src/sdlc_tests.rs
++++ b/backend/app/src/sdlc_tests.rs
+@@ -551,6 +551,131 @@ fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
+     assert!(!state.context(&owner).permissions.can_confirm);
+ }
+ 
++#[test]
++fn pm_feedback_message_reader_requires_read_and_current_bound_pm_grant() {
++    use crate::sdlc_lifecycle::authorize_pm_feedback_message_read;
++    let (state, _, owner, mut pm, _, _) = fixture();
++    let task = state.task_id;
++    let scope = state.assignment.as_ref().unwrap().scope(task);
++    assert!(authorize_pm_feedback_message_read(task, &pm).is_err());
++    pm.scopes.insert("task-tracker:read".into());
++    let authorize = |actor: &Principal| {
++        authorize_pm_feedback_message_read(task, actor)
++            .and_then(|()| authorize_pm_read(&state, actor))
++    };
++    assert!(authorize(&pm).is_ok());
++    assert!(authorize(&owner).is_err());
++    assert!(authorize_pm_feedback_message_read(Uuid::new_v4(), &pm).is_err());
++    assert!(authorize_pm_feedback_message_read(Uuid::nil(), &pm).is_err());
++    let mut wrong = pm.clone();
++    wrong.subject = "other-machine".into();
++    assert!(authorize(&wrong).is_err());
++    wrong = pm.clone();
++    wrong.human_session = true;
++    assert!(authorize(&wrong).is_err());
++    for scopes in [
++        vec!["task-tracker:read".into()],
++        vec!["task-tracker:write".into(), scope.clone()],
++        vec![
++            "task-tracker:read".into(),
++            scope.clone(),
++            format!("{scope}0"),
++        ],
++        vec![
++            "task-tracker:read".into(),
++            scope.trim_end_matches('1').to_string() + "2",
++        ],
++    ] {
++        wrong = pm.clone();
++        wrong.scopes = scopes.into_iter().collect();
++        wrong.trusted_human = true;
++        assert!(authorize(&wrong).is_err());
++    }
++}
++
++#[test]
++fn pm_feedback_message_readback_preserves_original_input_and_checks_every_binding() {
++    use crate::sdlc_lifecycle::exact_pm_feedback_message;
++    use domain::sdlc_lifecycle::PmFeedbackReceipt;
++    let (mut state, config, _, pm, _, fence) = fixture();
++    let mut feedback = PmFeedbackReceipt {
++        message_id: Uuid::new_v4(),
++        tracker_instance_id: state.tracker_instance_id.clone(),
++        project_id: state.project_id,
++        task_id: state.task_id,
++        root_task_id: state.root_task_id,
++        owner_subject: state.owner_subject.clone(),
++        fence,
++        text: " Actual saved owner text ".into(),
++        content_hash: canonical_hash(&json!({"text":" Actual saved owner text "})).unwrap(),
++        requirement_revision: None,
++        created_at: chrono::Utc::now(),
++    };
++    let original = serde_json::to_value(&feedback).unwrap();
++    assert_eq!(
++        serde_json::to_value(
++            exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).unwrap()
++        )
++        .unwrap(),
++        original
++    );
++    assert!(exact_pm_feedback_message(&state, Uuid::new_v4(), "owner", &feedback).is_err());
++    assert!(
++        exact_pm_feedback_message(&state, feedback.message_id, "other-owner", &feedback).is_err()
++    );
++    for (field, value) in [
++        ("message_id", json!(Uuid::new_v4())),
++        ("task_id", json!(Uuid::new_v4())),
++        ("root_task_id", json!(Uuid::new_v4())),
++        ("project_id", json!(Uuid::new_v4())),
++        ("tracker_instance_id", json!("other-tracker")),
++        ("owner_subject", json!("other-owner")),
++        ("text", json!("substituted text")),
++        ("content_hash", json!("f".repeat(64))),
++        ("requirement_revision", json!(1)),
++    ] {
++        let mut wrong = original.clone();
++        wrong[field] = value;
++        let wrong = serde_json::from_value(wrong).unwrap();
++        assert!(
++            exact_pm_feedback_message(&state, feedback.message_id, "owner", &wrong).is_err(),
++            "{field}"
++        );
++    }
++    for (field, value) in [
++        ("assignment_id", json!(Uuid::new_v4())),
++        ("execution_id", json!(Uuid::new_v4())),
++        ("agent_id", json!(Uuid::new_v4())),
++        ("assignment_version", json!(2)),
++    ] {
++        let mut wrong = original.clone();
++        wrong["fence"][field] = value;
++        let wrong = serde_json::from_value(wrong).unwrap();
++        assert!(
++            exact_pm_feedback_message(&state, feedback.message_id, "owner", &wrong).is_err(),
++            "{field}"
++        );
++    }
++    publish(&mut state, &config, &pm, &feedback.fence);
++    assert!(exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).is_ok());
++    feedback.requirement_revision = Some(1);
++    publish(&mut state, &config, &pm, &feedback.fence);
++    state.stage = Stage::Analysis;
++    assert_eq!(state.current_revision(), Some(2));
++    let historical = serde_json::to_value(&feedback).unwrap();
++    let before = serde_json::to_value(&state).unwrap();
++    assert_eq!(
++        serde_json::to_value(
++            exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).unwrap()
++        )
++        .unwrap(),
++        historical
++    );
++    assert_eq!(serde_json::to_value(&state).unwrap(), before);
++    state.assignment.as_mut().unwrap().version += 1;
++    assert!(exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).is_err());
++}
++
+ #[test]
+ fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_published_analysis() {
+     use domain::sdlc_lifecycle::*;
+diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
+index 4999142..4b0cd8f 100644
+--- a/backend/domain/src/sdlc_lifecycle.rs
++++ b/backend/domain/src/sdlc_lifecycle.rs
+@@ -540,6 +540,13 @@ pub trait LifecycleRepository: Send + Sync {
+         key: &str,
+     ) -> Result<PmFeedbackReceipt, AppError>;
+ 
++    async fn pm_feedback_message(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        message_id: Uuid,
++    ) -> Result<PmFeedbackReceipt, AppError>;
++
+     async fn submit_delivery_proposal(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+index 1f9c42e..2f738ea 100644
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -624,6 +624,38 @@ impl LifecycleRepository for PostgresSdlcRepository {
+         Ok(receipt)
+     }
+ 
++    async fn pm_feedback_message(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        message_id: Uuid,
++    ) -> Result<PmFeedbackReceipt, AppError> {
++        app::sdlc_lifecycle::authorize_pm_feedback_message_read(task, actor)?;
++        if message_id.is_nil() {
++            return Err(AppError::validation("invalid PM feedback message ID"));
++        }
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let state = self.load_read(&tx, task, actor).await?;
++        let row = tx.query_one(statement(
++            "SELECT actor_subject,payload FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2",
++            vec![task.into(), message_id.into()],
++        )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("PM feedback message", message_id))?;
++        let payload: Json = row.try_get("", "payload").map_err(map_db)?;
++        let receipt: PmFeedbackReceipt = serde_json::from_value(payload.clone())
++            .map_err(|_| AppError::conflict("pm_feedback_history_inconsistent"))?;
++        if serde_json::to_value(&receipt).map_err(AppError::internal)? != payload {
++            return Err(AppError::conflict("pm_feedback_history_inconsistent"));
++        }
++        let receipt = app::sdlc_lifecycle::exact_pm_feedback_message(
++            &state,
++            message_id,
++            &row.try_get::<String>("", "actor_subject").map_err(map_db)?,
++            &receipt,
++        )?;
++        tx.commit().await.map_err(map_db)?;
++        Ok(receipt)
++    }
++
+     async fn submit_delivery_proposal(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc_pm_resume_pg_tests.rs b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+index 35c4f94..2af7ba2 100644
+--- a/backend/infra/src/sdlc_pm_resume_pg_tests.rs
++++ b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+@@ -108,6 +108,25 @@ async fn assert_new_feedback_rejected(
+     assert_eq!(feedback_snapshot(db, task).await, before);
+ }
+ 
++async fn assert_saved_feedback_read_unchanged(
++    db: &DatabaseConnection,
++    repo: &PostgresSdlcRepository,
++    task: Uuid,
++    reader: &Principal,
++    receipt: &domain::sdlc_lifecycle::PmFeedbackReceipt,
++) {
++    let before = feedback_snapshot(db, task).await;
++    let readback = repo
++        .pm_feedback_message(task, reader, receipt.message_id)
++        .await
++        .unwrap();
++    assert_eq!(
++        serde_json::to_value(readback).unwrap(),
++        serde_json::to_value(receipt).unwrap()
++    );
++    assert_eq!(feedback_snapshot(db, task).await, before);
++}
++
+ #[tokio::test]
+ #[ignore = "requires fresh disposable TT_PM_RESUME_TEST_DATABASE_URL ending in _pm_resume_test"]
+ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+@@ -228,6 +247,60 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         .submit_pm_feedback(task, &owner, feedback_command.clone())
+         .await
+         .unwrap();
++    let mut feedback_reader = pm.clone();
++    feedback_reader.scopes.remove("task-tracker:write");
++    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
++    let snapshot = feedback_snapshot(&db, task).await;
++    let mut write_only = pm.clone();
++    write_only.scopes.remove("task-tracker:read");
++    let mut wrong_subject = feedback_reader.clone();
++    wrong_subject.subject = "scheduler".into();
++    let mut stale_grant = feedback_reader.clone();
++    let mut stale_assignment = reservation.assignment.clone();
++    stale_assignment.version += 1;
++    stale_grant.scopes = ["task-tracker:read".to_owned(), stale_assignment.scope(task)].into();
++    for denied in [
++        &owner,
++        &reader,
++        &scheduler,
++        &write_only,
++        &wrong_subject,
++        &stale_grant,
++    ] {
++        assert!(matches!(
++            repo.pm_feedback_message(task, denied, feedback.message_id)
++                .await,
++            Err(AppError::Forbidden)
++        ));
++    }
++    assert!(matches!(
++        repo.pm_feedback_message(Uuid::new_v4(), &feedback_reader, feedback.message_id)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        repo.pm_feedback_message(task, &feedback_reader, Uuid::new_v4())
++            .await,
++        Err(AppError::NotFound(_))
++    ));
++    assert!(matches!(
++        repo.pm_feedback_message(task, &feedback_reader, Uuid::nil())
++            .await,
++        Err(AppError::Validation(_))
++    ));
++    assert!(matches!(
++        repo.pm_feedback_operation(task, &feedback_reader, "feedback")
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(&db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",vec![project.into()]).await.unwrap();
++    assert!(matches!(
++        repo.pm_feedback_message(task, &feedback_reader, feedback.message_id)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",vec![project.into()]).await.unwrap();
++    assert_eq!(feedback_snapshot(&db, task).await, snapshot);
+     let command = resume(
+         &initial,
+         PmResumeInput::Feedback {
+@@ -273,6 +346,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         ExecutionLeaseState::Expired
+     ));
+     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
++    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
+     let heartbeat = HeartbeatExecutionLease {
+         expected_owner_version: 1,
+         fence: fence.clone(),
+@@ -443,6 +517,11 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+             .await,
+         Err(AppError::Forbidden)
+     ));
++    assert!(matches!(
++        repo.pm_feedback_message(task, &feedback_reader, feedback.message_id)
++            .await,
++        Err(AppError::Forbidden)
++    ));
+     exec(
+         &db,
+         "UPDATE users SET is_active=true WHERE central_sub='pm'",
+@@ -531,6 +610,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     .unwrap();
+     assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
++    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
+     let answer: Answer = parse(
+         repo.execute_verified(
+             task,
+@@ -709,6 +789,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         &awaiting_feedback,
+     )
+     .await;
++    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &awaiting_feedback)
++        .await;
+     let closing = resume(
+         &answer_lease,
+         PmResumeInput::Confirmation {
+@@ -766,6 +848,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     .unwrap();
+     assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
++    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
+     assert_eq!(
+         repo.pm_resume_operation(task, &reader, "resume-feedback")
+             .await
+diff --git a/docs/API.md b/docs/API.md
+index ed0a1f6..717e8ee 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -77,8 +77,35 @@ feedback with 409 `pm_feedback_not_available_in_current_draft_mode`.
+ Historical replay and owner operation GET still return the exact original receipt
+ after publication/confirmation or lease expiry, without a new outbox event, state
+ mutation or fabricated answer. Idle feedback does not require a live lease. The
+-owner operation endpoint is NOT a machine read source; an assignment-scoped saved
+-message GET is a coordination proposal only, not implemented in this patch.
++owner operation endpoint is NOT a machine read source.
++
++## Scoped PM Saved Feedback Read
++
++Parent registers `GET /api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}`
++with existing-controller handler `sdlc_delivery::feedback_message` and adds it to
++ApiDoc. Service/repository method: `pm_feedback_message(task,actor,message_id)`
++returns the existing `PmFeedbackReceipt` directly, HTTP 200 with `Cache-Control:
++no-store`. This packet supplies the handler and strict central PM allowlist, not
++the router/lib registration or generated OpenAPI/client outputs.
++
++Only a non-human credential with explicit `task-tracker:read` and exactly one
++current task PM assignment grant is accepted. The actual bound machine subject,
++active local user and project ownership/membership are rechecked; the latest
++immutable assignment must match canonical TaskState. Generic scheduler/service
++readers, owner impersonation/admin hints and a write-only PM token grant no access.
++Only canonical nonnil task/message UUID GET paths are allowlisted; no POST, list,
++operation-key lookup, foreign task or generic issue CRUD is added to the PM grant.
++
++Tracker queries the actual immutable feedback by task and message UUID, NOT by
++the machine caller's actor_subject. It checks the saved human owner, all receipt
++task/project/root/instance/owner identities, exact current PM fence, canonical
++stored JSON and original text hash. Missing message is 404, authorization failure
++403, inconsistent saved receipt 409. Receipt is unchanged snake_case, no wrapper;
++`requirement_revision` stays its original number or JSON null, never omission.
++Historical receipts remain readable through lease expiry, later requirements and
++confirmation while that assignment is current. No live TTL/stage/current-revision
++equality gate is imposed on history; no lease renewal, dispatch or owner Answer
++is created. Human POST and owner operation GET remain unchanged.
+ 
+ ## Trusted PM Resume (Producer Source)
+ 
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 8804998..70bde65 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -53,6 +53,14 @@ reference/hash alone as independently verified terminal proof. No new outbound
+ Fleet client/token or agent terminal/admission protocol is introduced. Ordinary
+ claim/heartbeat, historical replay semantics and PM business-write freeze remain.
+ 
++Fleet continuation reads actual immutable owner feedback by message UUID using
++the existing PM holder's read-only assignment capability and fresh project ACL.
++It never impersonates the owner or looks up a human idempotency key. Tracker
++rechecks the saved owner/identities/hash against the current assignment fence;
++history is independent of lease expiry and current requirements revision. This
++read has no dispatch, lease, outbox or input-consumption effect and needs no new
++ledger/schema. Human feedback writes/operation reads keep their separate boundary.
++
+ Reserved PM producer commands use Tracker reservation/lease recheck and atomic
+ command/history write. No Fleet admission HTTP call is made on the producer
+ path. [PM producer lease](PM_NATIVE_ADMISSION.md).
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index fc843c3..2b64bfa 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -288,6 +288,26 @@ POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session onl
+ CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`
+ and `sdlc pm feedback operation --task UUID --key KEY`. They are not live before registration.
+ 
++Approved continuation read source: GET `P/pm-feedback/messages/{message_id}`
++returns the actual immutable `PmFeedbackReceipt`, including original owner text
++and hash. Source handler is `sdlc_delivery::feedback_message`; parent adds its
++router/lib/OpenAPI registration. `SdlcService::pm_feedback_message(task,actor,id)`
++uses explicit `task-tracker:read`, current PM grant/bound subject, fresh active
++user/project ACL, latest assignment and saved owner/full identity/fence checks.
++The strict central allowlist permits only canonical UUID own-task GET, never a
++machine lookup of the human operation key or new POST rights. Generic scheduler
++reader is not a holder reader. Saved receipt read requires no live lease and
++keeps historical requirement revision/null through later confirmation; it has
++no journal/outbox/state/Workflow side effects. No new schema/migration is needed.
++Focused source tests: app `pm_feedback_message_reader_requires_read_and_current_bound_pm_grant`,
++`pm_feedback_message_readback_preserves_original_input_and_checks_every_binding`;
++API `pm_feedback_message_policy_is_exact_task_canonical_uuid_get_only`,
++`saved_feedback_handler_contract_is_scoped_get_and_original_receipt`;
++existing PM resume PG fixture tests actual saved-message read-only access, revoked
++membership/disabled holder, wrong subject/stale grant, no broadened human-key
++read, expiry and historical receipt equality without side effects. Not executed
++by this worker; parent retains Cargo/PG/live qualification.
++
+ The legacy application helper `pm_feedback_resume_contract(state,feedback,checkpoint,lease)` remains unchanged:
+ exact task/project/root/owner/instance, assignment fence, actual prior terminal,
+ checkpoint UUID/version and server-observed live lease produce the existing resume
+diff --git a/docs/TZ.md b/docs/TZ.md
+index 435fc2a..6f267a1 100644
+--- a/docs/TZ.md
++++ b/docs/TZ.md
+@@ -26,6 +26,10 @@ supports scheduler-only retained-lease PM resume from real owner answer, feedbac
+ or confirmation. Fleet must verify actual current checkpoint/old-run terminal
+ before that command and resume the same execution without a duplicate runtime run.
+ Agents cannot self-certify terminal; ordinary expired claim/heartbeat stay denied.
++The PM holder's scoped read-only credential can read actual saved owner feedback
++by task/message UUID for continuation, without owner impersonation or fabricated
++clarification answers. Saved text/hash/fence remain authoritative; historical
++readback does not renew a lease or change consent/business state.
+ [Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
+ 
+ PM producer writes close the reserved-execution write boundary through exact

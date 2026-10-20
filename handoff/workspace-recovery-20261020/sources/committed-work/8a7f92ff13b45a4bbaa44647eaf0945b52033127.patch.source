@@ -1,0 +1,1127 @@
+diff --git a/.base-revision b/.base-revision
+index e560de2..9fcf157 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-0ffb99e209bb62031488cbae1b61c9a2e40faec9
++7e27713077f68c84cb5d5a02f720a594abc643df
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d75eac8..d0c9270 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,11 @@
+ 
+ ## [Unreleased]
+ 
++- Кандидат Sprint lifecycle: Base FormDialog/FormField/PendingForm, сохранение
++  draft при refetch/ошибке, блокировка повторов/pending и GET-сверка unknown.
++  Потерянное создание без ID не подтверждается названием; повтор остаётся
++  заблокированным при reopen текущей страницы. Полная приёмка ещё требуется.
++
+ - HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
+   дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
+ 
+diff --git a/docs/plans/2026-10-06-sprint-lifecycle.md b/docs/plans/2026-10-06-sprint-lifecycle.md
+new file mode 100644
+index 0000000..58a3057
+--- /dev/null
++++ b/docs/plans/2026-10-06-sprint-lifecycle.md
+@@ -0,0 +1,23 @@
++# Sprint Draft Lifecycle Candidate
++
++Кандидат исправления TASK-SPRINT-01, не подтверждение runtime acceptance.
++Shell, FormDialog, FormField, PendingForm и draft guard принадлежат Base;
++payload, ACK validation и GET reconciliation остаются продуктовым кодом.
++
++- Pending блокирует всю форму, прямые повторные submit, закрытие и навигацию.
++- Same-record refetch не переинициализирует draft. Известный HTTP rejection
++  сохраняет поля и допускает ручное исправление без автоматического retry.
++- Success требует ожидаемого HTTP status, формы SprintResponse, ID редактируемой
++  записи и значений отправленного payload. Date/null semantics сохраняются.
++- Unknown write блокирует повторную запись и сохраняет draft при close/reopen
++  в пределах текущей страницы и project context. Проверка выполняет только GET.
++- Edit сверяет существующий scoped GET record. Create с проверяемым response ID
++  может использовать такой же readback. Без ID совпадающее название в каталоге
++  не подтверждает создание и не разблокирует повтор.
++- Несохранённый ввод не переносится в URL/storage. Reload предупреждается,
++  но не сохраняет private draft за пределами живой страницы. Поведение при
++  истечении SSO отдельно остаётся TASK-AUTH-UX-01, не объявлено решённым.
++
++Приёмка: full source gates, browser fixtures всех тем/desktop/mobile, pending,
++known rejection, unknown/inconclusive/verified reads, keyboard/focus, затем
++actual-image/SSO. Кандидат не изменяет API, DB, accepted runtime или чужой overlay.
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 5bb5903..13835a3 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -1576,6 +1576,158 @@ test.describe('Base project trash', () => {
+   })
+ })
+ 
++test.describe('Base sprint lifecycle', () => {
++  for (const theme of ['light', 'gray', 'dark'] as const) {
++    test(`keeps a rejected draft and pending controls in ${theme}`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(180_000)
++      await installTrackerMocks(page)
++      await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
++      let release!: () => void
++      let barrier = new Promise<void>((resolve) => {
++        release = resolve
++      })
++      let writes = 0
++      await page.route('**/api/v1/projects/DEMO/sprints', async (route) => {
++        if (route.request().method() !== 'POST') return route.fallback()
++        writes++
++        await barrier
++        return routeJson(route, { error: { message: 'Private validation fixture' } }, 422)
++      })
++      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++      const target = `${app}/projects/DEMO/backlog?source=sprint#context`
++      await page.goto(target)
++      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
++      await expect(create).toBeVisible()
++      for (const width of [375, 1920]) {
++        await page.setViewportSize({ width, height: 1080 })
++        await create.click()
++        const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
++        const name = dialog.getByLabel('Название', { exact: false })
++        await name.fill(`Safe draft ${width}`)
++        await dialog.getByLabel('Цель', { exact: true }).fill('Retained safe goal')
++        const before = writes
++        await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
++        await expect.poll(() => writes).toBe(before + 1)
++        await expect(name).toBeDisabled()
++        await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
++        await dialog
++          .locator('form')
++          .evaluate((form) =>
++            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
++          )
++        await page.keyboard.press('Escape')
++        await expect(dialog).toBeVisible()
++        expect(writes).toBe(before + 1)
++        release()
++        await expect(name).toBeEnabled()
++        await expect(name).toHaveValue(`Safe draft ${width}`)
++        await expect(dialog.getByLabel('Цель', { exact: true })).toHaveValue('Retained safe goal')
++        await expect(dialog.getByRole('alert')).toContainText('Введённые значения сохранены')
++        await expect(dialog.getByRole('alert')).not.toContainText('Private validation fixture')
++        expect(
++          await page.evaluate(
++            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++          ),
++        ).toBe(true)
++        expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
++        await page.screenshot({
++          path: testInfo.outputPath(`sprint-known-error-${theme}-${width}.png`),
++          fullPage: true,
++        })
++        await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
++        const confirm = page.getByRole('alertdialog')
++        await expect(confirm).toBeVisible()
++        await confirm.getByRole('button', { name: 'Подтвердить', exact: true }).click()
++        await expect(dialog).toBeHidden()
++        await expect(page).toHaveURL(target)
++        barrier = new Promise<void>((resolve) => {
++          release = resolve
++        })
++      }
++    })
++
++    test(`does not acknowledge an unknown create from a matching name in ${theme}`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(180_000)
++      await installTrackerMocks(page)
++      await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
++      let writes = 0
++      let reads = 0
++      await page.route('**/api/v1/projects/DEMO/sprints', (route) => {
++        if (route.request().method() === 'POST') {
++          writes++
++          return routeJson(route, { error: { message: 'Isolated lost acknowledgement' } }, 503)
++        }
++        reads++
++        return routeJson(route, {
++          sprints: [
++            {
++              id: 'ambiguous-existing',
++              name: 'Same safe name',
++              goal: '',
++              state: 'future',
++              issue_ids: [],
++              velocity: 0,
++              start_date: null,
++              end_date: null,
++            },
++          ],
++        })
++      })
++      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++      await page.goto(`${app}/projects/DEMO/backlog?source=unknown#context`)
++      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
++      await expect(create).toBeVisible()
++      await create.click()
++      const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
++      const name = dialog.getByLabel('Название', { exact: false })
++      await name.fill('Same safe name')
++      await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
++      await expect(dialog.getByRole('alert')).toContainText('Результат сохранения неизвестен')
++      const before = reads
++      await dialog.getByRole('button', { name: 'Проверить на сервере', exact: true }).click()
++      await expect.poll(() => reads).toBeGreaterThan(before)
++      await expect(
++        dialog.getByRole('button', { name: 'Проверить на сервере', exact: true }),
++      ).toBeEnabled()
++      await expect(
++        dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
++      ).toBeDisabled()
++      expect(writes).toBe(1)
++      for (const width of [375, 1920]) {
++        await page.setViewportSize({ width, height: 1080 })
++        await expect(name).toHaveValue('Same safe name')
++        await expect(name).toBeDisabled()
++        await page.screenshot({
++          path: testInfo.outputPath(`sprint-unknown-${theme}-${width}.png`),
++          fullPage: true,
++        })
++      }
++      await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
++      await page
++        .getByRole('alertdialog')
++        .getByRole('button', { name: 'Подтвердить', exact: true })
++        .click()
++      await expect(dialog).toBeHidden()
++      await create.click()
++      await expect(name).toHaveValue('Same safe name')
++      await expect(
++        dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
++      ).toBeDisabled()
++      expect(writes).toBe(1)
++      await testInfo.attach('unknown-create-proof', {
++        body: JSON.stringify({ writes, reads, authoritativeId: null, nameMatchAccepted: false }),
++        contentType: 'application/json',
++      })
++    })
++  }
++})
++
+ function routeJson(route: Route, body: unknown, status = 200) {
+   return route.fulfill({
+     status,
+diff --git a/frontend/src/api/sprint.test.ts b/frontend/src/api/sprint.test.ts
+new file mode 100644
+index 0000000..ff799d0
+--- /dev/null
++++ b/frontend/src/api/sprint.test.ts
+@@ -0,0 +1,110 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { ApiError } from '@sdlc/ui/lib'
++import {
++  createSprint,
++  getSprint,
++  matchesSprintWrite,
++  SprintWriteUncertainError,
++  updateSprint,
++  type Sprint,
++} from './sprint'
++
++const GET = vi.hoisted(() => vi.fn())
++const POST = vi.hoisted(() => vi.fn())
++const PATCH = vi.hoisted(() => vi.fn())
++vi.mock('./client', () => ({ api: { GET, POST, PATCH } }))
++const sprint: Sprint = {
++  id: 'sp1',
++  name: 'Safe fixture',
++  goal: '',
++  issue_ids: [],
++  state: 'future',
++  velocity: 0,
++  start_date: null,
++  end_date: null,
++}
++describe('sprint write acknowledgement', () => {
++  beforeEach(() => {
++    GET.mockReset()
++    POST.mockReset()
++    PATCH.mockReset()
++  })
++  it('requires the domain status, record ID and submitted values', async () => {
++    POST.mockResolvedValue({ data: sprint, response: new Response(null, { status: 201 }) })
++    PATCH.mockResolvedValue({ data: sprint, response: new Response(null, { status: 200 }) })
++    await expect(createSprint('DEMO', { name: sprint.name })).resolves.toEqual(sprint)
++    await expect(
++      updateSprint('DEMO', sprint.id, { goal: null, start_date: null, end_date: null }),
++    ).resolves.toEqual(sprint)
++    expect(POST).toHaveBeenCalledTimes(1)
++    expect(PATCH).toHaveBeenCalledTimes(1)
++  })
++  it.each([400, 401, 403, 404, 409, 422])(
++    'keeps a known %s rejection distinct from an unknown write',
++    async (status) => {
++      const result = {
++        error: { message: 'Private diagnostic' },
++        response: new Response(null, { status }),
++      }
++      POST.mockResolvedValue(result)
++      PATCH.mockResolvedValue(result)
++      await expect(createSprint('DEMO', { name: sprint.name })).rejects.toBeInstanceOf(ApiError)
++      await expect(updateSprint('DEMO', sprint.id, { name: sprint.name })).rejects.toMatchObject({
++        status,
++      })
++    },
++  )
++  it.each([408, 429, 500, 503])('does not replay or acknowledge HTTP %s', async (status) => {
++    POST.mockResolvedValue({ error: {}, response: new Response(null, { status }) })
++    await expect(createSprint('DEMO', { name: sprint.name })).rejects.toBeInstanceOf(
++      SprintWriteUncertainError,
++    )
++    expect(POST).toHaveBeenCalledTimes(1)
++  })
++  it.each([
++    undefined,
++    {},
++    { ...sprint, name: 'Other' },
++    { ...sprint, id: '' },
++    { ...sprint, issue_ids: null },
++  ])('rejects malformed or mismatched acknowledgements', async (data) => {
++    POST.mockResolvedValue({ data, response: new Response(null, { status: 201 }) })
++    await expect(createSprint('DEMO', { name: sprint.name })).rejects.toBeInstanceOf(
++      SprintWriteUncertainError,
++    )
++  })
++  it('never reconciles an edit using an ID returned for another object', async () => {
++    PATCH.mockResolvedValue({
++      data: { ...sprint, id: 'other' },
++      response: new Response(null, { status: 200 }),
++    })
++    await expect(updateSprint('DEMO', sprint.id, { name: sprint.name })).rejects.toMatchObject({
++      sprintId: sprint.id,
++    })
++  })
++  it('reads the exact scoped record and rejects mismatched identity', async () => {
++    GET.mockResolvedValue({ data: sprint, response: new Response(null, { status: 200 }) })
++    await expect(getSprint('DEMO', 'sp1')).resolves.toEqual(sprint)
++    expect(GET).toHaveBeenCalledWith('/api/v1/projects/{project_key}/sprints/{sprint_id}', {
++      params: { path: { project_key: 'DEMO', sprint_id: 'sp1' } },
++    })
++    GET.mockResolvedValue({
++      data: { ...sprint, id: 'other' },
++      response: new Response(null, { status: 200 }),
++    })
++    await expect(getSprint('DEMO', 'sp1')).rejects.toBeInstanceOf(ApiError)
++  })
++  it('compares equivalent date instants while preserving explicit clears', () => {
++    expect(
++      matchesSprintWrite(
++        { ...sprint, start_date: '2026-10-06T03:00:00+03:00' },
++        { start_date: '2026-10-06T00:00:00Z' },
++      ),
++    ).toBe(true)
++    expect(
++      matchesSprintWrite({ ...sprint, start_date: '2026-10-06T00:00:00Z' }, { start_date: null }),
++    ).toBe(false)
++    expect(matchesSprintWrite(sprint, { goal: null })).toBe(true)
++    expect(matchesSprintWrite({ ...sprint, goal: 'Other' }, { goal: null })).toBe(false)
++  })
++})
+diff --git a/frontend/src/api/sprint.ts b/frontend/src/api/sprint.ts
+index 7d6acc9..43f2c59 100644
+--- a/frontend/src/api/sprint.ts
++++ b/frontend/src/api/sprint.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type Sprint = components['schemas']['SprintResponse']
+@@ -7,6 +8,83 @@ export type CreateSprintRequest = components['schemas']['CreateSprintRequest']
+ export type UpdateSprintRequest = components['schemas']['UpdateSprintRequest']
+ export type MoveIssueToSprintRequest = components['schemas']['MoveIssueToSprintRequest']
+ 
++export class SprintWriteUncertainError extends Error {
++  constructor(public readonly sprintId?: string) {
++    super('Sprint write outcome requires an authoritative read')
++  }
++}
++
++export function matchesSprintWrite(
++  sprint: Sprint,
++  input: CreateSprintRequest | UpdateSprintRequest,
++) {
++  if (input.name !== undefined && input.name !== null && sprint.name !== input.name) return false
++  if (input.goal !== undefined && sprint.goal !== (input.goal ?? '')) return false
++  for (const key of ['start_date', 'end_date'] as const) {
++    if (input[key] === undefined) continue
++    const expected = input[key]
++    const actual = sprint[key]
++    if (expected === null) {
++      if (actual !== null && actual !== undefined) return false
++    } else if (!actual || Date.parse(actual) !== Date.parse(expected)) return false
++  }
++  return true
++}
++
++function isSprint(value: unknown): value is Sprint {
++  if (!value || typeof value !== 'object') return false
++  const record = value as Partial<Sprint>
++  return (
++    typeof record.id === 'string' &&
++    record.id.length > 0 &&
++    typeof record.name === 'string' &&
++    typeof record.goal === 'string' &&
++    typeof record.state === 'string' &&
++    Array.isArray(record.issue_ids) &&
++    record.issue_ids.every((id) => typeof id === 'string') &&
++    typeof record.velocity === 'number'
++  )
++}
++
++function acknowledgeSprint(
++  data: unknown,
++  error: unknown,
++  response: Response,
++  input: CreateSprintRequest | UpdateSprintRequest,
++  status: number,
++  sprintId?: string,
++): Sprint {
++  if (error || !response.ok) {
++    if ([400, 401, 403, 404, 409, 422].includes(response.status)) {
++      throw new ApiError(response.status, 'Sprint write rejected', error)
++    }
++    throw new SprintWriteUncertainError(sprintId)
++  }
++  if (
++    response.status !== status ||
++    !isSprint(data) ||
++    (sprintId !== undefined && data.id !== sprintId) ||
++    !matchesSprintWrite(data, input)
++  ) {
++    // Never use a mismatched object's ID as evidence for another edit.
++    throw new SprintWriteUncertainError(sprintId ?? (isSprint(data) ? data.id : undefined))
++  }
++  return data
++}
++
++export async function getSprint(projectKey: string, sprintId: string): Promise<Sprint> {
++  const { data, error, response } = await api.GET(
++    '/api/v1/projects/{project_key}/sprints/{sprint_id}',
++    {
++      params: { path: { project_key: projectKey, sprint_id: sprintId } },
++    },
++  )
++  if (error || !response.ok || !isSprint(data) || data.id !== sprintId) {
++    throw new ApiError(response.status, 'Sprint read could not be verified', error)
++  }
++  return data
++}
++
+ export async function listSprints(projectKey: string): Promise<Sprint[]> {
+   const { data, error } = await api.GET('/api/v1/projects/{project_key}/sprints', {
+     params: { path: { project_key: projectKey } },
+@@ -16,12 +94,11 @@ export async function listSprints(projectKey: string): Promise<Sprint[]> {
+ }
+ 
+ export async function createSprint(projectKey: string, req: CreateSprintRequest): Promise<Sprint> {
+-  const { data, error } = await api.POST('/api/v1/projects/{project_key}/sprints', {
++  const { data, error, response } = await api.POST('/api/v1/projects/{project_key}/sprints', {
+     params: { path: { project_key: projectKey } },
+     body: req,
+   })
+-  if (error || !data) throw new Error('failed to create sprint')
+-  return data
++  return acknowledgeSprint(data, error, response, req, 201)
+ }
+ 
+ export async function updateSprint(
+@@ -29,12 +106,14 @@ export async function updateSprint(
+   sprintId: string,
+   req: UpdateSprintRequest,
+ ): Promise<Sprint> {
+-  const { data, error } = await api.PATCH('/api/v1/projects/{project_key}/sprints/{sprint_id}', {
+-    params: { path: { project_key: projectKey, sprint_id: sprintId } },
+-    body: req,
+-  })
+-  if (error || !data) throw new Error('failed to update sprint')
+-  return data
++  const { data, error, response } = await api.PATCH(
++    '/api/v1/projects/{project_key}/sprints/{sprint_id}',
++    {
++      params: { path: { project_key: projectKey, sprint_id: sprintId } },
++      body: req,
++    },
++  )
++  return acknowledgeSprint(data, error, response, req, 200, sprintId)
+ }
+ 
+ export async function startSprint(projectKey: string, sprintId: string): Promise<Sprint> {
+diff --git a/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx b/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
+index 7191a3c..0cbe40d 100644
+--- a/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
++++ b/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
+@@ -1,24 +1,143 @@
+ import { describe, it, expect, vi, beforeAll } from 'vitest'
+-import { render, screen, fireEvent } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router'
++import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
++import { createContext, useContext, useState, type ReactNode } from 'react'
++import { createMemoryRouter, RouterProvider } from 'react-router'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+ import i18n from '@/shared/i18n/config'
+ import { SprintFormDialog } from './SprintFormDialog'
+-import type { Sprint } from '@/api/sprint'
++import { SprintWriteUncertainError, type Sprint } from '@/api/sprint'
++import { ApiError } from '@sdlc/ui/lib'
+ 
+ beforeAll(() => {
+   i18n.changeLanguage('en')
+ })
+ 
+-function wrapper(children: React.ReactNode) {
++const content = createContext<ReactNode>(null)
++function RouteContent() {
++  return useContext(content)
++}
++function Wrapper({ children }: { children: ReactNode }) {
++  const [router] = useState(() => createMemoryRouter([{ path: '/', element: <RouteContent /> }]))
+   return (
+     <ThemeProvider>
+-      <MemoryRouter>{children}</MemoryRouter>
++      <content.Provider value={children}>
++        <RouterProvider router={router} />
++      </content.Provider>
+     </ThemeProvider>
+   )
+ }
++function wrapper(children: React.ReactNode) {
++  return <Wrapper>{children}</Wrapper>
++}
+ 
+ describe('SprintFormDialog', () => {
++  it('locks direct duplicate submissions, fields and closing until the promise settles', async () => {
++    let reject!: (error: Error) => void
++    const task = new Promise<void>((_, fail) => {
++      reject = fail
++    })
++    const onSubmit = vi.fn(() => task)
++    const onOpenChange = vi.fn()
++    render(
++      <SprintFormDialog open onSubmit={onSubmit} onOpenChange={onOpenChange} isPending={false} />,
++      { wrapper: Wrapper },
++    )
++    const name = screen.getByPlaceholderText(/Sprint 1/i)
++    fireEvent.change(name, { target: { value: 'Draft' } })
++    fireEvent.submit(name.closest('form')!)
++    fireEvent.submit(name.closest('form')!)
++    expect(onSubmit).toHaveBeenCalledTimes(1)
++    expect(name).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
++    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
++    expect(onOpenChange).not.toHaveBeenCalled()
++    await act(async () => reject(new ApiError(422, 'Private validation diagnostic')))
++    await waitFor(() => expect(name).toBeEnabled())
++    expect(name).toHaveValue('Draft')
++    expect(screen.getByRole('alert')).toHaveTextContent('Your entered values are retained')
++    expect(screen.getByRole('alert')).not.toHaveTextContent('Private validation diagnostic')
++  })
++
++  it('retains drafts across same-record refetch and confirms discard', async () => {
++    const sprint: Sprint = {
++      id: 'sp1',
++      name: 'Original',
++      goal: '',
++      state: 'future',
++      issue_ids: [],
++      velocity: 0,
++    }
++    const props = { open: true, sprint, onSubmit: vi.fn(), onOpenChange: vi.fn(), isPending: false }
++    const view = render(<SprintFormDialog {...props} />, { wrapper: Wrapper })
++    fireEvent.change(screen.getByDisplayValue('Original'), { target: { value: 'Draft' } })
++    view.rerender(
++      <SprintFormDialog {...props} sprint={{ ...sprint, name: 'Background version' }} />,
++    )
++    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
++    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
++    const confirm = await screen.findByRole('alertdialog')
++    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
++    expect(props.onOpenChange).not.toHaveBeenCalled()
++  })
++
++  it('does not unlock or replay an unknown create on close/reopen or an inconclusive GET', async () => {
++    const onSubmit = vi.fn().mockRejectedValue(new SprintWriteUncertainError())
++    const onReconcile = vi.fn().mockResolvedValue(false)
++    const props = { open: true, onSubmit, onReconcile, onOpenChange: vi.fn(), isPending: false }
++    const view = render(<SprintFormDialog {...props} />, { wrapper: Wrapper })
++    const name = screen.getByPlaceholderText(/Sprint 1/i)
++    fireEvent.change(name, { target: { value: 'Unknown draft' } })
++    await act(async () => fireEvent.submit(name.closest('form')!))
++    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
++    fireEvent.submit(name.closest('form')!)
++    expect(onSubmit).toHaveBeenCalledTimes(1)
++    view.rerender(<SprintFormDialog {...props} open={false} />)
++    view.rerender(<SprintFormDialog {...props} open />)
++    expect(screen.getByDisplayValue('Unknown draft')).toBeDisabled()
++    await act(async () =>
++      fireEvent.click(screen.getByRole('button', { name: 'Check server state' })),
++    )
++    expect(onReconcile).toHaveBeenCalledTimes(1)
++    expect(onSubmit).toHaveBeenCalledTimes(1)
++    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
++    expect(props.onOpenChange).not.toHaveBeenCalled()
++  })
++
++  it('accepts a verified readback without a second write', async () => {
++    const onSubmit = vi.fn().mockRejectedValue(new SprintWriteUncertainError('sp1'))
++    const onReconcile = vi.fn().mockResolvedValue(true)
++    const props = { open: true, onSubmit, onReconcile, onOpenChange: vi.fn(), isPending: false }
++    render(<SprintFormDialog {...props} />, { wrapper: Wrapper })
++    const name = screen.getByPlaceholderText(/Sprint 1/i)
++    fireEvent.change(name, { target: { value: 'Verified' } })
++    await act(async () => fireEvent.submit(name.closest('form')!))
++    await act(async () =>
++      fireEvent.click(screen.getByRole('button', { name: 'Check server state' })),
++    )
++    expect(onSubmit).toHaveBeenCalledTimes(1)
++    expect(props.onOpenChange).toHaveBeenCalledExactlyOnceWith(false)
++  })
++
++  it('does not reuse an unknown create in another project context', async () => {
++    const props = {
++      open: true,
++      contextKey: 'ONE',
++      onSubmit: vi.fn().mockRejectedValue(new SprintWriteUncertainError()),
++      onOpenChange: vi.fn(),
++      isPending: false,
++    }
++    const view = render(<SprintFormDialog {...props} />, { wrapper: Wrapper })
++    const name = screen.getByPlaceholderText(/Sprint 1/i)
++    fireEvent.change(name, { target: { value: 'One draft' } })
++    await act(async () => fireEvent.submit(name.closest('form')!))
++    view.rerender(<SprintFormDialog {...props} contextKey="TWO" />)
++    expect(screen.getByPlaceholderText(/Sprint 1/i)).toHaveValue('')
++    expect(screen.getByPlaceholderText(/Sprint 1/i)).toBeEnabled()
++    view.rerender(<SprintFormDialog {...props} contextKey="ONE" />)
++    expect(screen.getByDisplayValue('One draft')).toBeDisabled()
++  })
+   it('renders form fields when open', () => {
+     render(
+       wrapper(
+diff --git a/frontend/src/features/sprints/ui/SprintFormDialog.tsx b/frontend/src/features/sprints/ui/SprintFormDialog.tsx
+index 1bd807e..d8a07bd 100644
+--- a/frontend/src/features/sprints/ui/SprintFormDialog.tsx
++++ b/frontend/src/features/sprints/ui/SprintFormDialog.tsx
+@@ -1,135 +1,236 @@
+-import { useState, useEffect } from 'react'
++import { useState, useEffect, useRef } from 'react'
+ import { useTranslation } from 'react-i18next'
+-import { Button } from '@sdlc/ui/ui'
+-import { Input } from '@sdlc/ui/ui'
+-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
+-import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
++import { RotateCcw } from 'lucide-react'
++import { Button, FormDialog, FormField, Input, Textarea, UnsavedChangesGuard } from '@sdlc/ui/ui'
++import { ApiError } from '@sdlc/ui/lib'
++import {
++  SprintWriteUncertainError,
++  type Sprint,
++  type CreateSprintRequest,
++  type UpdateSprintRequest,
++} from '@/api/sprint'
+ 
+ interface SprintFormDialogProps {
++  contextKey?: string
+   open: boolean
+   sprint?: Sprint | null
+   onOpenChange: (open: boolean) => void
+-  onSubmit: (values: CreateSprintRequest | UpdateSprintRequest) => void
++  onSubmit: (values: CreateSprintRequest | UpdateSprintRequest) => Promise<unknown> | void
++  onReconcile?: (
++    values: CreateSprintRequest | UpdateSprintRequest,
++    error: SprintWriteUncertainError,
++  ) => Promise<boolean>
+   isPending: boolean
+   error?: Error | null
+ }
+ 
++const emptyValues = { name: '', goal: '', startDate: '', endDate: '' }
++type Values = typeof emptyValues
++type HeldWrite = {
++  values: Values
++  input: CreateSprintRequest | UpdateSprintRequest
++  error: SprintWriteUncertainError
++}
++
+ export function SprintFormDialog({
+   open,
+   sprint,
+   onOpenChange,
+   onSubmit,
++  onReconcile,
+   isPending,
+   error,
++  contextKey = '',
+ }: SprintFormDialogProps) {
+   const { t } = useTranslation()
+-  const [name, setName] = useState('')
+-  const [goal, setGoal] = useState('')
+-  const [startDate, setStartDate] = useState('')
+-  const [endDate, setEndDate] = useState('')
++  const [values, setValues] = useState(emptyValues)
++  const [initial, setInitial] = useState(emptyValues)
+   const [dateError, setDateError] = useState<string | null>(null)
+-  const isEdit = !!sprint
++  const [saveError, setSaveError] = useState(false)
++  const [saving, setSaving] = useState(false)
++  const [checking, setChecking] = useState(false)
++  const [unknown, setUnknown] = useState<HeldWrite | null>(null)
++  const held = useRef(new Map<string, HeldWrite>())
++  const session = useRef<string | null>(null)
++  const identity = `${contextKey}:${sprint?.id ?? 'create'}`
++  const busy = isPending || saving || checking
++  const dirty = Object.keys(values).some(
++    (key) => values[key as keyof Values] !== initial[key as keyof Values],
++  )
+ 
+   useEffect(() => {
+-    if (open) {
+-      setName(sprint?.name ?? '')
+-      setGoal(sprint?.goal ?? '')
+-      setStartDate(sprint?.start_date ? sprint.start_date.slice(0, 10) : '')
+-      setEndDate(sprint?.end_date ? sprint.end_date.slice(0, 10) : '')
++    if (!open) {
++      session.current = null
++      return
++    }
++    if (session.current === identity) return
++    session.current = identity
++    const next = {
++      name: sprint?.name ?? '',
++      goal: sprint?.goal ?? '',
++      startDate: sprint?.start_date?.slice(0, 10) ?? '',
++      endDate: sprint?.end_date?.slice(0, 10) ?? '',
+     }
+-  }, [open, sprint])
++    const pendingOutcome = held.current.get(identity) ?? null
++    setInitial(next)
++    setValues(pendingOutcome?.values ?? next)
++    setUnknown(pendingOutcome)
++    setSaveError(false)
++    setDateError(null)
++  }, [open, identity, sprint])
++
++  function change(key: keyof Values, value: string) {
++    if (busy || unknown) return
++    setValues((current) => ({ ...current, [key]: value }))
++    setDateError(null)
++  }
+ 
+-  function handleSubmit(e: React.FormEvent) {
+-    e.preventDefault()
+-    // Server rejects inverted ranges; fail fast in the dialog as well.
+-    if (startDate && endDate && endDate < startDate) {
+-      setDateError(t('sprints.endBeforeStart', 'Дата окончания не может быть раньше начала'))
++  async function submit() {
++    if (busy || unknown || !values.name.trim()) return
++    if (values.startDate && values.endDate && values.endDate < values.startDate) {
++      setDateError(t('sprints.endBeforeStart'))
+       return
+     }
+-    setDateError(null)
+-    const payload = isEdit
+-      ? ({
+-          name: name || undefined,
+-          goal: goal === '' ? null : goal,
+-          start_date: startDate ? `${startDate}T00:00:00+00:00` : null,
+-          end_date: endDate ? `${endDate}T00:00:00+00:00` : null,
+-        } as UpdateSprintRequest)
+-      : ({
+-          name,
+-          goal: goal || undefined,
+-          start_date: startDate ? `${startDate}T00:00:00+00:00` : undefined,
+-          end_date: endDate ? `${endDate}T00:00:00+00:00` : undefined,
+-        } as CreateSprintRequest)
+-    onSubmit(payload)
++    const input: CreateSprintRequest | UpdateSprintRequest = {
++      name: values.name.trim(),
++      goal: values.goal || (sprint ? null : undefined),
++      start_date: values.startDate
++        ? `${values.startDate}T00:00:00+00:00`
++        : sprint
++          ? null
++          : undefined,
++      end_date: values.endDate ? `${values.endDate}T00:00:00+00:00` : sprint ? null : undefined,
++    }
++    setSaving(true)
++    setSaveError(false)
++    try {
++      await onSubmit(input)
++      held.current.delete(identity)
++    } catch (failure) {
++      if (!(
++        failure instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(failure.status)
++      )) {
++        const uncertain =
++          failure instanceof SprintWriteUncertainError
++            ? failure
++            : new SprintWriteUncertainError(sprint?.id)
++        const outcome = { values: { ...values }, input, error: uncertain }
++        held.current.set(identity, outcome)
++        setUnknown(outcome)
++      }
++      setSaveError(true)
++    } finally {
++      setSaving(false)
++    }
++  }
++
++  async function reconcile() {
++    if (!unknown || busy || !onReconcile) return
++    setChecking(true)
++    try {
++      if (await onReconcile(unknown.input, unknown.error)) {
++        held.current.delete(identity)
++        setUnknown(null)
++        setInitial(values)
++        setSaveError(false)
++        onOpenChange(false)
++      }
++    } catch {
++      setSaveError(true)
++    } finally {
++      setChecking(false)
++    }
+   }
+ 
+   return (
+-    <Dialog open={open} onOpenChange={onOpenChange}>
+-      <DialogContent>
+-        <DialogHeader>
+-          <DialogTitle>{isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}</DialogTitle>
+-        </DialogHeader>
+-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
+-          <div className="space-y-2">
+-            <label htmlFor="sprint-form-name" className="text-sm font-medium">
+-              {t('sprints.name')} *
+-            </label>
++    <>
++      <UnsavedChangesGuard when={open && (dirty || Boolean(unknown))} pending={open && busy} />
++      <FormDialog
++        open={open}
++        onOpenChange={onOpenChange}
++        title={sprint ? t('sprints.editSprint') : t('sprints.createSprint')}
++        dirty={dirty || Boolean(unknown)}
++        pending={busy}
++        onSubmit={submit}
++        error={
++          unknown
++            ? t('sprints.outcomeUnknown')
++            : saveError || error
++              ? t('sprints.saveFailed')
++              : undefined
++        }
++        actions={
++          <>
++            {unknown && onReconcile && (
++              <Button
++                type="button"
++                variant="secondary"
++                disabled={busy}
++                onClick={() => void reconcile()}
++              >
++                <RotateCcw className="h-4 w-4" aria-hidden />
++                {t('sprints.checkOutcome')}
++              </Button>
++            )}
++            <Button type="submit" disabled={busy || Boolean(unknown) || !values.name.trim()}>
++              {busy ? t('common.saving') : sprint ? t('common.save') : t('sprints.create')}
++            </Button>
++          </>
++        }
++      >
++        <FormField id="sprint-form-name" label={t('sprints.name')} required>
++          {(attrs) => (
+             <Input
+-              id="sprint-form-name"
+-              value={name}
+-              onChange={(e) => setName(e.target.value)}
++              {...attrs}
++              value={values.name}
++              onChange={(event) => change('name', event.target.value)}
+               placeholder={t('sprints.namePlaceholder')}
+-              required={!isEdit}
++              disabled={Boolean(unknown)}
+             />
+-          </div>
+-          <div className="space-y-2">
+-            <label htmlFor="sprint-form-goal" className="text-sm font-medium">
+-              {t('sprints.goal')}
+-            </label>
+-            <textarea
+-              id="sprint-form-goal"
+-              className="min-h-[80px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
+-              value={goal}
+-              onChange={(e) => setGoal(e.target.value)}
++          )}
++        </FormField>
++        <FormField id="sprint-form-goal" label={t('sprints.goal')}>
++          {(attrs) => (
++            <Textarea
++              {...attrs}
++              rows={3}
++              value={values.goal}
++              onChange={(event) => change('goal', event.target.value)}
+               placeholder={t('sprints.goalPlaceholder')}
++              disabled={Boolean(unknown)}
+             />
+-          </div>
+-          <div className="grid gap-3 sm:grid-cols-2">
+-            <div className="space-y-2">
+-              <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
+-                {t('sprints.startDate')}
+-              </label>
++          )}
++        </FormField>
++        <div className="grid gap-3 sm:grid-cols-2">
++          <FormField id="sprint-form-startdate" label={t('sprints.startDate')}>
++            {(attrs) => (
+               <Input
+-                id="sprint-form-startdate"
++                {...attrs}
+                 type="date"
+-                value={startDate}
+-                onChange={(e) => setStartDate(e.target.value)}
++                value={values.startDate}
++                onChange={(event) => change('startDate', event.target.value)}
++                disabled={Boolean(unknown)}
+               />
+-            </div>
+-            <div className="space-y-2">
+-              <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
+-                {t('sprints.endDate')}
+-              </label>
++            )}
++          </FormField>
++          <FormField
++            id="sprint-form-enddate"
++            label={t('sprints.endDate')}
++            error={dateError ?? undefined}
++          >
++            {(attrs) => (
+               <Input
+-                id="sprint-form-enddate"
++                {...attrs}
+                 type="date"
+-                value={endDate}
+-                onChange={(e) => setEndDate(e.target.value)}
++                value={values.endDate}
++                min={values.startDate || undefined}
++                onChange={(event) => change('endDate', event.target.value)}
++                disabled={Boolean(unknown)}
+               />
+-            </div>
+-          </div>
+-          {dateError && <p className="text-sm text-danger">{dateError}</p>}
+-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+-              {t('common.cancel')}
+-            </Button>
+-            <Button type="submit" disabled={isPending}>
+-              {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
+-            </Button>
+-          </div>
+-        </form>
+-      </DialogContent>
+-    </Dialog>
++            )}
++          </FormField>
++        </div>
++      </FormDialog>
++    </>
+   )
+ }
+diff --git a/frontend/src/pages/project-backlog/index.tsx b/frontend/src/pages/project-backlog/index.tsx
+index 551fb18..a6c5d5c 100644
+--- a/frontend/src/pages/project-backlog/index.tsx
++++ b/frontend/src/pages/project-backlog/index.tsx
+@@ -25,6 +25,13 @@ import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
+ import { UserAvatar } from '@/shared/ui/user-avatar'
+ import type { components } from '@/api/generated'
+ import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
++import {
++  getSprint,
++  listSprints,
++  matchesSprintWrite,
++  type SprintWriteUncertainError,
++} from '@/api/sprint'
++import { useQueryClient } from '@tanstack/react-query'
+ 
+ type Issue = components['schemas']['IssueResponse']
+ 
+@@ -188,6 +195,7 @@ function parseBacklogOffset(value: string | null) {
+ }
+ 
+ export function ProjectBacklogPage() {
++  const queryClient = useQueryClient()
+   const { t } = useTranslation()
+   const { projectKey } = useParams<{ projectKey?: string }>()
+   const key = projectKey ?? ''
+@@ -255,16 +263,31 @@ export function ProjectBacklogPage() {
+     setDialogOpen(true)
+   }
+ 
+-  function handleSubmit(values: CreateSprintRequest | UpdateSprintRequest) {
++  async function handleSubmit(values: CreateSprintRequest | UpdateSprintRequest) {
+     if (editingSprint) {
+-      updateSprint.mutate(values as UpdateSprintRequest, {
+-        onSuccess: () => setDialogOpen(false),
+-      })
++      await updateSprint.mutateAsync(values as UpdateSprintRequest)
+     } else {
+-      createSprint.mutate(values as CreateSprintRequest, {
+-        onSuccess: () => setDialogOpen(false),
+-      })
++      await createSprint.mutateAsync(values as CreateSprintRequest)
++    }
++    setDialogOpen(false)
++  }
++
++  async function reconcileSprint(
++    values: CreateSprintRequest | UpdateSprintRequest,
++    failure: SprintWriteUncertainError,
++  ) {
++    const id = editingSprint?.id ?? failure.sprintId
++    if (!id) {
++      // A matching name in the catalog cannot identify a lost create response.
++      await listSprints(key)
++      return false
+     }
++    const current = await getSprint(key, id)
++    if (!matchesSprintWrite(current, values)) return false
++    await queryClient.invalidateQueries({ queryKey: ['sprints', key] })
++    await queryClient.invalidateQueries({ queryKey: ['backlog', key] })
++    await queryClient.invalidateQueries({ queryKey: ['reports'] })
++    return true
+   }
+ 
+   function updateBacklogOffset(nextOffset: number) {
+@@ -498,10 +521,12 @@ export function ProjectBacklogPage() {
+       )}
+ 
+       <SprintFormDialog
++        contextKey={key}
+         open={dialogOpen}
+         sprint={editingSprint}
+         onOpenChange={setDialogOpen}
+         onSubmit={handleSubmit}
++        onReconcile={reconcileSprint}
+         isPending={createSprint.isPending || updateSprint.isPending}
+         error={createSprint.error ?? updateSprint.error}
+       />
+diff --git a/frontend/src/pages/project-backlog/project-backlog.test.tsx b/frontend/src/pages/project-backlog/project-backlog.test.tsx
+index 8b802e9..de265c7 100644
+--- a/frontend/src/pages/project-backlog/project-backlog.test.tsx
++++ b/frontend/src/pages/project-backlog/project-backlog.test.tsx
+@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-rou
+ 
+ import { ProjectBacklogPage } from './'
+ import { ThemeProvider } from '@sdlc/ui/lib'
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ 
+ const mockBacklog = vi.hoisted(() => vi.fn())
+ const mockSprints = vi.hoisted(() => vi.fn())
+@@ -60,21 +61,25 @@ function LocationProbe() {
+ 
+ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/backlog') {
+   return (
+-    <ThemeProvider>
+-      <MemoryRouter initialEntries={[initialEntry]}>
+-        <Routes>
+-          <Route
+-            path="/projects/:projectKey/backlog"
+-            element={
+-              <>
+-                {children}
+-                <LocationProbe />
+-              </>
+-            }
+-          />
+-        </Routes>
+-      </MemoryRouter>
+-    </ThemeProvider>
++    <QueryClientProvider
++      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
++    >
++      <ThemeProvider>
++        <MemoryRouter initialEntries={[initialEntry]}>
++          <Routes>
++            <Route
++              path="/projects/:projectKey/backlog"
++              element={
++                <>
++                  {children}
++                  <LocationProbe />
++                </>
++              }
++            />
++          </Routes>
++        </MemoryRouter>
++      </ThemeProvider>
++    </QueryClientProvider>
+   )
+ }
+ 
+diff --git a/frontend/src/shared/api/hooks.ts b/frontend/src/shared/api/hooks.ts
+index e44921c..c90b72c 100644
+--- a/frontend/src/shared/api/hooks.ts
++++ b/frontend/src/shared/api/hooks.ts
+@@ -252,6 +252,7 @@ export function useSprints(projectKey: string | undefined) {
+ export function useCreateSprint(projectKey: string) {
+   const qc = useQueryClient()
+   return useMutation({
++    retry: false,
+     mutationFn: (input: CreateSprintRequest) => createSprint(projectKey, input),
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+@@ -264,6 +265,7 @@ export function useCreateSprint(projectKey: string) {
+ export function useUpdateSprint(projectKey: string, sprintId: string) {
+   const qc = useQueryClient()
+   return useMutation({
++    retry: false,
+     mutationFn: (input: UpdateSprintRequest) => updateSprint(projectKey, sprintId, input),
+     onSuccess: () => {
+       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index 7f222a7..d91507e 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -428,6 +428,9 @@
+     "uploadFailed": "Failed to upload file"
+   },
+   "sprints": {
++    "saveFailed": "Could not save the sprint. Your entered values are retained.",
++    "outcomeUnknown": "The save outcome is unknown. Another write is blocked. Check the server state; a matching name in the list does not confirm creation.",
++    "checkOutcome": "Check server state",
+     "create": "Create sprint",
+     "createSprint": "New sprint",
+     "editSprint": "Edit sprint",
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index 7b7e803..237e379 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -428,6 +428,9 @@
+     "uploadFailed": "Не удалось загрузить файл"
+   },
+   "sprints": {
++    "saveFailed": "Не удалось сохранить спринт. Введённые значения сохранены.",
++    "outcomeUnknown": "Результат сохранения неизвестен. Повторная запись заблокирована. Проверьте состояние на сервере; совпадение названия в списке не подтверждает создание.",
++    "checkOutcome": "Проверить на сервере",
+     "create": "Создать спринт",
+     "createSprint": "Новый спринт",
+     "editSprint": "Редактировать спринт",
