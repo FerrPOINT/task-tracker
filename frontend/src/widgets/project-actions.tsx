@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
-import { Button, DropdownMenuItem } from '@pdlc/ui/ui'
+import { Button, DropdownMenuItem, usePlatformServices } from '@pdlc/ui/ui'
 import { useNamespaceCatalog } from './namespace-context'
 
 type Project = { key: string; name: string; namespace?: NamespaceLocation }
@@ -46,12 +46,47 @@ export function ProjectActionItems({
     </>
   )
 }
-export function ProjectCardActionItems({ project }: { project: Project & { id: string } }) {
-  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
-    <BoundCardActionItems project={project} />
-  ) : (
-    <ProjectActionItems project={project} />
+function DeleteProjectItem({ onDelete }: { onDelete: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <DropdownMenuItem onClick={onDelete} className="gap-2 text-danger">
+      <Trash2 className="h-4 w-4" />
+      {t('common.delete')}
+    </DropdownMenuItem>
   )
+}
+export function ProjectCardActionItems({
+  project,
+  onDelete,
+}: {
+  project: Project & { id: string }
+  onDelete?: () => void
+}) {
+  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+    <BoundCardActionItems project={project} onDelete={onDelete} />
+  ) : (
+    <>
+      <ProjectActionItems project={project} />
+      {onDelete && <DeleteProjectItem onDelete={onDelete} />}
+    </>
+  )
+}
+export function ProjectCardState({ projectId }: { projectId: string }) {
+  return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+    <BoundCardState projectId={projectId} />
+  ) : null
+}
+function BoundCardState({ projectId }: { projectId: string }) {
+  const catalog = useNamespaceCatalog()
+  const { t } = useTranslation()
+  const matches = catalog.data?.filter(
+    (context) => context.binding.resource.resource_id === projectId,
+  )
+  const context = matches?.length === 1 ? matches[0] : undefined
+  if (catalog.isPending || catalog.isError || !context) return null
+  return context.binding.state === 'archived' ? (
+    <span className="block text-xs text-text-muted">{t('projects.archived')}</span>
+  ) : null
 }
 export function ProjectCardLink({
   project,
@@ -111,8 +146,16 @@ function BoundCardLink({
     </Link>
   )
 }
-function BoundCardActionItems({ project }: { project: Project & { id: string } }) {
+function BoundCardActionItems({
+  project,
+  onDelete,
+}: {
+  project: Project & { id: string }
+  onDelete?: () => void
+}) {
   const catalog = useNamespaceCatalog()
+  const { services } = usePlatformServices()
+  const { t } = useTranslation()
   if (catalog.isPending)
     return <DropdownMenuItem disabled>Проверяем контекст проекта…</DropdownMenuItem>
   if (catalog.isError)
@@ -121,7 +164,36 @@ function BoundCardActionItems({ project }: { project: Project & { id: string } }
     catalog.data?.filter((context) => context.binding.resource.resource_id === project.id) ?? []
   if (matches.length > 1)
     return <DropdownMenuItem disabled>Контекст проекта неоднозначен</DropdownMenuItem>
-  return <ProjectActionItems project={{ ...project, namespace: matches[0]?.binding.namespace }} />
+  const context = matches[0]
+  const admin = services.find((service) => service.key === 'admin-panel')?.ui_url
+  // A confirmed binding makes lifecycle an Admin operation. Tracker's delete
+  // endpoint deliberately rejects it, including archived projects.
+  const manageUrl =
+    context && admin
+      ? withNamespaceLocation(
+          `${admin.replace(/\/+$/, '')}/namespaces/${encodeURIComponent(context.binding.namespace.namespace_id)}`,
+          context.binding.namespace,
+        )
+      : null
+  return (
+    <>
+      <ProjectActionItems project={{ ...project, namespace: context?.binding.namespace }} />
+      {context ? (
+        manageUrl ? (
+          <DropdownMenuItem asChild>
+            <a href={manageUrl}>
+              <Settings aria-hidden className="mr-2 h-4 w-4" />
+              {t('projects.manage')}
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled>{t('projects.managementUnavailable')}</DropdownMenuItem>
+        )
+      ) : (
+        onDelete && <DeleteProjectItem onDelete={onDelete} />
+      )}
+    </>
+  )
 }
 export function ProjectActions({
   project,
