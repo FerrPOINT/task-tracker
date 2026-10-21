@@ -1014,7 +1014,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     );
     let before_pm_recovery = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_pm_recovery = ledger(&db, &names[..names.len() - 1]).await;
+    let ledger_pm_recovery = ledger(&db, &names[..predecessor + 3]).await;
     for entry in ledger_097.as_array().unwrap() {
         assert!(ledger_pm_recovery.as_array().unwrap().contains(entry));
     }
@@ -1030,13 +1030,13 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             .contains("PM recovery history is immutable; destructive rollback is disabled")
     );
     assert_eq!(
-        ledger(&db, &names[..names.len() - 1]).await,
+        ledger(&db, &names[..predecessor + 3]).await,
         ledger_pm_recovery
     );
     assert_eq!(history(&db, &all_tables, false).await, before_pm_recovery);
     let before_catalog = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_catalog = ledger(&db, &names).await;
+    let ledger_catalog = ledger(&db, &names[..predecessor + 4]).await;
     for entry in ledger_pm_recovery.as_array().unwrap() {
         assert!(ledger_catalog.as_array().unwrap().contains(entry));
     }
@@ -1050,11 +1050,31 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             .to_string()
             .contains("project repository associations must be preserved")
     );
-    assert_eq!(ledger(&db, &names).await, ledger_catalog);
+    assert_eq!(ledger(&db, &names[..predecessor + 4]).await, ledger_catalog);
     assert_eq!(history(&db, &all_tables, false).await, before_catalog);
+    let before_retry = history(&db, &all_tables, false).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_retry = ledger(&db, &names).await;
+    for entry in ledger_catalog.as_array().unwrap() {
+        assert!(ledger_retry.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(tables(&db).await, all_tables);
+    assert_eq!(history(&db, &all_tables, false).await, before_retry);
+    assert_eq!(original.snapshot(&db, true).await, business_0033);
+    assert_eq!(scalar_json(&db,
+        "SELECT to_jsonb(count(*)) AS value FROM pg_indexes WHERE schemaname='public' AND indexname IN ('sdlc_pm_bootstrap_retry_original','sdlc_pm_bootstrap_retry_successor')",
+        vec![]).await, json!(2));
+    let error = migration::Migrator::down(&db, Some(1)).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("PM bootstrap retry history is immutable; destructive rollback is disabled")
+    );
+    assert_eq!(ledger(&db, &names).await, ledger_retry);
+    assert_eq!(history(&db, &all_tables, false).await, before_retry);
     let before_rerun = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger(&db, &names).await, ledger_catalog);
+    assert_eq!(ledger(&db, &names).await, ledger_retry);
     assert_eq!(history(&db, &all_tables, false).await, before_rerun);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
     assert_eq!(count(&db, "issues").await, 3);
