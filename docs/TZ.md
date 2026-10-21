@@ -122,9 +122,13 @@ Opt-in Draft -> assigned PM preparation -> full requirements revision -> trusted
 readiness evidence -> exact owner confirmation -> Backlog publication.
 Clarification questions and owner answers are conditional on incomplete or
 contradictory input; a complete brief does not require a question first.
-Backlog is the immutable publication receipt, not the current aggregate stage:
-the same transaction queues Analysis/Ready. UI reads current context and the
-validated Analysis intent; the receipt alone grants no admission or runtime.
+Owner confirmation publishes Backlog/Ready and the unchanged Backlog receipt;
+it does not create an Analysis intent, event, assignment or run. Accepted PM
+completion additionally requires the existing durable terminal/Workflow receipt
+for the exact execution, lease and requirements revision/hash. Backlog alone is
+not proof that PM completed. Same-key replays do not queue Analysis.
+The former same-transaction Backlog-to-Analysis policy and its historical receipts
+remain readable, but are not the current initial PM publication behavior.
 Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
 Strict project membership and central task-owner identity apply to this slice,
 independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL

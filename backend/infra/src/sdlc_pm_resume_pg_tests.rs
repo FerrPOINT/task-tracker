@@ -809,7 +809,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     assert_eq!(closing_lease.lease.version, 5);
     assert_eq!(count(&db, "sdlc_outbox").await, outbox);
     let state = repo.read(task, &owner).await.unwrap();
-    assert_eq!(state.stage, Stage::Analysis);
+    assert_eq!(state.stage, Stage::Backlog);
     assert_eq!(state.status, Some(LifecycleStatus::Ready));
     assert!(matches!(
         repo.execute_verified(
@@ -846,6 +846,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     )
     .await
     .unwrap();
+    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
+    assert_eq!(count(&db, "sdlc_analysis_intents").await, 0);
     assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
     assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;

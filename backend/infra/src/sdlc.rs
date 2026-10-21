@@ -73,6 +73,86 @@ fn state_from(row: QueryResult) -> Result<TaskState, AppError> {
         .map_err(AppError::internal)
 }
 
+/// Synthetic downstream/historical setup only: owner confirmation never queues Analysis.
+#[cfg(test)]
+async fn seed_analysis_fixture(
+    db: &DatabaseConnection,
+    task: Uuid,
+    actor: &Principal,
+) -> AnalysisIntent {
+    let tx = db.begin().await.unwrap();
+    let row = tx
+        .query_one(statement(
+            "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut state = state_from(row).unwrap();
+    assert_eq!(state.stage, Stage::Backlog);
+    assert!(!state.retained_fields.contains_key("lifecycle"));
+    state.stage = Stage::Analysis;
+    assert_eq!(
+        state.context(actor).waiting_reason.as_deref(),
+        Some("queued_for_analysis")
+    );
+    let confirmation = state.confirmations.last().unwrap();
+    let row = tx
+        .query_one(statement(
+            "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let snapshot: domain::sdlc_routing::TaskRoutingSnapshot =
+        serde_json::from_value(row.try_get("", "payload").unwrap()).unwrap();
+    assert_eq!(snapshot.confirmation_id, confirmation.id);
+    assert_eq!(snapshot.requirement_revision, confirmation.revision);
+    assert_eq!(snapshot.content_hash, confirmation.content_hash);
+    let mut intent = app::sdlc::analysis_intent(&state, confirmation, Uuid::new_v4()).unwrap();
+    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
+    exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+        vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),snapshot.snapshot_id.into()]).await.unwrap();
+    exec(&tx, "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+        SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks WHERE task_id=$1 AND pm_execution_id IS NOT NULL",
+        vec![task.into(), json_value(&state).unwrap()]).await.unwrap();
+    exec(
+        &tx,
+        "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+        vec![task.into(), json_value(&state).unwrap()],
+    )
+    .await
+    .unwrap();
+    let status_id = if let Some(status) = state.status {
+        lifecycle::mapped_issue_status(&tx, Stage::Analysis, status)
+            .await
+            .unwrap()
+    } else {
+        tx.query_one(statement(
+            "SELECT id FROM statuses WHERE name='SDLC Analysis' ORDER BY id LIMIT 1",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "id")
+        .unwrap()
+    };
+    lifecycle::project_issue_status(&tx, task, actor, status_id)
+        .await
+        .unwrap();
+    let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
+        "owner_subject":state.owner_subject,"stage":Stage::Analysis,
+        "requirement_revision":intent.requirement_revision,"result":&intent});
+    exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.intent_created',$3)",
+        vec![intent.intent_id.into(),task.into(),payload.into()]).await.unwrap();
+    tx.commit().await.unwrap();
+    intent
+}
+
 impl PostgresSdlcRepository {
     pub fn with_file_storage(mut self, storage: Arc<dyn domain::FileStorage>) -> Self {
         self.file_storage = Some(storage);
@@ -462,15 +542,6 @@ impl PostgresSdlcRepository {
             ],
         )
         .await?;
-        if event_type == "requirements.confirmed" {
-            let intent = Self::current_analysis_intent(tx, state).await?;
-            let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
-                "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
-                "owner_subject":state.owner_subject,"stage":Stage::Analysis,
-                "requirement_revision":intent.requirement_revision,"result":intent});
-            exec(tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.intent_created',$3)",
-                vec![intent.intent_id.into(), task.into(), payload.into()]).await?;
-        }
         Ok(())
     }
 
@@ -555,17 +626,12 @@ impl PostgresSdlcRepository {
                 } else {
                     None
                 };
-                let mut intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
-                if let Some(snapshot) = &routing_snapshot {
-                    intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
-                    if state.draft_flow()?.is_some() {
-                        self.freeze_source(tx, state, &confirmation, snapshot)
-                            .await?;
-                    }
+                if let Some(snapshot) = &routing_snapshot
+                    && state.draft_flow()?.is_some()
+                {
+                    self.freeze_source(tx, state, &confirmation, snapshot)
+                        .await?;
                 }
-                exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-                    vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
-                        confirmation.id.into(), intent.operation_key.clone().into(), json_value(&intent)?, routing_snapshot.map(|s| s.snapshot_id).into()]).await?;
                 "requirements.confirmed"
             }
             SdlcCommand::Evidence(c) => {

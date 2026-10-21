@@ -78,7 +78,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     )
     .await
     .unwrap();
-    let task = f.confirmed("artifact-task", true).await;
+    let task = f.queued_analysis("artifact-task", true).await;
     f.repo
         .lifecycle_command(
             task,

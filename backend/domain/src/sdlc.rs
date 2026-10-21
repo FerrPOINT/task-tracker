@@ -581,6 +581,7 @@ impl TaskState {
             .max();
         self.require_root().is_ok()
             && self.clarifying()
+            && self.current_confirmation().is_none()
             && self.confirmation_revision == Some(revision.revision)
             && !self
                 .questions
@@ -601,9 +602,20 @@ impl TaskState {
                     })
                 })
     }
+    pub fn current_confirmation(&self) -> Option<&Confirmation> {
+        let revision = self.revisions.last()?;
+        self.confirmations.iter().find(|confirmation| {
+            confirmation.task_id == self.task_id
+                && confirmation.owner_subject == self.owner_subject
+                && confirmation.revision == revision.revision
+                && confirmation.content_hash == revision.content_hash
+                && confirmation.stage == Stage::Backlog
+        })
+    }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
             && self.clarifying()
+            && self.current_confirmation().is_none()
             && self
                 .questions
                 .iter()

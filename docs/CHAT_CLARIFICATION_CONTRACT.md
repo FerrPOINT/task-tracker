@@ -354,7 +354,9 @@ return 503, never an empty successful context.
     text, comment, idempotency_key}`. Returns a durable typed answer.
 - `POST /requirements/{revision}/confirm`: `{content_hash,idempotency_key}`.
   Returns the exact durable publication confirmation and `stage: "Backlog"`.
-  Current context is already `Analysis`, waiting reason `queued_for_analysis`.
+  Current context is `Backlog`/Ready; no Analysis intent or automatic start.
+  Accepted PM completion additionally requires the separate exact terminal/Workflow
+  completion receipt. Backlog publication alone is not a completed PM run.
 - `GET /analysis-intent`: strict frozen `AnalysisIntent`; Central service-read
   and fresh explicit project ACL required, PM grants denied. Absent Analysis is
   404; retained missing/inconsistent intent is 409. See [lifecycle](SDLC_LIFECYCLE_V1.md).
@@ -381,7 +383,9 @@ questions/revisions. Readiness evidence needs a separately trusted verifier;
 PM credentials and owner claims cannot mark checks passed. Missing verifier
 contract/configuration fails closed. Confirmation evaluates persisted evidence
 for the exact document hash and revision inside the same transaction as Backlog
-publication, Analysis/Ready intent, idempotency result and both outbox events.
+publication, idempotency result and `requirements.confirmed`. Initial confirmation
+does not create an Analysis intent/event. Completed PM receipt and confirmation
+replays retain the same result and do not queue a later role.
 
 Operational provisioning, machine DTOs and verification evidence details are
 documented here alongside the implementation before handoff.
@@ -580,7 +584,8 @@ outbox event commit together under issue/task locks. Outbox failure rolls back
 the answer/confirmation. Ordinary issue updates, board moves, transitions and
 sprint moves cannot bypass the gate, enforced by a PostgreSQL issue trigger.
 Unconfirmed issues use `SDLC Draft`/`SDLC Clarification`; confirmation moves to
-`Analysis`/Ready and clears sprint assignment, retaining the exact Backlog receipt.
+`Backlog`/Ready and clears sprint assignment, retaining the exact Backlog receipt.
+The previous automatic Analysis publication is historical, not current PM behavior.
 New PM assignments/revisions/questions cannot change the queued revision. Generic
 status/sprint changes remain blocked while queued; dispatch admission is separate.
 History tables reject UPDATE/DELETE;

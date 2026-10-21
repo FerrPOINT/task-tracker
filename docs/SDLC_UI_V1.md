@@ -1,5 +1,16 @@
 # Owner SDLC UI v1
 
+## Current Initial PM Publication Policy (21 October 2026)
+
+Exact owner revision/hash confirmation publishes Backlog/Ready, with no automatic
+Analysis intent/start. The existing Backlog receipt is unchanged. Accepted PM
+completion also requires its separate durable terminal/Workflow receipt; the UI
+must not infer terminal success from stage alone. Fresh Backlog context with no
+intent is valid, not a missing-queue error. Historical Analysis fixtures below
+still test retained readback; they do not describe new confirmation side effects.
+Focused regression: `keeps confirmed requirements at Backlog without inventing
+Analysis or PM completion` in `SdlcPanel.test.tsx`.
+
 ## Merged PDLC Qualification: 15 October 2026
 
 Merged baseline `efe1c0172df953fbcfb221766bd00095f540cedc` includes the Draft

@@ -1,4 +1,5 @@
 use super::*;
+use sea_orm::TransactionTrait;
 
 pub async fn read(client: &Client, url: &str, token: &str, status: u16) -> Value {
     let response = client
@@ -13,7 +14,7 @@ pub async fn read(client: &Client, url: &str, token: &str, status: u16) -> Value
     value
 }
 
-pub async fn confirm(
+pub async fn confirm_and_seed_analysis_fixture(
     db: &DatabaseConnection,
     client: &Client,
     url: &str,
@@ -30,8 +31,8 @@ pub async fn confirm(
         count(db, "issue_status_history").await,
         count(db, "sdlc_task_routing_snapshots").await,
     ];
-    // Fault after intent, consent, aggregate, issue history and command receipt writes.
-    db.execute_unprepared("CREATE FUNCTION test_analysis_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='analysis.intent_created' THEN RAISE EXCEPTION 'SDLC test injected outbox failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_analysis_outbox_failure BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION test_analysis_outbox_failure();").await.unwrap();
+    // Fault after consent, aggregate, issue history and command receipt writes.
+    db.execute_unprepared("CREATE FUNCTION test_analysis_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='requirements.confirmed' THEN RAISE EXCEPTION 'SDLC test injected outbox failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_analysis_outbox_failure BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION test_analysis_outbox_failure();").await.unwrap();
     let confirm_url = format!("{url}/requirements/2/confirm");
     post(client, &confirm_url, owner, command, 409).await;
     assert_eq!(
@@ -53,6 +54,23 @@ pub async fn confirm(
         post(client, &confirm_url, owner, command, 200)
     );
     assert_eq!(first, duplicate);
+    assert_eq!(count(db, "sdlc_analysis_intents").await, before[1]);
+    assert_eq!(count(db, "sdlc_outbox").await, before[2] + 1);
+    read(client, url, owner, 404).await;
+    let context = client
+        .get(format!("{url}/context"))
+        .bearer_auth(owner)
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(context["stage"], "Backlog");
+    assert_eq!(context["waiting_reason"], Value::Null);
+    // Explicit historical fixture for the downstream admission/restart tests below.
+    // This is not a production promotion API or a confirmation side effect.
+    seed_historical_analysis(db, task).await;
     let intent = read(client, url, owner, 200).await;
     assert_eq!(intent["task_id"], task.to_string());
     assert_eq!(intent["confirmation_id"], first["id"]);
@@ -124,7 +142,57 @@ pub async fn confirm(
     );
     assert_eq!(intent, read(client, url, owner, 200).await);
     println!(
-        "ANALYSIS_INTENT rollback/atomic consent+queue/concurrent replay/conflicts/stale/ACL/immutability passed"
+        "BACKLOG confirmation rollback/replay; explicit Analysis fixture ACL/restart/immutability passed"
     );
     (first, intent)
+}
+
+async fn seed_historical_analysis(db: &DatabaseConnection, task: Uuid) {
+    let tx = db.begin().await.unwrap();
+    let row = tx.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT state,pm_execution_id IS NULL AS unreserved FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE", [task.into()])).await.unwrap().unwrap();
+    assert!(row.try_get::<bool>("", "unreserved").unwrap());
+    let mut state: domain::sdlc::TaskState =
+        serde_json::from_value(row.try_get("", "state").unwrap()).unwrap();
+    assert_eq!(state.stage, domain::sdlc::Stage::Backlog);
+    assert!(state.status.is_none());
+    state.stage = domain::sdlc::Stage::Analysis;
+    let row = tx
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+            [task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let snapshot: domain::sdlc_routing::TaskRoutingSnapshot =
+        serde_json::from_value(row.try_get("", "payload").unwrap()).unwrap();
+    let mut intent =
+        app::sdlc::analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4())
+            .unwrap();
+    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
+    tx.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+        [intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json!(intent).into(),snapshot.snapshot_id.into()])).await.unwrap();
+    tx.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+        [task.into(), json!(state).into()],
+    ))
+    .await
+    .unwrap();
+    tx.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
+         SELECT $1,i.id,i.status_id,s.id,i.reporter_id,now() FROM issues i JOIN statuses s ON s.name='SDLC Analysis' WHERE i.id=$2 AND i.status_id<>s.id",
+        [Uuid::new_v4().into(),task.into()])).await.unwrap();
+    tx.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name='SDLC Analysis' ORDER BY id LIMIT 1),sprint_id=NULL WHERE id=$1", [task.into()])).await.unwrap();
+    let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
+        "owner_subject":state.owner_subject,"stage":"Analysis","requirement_revision":intent.requirement_revision,"result":intent});
+    tx.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.intent_created',$3)",
+        [intent.intent_id.into(),task.into(),payload.into()])).await.unwrap();
+    tx.commit().await.unwrap();
 }

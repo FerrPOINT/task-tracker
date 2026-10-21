@@ -241,45 +241,134 @@ impl Fixture {
                 .await
                 .unwrap();
         }
-        self.repo
+        let confirm = SdlcCommand::Confirm {
+            revision: 1,
+            command: ConfirmCommand {
+                content_hash: hash.clone(),
+                idempotency_key: "confirm".into(),
+                expected_routing_policy_version: Some(1),
+            },
+        };
+        let receipt = self
+            .repo
             .execute_verified(
                 task,
                 &self.owner,
-                SdlcCommand::Confirm {
-                    revision: 1,
-                    command: ConfirmCommand {
-                        content_hash: hash.clone(),
-                        idempotency_key: "confirm".into(),
-                        expected_routing_policy_version: Some(1),
-                    },
-                },
-                reservation,
+                confirm.clone(),
+                reservation.clone(),
                 None,
             )
             .await
             .unwrap();
-        if completed {
+        assert_eq!(receipt["stage"], json!("Backlog"));
+        let before_replay = self.snapshot().await;
+        assert_eq!(
             self.repo
-                .complete_pm_draft(
+                .execute_verified(
                     task,
-                    &self.writer,
-                    CompletePmDraft {
-                        contract_version: 1,
-                        fence,
-                        lease_id: lease.lease.lease_id,
-                        lease_version: lease.lease.version,
-                        requirement_revision: 1,
-                        content_hash: hash,
-                        terminal_receipt_ref: "fixture://synthetic-native-terminal".into(),
-                        terminal_receipt_sha256: "a".repeat(64),
-                        workflow_receipt_ref: "fixture://synthetic-workflow-complete".into(),
-                        workflow_receipt_sha256: "b".repeat(64),
-                        idempotency_key: "complete".into(),
-                    },
+                    &self.owner,
+                    confirm.clone(),
+                    reservation.clone(),
+                    None
                 )
                 .await
-                .unwrap();
+                .unwrap(),
+            receipt
+        );
+        assert_eq!(self.snapshot().await, before_replay);
+        let mut duplicate = confirm.clone();
+        if let SdlcCommand::Confirm { command, .. } = &mut duplicate {
+            command.idempotency_key = "duplicate-confirm".into();
         }
+        assert!(matches!(
+            self.repo
+                .execute_verified(task, &self.owner, duplicate, reservation.clone(), None)
+                .await,
+            Err(AppError::Conflict(_))
+        ));
+        let mut changed = confirm.clone();
+        if let SdlcCommand::Confirm { command, .. } = &mut changed {
+            command.content_hash = "f".repeat(64);
+        }
+        assert!(matches!(
+            self.repo
+                .execute_verified(task, &self.owner, changed, reservation.clone(), None)
+                .await,
+            Err(AppError::Conflict(_))
+        ));
+        assert_eq!(self.snapshot().await, before_replay);
+        self.assert_backlog_without_analysis(task).await;
+        if completed {
+            let command = CompletePmDraft {
+                contract_version: 1,
+                fence,
+                lease_id: lease.lease.lease_id,
+                lease_version: lease.lease.version,
+                requirement_revision: 1,
+                content_hash: hash,
+                terminal_receipt_ref: "fixture://synthetic-native-terminal".into(),
+                terminal_receipt_sha256: "a".repeat(64),
+                workflow_receipt_ref: "fixture://synthetic-workflow-complete".into(),
+                workflow_receipt_sha256: "b".repeat(64),
+                idempotency_key: "complete".into(),
+            };
+            let (completion, replayed) = self
+                .repo
+                .complete_pm_draft(task, &self.writer, command.clone())
+                .await
+                .unwrap();
+            assert!(!replayed);
+            let before_replay = self.snapshot().await;
+            let (replayed_completion, replayed) = self
+                .repo
+                .complete_pm_draft(task, &self.writer, command.clone())
+                .await
+                .unwrap();
+            assert!(replayed);
+            assert_eq!(json!(replayed_completion), json!(completion));
+            assert_eq!(
+                self.repo
+                    .execute_verified(task, &self.owner, confirm, reservation, None)
+                    .await
+                    .unwrap(),
+                receipt
+            );
+            let mut duplicate = command;
+            duplicate.idempotency_key = "second-completion".into();
+            assert!(matches!(
+                self.repo
+                    .complete_pm_draft(task, &self.writer, duplicate)
+                    .await,
+                Err(AppError::Conflict(_))
+            ));
+            assert_eq!(self.snapshot().await, before_replay);
+            self.assert_backlog_without_analysis(task).await;
+        }
+        task
+    }
+
+    async fn assert_backlog_without_analysis(&self, task: Uuid) {
+        let state = self.repo.read(task, &self.owner).await.unwrap();
+        assert_eq!(state.stage, Stage::Backlog);
+        assert_eq!(state.status, Some(LifecycleStatus::Ready));
+        assert!(state.questions.is_empty());
+        assert_eq!(state.confirmations.len(), 1);
+        assert!(!state.context(&self.owner).permissions.can_confirm);
+        assert!(matches!(
+            self.repo.analysis_intent(task, &self.owner).await,
+            Err(AppError::NotFound(_))
+        ));
+        let row = self.db.query_one(statement("SELECT
+            (SELECT count(*) FROM sdlc_analysis_intents WHERE task_id=$1) AS intents,
+            (SELECT count(*) FROM sdlc_outbox WHERE task_id=$1 AND event_type='analysis.intent_created') AS events",
+            vec![task.into()])).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "intents").unwrap(), 0);
+        assert_eq!(row.try_get::<i64>("", "events").unwrap(), 0);
+    }
+
+    async fn queued_analysis(&self, key: &str, completed: bool) -> Uuid {
+        let task = self.confirmed(key, completed).await;
+        seed_analysis_fixture(&self.db, task, &self.owner).await;
         task
     }
 
@@ -299,13 +388,49 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
+async fn pm_publication_stops_at_backlog_without_analysis_on_confirmation_completion_or_replay() {
+    let f = Fixture::new().await;
+    let task = f.confirmed("backlog-only", true).await;
+    f.assert_backlog_without_analysis(task).await;
+    let completion = f
+        .repo
+        .read_pm_draft_completion(task, &f.reader)
+        .await
+        .unwrap();
+    assert!(completion.current.is_some());
+    let before = f.snapshot().await;
+    assert!(
+        f.repo
+            .read_delivery_candidates(&f.reader, f.query(None, 100))
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(matches!(
+        f.repo
+            .lifecycle_command(
+                task,
+                &f.writer,
+                LifecycleCommand::EnsureQueued {
+                    idempotency_key: "must-not-queue-analysis".into()
+                }
+            )
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(f.snapshot().await, before);
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
 async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
     let mut f = Fixture::new().await;
     let mut expected = vec![];
     for key in ["first", "second", "third"] {
-        expected.push(f.confirmed(key, true).await);
+        expected.push(f.queued_analysis(key, true).await);
     }
-    let pending = f.confirmed("consent-without-completion", false).await;
+    let pending = f.queued_analysis("consent-without-completion", false).await;
     f.draft("unconfirmed", Some(DraftFlow::SingleTaskV1)).await;
     f.draft("legacy", None).await;
     expected.sort();

@@ -165,10 +165,8 @@ struct OriginalCommand {
     result: Json,
 }
 
-// Only the legacy confirmation tail needs the predecessor selector. Current finish's
-// current_analysis_intent reads the096 inventory/new FK columns, absent on095.
-// This fixture writes the same legacy state, projection, original operation and two
-// outbox events in ONE task-locked transaction; no new-schema compatibility facade.
+// Historical095 confirmation queued Analysis. This fixture explicitly reconstructs
+// that predecessor policy; the current PM producer stops at Backlog instead.
 async fn finish_predecessor_confirmation(
     tx: &DatabaseTransaction,
     state: &TaskState,
@@ -280,6 +278,23 @@ async fn predecessor_command(
         result,
     };
     if event == "requirements.confirmed" {
+        // Test-only historical intent, not a current confirmation side effect.
+        state.stage = Stage::Analysis;
+        let confirmation = state.confirmations.last().unwrap();
+        let row = tx
+            .query_one(statement(
+                "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let routing: domain::sdlc_routing::TaskRoutingSnapshot =
+            parse(row.try_get("", "payload").unwrap());
+        let mut intent = app::sdlc::analysis_intent(&state, confirmation, Uuid::new_v4()).unwrap();
+        intent.workflow = routing.policy.routes.analyst.workflow_key;
+        exec(&tx,"INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+            vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),routing.snapshot_id.into()]).await.unwrap();
         finish_predecessor_confirmation(&tx, &state, &original).await;
     } else {
         PostgresSdlcRepository::finish(
