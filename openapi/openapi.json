@@ -3935,6 +3935,139 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "retry_pm_bootstrap",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapRetryCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact original-key replay; no dispatch authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "pm_bootstrap_retry_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-draft-input": {
       "get": {
         "tags": [
@@ -10641,6 +10774,70 @@
           }
         }
       },
+      "BootstrapRetryCommand": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "lease_id",
+          "expected_lease_version",
+          "creation_operation_id",
+          "previous_session_run_id",
+          "next_session_run_id",
+          "previous_native_run_ref",
+          "chat_id",
+          "barrier_id",
+          "predecessor",
+          "idempotency_key"
+        ],
+        "properties": {
+          "barrier_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "creation_operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "next_session_run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "predecessor": {
+            "$ref": "#/components/schemas/WorkflowBootstrapPredecessor"
+          },
+          "previous_native_run_ref": {
+            "type": "string"
+          },
+          "previous_session_run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "BurndownPointResponse": {
         "type": "object",
         "required": [
@@ -12624,6 +12821,35 @@
             }
           }
         }
+      },
+      "FinalizedBootstrapBinding": {
+        "type": "object",
+        "required": [
+          "bind_operation_key",
+          "bind_request_sha256",
+          "binding_ref",
+          "session_run_id",
+          "native_run_ref"
+        ],
+        "properties": {
+          "bind_operation_key": {
+            "type": "string"
+          },
+          "bind_request_sha256": {
+            "type": "string"
+          },
+          "binding_ref": {
+            "type": "string"
+          },
+          "native_run_ref": {
+            "type": "string"
+          },
+          "session_run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "HeartbeatAnalysis": {
         "type": "object",
@@ -20503,6 +20729,45 @@
             "type": "string"
           }
         }
+      },
+      "WorkflowBootstrapPredecessor": {
+        "type": "object",
+        "description": "Workflow's immutable local cursor, explicitly distinct from canonical revision 1.",
+        "required": [
+          "task_id",
+          "assignment_operation_key",
+          "assignment_revision",
+          "attempt",
+          "finalized_binding"
+        ],
+        "properties": {
+          "assignment_operation_key": {
+            "type": "string"
+          },
+          "assignment_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "finalized_binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FinalizedBootstrapBinding"
+              }
+            ]
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "WorklogListResponse": {
         "type": "object",
