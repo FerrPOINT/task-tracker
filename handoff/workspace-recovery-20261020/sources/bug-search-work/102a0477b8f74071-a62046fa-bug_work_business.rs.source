@@ -1,0 +1,591 @@
+//! Real SQL owner boundary; external CI/runtime observations are explicitly synthetic.
+use super::work::{claim, consent, picked};
+use super::*;
+use app::{bug_work::BugWorkRepository, bug_work_business::*};
+use domain::{bug_search_source::*, bug_work::*, bug_work_business::*, bug_work_delivery::*};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+struct Reader {
+    proof: Mutex<BugWorkDeliveryProof>,
+    calls: AtomicUsize,
+}
+#[async_trait::async_trait]
+impl BugWorkDeliveryReader for Reader {
+    async fn read(
+        &self,
+        c: Uuid,
+        t: &str,
+        l: &BugWorkDeliveryLocator,
+    ) -> Result<BugWorkDeliveryProof, AppError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let mut p = self.proof.lock().unwrap().clone();
+        assert_eq!(p.configuration_id, c);
+        assert_eq!(p.target_ref, t);
+        assert_eq!(p.operation.operation_key, l.operation_key);
+        p.observed_at = chrono::Utc::now();
+        if let Some(d) = p.delivery.as_mut() {
+            d.serving_identity.observed_at = p.observed_at;
+        }
+        Ok(p)
+    }
+}
+fn delivered(ctx: &BugBusinessContext) -> BugWorkDeliveryProof {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../domain/tests/fixtures/bug-work-delivery-v1.json"
+    ))
+    .unwrap();
+    let mut p: BugWorkDeliveryProof = serde_json::from_value(fixture["proof"].clone()).unwrap();
+    let s = &ctx.state;
+    let g = &s.assignment;
+    p.observed_at = chrono::Utc::now();
+    p.configuration_id = ctx.configuration().unwrap();
+    p.repository_id = g.source_identity.repository_id.unwrap();
+    p.project = BugWorkDeliveryProject {
+        tracker_instance_id: g.tracker_instance_uuid,
+        project_id: g.project_id,
+    };
+    p.bug_work = BugWorkDeliveredBinding {
+        bug_id: g.bug_id,
+        assignment_id: g.assignment_id,
+        assignment_sha256: s.assignment_sha256.clone(),
+        fence: g.fence,
+        owner_subject: g.owner_subject.clone(),
+        runtime_binding_sha256: app::bug_search::canonical_hash(s.binding.as_ref().unwrap())
+            .unwrap(),
+        source_context_sha256: g.origin.as_ref().unwrap().source_context_sha256.clone(),
+        verification_basis_sha256: g.verification_basis_sha256.clone(),
+        canonical_basis_sha256: g.canonical_basis_sha256.clone(),
+        base_commit_sha: g.verification_basis.checked_version.clone(),
+        candidate_commit_sha: "b".repeat(40),
+    };
+    p.delivery.as_mut().unwrap().serving_identity.observed_at = p.observed_at;
+    p
+}
+async fn setup(f: &Fixture) -> (Arc<PostgresBugSearchRepository>, BugWorkState) {
+    let seed = f.execution(1, true, false).await;
+    // Clone the actual seed's immutable identity. accepted_snapshot() mints a
+    // different agent UUID, while INSERT SELECT below retains the seed agent.
+    let seed_row =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT snapshot,agent_id FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            [seed.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut original: BugSearchSnapshot = serde_json::from_value(
+        seed_row
+            .try_get::<serde_json::Value>("", "snapshot")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        original.agent_id,
+        seed_row.try_get::<Uuid>("", "agent_id").unwrap()
+    );
+    let source = BugTargetSourceIdentity {
+        contract_version: 1,
+        schema: "forge/source-snapshot/v1".into(),
+        producer_version: "test-owner".into(),
+        project: BugTargetSourceProject {
+            tracker_instance_id: f.config.tracker_instance_uuid,
+            project_id: f.project,
+        },
+        configuration_id: Uuid::new_v4(),
+        repository_id: Uuid::new_v4(),
+        branch_ref: "refs/heads/main".into(),
+        observed_head_sha: "a".repeat(40),
+        clone_url_sha256: "d".repeat(64),
+    };
+    original.targets[0].source = Some(source.clone());
+    let id = Uuid::new_v4();
+    sql(&f.db,"INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,workflow_receipt,expires_at,capacity_held) SELECT $2,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,$3,$4,policy_revision,99,machine_subject,$5,admission_state,workflow_receipt,expires_at,false FROM sdlc_bug_search_executions WHERE execution_id=$1",
+        vec![seed.into(),id.into(),app::bug_search::canonical_hash(&original).unwrap().into(),serde_json::to_value(&original).unwrap().into(),Uuid::new_v4().into()]).await;
+    let actor = machine(&f.config.fleet_subject);
+    let mut finding = command(id, "business:source");
+    finding.expected_fence = 99;
+    finding.source_identity.repository_id = Some(source.repository_id);
+    f.repo.register(f.project, &actor, finding).await.unwrap();
+    let fleet = Uuid::new_v4();
+    let repo = Arc::new(
+        f.reopened()
+            .await
+            .with_intake_fleet_instance(fleet)
+            .unwrap(),
+    );
+    let c = claim(fleet, Uuid::new_v4(), "business:claim", 1);
+    consent(&repo, f.project, &actor, &c, 0, true).await;
+    let state = picked(
+        &repo
+            .claim_work(f.project, c.worker_runtime.agent_id, &actor, c)
+            .await
+            .unwrap()
+            .0,
+    )
+    .unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../domain/tests/fixtures/bug-work-delivery-v1.json"
+    ))
+    .unwrap();
+    let binding: BugWorkRuntimeBinding =
+        serde_json::from_value(fixture["state"]["binding"].clone()).unwrap();
+    let bound = repo
+        .bind_work(
+            f.project,
+            state.assignment.assignment_id,
+            &actor,
+            BindBugWork {
+                idempotency_key: "business:bind".into(),
+                expected_fence: state.assignment.fence,
+                binding,
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    (repo, picked(&bound).unwrap())
+}
+async fn verification(
+    f: &Fixture,
+    state: &BugWorkState,
+    proof: &BugWorkDeliveryProof,
+    verdict: &str,
+) -> Uuid {
+    let g = &state.assignment;
+    let mut s = accepted_snapshot(f, 1);
+    let delivery = proof.delivery.as_ref().unwrap();
+    s.kind = BugSearchPurpose::Verification;
+    s.mode = BugSearchMode::Qa;
+    s.bug_id = Some(g.bug_id);
+    s.owner_subject = g.owner_subject.clone();
+    s.expected_fixed_deployment_ref = Some(delivery.delivery_ref.clone());
+    let mut basis = serde_json::to_value(&g.verification_basis).unwrap();
+    basis["source"] = serde_json::to_value(&g.source_identity).unwrap();
+    basis["source_identity"] = json!(g.source_sha256);
+    s.verification_basis = Some(serde_json::from_value(basis.clone()).unwrap());
+    let original = f
+        .repo
+        .verification_basis(
+            f.project,
+            g.bug_id,
+            &machine(&f.config.fleet_subject),
+            "owner",
+        )
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(original.report).unwrap(), basis);
+    let source = BugTargetSourceIdentity {
+        contract_version: 1,
+        schema: "forge/source-snapshot/v1".into(),
+        producer_version: "test-owner".into(),
+        project: BugTargetSourceProject {
+            tracker_instance_id: g.tracker_instance_uuid,
+            project_id: g.project_id,
+        },
+        configuration_id: proof.configuration_id,
+        repository_id: proof.repository_id,
+        branch_ref: "refs/heads/main".into(),
+        observed_head_sha: proof.bug_work.candidate_commit_sha.clone(),
+        clone_url_sha256: "d".repeat(64),
+    };
+    s.targets[0].source = Some(source);
+    s.targets[0].commit_sha = proof.bug_work.candidate_commit_sha.clone();
+    s.targets[0].target_ref = Some(proof.target_ref.clone());
+    s.targets[0].deployment_ref = Some(delivery.delivery_ref.clone());
+    app::bug_search_verification::require_basis(&s).unwrap();
+    let id = Uuid::new_v4();
+    let hash = app::bug_search::canonical_hash(&s).unwrap();
+    let runtime = BugRuntimeObservation {
+        contract_version: 1,
+        execution_id: id,
+        agent_id: s.agent_id,
+        session_id: Uuid::new_v4(),
+        session_run_id: Uuid::new_v4(),
+        hermes_run_ref: format!("hermes:verified:{id}"),
+        terminal_status: BugRuntimeTerminalStatus::Succeeded,
+        observed_at: chrono::Utc::now(),
+        observation_source: None,
+    };
+    let result = json!({"coverage":"complete","findings":[],"verification":{"bug_id":g.bug_id,"basis_sha256":app::bug_search::canonical_hash(&basis).unwrap(),"delivery_ref":delivery.delivery_ref,"verdict":verdict,"actual":"Original scenario checked on exact B","evidence_refs":["evidence:scenario"]}});
+    let mut target = serde_json::to_value(delivery).unwrap();
+    target["targetUrl"] = json!("https://qa.example.test/");
+    let observed = json!({"schema":"forge/delivered-target/v1","producerVersion":"test-owner","project":proof.project,"configurationId":proof.configuration_id,"repositoryId":proof.repository_id,"environmentId":proof.environment_id,"targetRef":proof.target_ref,"status":"confirmed","blockedReasons":[],"target":target});
+    let workflow = json!({"contract_version":1,"state":"completed","phase_index":3,"execution_id":id,"snapshot_sha256":hash,"session_id":runtime.session_id,"session_run_id":runtime.session_run_id,"hermes_run_ref":runtime.hermes_run_ref,"result":result,"result_qualification":"qa_same_version","target_observations":{"before":[observed.clone()],"after":[observed]}});
+    let fence =
+        f.db.query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT max(fence)+1 AS fence FROM sdlc_bug_search_executions",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "fence")
+        .unwrap();
+    let result_hash = app::bug_search::canonical_hash(&result).unwrap();
+    let terminal = BugSearchTerminalReceipt {
+        contract_version: 1,
+        operation_id: Uuid::new_v4(),
+        tracker_instance_id: g.tracker_instance_id.clone(),
+        project_id: g.project_id,
+        execution_id: id,
+        fence,
+        runtime_observation: runtime,
+        custody_released: true,
+        result_sha256: Some(result_hash.clone()),
+        result_available: true,
+        accepted_at: chrono::Utc::now(),
+    };
+    sql(&f.db,"INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,workflow_receipt,expires_at,capacity_held,terminal_receipt,bug_id,expected_delivery_ref) VALUES($1,$2,$3,$4,$5,$6,'verification',$7,$8,1,$13,$9,$10,'admitted',$11,now()+interval '1 hour',false,$12,$14,$15)",
+        vec![id.into(),g.tracker_instance_id.clone().into(),g.tracker_instance_uuid.into(),g.project_id.into(),g.owner_subject.clone().into(),s.agent_id.into(),hash.into(),serde_json::to_value(s).unwrap().into(),f.config.fleet_subject.clone().into(),Uuid::new_v4().into(),workflow.clone().into(),serde_json::to_value(terminal).unwrap().into(),fence.into(),g.bug_id.into(),delivery.delivery_ref.clone().into()]).await;
+    sql(&f.db,"INSERT INTO sdlc_bug_search_results(execution_id,project_id,result_sha256,result,workflow_receipt_sha256,workflow_receipt) VALUES($1,$2,$3,$4,$5,$6)",vec![id.into(),g.project_id.into(),result_hash.into(),result.into(),app::bug_search::canonical_hash(&workflow).unwrap().into(),workflow.into()]).await;
+    id
+}
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn business105_original_candidate_cas_revoke_verdict_and_atomic_workflow_wip_history() {
+    let f = Fixture::new().await;
+    let (repo, state) = setup(&f).await;
+    let actor = machine(&f.config.fleet_subject);
+    let id = state.assignment.assignment_id;
+    let bug = state.assignment.bug_id;
+    let origin = repo.work_origin(f.project, id, &actor).await.unwrap();
+    let ctx = BugBusinessContext {
+        state: state.clone(),
+        source: origin.source_context,
+        candidate: None,
+        candidate_sha256: None,
+    };
+    let full = delivered(&ctx);
+    let mut accepted = full.clone();
+    accepted.artifact = None;
+    accepted.delivery = None;
+    accepted.status = BugWorkDeliveryStatus::Unavailable;
+    accepted.blocked_reasons = vec!["pipeline_pending".into()];
+    let locator = BugWorkDeliveryLocator {
+        operation_key: accepted.operation.operation_key.clone(),
+        request_sha256: accepted.operation.request_sha256.clone(),
+        assignment_id: id,
+        assignment_sha256: state.assignment_sha256.clone(),
+        expected_fence: state.assignment.fence,
+        candidate_commit_sha: accepted.bug_work.candidate_commit_sha.clone(),
+    };
+    let pin = PinBugWorkCandidate {
+        contract_version: 1,
+        idempotency_key: "business:pin".into(),
+        expected_candidate_revision: 0,
+        target_ref: accepted.target_ref.clone(),
+        locator,
+    };
+    let reader = Arc::new(Reader {
+        proof: Mutex::new(accepted),
+        calls: AtomicUsize::new(0),
+    });
+    let service = BugWorkBusinessService {
+        repository: repo.clone(),
+        reader: Some(reader.clone()),
+    };
+    let first = service
+        .pin(f.project, id, &actor, pin.clone())
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(f.count("sdlc_bug_candidates").await, 1);
+    // A project-wide QA target may be legitimate for a different repository;
+    // it must not authorize this original repository's candidate.
+    let policy = BugSearchPolicy {
+        enabled: false,
+        mode: BugSearchMode::Qa,
+        targets: vec![
+            BugPolicyTarget {
+                repository_ref: ctx.source.targets[0].repository_ref.clone(),
+                branch_ref: "refs/heads/main".into(),
+                target_ref: Some("qa:only-original-repository".into()),
+            },
+            BugPolicyTarget {
+                repository_ref: "repo:other".into(),
+                branch_ref: "refs/heads/main".into(),
+                target_ref: Some(pin.target_ref.clone()),
+            },
+        ],
+        scope: ctx.source.scope.clone(),
+        excluded_paths: ctx.source.excluded_paths.clone(),
+        interval_minutes: 60,
+    };
+    repo.apply_policy(
+        f.project,
+        &actor,
+        ApplyBugSearchPolicy {
+            idempotency_key: "business:qa-policy".into(),
+            owner_subject: "owner".into(),
+            expected_revision: 0,
+            desired_revision: 1,
+            policy: policy.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    let mut cross_repository = pin.clone();
+    cross_repository.idempotency_key = "business:wrong-repository-target".into();
+    cross_repository.expected_candidate_revision = 1;
+    assert!(matches!(
+        service.pin(f.project, id, &actor, cross_repository).await,
+        Err(AppError::Forbidden)
+    ));
+    let mut source_only = policy;
+    source_only.mode = BugSearchMode::SourceOnly;
+    source_only.targets.truncate(1);
+    source_only.targets[0].target_ref = None;
+    repo.apply_policy(
+        f.project,
+        &actor,
+        ApplyBugSearchPolicy {
+            idempotency_key: "business:source-policy".into(),
+            owner_subject: "owner".into(),
+            expected_revision: 1,
+            desired_revision: 2,
+            policy: source_only,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        repo.business_operation(f.foreign, &pin.idempotency_key, &actor)
+            .await
+            .is_err()
+    );
+    assert!(
+        repo.business_operation(f.project, &pin.idempotency_key, &machine("foreign"))
+            .await
+            .is_err()
+    );
+    let mut bracket = pin.clone();
+    bracket.idempotency_key = "business:owner-during-http".into();
+    bracket.expected_candidate_revision = 1;
+    assert!(matches!(
+        repo.begin_pin(f.project, id, &actor, &bracket)
+            .await
+            .unwrap(),
+        BusinessBegin::Observe(_)
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(matches!(
+        repo.commit_pin(f.project, id, &actor, bracket, full.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert_eq!(f.count("sdlc_bug_candidates").await, 1);
+    let mut left = pin.clone();
+    left.idempotency_key = "business:race:left".into();
+    left.expected_candidate_revision = 1;
+    let mut right = left.clone();
+    right.idempotency_key = "business:race:right".into();
+    let second_repo = Arc::new(
+        f.reopened()
+            .await
+            .with_intake_fleet_instance(state.assignment.worker_runtime.fleet_instance_id)
+            .unwrap(),
+    );
+    let second = BugWorkBusinessService {
+        repository: second_repo.clone(),
+        reader: Some(reader.clone()),
+    };
+    let (a, b) = tokio::join!(
+        service.pin(f.project, id, &actor, left),
+        second.pin(f.project, id, &actor, right)
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert_eq!(f.count("sdlc_bug_candidates").await, 2);
+    assert_eq!(
+        serde_json::to_value(
+            service
+                .pin(f.project, id, &actor, pin.clone())
+                .await
+                .unwrap()
+                .0
+        )
+        .unwrap(),
+        serde_json::to_value(&first).unwrap()
+    );
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let before = reader.calls.load(Ordering::SeqCst);
+    assert!(
+        service
+            .pin(f.project, id, &actor, pin.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    assert_eq!(before, reader.calls.load(Ordering::SeqCst));
+    let mut fresh = pin.clone();
+    fresh.idempotency_key = "business:revoked".into();
+    fresh.expected_candidate_revision = 2;
+    assert!(matches!(
+        service.pin(f.project, id, &actor, fresh).await,
+        Err(AppError::Forbidden)
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    *reader.proof.lock().unwrap() = full.clone();
+    let issue =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT status_id,updated_at FROM issues WHERE id=$1",
+            [bug.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let from: Uuid = issue.try_get("", "status_id").unwrap();
+    let to =
+        f.db.query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT id,name FROM statuses WHERE is_closed LIMIT 1",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let target: Uuid = to.try_get("", "id").unwrap();
+    let name: String = to.try_get("", "name").unwrap();
+    sql(&f.db,"INSERT INTO workflow_transitions(id,from_status_id,to_status_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",vec![Uuid::new_v4().into(),from.into(),target.into()]).await;
+    sql(
+        &f.db,
+        "UPDATE boards SET columns=$2 WHERE project_id=$1",
+        vec![
+            f.project.into(),
+            json!([{"id":target,"name":name,"category":"Done","wip_limit":0,"position":0}]).into(),
+        ],
+    )
+    .await;
+    let passed = verification(&f, &state, &full, "passed").await;
+    let inconclusive = verification(&f, &state, &full, "inconclusive").await;
+    let failed = verification(&f, &state, &full, "failed").await;
+    let c = ApplyBugWorkVerification {
+        contract_version: 1,
+        idempotency_key: "business:verify".into(),
+        expected_candidate_revision: 2,
+        verification_execution_id: passed,
+        expected_status_id: from,
+        expected_updated_at: issue
+            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "updated_at")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+        target_status_id: target,
+    };
+    let history = f.count("issue_status_history").await;
+    for execution in [passed, inconclusive, failed] {
+        let mut bad = c.clone();
+        bad.verification_execution_id = execution;
+        assert!(service.apply(f.project, bug, &actor, bad).await.is_err());
+    }
+    assert_eq!(f.count("issue_status_history").await, history);
+    sql(
+        &f.db,
+        "UPDATE boards SET columns=$2 WHERE project_id=$1",
+        vec![
+            f.project.into(),
+            json!([{"id":target,"name":name,"category":"Done","wip_limit":null,"position":0}])
+                .into(),
+        ],
+    )
+    .await;
+    let mut changed_generation = full.clone();
+    changed_generation.delivery.as_mut().unwrap().generation = "999".into();
+    *reader.proof.lock().unwrap() = changed_generation;
+    assert!(
+        service
+            .apply(f.project, bug, &actor, c.clone())
+            .await
+            .is_err()
+    );
+    *reader.proof.lock().unwrap() = full.clone();
+    let mut changed_issue = c.clone();
+    changed_issue.expected_updated_at -= chrono::Duration::microseconds(1);
+    assert!(
+        service
+            .apply(f.project, bug, &actor, changed_issue)
+            .await
+            .is_err()
+    );
+    assert_eq!(f.count("issue_status_history").await, history);
+    // Pin a replacement candidate; an old verification cannot cross its revision/time fence.
+    let mut rework = pin.clone();
+    rework.expected_candidate_revision = 2;
+    rework.idempotency_key = "business:rework".into();
+    service.pin(f.project, id, &actor, rework).await.unwrap();
+    let mut stale = c.clone();
+    stale.expected_candidate_revision = 3;
+    assert!(
+        service
+            .apply(f.project, bug, &actor, stale.clone())
+            .await
+            .is_err()
+    );
+    stale.verification_execution_id = verification(&f, &state, &full, "passed").await;
+    let mut other = stale.clone();
+    other.idempotency_key = "business:verify:race".into();
+    let (one, two) = tokio::join!(
+        service.apply(f.project, bug, &actor, stale.clone()),
+        second.apply(f.project, bug, &actor, other.clone())
+    );
+    assert_eq!(usize::from(one.is_ok()) + usize::from(two.is_ok()), 1);
+    let (winning, r) = if let Ok((r, _)) = one {
+        (stale, r)
+    } else {
+        (other, two.unwrap().0)
+    };
+    assert_eq!(f.count("issue_status_history").await, history + 1);
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(
+        service
+            .apply(f.project, bug, &actor, winning)
+            .await
+            .unwrap()
+            .1
+    );
+    assert_eq!(
+        serde_json::to_value(
+            repo.business_operation(f.project, "business:pin", &actor)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(first).unwrap()
+    );
+    assert!(matches!(
+        r.outcome,
+        BugBusinessOutcome::VerificationApplied { .. }
+    ));
+    drop(service);
+    drop(second);
+    drop(repo);
+    drop(second_repo);
+    f.close().await;
+}

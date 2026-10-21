@@ -1,0 +1,1558 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 61d0d97..31d2dec 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,14 @@
+ 
+ ## [Unreleased]
+ 
++- Поиск задач использует Base ListPage/FormField/Select/Tabs и общие resource
++  states без локальных карточек фильтров и размеров controls. URL сохраняет
++  фильтры, сортировку, pagination, историю и внешний context/hash; reset удаляет
++  только параметры поиска. 403/404 скрывают cached данные, временная ошибка
++  refresh оставляет строки с partial-error. Ошибки справочников не подменяют
++  успешные результаты поиска; JQL validation связана с полем без retry-loop.
++  Пустая последующая страница сохраняет переход назад. API/auth/schema неизменны.
++
+ - Создание задачи использует Base FormPage/FormField и защиту несохранённых
+   изменений. Значения custom fields и назначение сохраняются отдельно по проектам
+   при переключении и Back/Forward; refetch не снимает исполнителя автоматически.
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index a403a44..19dcc9d 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -304,3 +304,47 @@ success navigation и required/help/error semantics всех5 custom control typ
+ actual-image/SSO/role acceptance и не новая README gallery. Native backend gate
+ не повторялся для frontend-only scope; выпускная приёмка полного продукта
+ остаётся обязательной. Default integration/runtime pins/mirror не меняются.
++
++## 2026-10-03: Search Source Checkpoint
++
++Parent: `4785447d9b428803395e3a43bbda6b1d49cbb0c7`; Base:
++`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`. Search использует ListPage,
++FormField/Select/Tabs, Base URL helper/sort codec и ResourceStateView.
++Result entities/columns, requests, 350 ms debounce и 26-row sentinel при page25
++остаются продуктовым кодом. JQL draft выполняется только по submit.
++
++Unit regressions покрывают terminal cache hiding, partial/retry, JQL linked error,
++sort bounds, URL/hash/history/reset, independent directories и empty later page.
++Browser regression проверяет simple/JQL, три темы и десять shell widths,
++wide geometry/gap, targets40/44, long result titles/names, direct/reload и main axe.
++Дополнительные fixtures покрывают URL history, cached503/recovery/403 и cold
++400/403/404/422/503. Штатная search retry policy сохранена.
++
++Preflight browser завершился24/25: Search cases прошли, старый create theme case
++упал во время перехода127.0.0.1 на canonical localhost. Причина гонки inferred
++из auth normalization и момента localStorage write; fixture теперь ждёт ready
++form на canonical origin перед выбором theme, product auth не менялся.
++Визуальная проверка preflight выявила fragment второй строки result title:
++clamp перенесён с padded link на внутренний span, а link сохранил Base target.
++Результаты повторного browser/source gate фиксируются отдельными receipts.
++
++Corrected browser прошёл25/25, но визуальная проверка показала premature ellipsis
++после пробела перед длинным unbroken token. Desktop теперь использует nowrap
++ellipsis на всю ширину link, mobile сохраняет2 строки; browser assertion проверяет
++также25 title spans, их ширину и desktop white-space. Search labels приведены к
++обычному регистру; JQL hint содержит поддерживаемые domain fields вместо описания
++функции. Полный final browser после визуальной корректировки прошёл25/25:
++0 unexpected/skipped/flaky,325 PNG, из них67 Search (60 geometry и7 state/history).
++Final dark1920 simple/JQL и light375 simple просмотрены визуально; premature
++ellipsis и обрезанные фрагменты не наблюдаются на этих кадрах. Main axe на375/1920
++прошёл без violations. Это не browser проверка всего16-pattern route manifest.
++
++Final evidence: `task-search-base-final-browser.json` и одноимённая PNG directory,
++`task-search-base-source-final-verification.json` с12 source gates и hashes overlay;
++после commit отдельный `task-search-base-committed-source-verification.json`
++сверяет source delta, installed Base fingerprint и capture hashes/dimensions.
++Preflight/corrected browser и failed focused unit reports сохранены отдельно.
++
++API/OIDC mocked; это не actual-image/SSO/role acceptance и не README gallery.
++Backend/OpenAPI/locks/Base pin/schema не меняются; native gate не повторяется
++для frontend-only delta. Полная release приёмка, default и mirror остаются нужны.
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 4cf9cff..2a0198a 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -5,7 +5,11 @@ Route patterns, роли, fixtures и обязательные acceptance states
+ [ui-routes.json](ui-routes.json). Это целевая матрица приёмки, а не доказательство
+ реализации всех состояний. Release acceptance остаётся `pending`.
+ 
+-Текущий source reconciliation: `e49bfdde68928c3fd5def877efcbd04f9cdf8d92`,
++Текущий create/search source checkpoint: parent
++`4785447d9b428803395e3a43bbda6b1d49cbb0c7`, Base
++`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`.
++[Проверки и ограничения](UI_ACCEPTANCE_EVIDENCE.md).
++Исторический source reconciliation: `e49bfdde68928c3fd5def877efcbd04f9cdf8d92`,
+ Base `6f63595a891f78b96b665889f80e6eb5cf34381a`.
+ [Проверки и оставшаяся приёмка](uiux-source-evidence-2026-10-02.md).
+ Предыдущие source checkpoints ниже исторические, не доказательства текущих images.
+@@ -65,6 +69,16 @@ Base `6f63595a891f78b96b665889f80e6eb5cf34381a`.
+   Base Tabs устраняет duplicate history callbacks pointer/focus; blocked navigation
+   с несохранёнными настройками не отмечает уведомление прочитанным преждевременно.
+ 
++Search использует Base ListPage/FormField/Select/Tabs, URL helper и sort codec.
++Simple search сохраняет debounce и API Title-Case priority; JQL выполняется
++по submit и восстанавливается из истории. Reset сохраняет внешний query/hash.
++403/404 скрывают cached строки/filters; retryable refresh оставляет partial-error.
++Ошибка optional project/users source не скрывает успешные результаты поиска.
++Controls используют Base targets, обрезка длинного summary применяется к тексту,
++не к padded clickable target; полное имя доступно assistive technology и tooltip.
++Empty later page сохраняет pagination для возврата к предыдущим результатам.
++Source regression не заменяет actual-image/SSO/role/README acceptance.
++
+ ## Exceptions
+ 
+ Нет согласованных исключений из Base стандарта. Остаточная legacy-реализация ниже
+@@ -119,7 +133,7 @@ notifications page проверены в трёх темах на десяти 
+ Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+ 
+ 1. Мигрировать остальные list/form/audit/log compositions: board,
+-   backlog, trash, settings, search, reports и admin. Для create завершить
++   backlog, trash, settings, reports и admin. Для create и search завершить
+    actual-image/role/SSO приёмку после source regression checkpoint.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+diff --git a/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+index 663cda5..6a67ec8 100644
+--- a/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
++++ b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+@@ -43,8 +43,20 @@ draft persistence в browser storage. `project_key` остаётся URL-кон
+ focus tests, source browser матрица, build/lint/installed gate и затем no-mock
+ image/role/SSO приёмка. Эта стадия не интегрирует default/runtime pins или mirror.
+ 
+-1. Завершить Base compositions на board, backlog, trash, settings, search,
+-   reports, admin и create. Общие list/form/detail patterns уже внедрённых
++### Search Source Step
++
++Search перенесён на Base ListPage/FormField/Select/Tabs и общий URL helper.
++Нет локальных filter cards, h1/action composition и control-size overrides.
++Sort ограничен codec; reset сохраняет внешний query/hash; JQL остаётся submit-only.
++Terminal states скрывают cached данные, partial-error сохраняет результаты;
++ошибки optional directories обрабатываются независимо. Empty later page не
++теряет возврат к предыдущим результатам. Unit/source browser evidence хранится
++в [UI Acceptance Evidence](../UI_ACCEPTANCE_EVIDENCE.md). Create и search требуют
++отдельной actual-image/SSO/role приёмки; frontend-only migration не меняет API/DB.
++
++1. Завершить Base compositions на board, backlog, trash, settings,
++   reports и admin. Create/search source compositions внедрены, но общие
++   list/form/detail patterns уже внедрённых
+    экранов не считаются доказательством полного route coverage.
+ 2. Завершить независимые состояния вспомогательных issue sources: comments,
+    worklogs, labels, links, attachments, custom fields и engagement.
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index e986ea1..4bed1fc 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -166,13 +166,15 @@ test.describe('Base issue create', () => {
+   }, testInfo) => {
+     test.setTimeout(180_000)
+     await installCreateFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+     const failures: string[] = []
+     page.on('pageerror', (error) => failures.push(error.message))
+     page.on('console', (message) => {
+       if (message.type() === 'error') failures.push(message.text())
+     })
+     for (const theme of ['dark', 'gray', 'light']) {
+-      await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
++      await page.goto(`${app}/issues/create?project_key=DEMO`)
++      await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toBeVisible()
+       await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+       for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+         await page.setViewportSize({ width, height: 1080 })
+@@ -247,6 +249,286 @@ const mockUser = {
+   issueId: 'issue-1',
+ }
+ 
++const searchIssue = (index: number) => ({
++  id: `search-issue-${index}`,
++  key: `DEMO-${index}`,
++  summary: `Safe result ${index}: ${'UnbrokenSafeSummary'.repeat(16)}`,
++  description: '',
++  issue_type: 'Task',
++  status: 'In Progress',
++  status_id: 'inprogress',
++  priority: 'High',
++  labels: [],
++  project_key: 'DEMO',
++  project_name: mockUser.name,
++  reporter_id: mockUser.id,
++  assignee_id: mockUser.id,
++  assignee_name: 'UnbrokenAssignee'.repeat(20),
++  time_spent_seconds: 0,
++  created_at: '2026-10-01T10:00:00Z',
++  updated_at: '2026-10-01T10:00:00Z',
++})
++
++async function installSearchFixtures(page: Page) {
++  await installTrackerMocks(page)
++  await page.route('**/api/v1/search**', (route) =>
++    routeJson(route, {
++      issues: Array.from({ length: 26 }, (_, index) => searchIssue(index + 1)),
++    }),
++  )
++  await page.route('**/api/v1/projects', (route) =>
++    routeJson(route, {
++      projects: [
++        {
++          id: 'search-project',
++          key: 'DEMO',
++          name: 'UnbrokenProjectName'.repeat(20),
++          owner_id: mockUser.id,
++          todo_count: 26,
++          in_progress_count: 0,
++          done_count: 0,
++        },
++      ],
++    }),
++  )
++  await page.route('**/api/v1/users', (route) =>
++    routeJson(route, {
++      users: [{ id: mockUser.id, username: 'demo', display_name: 'UnbrokenAssignee'.repeat(20) }],
++    }),
++  )
++}
++
++test.describe('Base search page', () => {
++  test('wide list and both modes fit all themes and shell boundaries', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(240_000)
++    await installSearchFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    const failures: string[] = []
++    page.on('pageerror', (error) => failures.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') failures.push(message.text())
++    })
++    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
++    page.on('response', (response) => {
++      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
++    })
++    for (const theme of ['dark', 'gray', 'light']) {
++      await page.goto(`${app}/search?project_key=DEMO`)
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      for (const mode of ['simple', 'jql'])
++        for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++          await page.setViewportSize({ width, height: 1080 })
++          await page.goto(
++            `${app}/search?${mode === 'simple' ? `project_key=DEMO&assignee_id=${mockUser.id}` : 'mode=jql&jql=project%20%3D%20DEMO'}&view=compact#results`,
++          )
++          await expect(page.locator('main h1')).toHaveText('Поиск задач')
++          await expect(page.locator('main h1')).toHaveCount(1)
++          await expect(page.locator('main li')).toHaveCount(25)
++          await page.reload()
++          await expect(page.locator('main li')).toHaveCount(25)
++          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++          if (mode === 'simple' && width < 640)
++            await page.getByRole('button', { name: /^Фильтры/ }).click()
++          await expect(page.locator('[data-page-layout]')).toHaveAttribute(
++            'data-page-layout',
++            'wide',
++          )
++          const geometry = await page.locator('[data-page-layout]').evaluate((element) => {
++            const rect = element.getBoundingClientRect()
++            const parent = element.parentElement!
++            return {
++              width: rect.width,
++              expectedWidth:
++                parent.clientWidth -
++                Number.parseFloat(getComputedStyle(parent).paddingLeft) -
++                Number.parseFloat(getComputedStyle(parent).paddingRight),
++              gap: Number.parseFloat(
++                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
++              ),
++              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
++              localOverflow: element.scrollWidth > element.clientWidth,
++            }
++          })
++          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
++          expect(geometry.gap).toBe(20)
++          expect(geometry.overflow).toBe(false)
++          expect(geometry.localOverflow).toBe(false)
++          const titles = page.locator('main li a > span')
++          await expect(titles).toHaveCount(25)
++          const clippedTitles = await titles.evaluateAll(
++            (elements, { lines, singleLine }) =>
++              elements.flatMap((element) => {
++                const rect = element.getBoundingClientRect()
++                const style = getComputedStyle(element)
++                const lineHeight = Number.parseFloat(style.lineHeight)
++                const targetWidth = element.parentElement!.clientWidth
++                return rect.height > lineHeight * lines + 0.5 ||
++                  Math.abs(rect.width - targetWidth) > 0.5 ||
++                  (singleLine && style.whiteSpace !== 'nowrap')
++                  ? [{ height: rect.height, width: rect.width, lineHeight, targetWidth }]
++                  : []
++              }),
++            { lines: width < 640 ? 2 : 1, singleLine: width >= 640 },
++          )
++          expect(clippedTitles).toEqual([])
++          await expect(
++            page.getByRole('link', { name: searchIssue(1).summary, exact: true }),
++          ).toHaveAttribute('title', searchIssue(1).summary)
++          const undersized = await page
++            .locator('main button, main input, main select, main a')
++            .evaluateAll(
++              (elements, minimum) =>
++                elements.flatMap((element) => {
++                  const rect = element.getBoundingClientRect()
++                  return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
++                    ? [{ html: element.outerHTML, height: rect.height }]
++                    : []
++                }),
++              width < 768 ? 44 : 40,
++            )
++          expect(undersized).toEqual([])
++          if (width === 375 || width === 1920)
++            expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual(
++              [],
++            )
++          await page.screenshot({
++            path: testInfo.outputPath(`search-${mode}-${theme}-${width}.png`),
++            fullPage: true,
++          })
++        }
++    }
++    expect(failures).toEqual([])
++  })
++
++  test('preserves context, reload and history through filters, reset and keyboard mode changes', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    await installSearchFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await page.goto(`${app}/search?project_key=DEMO&page=3&view=compact&source=board#results`)
++    await page.getByRole('combobox', { name: 'Приоритет', exact: true }).selectOption('High')
++    await expect(page).toHaveURL(
++      `${app}/search?project_key=DEMO&view=compact&source=board&priority=High#results`,
++    )
++    await page.goBack()
++    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('')
++    await expect(page).toHaveURL(/page=3.*#results$/)
++    await page.goForward()
++    await page.reload()
++    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('High')
++    const simple = page.getByRole('tab', { name: 'Простой', exact: true })
++    await simple.focus()
++    await page.keyboard.press('ArrowRight')
++    const jql = page.getByRole('tab', { name: 'JQL', exact: true })
++    await expect(jql).toBeFocused()
++    await expect(jql).toHaveAttribute('aria-selected', 'true')
++    const input = page.getByRole('textbox', { name: 'JQL-запрос', exact: true })
++    await input.fill('project = DEMO')
++    await page.getByRole('button', { name: 'Выполнить', exact: true }).click()
++    await expect(page).toHaveURL(/jql=project\+%3D\+DEMO#results$/)
++    await page.reload()
++    await expect(input).toHaveValue('project = DEMO')
++    await jql.focus()
++    await page.keyboard.press('ArrowLeft')
++    await expect(simple).toBeFocused()
++    await page.getByRole('textbox', { name: 'Поиск задач', exact: true }).fill('Safe query')
++    await page.getByRole('button', { name: 'Сбросить', exact: true }).click()
++    await expect(page).toHaveURL(`${app}/search?view=compact&source=board#results`)
++    await page.screenshot({ path: testInfo.outputPath('search-url-history.png'), fullPage: true })
++  })
++
++  test('keeps cached rows for partial failure but hides them after denied refresh', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(60_000)
++    await installSearchFixtures(page)
++    let status = 200
++    let reads = 0
++    await page.route('**/api/v1/search**', (route) => {
++      reads++
++      return routeJson(
++        route,
++        status === 200
++          ? { issues: [searchIssue(1)] }
++          : { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
++        status,
++      )
++    })
++    await page.goto(`${baseURL}/search?project_key=DEMO`)
++    await expect(page.locator('main li')).toHaveCount(1)
++    status = 503
++    const before = reads
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect.poll(() => reads, { timeout: 30_000 }).toBe(before + 3)
++    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible()
++    await expect(page.locator('main li')).toHaveCount(1)
++    await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
++    status = 200
++    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
++    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
++    status = 403
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect(page.locator('main [data-page-state="permission-denied"]')).toBeVisible()
++    await expect(page.locator('main li')).toHaveCount(0)
++    await expect(
++      page.locator('main').getByRole('button', { name: 'Повторить', exact: true }),
++    ).toHaveCount(0)
++    await page.screenshot({ path: testInfo.outputPath('search-cached-denied.png'), fullPage: true })
++  })
++
++  for (const status of [400, 403, 404, 422, 503])
++    test(`HTTP ${status} is not empty and respects retry policy`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      await installSearchFixtures(page)
++      let reads = 0
++      await page.route('**/api/v1/search**', (route) => {
++        reads++
++        return routeJson(
++          route,
++          { error: { code: 'CONTROLLED', message: 'Private diagnostic' } },
++          status,
++        )
++      })
++      await page.goto(
++        `${baseURL}/search?${status === 400 ? 'mode=jql&jql=invalid' : 'project_key=DEMO'}`,
++      )
++      await expect.poll(() => reads, { timeout: 30_000 }).toBe(status === 503 ? 3 : 1)
++      const main = page.locator('main')
++      await expect(main.getByText('Ничего не найдено', { exact: true })).toHaveCount(0)
++      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
++      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
++        status === 503 ? 1 : 0,
++      )
++      if (status === 400) {
++        const input = main.getByRole('textbox', { name: 'JQL-запрос', exact: true })
++        await expect(input).toHaveAttribute('aria-invalid', 'true')
++        await expect(input).toHaveAttribute('aria-describedby', 'search-jql-hint search-jql-error')
++        await expect(main.getByRole('alert')).toHaveCount(1)
++        await expect(input).toHaveValue('invalid')
++      } else if (status === 403 || status === 404) {
++        await expect(
++          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
++        ).toBeVisible()
++        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
++      } else
++        await expect(
++          main.getByText('Не удалось загрузить результаты поиска', { exact: true }),
++        ).toBeVisible()
++      await page.screenshot({
++        path: testInfo.outputPath(`search-error-${status}.png`),
++        fullPage: true,
++      })
++    })
++})
++
+ function routeJson(route: Route, body: unknown, status = 200) {
+   return route.fulfill({
+     status,
+diff --git a/frontend/src/pages/search/index.tsx b/frontend/src/pages/search/index.tsx
+index fc61a2d..66ef6c1 100644
+--- a/frontend/src/pages/search/index.tsx
++++ b/frontend/src/pages/search/index.tsx
+@@ -1,40 +1,100 @@
+-import { Link, useSearchParams } from 'react-router'
+-import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
++import { Link } from 'react-router'
++import { Search, X, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { useState, useMemo, useEffect } from 'react'
+-import { Button } from '@sdlc/ui/ui'
+-import { Input } from '@sdlc/ui/ui'
+-import { Card, CardContent, ErrorState } from '@sdlc/ui/ui'
++import { useState, useMemo, useEffect, type FormEvent } from 'react'
+ import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuTrigger,
++  Button,
++  Input,
++  Select,
++  FormField,
++  ListPage,
++  ResourceStateView,
++  resourceErrorState,
++  Tabs,
++  TabsList,
++  TabsTrigger,
++  TabsContent,
++  type ResourceState,
+ } from '@sdlc/ui/ui'
++import { enumQuery, useUrlSearchParams } from '@sdlc/ui/lib'
+ import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
+ import { SearchRequestError, type Issue } from '@/api/search'
+ 
+ const PAGE_SIZE = 25
+-
+ const SORT_OPTIONS = [
+   { value: 'created_desc', labelKey: 'search.sortNewest' },
+   { value: 'created_asc', labelKey: 'search.sortOldest' },
+   { value: 'updated_desc', labelKey: 'search.sortUpdated' },
+   { value: 'priority_desc', labelKey: 'search.sortPriority' },
++] as const
++const sortCodec = enumQuery(
++  SORT_OPTIONS.map((option) => option.value),
++  'created_desc',
++)
++const SEARCH_KEYS = [
++  'q',
++  'mode',
++  'jql',
++  'page',
++  'project_key',
++  'status',
++  'assignee_id',
++  'priority',
++  'sort',
+ ]
+-
+-// Values must match backend priority values exactly (Title-Case in DB).
+ const PRIORITY_OPTIONS = ['lowest', 'low', 'medium', 'high', 'highest']
++const STATUS_OPTIONS = ['todo', 'in_progress', 'review', 'done']
+ 
+ // i18n keys stay lowercase; the API expects Title-Case values.
+-function titleCasePriority(p: string): string {
+-  return p.charAt(0).toUpperCase() + p.slice(1)
++function titleCasePriority(value: string): string {
++  return value.charAt(0).toUpperCase() + value.slice(1)
++}
++
++function SearchFilter({
++  id,
++  label,
++  value = '',
++  options,
++  allLabel,
++  disabled,
++  onChange,
++}: {
++  id: string
++  label: string
++  value?: string
++  options: { value: string; label: string }[]
++  allLabel?: string
++  disabled?: boolean
++  onChange: (value: string) => void
++}) {
++  return (
++    <FormField id={id} label={label}>
++      {(attrs) => (
++        <Select
++          {...attrs}
++          value={value}
++          disabled={disabled}
++          title={options.find((option) => option.value === value)?.label ?? value}
++          onChange={(event) => onChange(event.target.value)}
++        >
++          {allLabel && <option value="">{allLabel}</option>}
++          {value && !options.some((option) => option.value === value) && (
++            <option value={value}>{value}</option>
++          )}
++          {options.map((option) => (
++            <option key={option.value} value={option.value}>
++              {option.label}
++            </option>
++          ))}
++        </Select>
++      )}
++    </FormField>
++  )
+ }
+-const STATUS_OPTIONS = ['todo', 'in_progress', 'review', 'done']
+ 
+ export default function SearchPage() {
+   const { t } = useTranslation()
+-  const [searchParams, setSearchParams] = useSearchParams()
++  const [searchParams, setSearchParams] = useUrlSearchParams()
+   const query = searchParams.get('q') ?? ''
+   const committedJql = searchParams.get('jql') ?? ''
+   const [debouncedQuery, setDebouncedQuery] = useState(query.trim())
+@@ -48,21 +108,17 @@ export default function SearchPage() {
+     Number.isSafeInteger((pageValue - 1) * PAGE_SIZE)
+       ? pageValue
+       : 1
+-
+   const projectKey = searchParams.get('project_key') ?? undefined
+   const status = searchParams.get('status') ?? undefined
+   const assigneeId = searchParams.get('assignee_id') ?? undefined
+   const priority = searchParams.get('priority') ?? undefined
+-  const sort = searchParams.get('sort') ?? 'created_desc'
++  const sort = sortCodec.parse(searchParams.get('sort'))
+ 
+   useEffect(() => {
+     const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 350)
+     return () => clearTimeout(timeout)
+   }, [query])
+-
+-  useEffect(() => {
+-    setJqlDraft(committedJql)
+-  }, [committedJql])
++  useEffect(() => setJqlDraft(committedJql), [committedJql])
+ 
+   const filters = useMemo(
+     () => ({
+@@ -72,7 +128,7 @@ export default function SearchPage() {
+       assignee_id: mode === 'simple' ? assigneeId : undefined,
+       priority: mode === 'simple' ? priority : undefined,
+       sort_by: mode === 'simple' ? sort.split('_')[0] : undefined,
+-      sort_order: mode === 'simple' ? (sort.split('_')[1] ?? 'desc') : undefined,
++      sort_order: mode === 'simple' ? sort.split('_')[1] : undefined,
+       jql: mode === 'jql' ? committedJql || undefined : undefined,
+       limit: PAGE_SIZE + 1,
+       offset: (page - 1) * PAGE_SIZE,
+@@ -81,12 +137,43 @@ export default function SearchPage() {
+   )
+ 
+   const { data: issues, isLoading, error, refetch } = useIssues(filters)
+-  const { data: projects } = useProjects()
+-  const { data: users } = useUsers()
+-
++  const projectsQuery = useProjects()
++  const usersQuery = useUsers()
++  const projectState = projectsQuery.error
++    ? resourceErrorState(projectsQuery.error, () => void projectsQuery.refetch(), {
++        hasData: projectsQuery.data !== undefined,
++        message: t('search.projectsError'),
++      })
++    : undefined
++  const usersState = usersQuery.error
++    ? resourceErrorState(usersQuery.error, () => void usersQuery.refetch(), {
++        hasData: usersQuery.data !== undefined,
++        message: t('search.usersError'),
++      })
++    : undefined
++  const projects =
++    !projectState || projectState.kind === 'partial-error' ? (projectsQuery.data ?? []) : []
++  const users = !usersState || usersState.kind === 'partial-error' ? (usersQuery.data ?? []) : []
+   const visibleIssues = issues?.slice(0, PAGE_SIZE) ?? []
+   const hasNext = (issues?.length ?? 0) > PAGE_SIZE
+   const invalidJql = mode === 'jql' && error instanceof SearchRequestError && error.status === 400
++  const backAction = (
++    <Button variant="outline" asChild>
++      <Link to="/projects">{t('search.backToProjects')}</Link>
++    </Button>
++  )
++  let state: ResourceState | undefined
++  if (isLoading) state = { kind: 'loading' }
++  else if (error && !invalidJql) {
++    state = resourceErrorState(error, () => void refetch(), {
++      hasData: issues !== undefined,
++      message: t('search.loadError'),
++    })
++    if (state.kind === 'partial-error') state = { ...state, message: t('search.refreshError') }
++    if (state.kind === 'not-found' || state.kind === 'permission-denied')
++      state = { ...state, back: backAction }
++  } else if (!error && visibleIssues.length === 0)
++    state = { kind: 'empty', message: t('search.noResults') }
+ 
+   const updateQuery = (value: string) => {
+     setSearchParams(
+@@ -100,25 +187,26 @@ export default function SearchPage() {
+       { replace: true },
+     )
+   }
+-
+   const setFilter = (key: string, value: string | undefined) => {
+-    setSearchParams((prev) => {
+-      const next = new URLSearchParams(prev)
++    setSearchParams((previous) => {
++      const next = new URLSearchParams(previous)
+       if (value) next.set(key, value)
+       else next.delete(key)
+       next.delete('page')
+       return next
+     })
+   }
+-
+   const clearFilters = () => {
+     setDebouncedQuery('')
+     setJqlDraft('')
+-    setSearchParams(new URLSearchParams())
++    setSearchParams((previous) => {
++      const next = new URLSearchParams(previous)
++      for (const key of SEARCH_KEYS) next.delete(key)
++      return next
++    })
+   }
+-
+-  const setMode = (nextMode: 'simple' | 'jql') => {
+-    if (nextMode === mode) return
++  const setMode = (nextMode: string) => {
++    if (nextMode === mode || (nextMode !== 'simple' && nextMode !== 'jql')) return
+     setDebouncedQuery('')
+     setJqlDraft('')
+     setSearchParams((previous) => {
+@@ -126,17 +214,13 @@ export default function SearchPage() {
+       next.set('mode', nextMode)
+       next.delete('page')
+       if (nextMode === 'jql') {
+-        for (const key of ['q', 'project_key', 'status', 'assignee_id', 'priority'])
++        for (const key of ['q', 'project_key', 'status', 'assignee_id', 'priority', 'sort'])
+           next.delete(key)
+-        next.delete('sort')
+-      } else {
+-        next.delete('jql')
+-      }
++      } else next.delete('jql')
+       return next
+     })
+   }
+-
+-  const submitJql = (event: React.FormEvent) => {
++  const submitJql = (event: FormEvent) => {
+     event.preventDefault()
+     setSearchParams((previous) => {
+       const next = new URLSearchParams(previous)
+@@ -147,7 +231,6 @@ export default function SearchPage() {
+       return next
+     })
+   }
+-
+   const setPage = (nextPage: number) => {
+     setSearchParams((previous) => {
+       const next = new URLSearchParams(previous)
+@@ -156,295 +239,192 @@ export default function SearchPage() {
+       return next
+     })
+   }
+-
+   const hasFilters =
+     projectKey || status || assigneeId || priority || sort !== 'created_desc' || query
+   const activeFilterCount =
+     [projectKey, status, assigneeId, priority].filter(Boolean).length +
+     Number(sort !== 'created_desc')
+ 
+-  const projectName =
+-    projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
+-  const statusLabel = status ? t(`status.${status}`) : t('search.status')
+-  const priorityLabel = priority ? t(`priority.${priority.toLowerCase()}`) : t('search.priority')
+-  const assigneeName =
+-    users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
+-  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)
+-    ? t(SORT_OPTIONS.find((o) => o.value === sort)!.labelKey)
+-    : t('search.sort')
++  const pagination = (page > 1 || hasNext) && (
++    <nav
++      aria-label={t('search.pages')}
++      className="flex flex-wrap items-center justify-between gap-3"
++    >
++      <Button
++        variant="outline"
++        disabled={page === 1 || Boolean(error) || isLoading}
++        onClick={() => setPage(page - 1)}
++      >
++        <ChevronLeft aria-hidden className="h-4 w-4" />
++        {t('search.previous')}
++      </Button>
++      <span className="text-sm text-text-muted">{t('search.page', { page })}</span>
++      <Button
++        variant="outline"
++        disabled={!hasNext || Boolean(error) || isLoading}
++        onClick={() => setPage(page + 1)}
++      >
++        {t('search.next')}
++        <ChevronRight aria-hidden className="h-4 w-4" />
++      </Button>
++    </nav>
++  )
++  if (state?.kind === 'empty') state = { ...state, action: pagination }
+ 
+   return (
+-    <div className="py-6">
+-      <div className="mb-6 flex items-center justify-between">
+-        <h1 className="text-2xl font-semibold">{t('search.title')}</h1>
+-        <Button variant="outline" asChild className="h-10">
+-          <Link to="/projects">{t('search.backToProjects')}</Link>
+-        </Button>
+-      </div>
+-
+-      <div className="mb-4 inline-grid grid-cols-2 rounded-md border border-border bg-surface p-1">
+-        <button
+-          type="button"
+-          onClick={() => setMode('simple')}
+-          aria-pressed={mode === 'simple'}
+-          className={`min-h-10 rounded px-4 text-sm ${mode === 'simple' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
+-        >
+-          {t('search.modeSimple')}
+-        </button>
+-        <button
+-          type="button"
+-          onClick={() => setMode('jql')}
+-          aria-pressed={mode === 'jql'}
+-          className={`min-h-10 rounded px-4 text-sm ${mode === 'jql' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
+-        >
+-          JQL
+-        </button>
+-      </div>
+-
+-      {mode === 'simple' ? (
+-        <Card className="mb-6">
+-          <CardContent className="space-y-3 pt-6">
+-            <div className="relative min-w-0">
+-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
+-              <Input
+-                aria-label={t('search.placeholder')}
+-                placeholder={t('search.placeholder')}
+-                className="min-h-10 pl-9"
+-                value={query}
+-                onChange={(e) => updateQuery(e.target.value)}
+-              />
+-            </div>
++    <ListPage
++      title={t('search.title')}
++      actions={backAction}
++      state={state}
++      filters={
++        <Tabs value={mode} onValueChange={setMode} className="min-w-0 w-full">
++          <TabsList aria-label={t('search.mode')}>
++            <TabsTrigger value="simple">{t('search.modeSimple')}</TabsTrigger>
++            <TabsTrigger value="jql">JQL</TabsTrigger>
++          </TabsList>
++          <TabsContent value="simple" className="base-page-stack">
++            <FormField id="search-query" label={t('search.title')}>
++              {(attrs) => (
++                <div className="relative min-w-0">
++                  <Search
++                    aria-hidden
++                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
++                  />
++                  <Input
++                    {...attrs}
++                    placeholder={t('search.placeholder')}
++                    className="pl-9"
++                    value={query}
++                    onChange={(event) => updateQuery(event.target.value)}
++                  />
++                </div>
++              )}
++            </FormField>
+             <Button
+               variant="outline"
+-              className="h-10 w-full justify-between sm:hidden"
++              className="w-full justify-between sm:hidden"
+               aria-expanded={showMobileFilters}
+               aria-controls="search-filters"
+               onClick={() => setShowMobileFilters((shown) => !shown)}
+             >
+               <span className="flex items-center gap-2">
+-                <Filter className="h-4 w-4" />
++                <Filter aria-hidden className="h-4 w-4" />
+                 {t('search.filters')}
+               </span>
+               {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+             </Button>
+             <div
+               id="search-filters"
+-              className={`${showMobileFilters ? 'grid' : 'hidden'} gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-6`}
++              className={`${showMobileFilters ? 'grid' : 'hidden'} min-w-0 gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5`}
+             >
+-              <DropdownMenu>
+-                <DropdownMenuTrigger asChild>
+-                  <Button variant="outline" className="h-10 w-full justify-between">
+-                    {projectName}
+-                  </Button>
+-                </DropdownMenuTrigger>
+-                <DropdownMenuContent align="start" className="w-56">
+-                  <DropdownMenuItem
+-                    className="min-h-10"
+-                    onClick={() => setFilter('project_key', undefined)}
+-                  >
+-                    {t('search.allProjects')}
+-                  </DropdownMenuItem>
+-                  {projects?.map((p) => (
+-                    <DropdownMenuItem
+-                      className="min-h-10"
+-                      key={p.key}
+-                      onClick={() => setFilter('project_key', p.key)}
+-                    >
+-                      {p.key} — {p.name}
+-                    </DropdownMenuItem>
+-                  ))}
+-                </DropdownMenuContent>
+-              </DropdownMenu>
+-
+-              <DropdownMenu>
+-                <DropdownMenuTrigger asChild>
+-                  <Button variant="outline" className="h-10 w-full justify-between">
+-                    {statusLabel}
+-                  </Button>
+-                </DropdownMenuTrigger>
+-                <DropdownMenuContent align="start">
+-                  <DropdownMenuItem
+-                    className="min-h-10"
+-                    onClick={() => setFilter('status', undefined)}
+-                  >
+-                    {t('search.allStatuses')}
+-                  </DropdownMenuItem>
+-                  {STATUS_OPTIONS.map((s) => (
+-                    <DropdownMenuItem
+-                      className="min-h-10"
+-                      key={s}
+-                      onClick={() => setFilter('status', s)}
+-                    >
+-                      {t(`status.${s}`)}
+-                    </DropdownMenuItem>
+-                  ))}
+-                </DropdownMenuContent>
+-              </DropdownMenu>
+-
+-              <DropdownMenu>
+-                <DropdownMenuTrigger asChild>
+-                  <Button variant="outline" className="h-10 w-full justify-between">
+-                    {priorityLabel}
+-                  </Button>
+-                </DropdownMenuTrigger>
+-                <DropdownMenuContent align="start">
+-                  <DropdownMenuItem
+-                    className="min-h-10"
+-                    onClick={() => setFilter('priority', undefined)}
+-                  >
+-                    {t('search.allPriorities')}
+-                  </DropdownMenuItem>
+-                  {PRIORITY_OPTIONS.map((p) => (
+-                    <DropdownMenuItem
+-                      className="min-h-10"
+-                      key={p}
+-                      onClick={() => setFilter('priority', titleCasePriority(p))}
+-                    >
+-                      {t(`priority.${p}`)}
+-                    </DropdownMenuItem>
+-                  ))}
+-                </DropdownMenuContent>
+-              </DropdownMenu>
+-
+-              <DropdownMenu>
+-                <DropdownMenuTrigger asChild>
+-                  <Button variant="outline" className="h-10 w-full justify-between">
+-                    {assigneeName}
+-                  </Button>
+-                </DropdownMenuTrigger>
+-                <DropdownMenuContent align="start" className="w-56">
+-                  <DropdownMenuItem
+-                    className="min-h-10"
+-                    onClick={() => setFilter('assignee_id', undefined)}
+-                  >
+-                    {t('search.allAssignees')}
+-                  </DropdownMenuItem>
+-                  {users?.map((u) => (
+-                    <DropdownMenuItem
+-                      className="min-h-10"
+-                      key={u.id}
+-                      onClick={() => setFilter('assignee_id', u.id)}
+-                    >
+-                      {u.display_name}
+-                    </DropdownMenuItem>
+-                  ))}
+-                </DropdownMenuContent>
+-              </DropdownMenu>
+-
+-              <DropdownMenu>
+-                <DropdownMenuTrigger asChild>
+-                  <Button variant="outline" className="h-10 w-full justify-between">
+-                    <ArrowUpDown className="mr-2 h-4 w-4" />
+-                    {sortLabel}
+-                  </Button>
+-                </DropdownMenuTrigger>
+-                <DropdownMenuContent align="start">
+-                  {SORT_OPTIONS.map((o) => (
+-                    <DropdownMenuItem
+-                      className="min-h-10"
+-                      key={o.value}
+-                      onClick={() => setFilter('sort', o.value)}
+-                    >
+-                      {t(o.labelKey)}
+-                    </DropdownMenuItem>
+-                  ))}
+-                </DropdownMenuContent>
+-              </DropdownMenu>
+-
+-              {hasFilters && mode === 'simple' && (
+-                <Button
+-                  variant="ghost"
+-                  size="icon"
+-                  className="h-10 w-full justify-start sm:w-10 sm:justify-center"
+-                  onClick={clearFilters}
+-                  aria-label={t('search.clear')}
+-                >
+-                  <X className="h-4 w-4" />
+-                  <span className="sm:hidden">{t('search.clear')}</span>
+-                </Button>
+-              )}
+-            </div>
+-          </CardContent>
+-        </Card>
+-      ) : null}
+-
+-      {mode === 'jql' ? (
+-        <Card className="mb-6">
+-          <CardContent className="pt-6">
+-            <div className="flex items-center gap-2">
+-              <Filter className="h-4 w-4 text-text-muted" />
+-              <span className="text-sm font-medium">{t('jql.title')}</span>
+-            </div>
+-            <form onSubmit={submitJql} className="mt-3 flex flex-col gap-2 sm:flex-row">
+-              <Input
+-                aria-label={t('jql.placeholder')}
+-                placeholder={t('jql.placeholder')}
+-                value={jqlDraft}
+-                onChange={(e) => setJqlDraft(e.target.value)}
+-                aria-invalid={invalidJql}
+-                className="min-h-10 min-w-0 flex-1 font-mono text-sm"
++              <SearchFilter
++                id="search-project"
++                label={t('search.project')}
++                value={projectKey}
++                allLabel={t('search.allProjects')}
++                options={projects.map((project) => ({
++                  value: project.key,
++                  label: `${project.key} - ${project.name}`,
++                }))}
++                disabled={
++                  projectsQuery.isLoading ||
++                  Boolean(projectState && projectState.kind !== 'partial-error')
++                }
++                onChange={(value) => setFilter('project_key', value || undefined)}
+               />
+-              <Button type="submit" className="h-10">
+-                {t('jql.execute')}
+-              </Button>
+-            </form>
+-            {invalidJql ? (
+-              <p role="alert" className="mt-2 text-sm text-destructive">
+-                {t('jql.invalid')}
+-              </p>
+-            ) : (
+-              <p className="mt-2 text-xs text-text-muted">{t('jql.help')}</p>
++              <SearchFilter
++                id="search-status"
++                label={t('search.status')}
++                value={status}
++                allLabel={t('search.allStatuses')}
++                options={STATUS_OPTIONS.map((value) => ({ value, label: t(`status.${value}`) }))}
++                onChange={(value) => setFilter('status', value || undefined)}
++              />
++              <SearchFilter
++                id="search-priority"
++                label={t('search.priority')}
++                value={priority}
++                allLabel={t('search.allPriorities')}
++                options={PRIORITY_OPTIONS.map((value) => ({
++                  value: titleCasePriority(value),
++                  label: t(`priority.${value}`),
++                }))}
++                onChange={(value) => setFilter('priority', value || undefined)}
++              />
++              <SearchFilter
++                id="search-assignee"
++                label={t('search.assignee')}
++                value={assigneeId}
++                allLabel={t('search.allAssignees')}
++                options={users.map((user) => ({ value: user.id, label: user.display_name }))}
++                disabled={
++                  usersQuery.isLoading || Boolean(usersState && usersState.kind !== 'partial-error')
++                }
++                onChange={(value) => setFilter('assignee_id', value || undefined)}
++              />
++              <SearchFilter
++                id="search-sort"
++                label={t('search.sort')}
++                value={sort}
++                options={SORT_OPTIONS.map((option) => ({
++                  value: option.value,
++                  label: t(option.labelKey),
++                }))}
++                onChange={(value) =>
++                  setFilter('sort', value === 'created_desc' ? undefined : value)
++                }
++              />
++            </div>
++            {hasFilters && (
++              <div className="base-page-actions">
++                <Button variant="ghost" onClick={clearFilters}>
++                  <X aria-hidden className="h-4 w-4" />
++                  {t('search.clear')}
++                </Button>
++              </div>
+             )}
+-          </CardContent>
+-        </Card>
+-      ) : null}
+-
+-      {isLoading ? (
+-        <div className="space-y-3">
+-          {Array.from({ length: 5 }).map((_, i) => (
+-            <div key={i} className="h-16 w-full animate-pulse rounded-md bg-surface-raised" />
+-          ))}
+-        </div>
+-      ) : error ? (
+-        invalidJql ? null : (
+-          <ErrorState message={t('search.loadError')} onRetry={() => void refetch()} />
+-        )
+-      ) : visibleIssues.length === 0 ? (
+-        <div className="py-12 text-center text-text-muted">{t('search.noResults')}</div>
+-      ) : (
+-        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
+-          {visibleIssues.map((issue: Issue) => (
+-            <SearchResultRow key={issue.id} issue={issue} />
+-          ))}
+-        </ul>
+-      )}
+-      {!isLoading && !error && (page > 1 || hasNext) && (
+-        <nav
+-          aria-label={t('search.pages')}
+-          className="mt-5 flex items-center justify-between gap-3"
+-        >
+-          <Button
+-            variant="outline"
+-            className="h-10"
+-            disabled={page === 1}
+-            onClick={() => setPage(page - 1)}
+-          >
+-            <ChevronLeft className="h-4 w-4" />
+-            {t('search.previous')}
+-          </Button>
+-          <span className="text-sm text-text-muted">{t('search.page', { page })}</span>
+-          <Button
+-            variant="outline"
+-            className="h-10"
+-            disabled={!hasNext}
+-            onClick={() => setPage(page + 1)}
+-          >
+-            {t('search.next')}
+-            <ChevronRight className="h-4 w-4" />
+-          </Button>
+-        </nav>
++            {projectState && <ResourceStateView state={projectState} />}
++            {usersState && <ResourceStateView state={usersState} />}
++          </TabsContent>
++          <TabsContent value="jql">
++            <form onSubmit={submitJql} className="base-page-stack">
++              <FormField
++                id="search-jql"
++                label={t('jql.title')}
++                hint={t('jql.help')}
++                error={invalidJql ? t('jql.invalid') : undefined}
++              >
++                {(attrs) => (
++                  <Input
++                    {...attrs}
++                    placeholder={t('jql.placeholder')}
++                    value={jqlDraft}
++                    onChange={(event) => setJqlDraft(event.target.value)}
++                    className="font-mono"
++                  />
++                )}
++              </FormField>
++              <div className="base-page-actions">
++                <Button type="submit">{t('jql.execute')}</Button>
++              </div>
++            </form>
++          </TabsContent>
++        </Tabs>
++      }
++    >
++      {!invalidJql && (
++        <>
++          {visibleIssues.length > 0 && (
++            <ul className="divide-y divide-border" aria-label={t('search.results')}>
++              {visibleIssues.map((issue: Issue) => (
++                <SearchResultRow key={issue.id} issue={issue} />
++              ))}
++            </ul>
++          )}
++          {pagination}
++        </>
+       )}
+-    </div>
++    </ListPage>
+   )
+ }
+ 
+@@ -453,7 +433,7 @@ function SearchResultRow({ issue }: { issue: Issue }) {
+   const normalizedStatus = issue.status.toLowerCase().replaceAll(' ', '_')
+   const normalizedPriority = issue.priority.toLowerCase()
+   return (
+-    <li className="flex flex-col gap-1 px-3 py-2 hover:bg-surface-raised sm:flex-row sm:items-center sm:justify-between sm:gap-4">
++    <li className="flex min-w-0 flex-col gap-1 py-2 hover:bg-surface-raised sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
+         <span className="mt-2 shrink-0 rounded border px-2 py-0.5 text-xs font-medium sm:mt-0">
+           {issue.key}
+@@ -461,9 +441,11 @@ function SearchResultRow({ issue }: { issue: Issue }) {
+         <Link
+           to={`/issues/${issue.id}`}
+           title={issue.summary}
+-          className="line-clamp-2 min-h-10 min-w-0 rounded-sm py-2 font-medium hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:line-clamp-1"
++          className="base-control flex min-w-0 flex-1 items-center rounded-sm py-2 font-medium hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+         >
+-          {issue.summary}
++          <span className="line-clamp-2 min-w-0 w-full break-words [overflow-wrap:anywhere] sm:line-clamp-none sm:truncate">
++            {issue.summary}
++          </span>
+         </Link>
+       </div>
+       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted sm:max-w-[45%] sm:flex-nowrap">
+@@ -471,7 +453,9 @@ function SearchResultRow({ issue }: { issue: Issue }) {
+           {t(`status.${normalizedStatus}`, issue.status)}
+         </span>
+         <span className="shrink-0">{t(`priority.${normalizedPriority}`, issue.priority)}</span>
+-        <span className="min-w-0 truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>
++        <span className="min-w-0 truncate" title={issue.assignee_name ?? undefined}>
++          {issue.assignee_name ?? t('issue.unassigned')}
++        </span>
+       </div>
+     </li>
+   )
+diff --git a/frontend/src/pages/search/search.test.tsx b/frontend/src/pages/search/search.test.tsx
+index 15e2df0..dc5eb3f 100644
+--- a/frontend/src/pages/search/search.test.tsx
++++ b/frontend/src/pages/search/search.test.tsx
+@@ -24,7 +24,10 @@ function LocationProbe() {
+   const navigate = useNavigate()
+   return (
+     <>
+-      <output data-testid="location">{location.search}</output>
++      <output data-testid="location">
++        {location.search}
++        {location.hash}
++      </output>
+       <button onClick={() => navigate(-1)}>Browser back</button>
+       <button onClick={() => navigate(1)}>Browser forward</button>
+       <button onClick={() => navigate('/search?mode=jql&jql=project%20%3D%20DEMO&page=3')}>
+@@ -43,9 +46,12 @@ function renderPage(url = '/search') {
+   )
+ }
+ 
+-function mockHooks(data = [issue(1)], error: Error | null = null) {
++function mockHooks(
++  data: ReturnType<typeof issue>[] | null = [issue(1)],
++  error: Error | null = null,
++) {
+   const refetch = vi.fn()
+-  useIssues.mockReturnValue({ data, isLoading: false, error, refetch })
++  useIssues.mockReturnValue({ data: data ?? undefined, isLoading: false, error, refetch })
+   useProjects.mockReturnValue({ data: [] })
+   useUsers.mockReturnValue({ data: [] })
+   return refetch
+@@ -60,7 +66,9 @@ describe('SearchPage', () => {
+   it('renders search form and results', () => {
+     mockHooks()
+     renderPage()
+-    expect(screen.getByText(/поиск задач|search issues/i)).toBeInTheDocument()
++    expect(
++      screen.getByRole('heading', { level: 1, name: /поиск задач|search issues/i }),
++    ).toBeInTheDocument()
+     expect(screen.getByText('TT-1')).toBeInTheDocument()
+     expect(screen.getByRole('list').querySelectorAll('li')).toHaveLength(1)
+     expect(screen.getByRole('link', { name: 'Issue 1' })).toHaveAttribute('href', '/issues/i1')
+@@ -91,8 +99,8 @@ describe('SearchPage', () => {
+   it('runs JQL only on submit and keeps its draft until then', () => {
+     mockHooks()
+     renderPage()
+-    fireEvent.click(screen.getByRole('button', { name: 'JQL' }))
+-    const input = screen.getByRole('textbox', { name: /например: project|for example: project/i })
++    fireEvent.keyDown(screen.getByRole('tab', { name: 'JQL' }), { key: 'Enter' })
++    const input = screen.getByRole('textbox', { name: /JQL-запрос|JQL query/i })
+     fireEvent.change(input, { target: { value: 'project = TT' } })
+ 
+     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ jql: undefined }))
+@@ -104,7 +112,7 @@ describe('SearchPage', () => {
+   })
+ 
+   it('does not report a server failure as no results and allows retry', () => {
+-    const refetch = mockHooks(undefined, new SearchRequestError(503))
++    const refetch = mockHooks(null, new SearchRequestError(503))
+     renderPage()
+     expect(screen.queryByText(/ничего не найдено|no results/i)).not.toBeInTheDocument()
+     expect(screen.getByText(/не удалось загрузить|could not load/i)).toBeInTheDocument()
+@@ -113,13 +121,11 @@ describe('SearchPage', () => {
+   })
+ 
+   it('shows JQL validation errors without an empty-state or retry loop', () => {
+-    mockHooks(undefined, new SearchRequestError(400))
++    mockHooks(null, new SearchRequestError(400))
+     renderPage('/search?mode=jql&jql=invalid')
+     expect(screen.getByRole('alert')).toHaveTextContent(/некорректный|invalid/i)
+     expect(screen.queryByText(/ничего не найдено|no results/i)).not.toBeInTheDocument()
+-    expect(
+-      screen.getByRole('textbox', { name: /например: project|for example: project/i }),
+-    ).toHaveValue('invalid')
++    expect(screen.getByRole('textbox', { name: /JQL-запрос|JQL query/i })).toHaveValue('invalid')
+   })
+ 
+   it('shows 25 rows from a 26-row sentinel and pages by URL offset', () => {
+@@ -140,17 +146,17 @@ describe('SearchPage', () => {
+       target: { value: 'new query' },
+     })
+     expect(screen.getByTestId('location')).not.toHaveTextContent('page=')
+-    fireEvent.click(screen.getByRole('button', { name: 'JQL' }))
++    fireEvent.keyDown(screen.getByRole('tab', { name: 'JQL' }), { key: 'Enter' })
+     expect(screen.getByTestId('location')).not.toHaveTextContent('page=')
+     expect(screen.getByTestId('location')).not.toHaveTextContent('sort=')
+-    fireEvent.click(screen.getByRole('button', { name: /простой|simple/i }))
++    fireEvent.keyDown(screen.getByRole('tab', { name: /простой|simple/i }), { key: 'Enter' })
+     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }))
+   })
+ 
+   it('restores URL-backed JQL and page with browser history', () => {
+     mockHooks()
+     renderPage('/search?mode=jql&jql=project%20%3D%20TT&page=2')
+-    const input = screen.getByRole('textbox', { name: /например: project|for example: project/i })
++    const input = screen.getByRole('textbox', { name: /JQL-запрос|JQL query/i })
+     expect(input).toHaveValue('project = TT')
+     fireEvent.click(screen.getByRole('button', { name: 'Other URL' }))
+     expect(input).toHaveValue('project = DEMO')
+@@ -169,4 +175,174 @@ describe('SearchPage', () => {
+       expect.objectContaining({ jql: 'project = TT', sort_by: undefined, sort_order: undefined }),
+     )
+   })
++
++  it('uses one Base header and unframed filter composition', () => {
++    mockHooks()
++    const { container } = renderPage()
++    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
++    expect(container.querySelector('.base-page-stack > .base-page-header h1')).toBeInTheDocument()
++    expect(container.querySelector('.base-filter-row [role="tablist"]')).toBeInTheDocument()
++    expect(container.querySelector('[data-slot="card"]')).not.toBeInTheDocument()
++    expect(screen.getByRole('combobox', { name: /сортировка|sort/i })).toHaveValue('created_desc')
++  })
++
++  it.each([403, 404])('hides cached results for terminal HTTP %s without retry', (status) => {
++    mockHooks([issue(1)], new SearchRequestError(status))
++    const { container } = renderPage('/search?project_key=DEMO')
++    expect(
++      container.querySelector(
++        `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++      ),
++    ).toBeInTheDocument()
++    expect(screen.queryByRole('link', { name: 'Issue 1' })).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
++    expect(screen.queryByText(/показаны ранее|previously loaded/i)).not.toBeInTheDocument()
++    expect(screen.getByRole('link', { name: /к проектам|back to projects/i })).toHaveAttribute(
++      'href',
++      '/projects',
++    )
++  })
++
++  it('retains cached results during a retryable refresh failure', () => {
++    const refetch = mockHooks(
++      Array.from({ length: 26 }, (_, index) => issue(index + 1)),
++      new SearchRequestError(503),
++    )
++    const { container } = renderPage('/search?page=2')
++    expect(container.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByRole('link', { name: 'Issue 1' })).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: /далее|next/i })).toBeDisabled()
++    fireEvent.click(screen.getByRole('button', { name: /повторить|retry/i }))
++    expect(refetch).toHaveBeenCalledOnce()
++  })
++
++  it.each([400, 422])(
++    'does not offer retry or cached results for HTTP %s in simple mode',
++    (status) => {
++      mockHooks([issue(1)], new SearchRequestError(status))
++      renderPage()
++      expect(screen.queryByRole('link', { name: 'Issue 1' })).not.toBeInTheDocument()
++      expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
++      expect(screen.getByText(/не удалось загрузить|could not load/i)).toBeInTheDocument()
++    },
++  )
++
++  it('links JQL help and validation to the input without duplicate alerts', () => {
++    mockHooks(null, new SearchRequestError(400))
++    renderPage('/search?jql=invalid')
++    const input = screen.getByRole('textbox', { name: /JQL-запрос|JQL query/i })
++    expect(input).toHaveAttribute('aria-invalid', 'true')
++    expect(input).toHaveAttribute('aria-describedby', 'search-jql-hint search-jql-error')
++    expect(screen.getAllByRole('alert')).toHaveLength(1)
++    expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
++  })
++
++  it('preserves unrelated URL context and hash when clearing search keys', () => {
++    mockHooks()
++    renderPage(
++      '/search?q=demo&project_key=DEMO&status=todo&priority=High&assignee_id=user1&sort=updated_desc&page=3&view=compact&source=board#results',
++    )
++    fireEvent.click(screen.getByRole('button', { name: /сбросить|clear/i }))
++    expect(screen.getByTestId('location')).toHaveTextContent('?view=compact&source=board#results')
++    expect(useIssues).toHaveBeenLastCalledWith(
++      expect.objectContaining({ q: undefined, project_key: undefined, offset: 0 }),
++    )
++  })
++
++  it('preserves hash, page reset, Title-Case priority and history for filters', () => {
++    mockHooks()
++    renderPage('/search?project_key=DEMO&page=3&view=compact#results')
++    const priority = screen.getByRole('combobox', { name: /приоритет|priority/i })
++    fireEvent.change(priority, { target: { value: 'High' } })
++    expect(useIssues).toHaveBeenLastCalledWith(
++      expect.objectContaining({ priority: 'High', offset: 0 }),
++    )
++    expect(screen.getByTestId('location')).toHaveTextContent('view=compact&priority=High#results')
++    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }))
++    expect(priority).toHaveValue('')
++    expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 50 }))
++    fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }))
++    expect(priority).toHaveValue('High')
++  })
++
++  it.each(['bogus', 'priority_bad', 'created_asc_extra'])(
++    'bounds sort against Base codec for %s',
++    (sort) => {
++      mockHooks()
++      renderPage(`/search?sort=${sort}`)
++      expect(useIssues).toHaveBeenLastCalledWith(
++        expect.objectContaining({ sort_by: 'created', sort_order: 'desc' }),
++      )
++      expect(screen.getByRole('combobox', { name: /сортировка|sort/i })).toHaveValue('created_desc')
++    },
++  )
++
++  it('keeps successful results when optional directories fail without exposing denied cached names', () => {
++    mockHooks()
++    useProjects.mockReturnValue({
++      data: [{ key: 'SECRET', name: 'Denied cached project' }],
++      error: new SearchRequestError(403),
++      refetch: vi.fn(),
++    })
++    useUsers.mockReturnValue({
++      data: [{ id: 'secret-user', display_name: 'Denied cached user' }],
++      error: new SearchRequestError(403),
++      refetch: vi.fn(),
++    })
++    renderPage('/search?project_key=SECRET&assignee_id=secret-user')
++    expect(screen.getByRole('link', { name: 'Issue 1' })).toBeInTheDocument()
++    expect(screen.queryByRole('option', { name: /Denied cached/i })).not.toBeInTheDocument()
++    expect(screen.getByRole('combobox', { name: /проект|project/i })).toBeDisabled()
++    expect(screen.getByRole('combobox', { name: /исполнитель|assignee/i })).toBeDisabled()
++    expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveValue('SECRET')
++    expect(screen.getByRole('button', { name: /сбросить|clear/i })).toBeEnabled()
++  })
++
++  it('keeps known directory options with explicit partial-error retry', () => {
++    mockHooks()
++    const retry = vi.fn()
++    useProjects.mockReturnValue({
++      data: [{ key: 'DEMO', name: 'Safe project' }],
++      error: new SearchRequestError(503),
++      refetch: retry,
++    })
++    const { container } = renderPage('/search?project_key=DEMO')
++    expect(container.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByRole('combobox', { name: /проект|project/i })).toBeEnabled()
++    expect(screen.getByRole('option', { name: 'DEMO - Safe project' })).toBeInTheDocument()
++    fireEvent.click(screen.getByRole('button', { name: /повторить|retry/i }))
++    expect(retry).toHaveBeenCalledOnce()
++  })
++
++  it('renders loading and empty as distinct Base states', () => {
++    mockHooks([])
++    useIssues.mockReturnValue({ data: undefined, isLoading: true, error: null, refetch: vi.fn() })
++    const view = renderPage()
++    expect(view.container.querySelector('[role="status"][aria-busy="true"]')).toBeInTheDocument()
++    expect(screen.queryByText(/ничего не найдено|no results/i)).not.toBeInTheDocument()
++    useIssues.mockReturnValue({ data: [], isLoading: false, error: null, refetch: vi.fn() })
++    view.rerender(
++      <MemoryRouter initialEntries={['/search']}>
++        <SearchPage />
++        <LocationProbe />
++      </MemoryRouter>,
++    )
++    expect(
++      view.container.querySelector('[role="status"][aria-busy="true"]'),
++    ).not.toBeInTheDocument()
++    expect(screen.getByText(/ничего не найдено|no results/i)).toBeInTheDocument()
++  })
++
++  it('keeps a way back from an empty later page without changing the search context', () => {
++    mockHooks([])
++    renderPage('/search?page=3&project_key=DEMO&view=compact#results')
++    expect(screen.getByText(/ничего не найдено|no results/i)).toBeInTheDocument()
++    const previous = screen.getByRole('button', { name: /назад|previous/i })
++    expect(previous).toBeEnabled()
++    expect(screen.getByRole('button', { name: /далее|next/i })).toBeDisabled()
++    fireEvent.click(previous)
++    expect(screen.getByTestId('location')).toHaveTextContent(
++      '?page=2&project_key=DEMO&view=compact#results',
++    )
++  })
+ })
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index 4f6d34d..4297048 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -215,9 +215,9 @@
+     "reset": "Reset",
+     "key": "KEY",
+     "summary": "SUMMARY",
+-    "status": "STATUS",
+-    "assignee": "ASSIGNEE",
+-    "priority": "PRIORITY",
++    "status": "Status",
++    "assignee": "Assignee",
++    "priority": "Priority",
+     "allAssignees": "All assignees",
+     "allPriorities": "All priorities",
+     "allProjects": "All projects",
+@@ -226,7 +226,12 @@
+     "clear": "Clear",
+     "filters": "Filters",
+     "modeSimple": "Simple",
++    "mode": "Search mode",
+     "loadError": "Could not load search results",
++    "refreshError": "Could not refresh results. Previously loaded data is shown.",
++    "projectsError": "Could not load projects for the search filter.",
++    "usersError": "Could not load assignees for the search filter.",
++    "results": "Search results",
+     "noResults": "No results",
+     "pages": "Result pages",
+     "page": "Page {{page}}",
+@@ -466,7 +471,7 @@
+   "jql": {
+     "title": "JQL Query",
+     "placeholder": "e.g. project = TT AND priority = high",
+-    "help": "Use JQL for advanced search",
++    "help": "Fields: project, status, priority, assignee.",
+     "invalid": "Invalid JQL query",
+     "execute": "Execute"
+   },
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index a8db1ef..da0781c 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -215,9 +215,9 @@
+     "reset": "Сбросить",
+     "key": "КЛЮЧ",
+     "summary": "ЗАГОЛОВОК",
+-    "status": "СТАТУС",
+-    "assignee": "ИСПОЛНИТЕЛЬ",
+-    "priority": "ПРИОРИТЕТ",
++    "status": "Статус",
++    "assignee": "Исполнитель",
++    "priority": "Приоритет",
+     "allAssignees": "Все исполнители",
+     "allPriorities": "Все приоритеты",
+     "allProjects": "Все проекты",
+@@ -226,7 +226,12 @@
+     "clear": "Сбросить",
+     "filters": "Фильтры",
+     "modeSimple": "Простой",
++    "mode": "Режим поиска",
+     "loadError": "Не удалось загрузить результаты поиска",
++    "refreshError": "Не удалось обновить результаты. Показаны ранее загруженные данные.",
++    "projectsError": "Не удалось загрузить проекты для фильтра поиска.",
++    "usersError": "Не удалось загрузить исполнителей для фильтра поиска.",
++    "results": "Результаты поиска",
+     "noResults": "Ничего не найдено",
+     "pages": "Страницы результатов",
+     "page": "Страница {{page}}",
+@@ -466,7 +471,7 @@
+   "jql": {
+     "title": "JQL-запрос",
+     "placeholder": "Например: project = TT AND priority = high",
+-    "help": "Используйте JQL для расширенного поиска",
++    "help": "Поля: project, status, priority, assignee.",
+     "invalid": "Некорректный JQL-запрос",
+     "execute": "Выполнить"
+   },

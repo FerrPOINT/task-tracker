@@ -1,0 +1,2022 @@
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+index cb73c58..5a3f46d 100644
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -9,6 +9,7 @@ pub mod sdlc_configuration;
+ pub mod sdlc_confirmation;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;
++pub mod sdlc_pm_resume;
+ pub mod sdlc_reservation;
+ pub mod sdlc_routing;
+ pub mod services;
+diff --git a/backend/app/src/sdlc_pm_resume.rs b/backend/app/src/sdlc_pm_resume.rs
+new file mode 100644
+index 0000000..ee7e45b
+--- /dev/null
++++ b/backend/app/src/sdlc_pm_resume.rs
+@@ -0,0 +1,321 @@
++use domain::sdlc::*;
++use domain::sdlc_execution_lease::*;
++use domain::sdlc_pm_draft::PmDraftReservation;
++use shared::AppError;
++use uuid::Uuid;
++
++impl crate::sdlc::SdlcService {
++    pub async fn resume_pm_execution_lease(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: ResumePmExecutionLease,
++    ) -> Result<(ExecutionLeaseReceipt, bool), AppError> {
++        validate_command(&command)?;
++        self.repository
++            .resume_pm_execution_lease(task, actor, command)
++            .await
++    }
++    pub async fn pm_resume_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<ExecutionLeaseOperation, AppError> {
++        self.repository.pm_resume_operation(task, actor, key).await
++    }
++}
++
++fn hash(value: &str) -> bool {
++    value.len() == 64
++        && value
++            .bytes()
++            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
++}
++
++pub fn validate_command(c: &ResumePmExecutionLease) -> Result<(), AppError> {
++    crate::sdlc::validate_key(&c.idempotency_key)?;
++    let p = &c.checkpoint;
++    let f = &p.fence;
++    if [
++        c.lease_id,
++        c.input.input_id(),
++        p.checkpoint_id,
++        c.previous_run_id,
++        f.assignment_id,
++        f.execution_id,
++        f.agent_id,
++    ]
++    .iter()
++    .any(Uuid::is_nil)
++        || [
++            c.expected_owner_version,
++            c.expected_lease_version,
++            p.checkpoint_revision,
++            f.assignment_version,
++        ]
++        .iter()
++        .any(|n| !(1..=MAX_SAFE_VERSION).contains(n))
++        || !hash(&p.checkpoint_sha256)
++        || !match (p.requirement_revision, p.content_hash.as_deref()) {
++            (None, None) => true,
++            (Some(n), Some(h)) => (1..=MAX_SAFE_VERSION).contains(&n) && hash(h),
++            _ => false,
++        }
++    {
++        return Err(AppError::validation(
++            "invalid PM resume identity/checkpoint",
++        ));
++    }
++    crate::sdlc_lifecycle::validate_artifact(&c.previous_run_terminal)
++}
++
++pub fn request_hash(c: &ResumePmExecutionLease) -> Result<String, AppError> {
++    crate::sdlc::canonical_hash(
++        &serde_json::json!({"operation":"resume_pm_execution_lease","payload":c}),
++    )
++}
++
++pub fn validate_context(
++    state: &TaskState,
++    r: &PmDraftReservation,
++    c: &ResumePmExecutionLease,
++) -> Result<(), AppError> {
++    state.require_root()?;
++    validate_command(c)?;
++    let a = state
++        .assignment
++        .as_ref()
++        .ok_or_else(|| AppError::conflict("current PM assignment absent"))?;
++    let p = &c.checkpoint;
++    let f = &p.fence;
++    if r.assignment != *a
++        || r.binding.task_id != state.task_id
++        || r.binding.root_task_id != state.root_task_id
++        || r.binding.project_id != state.project_id
++        || r.binding.owner_subject != state.owner_subject
++        || r.binding.tracker_instance_id != state.tracker_instance_id
++        || r.owner_cas.version != c.expected_owner_version
++        || a.assignment_id != f.assignment_id
++        || a.execution_id != f.execution_id
++        || a.agent_id != f.agent_id
++        || a.version != f.assignment_version
++        || p.requirement_revision != state.current_revision()
++        || p.content_hash.as_deref() != state.revisions.last().map(|r| r.content_hash.as_str())
++    {
++        return Err(AppError::conflict("stale PM resume binding/checkpoint"));
++    }
++    let stage_ok = match c.input {
++        PmResumeInput::Answer { .. } | PmResumeInput::Feedback { .. } => {
++            matches!(state.stage, Stage::Draft | Stage::Clarification)
++        }
++        PmResumeInput::Confirmation { .. } => {
++            matches!(state.stage, Stage::Backlog | Stage::Analysis)
++        }
++    };
++    if !stage_ok {
++        return Err(AppError::conflict(
++            "PM resume cannot reopen business lifecycle",
++        ));
++    }
++    Ok(())
++}
++
++pub fn validate_answer(
++    state: &TaskState,
++    c: &ResumePmExecutionLease,
++    answer: &Answer,
++) -> Result<(), AppError> {
++    let f = &c.checkpoint.fence;
++    let q = state
++        .questions
++        .iter()
++        .find(|q| q.id == answer.question_id)
++        .ok_or_else(|| AppError::conflict("PM resume answer question absent"))?;
++    if answer.id != c.input.input_id()
++        || answer.author_subject != state.owner_subject
++        || Some(answer.requirement_revision) != c.checkpoint.requirement_revision
++        || q.task_id != state.task_id
++        || q.root_task_id != state.task_id
++        || q.version != answer.question_version
++        || q.requirement_revision != answer.requirement_revision
++        || q.state != QuestionState::Answered
++        || q.checkpoint_id != c.checkpoint.checkpoint_id
++        || q.assignment_id != f.assignment_id
++        || q.execution_id != f.execution_id
++        || q.agent_id != f.agent_id
++        || q.assignment_version != f.assignment_version
++        || q.answer
++            .as_ref()
++            .map(serde_json::to_value)
++            .transpose()
++            .map_err(AppError::internal)?
++            != Some(serde_json::to_value(answer).map_err(AppError::internal)?)
++    {
++        return Err(AppError::conflict("stale/foreign PM resume answer"));
++    }
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use serde_json::json;
++
++    fn fixture() -> (TaskState, PmDraftReservation, ResumePmExecutionLease) {
++        let task = Uuid::new_v4();
++        let assignment = PmAssignment {
++            assignment_id: Uuid::new_v4(),
++            execution_id: Uuid::new_v4(),
++            agent_id: Uuid::new_v4(),
++            version: 1,
++            machine_subject: "pm".into(),
++        };
++        let state: TaskState = serde_json::from_value(json!({
++            "tracker_instance_id":"resume-test","project_id":Uuid::new_v4(),
++            "task_id":task,"root_task_id":task,"owner_subject":"owner","stage":"Draft",
++            "confirmation_revision":null,"assignment":assignment,"questions":[],
++            "revisions":[],"evidence":[],"confirmations":[]
++        }))
++        .unwrap();
++        let reservation: PmDraftReservation = serde_json::from_value(json!({
++            "contract_version":1,"variant":"pm_draft_reserved",
++            "binding":{"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,
++                "task_id":task,"root_task_id":task,"owner_subject":state.owner_subject},
++            "owner_cas":{"expected_version":0,"version":1},"assignment":assignment,
++            "execution":{"ordinal":"1","key":"SDLC-1"},
++            "input":{"snapshot_ref":Uuid::new_v4(),"sha256":"a".repeat(64)},
++            "assignment_operation_key":"reserve","admission_state":"reserved","dispatch_allowed":false
++        })).unwrap();
++        let command = ResumePmExecutionLease {
++            expected_owner_version: 1,
++            lease_id: Uuid::new_v4(),
++            expected_lease_version: 1,
++            input: PmResumeInput::Feedback {
++                input_id: Uuid::new_v4(),
++            },
++            checkpoint: PmResumeCheckpoint {
++                checkpoint_id: Uuid::new_v4(),
++                checkpoint_revision: 1,
++                checkpoint_sha256: "b".repeat(64),
++                fence: MachineFence {
++                    assignment_id: assignment.assignment_id,
++                    execution_id: assignment.execution_id,
++                    agent_id: assignment.agent_id,
++                    assignment_version: 1,
++                },
++                requirement_revision: None,
++                content_hash: None,
++            },
++            previous_run_id: Uuid::new_v4(),
++            previous_run_terminal: domain::sdlc_lifecycle::ArtifactReceipt {
++                reference: "fixture://trusted-terminal-observation".into(),
++                sha256: "c".repeat(64),
++            },
++            idempotency_key: "resume".into(),
++        };
++        (state, reservation, command)
++    }
++
++    #[test]
++    fn resume_validation_requires_paired_hash_revision_and_safe_identity() {
++        let (_, _, command) = fixture();
++        assert!(validate_command(&command).is_ok());
++        let value = serde_json::to_value(&command).unwrap();
++        for (field, invalid) in [
++            ("checkpoint_sha256", json!("A".repeat(64))),
++            ("content_hash", json!("a".repeat(64))),
++            ("requirement_revision", json!(1)),
++        ] {
++            let mut bad = value.clone();
++            bad["checkpoint"][field] = invalid;
++            assert!(validate_command(&serde_json::from_value(bad).unwrap()).is_err());
++        }
++        for field in ["expected_owner_version", "expected_lease_version"] {
++            let mut bad = command.clone();
++            if field == "expected_owner_version" {
++                bad.expected_owner_version = 0;
++            } else {
++                bad.expected_lease_version = 0;
++            }
++            assert!(validate_command(&bad).is_err());
++        }
++        let mut bad = command.clone();
++        bad.previous_run_id = Uuid::nil();
++        assert!(validate_command(&bad).is_err());
++        let mut bad = command.clone();
++        bad.previous_run_terminal.reference.clear();
++        assert!(validate_command(&bad).is_err());
++        let mut paired = command.clone();
++        paired.checkpoint.requirement_revision = Some(1);
++        paired.checkpoint.content_hash = Some("a".repeat(64));
++        assert!(validate_command(&paired).is_ok());
++        assert_ne!(
++            request_hash(&paired).unwrap(),
++            request_hash(&command).unwrap()
++        );
++    }
++
++    #[test]
++    fn resume_context_is_exact_and_cannot_reopen_pm_business_writes() {
++        let (state, reservation, command) = fixture();
++        let before = serde_json::to_value(&state).unwrap();
++        assert!(validate_context(&state, &reservation, &command).is_ok());
++        for field in [
++            "task_id",
++            "root_task_id",
++            "project_id",
++            "owner_subject",
++            "tracker_instance_id",
++        ] {
++            let mut bad = before.clone();
++            bad[field] = if field.ends_with("id") {
++                json!(Uuid::new_v4())
++            } else {
++                json!("foreign")
++            };
++            let bad: TaskState = serde_json::from_value(bad).unwrap();
++            assert!(validate_context(&bad, &reservation, &command).is_err());
++        }
++        for stage in [
++            "Backlog",
++            "Analysis",
++            "Architecture",
++            "Development",
++            "Review",
++            "Testing",
++            "Rework",
++            "Deployment",
++        ] {
++            let mut bad = before.clone();
++            bad["stage"] = json!(stage);
++            let bad: TaskState = serde_json::from_value(bad).unwrap();
++            assert!(validate_context(&bad, &reservation, &command).is_err());
++        }
++        let mut legacy = state.clone();
++        legacy.stage = Stage::Clarification;
++        assert!(validate_context(&legacy, &reservation, &command).is_ok());
++        let mut closing = command.clone();
++        closing.input = PmResumeInput::Confirmation {
++            input_id: Uuid::new_v4(),
++        };
++        assert!(validate_context(&state, &reservation, &closing).is_err());
++        for stage in [Stage::Backlog, Stage::Analysis] {
++            let mut consented = state.clone();
++            consented.stage = stage;
++            assert!(validate_context(&consented, &reservation, &closing).is_ok());
++            // This only validates a context; repository still requires real exact owner consent.
++        }
++        let mut stale = command.clone();
++        stale.expected_owner_version += 1;
++        assert!(validate_context(&state, &reservation, &stale).is_err());
++        let mut stale = command.clone();
++        stale.checkpoint.fence.assignment_version += 1;
++        assert!(validate_context(&state, &reservation, &stale).is_err());
++        let mut stale = command.clone();
++        stale.checkpoint.requirement_revision = Some(1);
++        stale.checkpoint.content_hash = Some("a".repeat(64));
++        assert!(validate_context(&state, &reservation, &stale).is_err());
++        assert_eq!(serde_json::to_value(state).unwrap(), before);
++    }
++}
+diff --git a/backend/domain/src/sdlc.rs b/backend/domain/src/sdlc.rs
+index 4011e86..40ac3ad 100644
+--- a/backend/domain/src/sdlc.rs
++++ b/backend/domain/src/sdlc.rs
+@@ -740,6 +740,18 @@ pub trait SdlcRepository: Send + Sync {
+         actor: &Principal,
+         key: Option<&str>,
+     ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
++    async fn resume_pm_execution_lease(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: crate::sdlc_execution_lease::ResumePmExecutionLease,
++    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
++    async fn pm_resume_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
+     async fn reserve_pm_draft(
+         &self,
+         task: Uuid,
+diff --git a/backend/domain/src/sdlc_execution_lease.rs b/backend/domain/src/sdlc_execution_lease.rs
+index 1107438..f317772 100644
+--- a/backend/domain/src/sdlc_execution_lease.rs
++++ b/backend/domain/src/sdlc_execution_lease.rs
+@@ -1,4 +1,5 @@
+-use crate::sdlc::{MachineFence, safe_version};
++use crate::sdlc::{MachineFence, safe_optional_version, safe_version};
++use crate::sdlc_lifecycle::ArtifactReceipt;
+ use crate::sdlc_pm_draft::PmDraftBinding;
+ use chrono::{DateTime, SecondsFormat, Utc};
+ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+@@ -71,6 +72,86 @@ pub struct HeartbeatExecutionLease {
+     pub expected_lease_version: i64,
+     pub idempotency_key: String,
+ }
++
++#[derive(Clone, Copy, Debug, Deserialize, Serialize, utoipa::ToSchema, PartialEq, Eq)]
++#[serde(tag = "input_kind", rename_all = "lowercase", deny_unknown_fields)]
++pub enum PmResumeInput {
++    Answer {
++        #[serde(deserialize_with = "canonical_uuid")]
++        input_id: Uuid,
++    },
++    Feedback {
++        #[serde(deserialize_with = "canonical_uuid")]
++        input_id: Uuid,
++    },
++    Confirmation {
++        #[serde(deserialize_with = "canonical_uuid")]
++        input_id: Uuid,
++    },
++}
++impl PmResumeInput {
++    pub fn input_id(self) -> Uuid {
++        match self {
++            Self::Answer { input_id }
++            | Self::Feedback { input_id }
++            | Self::Confirmation { input_id } => input_id,
++        }
++    }
++    pub fn kind(self) -> &'static str {
++        match self {
++            Self::Answer { .. } => "answer",
++            Self::Feedback { .. } => "feedback",
++            Self::Confirmation { .. } => "confirmation",
++        }
++    }
++}
++fn nullable_hash<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
++    Option::<String>::deserialize(d)
++}
++
++#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct PmResumeCheckpoint {
++    #[serde(deserialize_with = "canonical_uuid")]
++    pub checkpoint_id: Uuid,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub checkpoint_revision: i64,
++    pub checkpoint_sha256: String,
++    #[serde(deserialize_with = "canonical_fence")]
++    pub fence: MachineFence,
++    #[serde(deserialize_with = "safe_optional_version")]
++    #[schema(
++        required = true,
++        nullable = true,
++        minimum = 1,
++        maximum = 9007199254740991i64
++    )]
++    pub requirement_revision: Option<i64>,
++    #[serde(deserialize_with = "nullable_hash")]
++    #[schema(required = true, nullable = true)]
++    pub content_hash: Option<String>,
++}
++
++/// Trusted scheduler observation; artifact alone is not independently verified runtime proof.
++#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct ResumePmExecutionLease {
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub expected_owner_version: i64,
++    #[serde(deserialize_with = "canonical_uuid")]
++    pub lease_id: Uuid,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub expected_lease_version: i64,
++    pub input: PmResumeInput,
++    pub checkpoint: PmResumeCheckpoint,
++    #[serde(deserialize_with = "canonical_uuid")]
++    pub previous_run_id: Uuid,
++    pub previous_run_terminal: ArtifactReceipt,
++    pub idempotency_key: String,
++}
+ #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema, PartialEq)]
+ #[serde(deny_unknown_fields)]
+ pub struct ExecutionLease {
+@@ -178,4 +259,53 @@ mod tests {
+         assert!(serde_json::from_value::<ClaimExecutionLease>(c).is_err());
+         assert!(no_dispatch(&mut serde_json::Deserializer::from_str("true")).is_err());
+     }
++
++    #[test]
++    fn resume_inputs_are_closed_short_names_and_checkpoint_nulls_are_required() {
++        let mut value = json!({"expected_owner_version":1,"lease_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","expected_lease_version":1,
++            "input":{"input_kind":"feedback","input_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"},
++            "checkpoint":{"checkpoint_id":"ffffffff-ffff-4fff-8fff-ffffffffffff","checkpoint_revision":1,
++                "checkpoint_sha256":"a".repeat(64),"fence":claim()["fence"],"requirement_revision":null,"content_hash":null},
++            "previous_run_id":"11111111-1111-4111-8111-111111111111","previous_run_terminal":{"reference":"fixture://terminal","sha256":"b".repeat(64)},
++            "idempotency_key":"resume"});
++        for kind in ["answer", "feedback", "confirmation"] {
++            value["input"]["input_kind"] = json!(kind);
++            let command: ResumePmExecutionLease = serde_json::from_value(value.clone()).unwrap();
++            assert_eq!(command.input.kind(), kind);
++            assert_eq!(serde_json::to_value(command).unwrap(), value);
++        }
++        for kind in [
++            "clarification_answer",
++            "pm_feedback",
++            "requirements_confirmation",
++            "unknown",
++        ] {
++            let mut bad = value.clone();
++            bad["input"]["input_kind"] = json!(kind);
++            assert!(serde_json::from_value::<ResumePmExecutionLease>(bad).is_err());
++        }
++        for field in ["requirement_revision", "content_hash"] {
++            let mut bad = value.clone();
++            bad["checkpoint"].as_object_mut().unwrap().remove(field);
++            assert!(serde_json::from_value::<ResumePmExecutionLease>(bad).is_err());
++        }
++        for field in ["terminal", "verified", "dispatch_allowed"] {
++            let mut bad = value.clone();
++            bad[field] = json!(true);
++            assert!(serde_json::from_value::<ResumePmExecutionLease>(bad).is_err());
++            for object in ["input", "checkpoint", "previous_run_terminal"] {
++                let mut bad = value.clone();
++                bad[object][field] = json!(true);
++                assert!(serde_json::from_value::<ResumePmExecutionLease>(bad).is_err());
++            }
++        }
++        for id in [
++            "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE",
++            "00000000-0000-0000-0000-000000000000",
++        ] {
++            let mut bad = value.clone();
++            bad["input"]["input_id"] = json!(id);
++            assert!(serde_json::from_value::<ResumePmExecutionLease>(bad).is_err());
++        }
++    }
+ }
+diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
+index b97face..80c2409 100644
+--- a/backend/domain/src/sdlc_lifecycle.rs
++++ b/backend/domain/src/sdlc_lifecycle.rs
+@@ -120,7 +120,7 @@ pub enum RuntimeState {
+     Unknown,
+ }
+ 
+-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+ #[serde(deny_unknown_fields)]
+ pub struct ArtifactReceipt {
+     pub reference: String,
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+index 0247fb7..4c97139 100644
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -16,6 +16,8 @@ mod execution_lease;
+ mod lifecycle;
+ #[path = "sdlc_native_admission.rs"]
+ mod native_admission;
++#[path = "sdlc_pm_resume.rs"]
++mod pm_resume;
+ #[path = "sdlc_reservation.rs"]
+ mod reservation;
+ #[path = "sdlc_routing.rs"]
+@@ -790,6 +792,22 @@ impl SdlcRepository for PostgresSdlcRepository {
+     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
+         self.read_pm_lease(task, actor, key).await
+     }
++    async fn resume_pm_execution_lease(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
++    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
++        self.resume_pm_lease(task, actor, command).await
++    }
++    async fn pm_resume_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
++        self.read_pm_resume_operation(task, actor, key).await
++    }
+     async fn reserve_pm_draft(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc_execution_lease.rs b/backend/infra/src/sdlc_execution_lease.rs
+index 1f20098..6cb3e31 100644
+--- a/backend/infra/src/sdlc_execution_lease.rs
++++ b/backend/infra/src/sdlc_execution_lease.rs
+@@ -83,9 +83,10 @@ impl PostgresSdlcRepository {
+         {
+             return Err(invalid());
+         }
+-        let saved = tx.query_one(statement("SELECT result FROM sdlc_pm_lease_operations WHERE execution_id=$1 AND lease_version=$2",
+-            vec![id.into(),result.lease.version.into()])).await.map_err(map_db)?.ok_or_else(invalid)?;
+-        if saved.try_get::<Json>("", "result").map_err(map_db)? != value {
++        let saved = tx.query_all(statement("SELECT result FROM sdlc_pm_lease_operations WHERE execution_id=$1 AND lease_version=$2
++            UNION ALL SELECT result FROM sdlc_pm_resume_inputs WHERE execution_id=$1 AND lease_version=$2",
++            vec![id.into(),result.lease.version.into()])).await.map_err(map_db)?;
++        if saved.len() != 1 || saved[0].try_get::<Json>("", "result").map_err(map_db)? != value {
+             return Err(invalid());
+         }
+         Ok(Some(result))
+@@ -338,7 +339,11 @@ fn fence(r: &PmDraftReservation) -> MachineFence {
+         assignment_version: r.assignment.version,
+     }
+ }
+-fn check_fence(r: &PmDraftReservation, owner: i64, f: &MachineFence) -> Result<(), AppError> {
++pub(super) fn check_fence(
++    r: &PmDraftReservation,
++    owner: i64,
++    f: &MachineFence,
++) -> Result<(), AppError> {
+     if owner != r.owner_cas.version
+         || f.assignment_id != r.assignment.assignment_id
+         || f.execution_id != r.assignment.execution_id
+@@ -361,7 +366,10 @@ fn receipt(r: &PmDraftReservation, lease: ExecutionLease) -> ExecutionLeaseRecei
+         dispatch_allowed: false,
+     }
+ }
+-fn valid_receipt(c: &ExecutionLeaseReceipt, r: &PmDraftReservation) -> Result<(), AppError> {
++pub(super) fn valid_receipt(
++    c: &ExecutionLeaseReceipt,
++    r: &PmDraftReservation,
++) -> Result<(), AppError> {
+     check_fence(r, c.owner_version, &c.fence)?;
+     if c.contract_version != 1
+         || c.binding != r.binding
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+index d634540..f6a1f49 100644
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -6,6 +6,9 @@ use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
+ use sea_orm_migration::MigratorTrait;
+ use serde::de::DeserializeOwned;
+ 
++#[path = "sdlc_pm_resume_pg_tests.rs"]
++mod pm_resume_tests;
++
+ fn parse<T: DeserializeOwned>(value: Json) -> T {
+     serde_json::from_value(value).unwrap()
+ }
+diff --git a/backend/infra/src/sdlc_pm_resume.rs b/backend/infra/src/sdlc_pm_resume.rs
+new file mode 100644
+index 0000000..2cf01d6
+--- /dev/null
++++ b/backend/infra/src/sdlc_pm_resume.rs
+@@ -0,0 +1,285 @@
++use super::execution_lease::{check_fence, clock, valid_receipt};
++use super::*;
++use chrono::Duration;
++use domain::sdlc_execution_lease::*;
++
++fn inconsistent() -> AppError {
++    AppError::conflict("PM resume source inconsistent")
++}
++
++impl PostgresSdlcRepository {
++    async fn resume_operation_source(
++        &self,
++        tx: &DatabaseTransaction,
++        state: &TaskState,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<Option<ExecutionLeaseOperation>, AppError> {
++        let row=tx.query_one(statement("SELECT execution_id,lease_version,payload_hash,command,result FROM sdlc_pm_resume_inputs
++            WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",vec![state.task_id.into(),actor.subject.clone().into(),key.into()]))
++            .await.map_err(map_db)?;
++        let Some(row) = row else {
++            return Ok(None);
++        };
++        let raw: Json = row.try_get("", "result").map_err(map_db)?;
++        let result: ExecutionLeaseReceipt =
++            serde_json::from_value(raw.clone()).map_err(|_| inconsistent())?;
++        let command: ResumePmExecutionLease =
++            serde_json::from_value(row.try_get::<Json>("", "command").map_err(map_db)?)
++                .map_err(|_| inconsistent())?;
++        let request_sha256: String = row.try_get("", "payload_hash").map_err(map_db)?;
++        app::sdlc_pm_resume::validate_command(&command)?;
++        let reservation = Self::reservation(tx, state, result.fence.execution_id).await?;
++        valid_receipt(&result, &reservation)?;
++        if command.idempotency_key != key
++            || request_sha256 != app::sdlc_pm_resume::request_hash(&command)?
++            || result.fence != command.checkpoint.fence
++            || result.owner_version != command.expected_owner_version
++            || result.lease.lease_id != command.lease_id
++            || result.lease.version != command.expected_lease_version + 1
++            || result.fence.execution_id
++                != row.try_get::<Uuid>("", "execution_id").map_err(map_db)?
++            || result.lease.version != row.try_get::<i64>("", "lease_version").map_err(map_db)?
++            || serde_json::to_value(&result).map_err(AppError::internal)? != raw
++        {
++            return Err(inconsistent());
++        }
++        Ok(Some(ExecutionLeaseOperation {
++            idempotency_key: key.into(),
++            request_sha256,
++            result,
++        }))
++    }
++
++    async fn resume_input(
++        &self,
++        tx: &DatabaseTransaction,
++        state: &TaskState,
++        c: &ResumePmExecutionLease,
++    ) -> Result<(), AppError> {
++        if let Some(revision) = c.checkpoint.requirement_revision {
++            let row = tx
++                .query_one(statement(
++                    "SELECT content_hash FROM sdlc_requirements WHERE task_id=$1 AND revision=$2",
++                    vec![state.task_id.into(), revision.into()],
++                ))
++                .await
++                .map_err(map_db)?
++                .ok_or_else(inconsistent)?;
++            if Some(row.try_get::<String>("", "content_hash").map_err(map_db)?)
++                != c.checkpoint.content_hash
++            {
++                return Err(inconsistent());
++            }
++        }
++        let id = c.input.input_id();
++        match c.input {
++            PmResumeInput::Answer { .. } => {
++                let row=tx.query_one(statement("SELECT question_id,question_version,requirement_revision,payload FROM sdlc_answers WHERE task_id=$1 AND id=$2",
++                    vec![state.task_id.into(),id.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++                let raw: Json = row.try_get("", "payload").map_err(map_db)?;
++                let answer: Answer =
++                    serde_json::from_value(raw.clone()).map_err(|_| inconsistent())?;
++                if answer.question_id != row.try_get::<Uuid>("", "question_id").map_err(map_db)?
++                    || answer.question_version
++                        != row.try_get::<i64>("", "question_version").map_err(map_db)?
++                    || answer.requirement_revision
++                        != row
++                            .try_get::<i64>("", "requirement_revision")
++                            .map_err(map_db)?
++                    || serde_json::to_value(&answer).map_err(AppError::internal)? != raw
++                {
++                    return Err(inconsistent());
++                }
++                app::sdlc_pm_resume::validate_answer(state, c, &answer)?;
++            }
++            PmResumeInput::Feedback { .. } => {
++                let row=tx.query_one(statement("SELECT actor_subject,payload FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2",
++                    vec![state.task_id.into(),id.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++                let raw: Json = row.try_get("", "payload").map_err(map_db)?;
++                let f: domain::sdlc_lifecycle::PmFeedbackReceipt =
++                    serde_json::from_value(raw.clone()).map_err(|_| inconsistent())?;
++                if f.message_id != id
++                    || f.task_id != state.task_id
++                    || f.root_task_id != state.task_id
++                    || f.project_id != state.project_id
++                    || f.tracker_instance_id != state.tracker_instance_id
++                    || f.owner_subject != state.owner_subject
++                    || f.owner_subject
++                        != row.try_get::<String>("", "actor_subject").map_err(map_db)?
++                    || f.fence != c.checkpoint.fence
++                    || f.requirement_revision != c.checkpoint.requirement_revision
++                    || f.content_hash != app::sdlc::canonical_hash(&json!({"text":f.text}))?
++                    || serde_json::to_value(&f).map_err(AppError::internal)? != raw
++                {
++                    return Err(inconsistent());
++                }
++            }
++            PmResumeInput::Confirmation { .. } => {
++                let revision = c.checkpoint.requirement_revision.ok_or_else(inconsistent)?;
++                let row=tx.query_one(statement("SELECT revision,content_hash,payload FROM sdlc_confirmations WHERE task_id=$1 AND id=$2",
++                    vec![state.task_id.into(),id.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++                let raw: Json = row.try_get("", "payload").map_err(map_db)?;
++                let confirmation: Confirmation =
++                    serde_json::from_value(raw.clone()).map_err(|_| inconsistent())?;
++                let hash: String = row.try_get("", "content_hash").map_err(map_db)?;
++                if confirmation.id != id
++                    || row.try_get::<i64>("", "revision").map_err(map_db)? != revision
++                    || serde_json::to_value(&confirmation).map_err(AppError::internal)? != raw
++                {
++                    return Err(inconsistent());
++                }
++                app::sdlc_confirmation::exact_receipt(
++                    state,
++                    revision,
++                    Some(&confirmation),
++                    Some(&hash),
++                )?;
++            }
++        }
++        Ok(())
++    }
++
++    pub(super) async fn resume_pm_lease(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: ResumePmExecutionLease,
++    ) -> Result<(ExecutionLeaseReceipt, bool), AppError> {
++        // Fleet owns actual terminal/checkpoint observations, just as for Lifecycle Complete.
++        app::sdlc_reservation::scheduler(actor, &self.config)?;
++        app::sdlc_pm_resume::validate_command(&command)?;
++        let hash = app::sdlc_pm_resume::request_hash(&command)?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let mut state = self.load(&tx, task, actor).await?;
++        if let Some(saved) = self
++            .resume_operation_source(&tx, &state, actor, &command.idempotency_key)
++            .await?
++        {
++            if saved.request_sha256 != hash {
++                return Err(AppError::conflict("PM resume key payload conflict"));
++            }
++            tx.commit().await.map_err(map_db)?;
++            return Ok((saved.result, true));
++        }
++        let f = &command.checkpoint.fence;
++        let row=tx.query_one(statement("SELECT pm_execution_id,pm_owner_version,pm_admission_state FROM sdlc_tasks WHERE task_id=$1",
++            vec![task.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++        if row
++            .try_get::<Option<Uuid>>("", "pm_execution_id")
++            .map_err(map_db)?
++            != Some(f.execution_id)
++            || row.try_get::<i64>("", "pm_owner_version").map_err(map_db)?
++                != command.expected_owner_version
++            || row
++                .try_get::<Option<String>>("", "pm_admission_state")
++                .map_err(map_db)?
++                .as_deref()
++                != Some("reserved")
++        {
++            return Err(AppError::conflict("current reserved PM execution required"));
++        }
++        let reservation = Self::reservation(&tx, &state, f.execution_id).await?;
++        app::sdlc_pm_resume::validate_context(&state, &reservation, &command)?;
++        check_fence(&reservation, command.expected_owner_version, f)?;
++        let holder = Principal {
++            subject: reservation.assignment.machine_subject.clone(),
++            human_session: false,
++            trusted_human: false,
++            scopes: Default::default(),
++        };
++        self.project_access(&tx, state.project_id, &holder).await?;
++        let row=tx.query_one(statement("SELECT payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",vec![task.into()]))
++            .await.map_err(map_db)?.ok_or_else(inconsistent)?;
++        if row.try_get::<Json>("", "payload").map_err(map_db)?
++            != serde_json::to_value(&reservation.assignment).map_err(AppError::internal)?
++        {
++            return Err(inconsistent());
++        }
++        let overlap = tx
++            .query_one(statement(
++                "SELECT EXISTS(SELECT 1 FROM sdlc_delivery_heads WHERE task_id=$1)
++            OR EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=$1) AS busy",
++                vec![task.into()],
++            ))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(inconsistent)?;
++        if overlap.try_get::<bool>("", "busy").map_err(map_db)? {
++            return Err(AppError::conflict("delivery already owns lifecycle"));
++        }
++        let mut current = Self::lease_current(&tx, &reservation)
++            .await?
++            .ok_or_else(inconsistent)?;
++        if current.lease.lease_id != command.lease_id
++            || current.lease.version != command.expected_lease_version
++            || current.lease.version >= MAX_SAFE_VERSION
++        {
++            return Err(AppError::conflict("stale PM resume lease CAS"));
++        }
++        self.resume_input(&tx, &state, &command).await?;
++        let duplicate=tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_pm_resume_inputs
++            WHERE (task_id=$1 AND input_kind=$2 AND input_id=$3)
++                OR (execution_id=$4 AND previous_run_id=$5)
++                OR (execution_id=$4 AND checkpoint_id=$6 AND checkpoint_revision>=$7)) AS duplicate",
++            vec![task.into(),command.input.kind().into(),command.input.input_id().into(),f.execution_id.into(),command.previous_run_id.into(),
++                command.checkpoint.checkpoint_id.into(),command.checkpoint.checkpoint_revision.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++        if duplicate.try_get::<bool>("", "duplicate").map_err(map_db)? {
++            return Err(AppError::conflict(
++                "PM resume input/run/checkpoint already consumed",
++            ));
++        }
++        let now = clock(&tx).await?;
++        current.lease.version += 1;
++        current.lease.heartbeat_at = now;
++        current.lease.expires_at = now + Duration::seconds(LEASE_TTL_SECONDS);
++        exec(&tx,"INSERT INTO sdlc_pm_resume_inputs(task_id,execution_id,actor_subject,idempotency_key,payload_hash,input_kind,input_id,
++            checkpoint_id,checkpoint_revision,previous_run_id,lease_version,transaction_id,command,result)
++            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,pg_current_xact_id(),$12,$13)",
++            vec![task.into(),f.execution_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),command.input.kind().into(),
++                command.input.input_id().into(),command.checkpoint.checkpoint_id.into(),command.checkpoint.checkpoint_revision.into(),command.previous_run_id.into(),
++                current.lease.version.into(),json_value(&command)?,json_value(&current)?]).await?;
++        exec(&tx,"UPDATE sdlc_pm_execution_leases SET version=$2,heartbeat_at=$3,expires_at=$4,result=$5 WHERE execution_id=$1 AND version=$6",
++            vec![f.execution_id.into(),current.lease.version.into(),now.into(),current.lease.expires_at.into(),json_value(&current)?,command.expected_lease_version.into()]).await?;
++        if state.status.is_some() && matches!(state.stage, Stage::Draft | Stage::Clarification) {
++            state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
++            let next = json_value(&state)?;
++            exec(&tx,"INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
++                SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks WHERE task_id=$1 AND state IS DISTINCT FROM $2",vec![task.into(),next.clone()]).await?;
++            exec(
++                &tx,
++                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
++                vec![task.into(), next],
++            )
++            .await?;
++            let status_id = lifecycle::mapped_issue_status(
++                &tx,
++                state.stage,
++                domain::sdlc_lifecycle::LifecycleStatus::InProgress,
++            )
++            .await?;
++            lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
++        }
++        // Input events already exist; renewal/consumption creates no duplicate business message.
++        tx.commit().await.map_err(map_db)?;
++        Ok((current, false))
++    }
++
++    pub(super) async fn read_pm_resume_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<ExecutionLeaseOperation, AppError> {
++        app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
++        app::sdlc::validate_key(key)?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let state = self.load(&tx, task, actor).await?;
++        let operation = self
++            .resume_operation_source(&tx, &state, actor, key)
++            .await?
++            .ok_or_else(|| AppError::not_found("PM resume operation", key))?;
++        tx.commit().await.map_err(map_db)?;
++        Ok(operation)
++    }
++}
+diff --git a/backend/infra/src/sdlc_pm_resume_pg_tests.rs b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+new file mode 100644
+index 0000000..bda6d6c
+--- /dev/null
++++ b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+@@ -0,0 +1,685 @@
++//! Synthetic trusted-scheduler observations only; no live Fleet proof is claimed.
++use super::*;
++use domain::sdlc_execution_lease::*;
++use domain::sdlc_lifecycle::SubmitPmFeedback;
++
++fn resume(
++    lease: &ExecutionLeaseReceipt,
++    input: PmResumeInput,
++    checkpoint: Uuid,
++    revision: i64,
++    requirements: Option<(i64, String)>,
++    key: &str,
++) -> ResumePmExecutionLease {
++    let (requirement_revision, content_hash) = match requirements {
++        Some((n, h)) => (Some(n), Some(h)),
++        None => (None, None),
++    };
++    ResumePmExecutionLease {
++        expected_owner_version: lease.owner_version,
++        lease_id: lease.lease.lease_id,
++        expected_lease_version: lease.lease.version,
++        input,
++        checkpoint: PmResumeCheckpoint {
++            checkpoint_id: checkpoint,
++            checkpoint_revision: revision,
++            checkpoint_sha256: "c".repeat(64),
++            fence: lease.fence.clone(),
++            requirement_revision,
++            content_hash,
++        },
++        previous_run_id: Uuid::new_v4(),
++        previous_run_terminal: artifact("scheduler-terminal-readback"),
++        idempotency_key: key.into(),
++    }
++}
++
++async fn saved_lease(db: &DatabaseConnection, execution: Uuid) -> Json {
++    db.query_one(statement(
++        "SELECT result FROM sdlc_pm_execution_leases WHERE execution_id=$1",
++        vec![execution.into()],
++    ))
++    .await
++    .unwrap()
++    .unwrap()
++    .try_get("", "result")
++    .unwrap()
++}
++
++#[tokio::test]
++#[ignore = "requires fresh disposable TT_PM_RESUME_TEST_DATABASE_URL ending in _pm_resume_test"]
++async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
++    let url = std::env::var("TT_PM_RESUME_TEST_DATABASE_URL")
++        .expect("isolated PM resume database required");
++    let db = Database::connect(&url).await.unwrap();
++    let row=db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
++    assert!(
++        row.try_get::<String>("", "name")
++            .unwrap()
++            .ends_with("_pm_resume_test")
++    );
++    assert!(row.try_get::<bool>("", "fresh").unwrap());
++    migration::Migrator::up(&db, None).await.unwrap();
++    let row = db
++        .query_one(statement(
++            "SELECT to_regclass('public.sdlc_delivery_heads') IS NULL AS absent",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap();
++    if row.try_get::<bool>("", "absent").unwrap() {
++        db.execute_unprepared(include_str!(
++            "../../migration/src/single_task_lifecycle.sql"
++        ))
++        .await
++        .unwrap();
++    }
++    let project = Uuid::new_v4();
++    let owner_id = Uuid::new_v4();
++    for (subject, id) in [
++        ("owner", owner_id),
++        ("pm", Uuid::new_v4()),
++        ("scheduler", Uuid::new_v4()),
++        ("verifier", Uuid::new_v4()),
++        ("foreign", Uuid::new_v4()),
++    ] {
++        exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
++            vec![id.into(),format!("{subject}@example.test").into(),subject.into()]).await.unwrap();
++    }
++    exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'PMR','PM resume',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
++    exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Resume','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
++    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub IN ('pm','scheduler','verifier')",vec![project.into()]).await.unwrap();
++    let repo = PostgresSdlcRepository::connect(
++        &url,
++        SdlcConfig {
++            instance_id: "pm-resume-test".into(),
++            orchestrator_subject: "pm".into(),
++            verifier_subject: "verifier".into(),
++            reservation_scheduler_subject: "scheduler".into(),
++            single_task_project_ids: [project].into_iter().collect(),
++        },
++    )
++    .await
++    .unwrap();
++    let owner = actor("owner", true, vec![]);
++    let scheduler = actor("scheduler", false, vec![]);
++    let mut reader = scheduler.clone();
++    reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
++    let routes = routes();
++    repo.set_routing_policy(
++        project,
++        &owner,
++        SetRoutingPolicy {
++            expected_version: None,
++            routes: routes.clone(),
++            idempotency_key: "policy".into(),
++        },
++    )
++    .await
++    .unwrap();
++    let (draft, _) = repo
++        .create_draft(
++            project,
++            &owner,
++            CreateDraftCommand {
++                title: "PM resume fixture".into(),
++                description: "Not live runtime evidence".into(),
++                idempotency_key: "draft".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let task = draft.task_id;
++    let (reservation,_)=repo.reserve_pm_draft(task,&owner,parse(json!({"requested_agent_id":routes.project_manager.agent_id,"expected_owner_version":0,
++        "expected_assignment_version":null,"idempotency_key":"reserve"}))).await.unwrap();
++    let pm = actor(
++        "pm",
++        false,
++        vec![
++            "task-tracker:read".into(),
++            reservation.assignment.scope(task),
++        ],
++    );
++    let fence: MachineFence = parse(
++        json!({"assignment_id":reservation.assignment.assignment_id,"execution_id":reservation.assignment.execution_id,
++        "agent_id":reservation.assignment.agent_id,"assignment_version":1}),
++    );
++    let claim = ClaimExecutionLease {
++        expected_owner_version: 1,
++        fence: fence.clone(),
++        idempotency_key: "claim".into(),
++    };
++    let (initial, _) = repo
++        .claim_execution_lease(task, &pm, claim.clone())
++        .await
++        .unwrap();
++    let checkpoint = Uuid::new_v4();
++    let (feedback, _) = repo
++        .submit_pm_feedback(
++            task,
++            &owner,
++            SubmitPmFeedback {
++                message_id: Uuid::new_v4(),
++                fence: fence.clone(),
++                text: "Real saved brainstorming input".into(),
++                idempotency_key: "feedback".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let command = resume(
++        &initial,
++        PmResumeInput::Feedback {
++            input_id: feedback.message_id,
++        },
++        checkpoint,
++        1,
++        None,
++        "resume-feedback",
++    );
++    let before = saved_lease(&db, fence.execution_id).await;
++    let foreign = actor("foreign", false, vec![]);
++    for denied in [&pm, &owner, &reader, &foreign] {
++        assert!(matches!(
++            repo.resume_pm_execution_lease(task, denied, command.clone())
++                .await,
++            Err(AppError::Forbidden)
++        ));
++    }
++    let mut human_scheduler = scheduler.clone();
++    human_scheduler.human_session = true;
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &human_scheduler, command.clone())
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    let mut wrong = command.clone();
++    wrong.input = PmResumeInput::Feedback {
++        input_id: Uuid::new_v4(),
++    };
++    wrong.idempotency_key = "missing-input".into();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, wrong)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(saved_lease(&db, fence.execution_id).await, before);
++    assert_eq!(count(&db, "sdlc_pm_resume_inputs").await, 0);
++    // Real database time expiry, without disabling guards or editing protected rows.
++    db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
++    assert!(matches!(
++        repo.execution_lease(task, &pm, None).await.unwrap().state,
++        ExecutionLeaseState::Expired
++    ));
++    let heartbeat = HeartbeatExecutionLease {
++        expected_owner_version: 1,
++        fence: fence.clone(),
++        lease_id: initial.lease.lease_id,
++        expected_lease_version: 1,
++        idempotency_key: "expired-heartbeat".into(),
++    };
++    assert!(matches!(
++        repo.heartbeat_execution_lease(task, &pm, heartbeat).await,
++        Err(AppError::Conflict(_))
++    ));
++    let mut reacquire = claim.clone();
++    reacquire.idempotency_key = "reacquire".into();
++    assert!(matches!(
++        repo.claim_execution_lease(task, &pm, reacquire).await,
++        Err(AppError::Conflict(_))
++    ));
++    db.execute_unprepared("CREATE FUNCTION fixture_resume_fail_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture lease update failure'; END $$;
++        CREATE TRIGGER fixture_resume_fail_update BEFORE UPDATE ON sdlc_pm_execution_leases FOR EACH ROW EXECUTE FUNCTION fixture_resume_fail_update();").await.unwrap();
++    assert!(
++        repo.resume_pm_execution_lease(task, &scheduler, command.clone())
++            .await
++            .is_err()
++    );
++    assert_eq!(count(&db, "sdlc_pm_resume_inputs").await, 0);
++    assert_eq!(saved_lease(&db, fence.execution_id).await, before);
++    db.execute_unprepared("DROP TRIGGER fixture_resume_fail_update ON sdlc_pm_execution_leases; DROP FUNCTION fixture_resume_fail_update();").await.unwrap();
++    let outbox = count(&db, "sdlc_outbox").await;
++    let questions = count(&db, "sdlc_question_versions").await;
++    let answers = count(&db, "sdlc_answers").await;
++    let (feedback_lease, replayed) = repo
++        .resume_pm_execution_lease(task, &scheduler, command.clone())
++        .await
++        .unwrap();
++    assert!(!replayed);
++    assert_eq!(feedback_lease.lease.version, 2);
++    assert_eq!(feedback_lease.lease.lease_id, initial.lease.lease_id);
++    assert_eq!(feedback_lease.lease.claimed_at, initial.lease.claimed_at);
++    assert_eq!(
++        feedback_lease.lease.holder_subject,
++        initial.lease.holder_subject
++    );
++    assert_eq!(feedback_lease.fence, initial.fence);
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox);
++    assert_eq!(count(&db, "sdlc_question_versions").await, questions);
++    assert_eq!(count(&db, "sdlc_answers").await, answers);
++    assert!(matches!(
++        repo.execution_lease(task, &pm, None).await.unwrap().state,
++        ExecutionLeaseState::Active
++    ));
++    let old_claim = repo
++        .execution_lease(task, &pm, Some("claim"))
++        .await
++        .unwrap()
++        .operation
++        .unwrap()
++        .result;
++    assert_eq!(
++        serde_json::to_value(&old_claim).unwrap(),
++        serde_json::to_value(&initial).unwrap()
++    );
++    assert!(
++        repo.resume_pm_execution_lease(task, &scheduler, command.clone())
++            .await
++            .unwrap()
++            .1
++    );
++    let original = repo
++        .pm_resume_operation(task, &reader, "resume-feedback")
++        .await
++        .unwrap();
++    assert_eq!(
++        serde_json::to_value(&original.result).unwrap(),
++        serde_json::to_value(&feedback_lease).unwrap()
++    );
++    assert!(matches!(
++        repo.pm_resume_operation(task, &pm, "resume-feedback").await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        repo.pm_resume_operation(task, &scheduler, "resume-feedback")
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    let mut changed = command.clone();
++    changed.checkpoint.checkpoint_sha256 = "d".repeat(64);
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, changed)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let mut duplicate = command.clone();
++    duplicate.idempotency_key = "duplicate-input".into();
++    duplicate.expected_lease_version = 2;
++    duplicate.previous_run_id = Uuid::new_v4();
++    duplicate.checkpoint.checkpoint_revision = 2;
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, duplicate)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let (second_feedback, _) = repo
++        .submit_pm_feedback(
++            task,
++            &owner,
++            SubmitPmFeedback {
++                message_id: Uuid::new_v4(),
++                fence: fence.clone(),
++                text: "Second saved input".into(),
++                idempotency_key: "feedback-2".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let mut stale_checkpoint = resume(
++        &feedback_lease,
++        PmResumeInput::Feedback {
++            input_id: second_feedback.message_id,
++        },
++        checkpoint,
++        1,
++        None,
++        "stale-checkpoint",
++    );
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, stale_checkpoint.clone())
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    stale_checkpoint.checkpoint.checkpoint_revision = 2;
++    stale_checkpoint.previous_run_id = command.previous_run_id;
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, stale_checkpoint)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    exec(&db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='scheduler')",vec![project.into()]).await.unwrap();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, command.clone())
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        repo.pm_resume_operation(task, &reader, "resume-feedback")
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='scheduler'",vec![project.into()]).await.unwrap();
++    let eligible = resume(
++        &feedback_lease,
++        PmResumeInput::Feedback {
++            input_id: second_feedback.message_id,
++        },
++        checkpoint,
++        2,
++        None,
++        "revoked-holder",
++    );
++    exec(
++        &db,
++        "UPDATE users SET is_active=false WHERE central_sub='pm'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, eligible)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(
++        &db,
++        "UPDATE users SET is_active=true WHERE central_sub='pm'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    let (heartbeat_lease, _) = repo
++        .heartbeat_execution_lease(
++            task,
++            &pm,
++            HeartbeatExecutionLease {
++                expected_owner_version: 1,
++                fence: fence.clone(),
++                lease_id: initial.lease.lease_id,
++                expected_lease_version: 2,
++                idempotency_key: "heartbeat-after-resume".into(),
++            },
++        )
++        .await
++        .unwrap();
++    assert_eq!(heartbeat_lease.lease.version, 3);
++    let mut document: RequirementsDocument = parse(
++        json!({"goal":"PM resume","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],"acceptance_criteria":["Accept"],
++        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
++    );
++    let hash = app::sdlc::canonical_hash(&document).unwrap();
++    repo.execute_verified(
++        task,
++        &pm,
++        SdlcCommand::PublishRevision(PublishRevision {
++            fence: fence.clone(),
++            expected_requirement_revision: None,
++            document: document.clone(),
++            idempotency_key: "publish-1".into(),
++        }),
++        reservation.clone(),
++        None,
++    )
++    .await
++    .unwrap();
++    let question = PublishQuestion {
++        fence: fence.clone(),
++        request_id: Uuid::new_v4(),
++        question_id: Uuid::new_v4(),
++        expected_question_version: None,
++        requirement_revision: 1,
++        checkpoint_id: checkpoint,
++        requirement_reference: Some("scope".into()),
++        text: "Describe scope".into(),
++        rationale: "Owner input".into(),
++        required: true,
++        mode: QuestionMode::Text,
++        options: vec![],
++        recommended_option_id: None,
++        idempotency_key: "question".into(),
++    };
++    repo.execute_verified(
++        task,
++        &pm,
++        SdlcCommand::PublishQuestion(question.clone()),
++        reservation.clone(),
++        None,
++    )
++    .await
++    .unwrap();
++    let answer: Answer = parse(
++        repo.execute_verified(
++            task,
++            &owner,
++            SdlcCommand::Answer {
++                question_id: question.question_id,
++                command: AnswerCommand {
++                    expected_question_version: 1,
++                    requirement_revision: 1,
++                    selected_option_ids: vec![],
++                    text: Some("Exact owner answer".into()),
++                    comment: None,
++                    idempotency_key: "answer".into(),
++                },
++            },
++            reservation.clone(),
++            None,
++        )
++        .await
++        .unwrap(),
++    );
++    let answer_command = resume(
++        &heartbeat_lease,
++        PmResumeInput::Answer {
++            input_id: answer.id,
++        },
++        checkpoint,
++        2,
++        Some((1, hash.clone())),
++        "resume-answer",
++    );
++    // A heartbeat winning CAS creates no consumption; readback supplies the retry version.
++    let mut raced = answer_command.clone();
++    raced.expected_lease_version = 2;
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, raced.clone())
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let readback = repo.execution_lease(task, &pm, None).await.unwrap();
++    raced.expected_lease_version = readback.current.unwrap().version;
++    assert_eq!(
++        app::sdlc_pm_resume::request_hash(&raced).unwrap(),
++        app::sdlc_pm_resume::request_hash(&answer_command).unwrap()
++    );
++    assert_eq!(count(&db, "sdlc_pm_resume_inputs").await, 1);
++    let mut wrong_kind = answer_command.clone();
++    wrong_kind.input = PmResumeInput::Feedback {
++        input_id: answer.id,
++    };
++    wrong_kind.idempotency_key = "wrong-kind".into();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, wrong_kind)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let mut wrong_checkpoint = answer_command.clone();
++    wrong_checkpoint.checkpoint.checkpoint_id = Uuid::new_v4();
++    wrong_checkpoint.idempotency_key = "wrong-question-checkpoint".into();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, wrong_checkpoint)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let outbox = count(&db, "sdlc_outbox").await;
++    let (left, right) = tokio::join!(
++        repo.resume_pm_execution_lease(task, &scheduler, answer_command.clone()),
++        repo.resume_pm_execution_lease(task, &scheduler, answer_command.clone())
++    );
++    let left = left.unwrap();
++    let right = right.unwrap();
++    assert_ne!(left.1, right.1);
++    assert_eq!(
++        serde_json::to_value(&left.0).unwrap(),
++        serde_json::to_value(&right.0).unwrap()
++    );
++    let answer_lease = left.0;
++    assert_eq!(answer_lease.lease.version, 4);
++    assert_eq!(count(&db, "sdlc_pm_resume_inputs").await, 2);
++    assert_eq!(count(&db, "sdlc_answers").await, 1);
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox);
++    document.goal = "Updated after actual owner answer".into();
++    let hash2 = app::sdlc::canonical_hash(&document).unwrap();
++    repo.execute_verified(
++        task,
++        &pm,
++        SdlcCommand::PublishRevision(PublishRevision {
++            fence: fence.clone(),
++            expected_requirement_revision: Some(1),
++            document: document.clone(),
++            idempotency_key: "publish-2".into(),
++        }),
++        reservation.clone(),
++        None,
++    )
++    .await
++    .unwrap();
++    let mut stale_answer = answer_command;
++    stale_answer.idempotency_key = "stale-answer-revision".into();
++    stale_answer.expected_lease_version = 4;
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, stale_answer)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let verifier = actor(
++        "verifier",
++        false,
++        vec![format!("task-tracker:sdlc:evidence:{task}:2")],
++    );
++    for check in ["check", "prerequisite"] {
++        repo.execute_verified(
++            task,
++            &verifier,
++            SdlcCommand::Evidence(EvidenceCommand {
++                fence: fence.clone(),
++                requirement_revision: 2,
++                content_hash: hash2.clone(),
++                check_id: check.into(),
++                evidence_reference: format!("fixture://{check}"),
++                idempotency_key: check.into(),
++            }),
++            reservation.clone(),
++            None,
++        )
++        .await
++        .unwrap();
++    }
++    let confirmation: Confirmation = parse(
++        repo.execute_verified(
++            task,
++            &owner,
++            SdlcCommand::Confirm {
++                revision: 2,
++                command: ConfirmCommand {
++                    content_hash: hash2.clone(),
++                    idempotency_key: "confirm".into(),
++                    expected_routing_policy_version: Some(1),
++                },
++            },
++            reservation.clone(),
++            None,
++        )
++        .await
++        .unwrap(),
++    );
++    let closing = resume(
++        &answer_lease,
++        PmResumeInput::Confirmation {
++            input_id: confirmation.id,
++        },
++        checkpoint,
++        3,
++        Some((2, hash2.clone())),
++        "resume-confirmation",
++    );
++    let outbox = count(&db, "sdlc_outbox").await;
++    let (closing_lease, _) = repo
++        .resume_pm_execution_lease(task, &scheduler, closing.clone())
++        .await
++        .unwrap();
++    assert_eq!(closing_lease.lease.version, 5);
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox);
++    let state = repo.read(task, &owner).await.unwrap();
++    assert_eq!(state.stage, Stage::Analysis);
++    assert_eq!(state.status, Some(LifecycleStatus::Ready));
++    assert!(matches!(
++        repo.execute_verified(
++            task,
++            &pm,
++            SdlcCommand::PublishRevision(PublishRevision {
++                fence: fence.clone(),
++                expected_requirement_revision: Some(2),
++                document,
++                idempotency_key: "frozen-pm".into()
++            }),
++            reservation,
++            None
++        )
++        .await,
++        Err(AppError::Conflict(_))
++    ));
++    repo.complete_pm_draft(
++        task,
++        &scheduler,
++        CompletePmDraft {
++            contract_version: 1,
++            fence: fence.clone(),
++            lease_id: initial.lease.lease_id,
++            lease_version: 5,
++            requirement_revision: 2,
++            content_hash: hash2,
++            terminal_receipt_ref: "fixture://closing-terminal".into(),
++            terminal_receipt_sha256: "a".repeat(64),
++            workflow_receipt_ref: "fixture://closing-workflow".into(),
++            workflow_receipt_sha256: "b".repeat(64),
++            idempotency_key: "complete".into(),
++        },
++    )
++    .await
++    .unwrap();
++    assert_eq!(
++        repo.pm_resume_operation(task, &reader, "resume-feedback")
++            .await
++            .unwrap()
++            .result
++            .lease
++            .version,
++        2
++    );
++    assert!(
++        repo.resume_pm_execution_lease(task, &scheduler, command)
++            .await
++            .unwrap()
++            .1
++    );
++    let mut after_complete = closing;
++    after_complete.idempotency_key = "cannot-reopen-completed-pm".into();
++    after_complete.expected_lease_version = 5;
++    after_complete.previous_run_id = Uuid::new_v4();
++    assert!(matches!(
++        repo.resume_pm_execution_lease(task, &scheduler, after_complete)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(count(&db, "sdlc_pm_resume_inputs").await, 3);
++    assert_eq!(count(&db, "sdlc_pm_lease_operations").await, 2);
++    assert_eq!(initial.lease.lease_id, closing_lease.lease.lease_id);
++    assert_eq!(initial.lease.claimed_at, closing_lease.lease.claimed_at);
++    assert!(
++        db.execute_unprepared("DELETE FROM sdlc_pm_resume_inputs")
++            .await
++            .is_err()
++    );
++}
+diff --git a/backend/migration/src/single_task_lifecycle.sql b/backend/migration/src/single_task_lifecycle.sql
+index 1e29570..8ac5b0b 100644
+--- a/backend/migration/src/single_task_lifecycle.sql
++++ b/backend/migration/src/single_task_lifecycle.sql
+@@ -516,3 +516,147 @@ BEGIN
+     END IF;
+     RETURN NEW;
+ END $$;
++
++-- Scheduler audit/consumption is separate from holder-authored heartbeat history.
++CREATE TABLE sdlc_pm_resume_inputs (
++    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    execution_id uuid NOT NULL REFERENCES sdlc_pm_execution_leases(execution_id) ON DELETE RESTRICT,
++    actor_subject text NOT NULL CHECK(length(actor_subject)>0),
++    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
++    payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
++    input_kind text NOT NULL CHECK(input_kind IN ('answer','feedback','confirmation')),
++    input_id uuid NOT NULL CHECK(input_id<>'00000000-0000-0000-0000-000000000000'),
++    checkpoint_id uuid NOT NULL CHECK(checkpoint_id<>'00000000-0000-0000-0000-000000000000'),
++    checkpoint_revision bigint NOT NULL CHECK(checkpoint_revision BETWEEN 1 AND 9007199254740991),
++    previous_run_id uuid NOT NULL CHECK(previous_run_id<>'00000000-0000-0000-0000-000000000000'),
++    lease_version bigint NOT NULL CHECK(lease_version BETWEEN 2 AND 9007199254740991),
++    transaction_id xid8 NOT NULL,
++    command jsonb NOT NULL, result jsonb NOT NULL,
++    PRIMARY KEY(task_id,actor_subject,idempotency_key),
++    UNIQUE(task_id,input_kind,input_id),
++    UNIQUE(execution_id,previous_run_id),
++    UNIQUE(execution_id,checkpoint_id,checkpoint_revision),
++    UNIQUE(execution_id,lease_version),
++    CHECK ((command->>'idempotency_key'=idempotency_key
++        AND command->'input'->>'input_kind'=input_kind AND command->'input'->>'input_id'=input_id::text
++        AND command->'checkpoint'->>'checkpoint_id'=checkpoint_id::text
++        AND command->'checkpoint'->'checkpoint_revision'=to_jsonb(checkpoint_revision)
++        AND command->'checkpoint'->>'checkpoint_sha256' ~ '^[0-9a-f]{64}$'
++        AND command->>'previous_run_id'=previous_run_id::text
++        AND command->'previous_run_terminal'->>'sha256' ~ '^[0-9a-f]{64}$'
++        AND octet_length(command->'previous_run_terminal'->>'reference') BETWEEN 1 AND 512
++        AND result->'fence'->>'execution_id'=execution_id::text
++        AND result->'fence'=command->'checkpoint'->'fence'
++        AND result->'owner_version'=command->'expected_owner_version'
++        AND result->'lease'->'lease_id'=command->'lease_id'
++        AND result->'lease'->'version'=to_jsonb(lease_version)
++        AND lease_version=(command->>'expected_lease_version')::bigint+1
++        AND result->'binding'->>'task_id'=task_id::text
++        AND result->'binding'->>'root_task_id'=task_id::text
++        AND result->'dispatch_allowed'='false'::jsonb) IS TRUE)
++);
++CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_pm_resume_inputs
++FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
++
++CREATE FUNCTION sdlc_pm_resume_input_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE t sdlc_tasks%ROWTYPE; l sdlc_pm_execution_leases%ROWTYPE; p jsonb; f jsonb; input jsonb;
++BEGIN
++    SELECT * INTO t FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
++    SELECT * INTO l FROM sdlc_pm_execution_leases WHERE execution_id=NEW.execution_id FOR UPDATE;
++    p:=NEW.command->'checkpoint'; f:=p->'fence';
++    IF (NEW.transaction_id=pg_current_xact_id() AND t.root_task_id=t.task_id
++        AND t.pm_execution_id=NEW.execution_id AND t.pm_admission_state='reserved'
++        AND t.pm_owner_version=(NEW.command->>'expected_owner_version')::bigint
++        AND t.state->'assignment'->>'assignment_id'=f->>'assignment_id'
++        AND t.state->'assignment'->>'execution_id'=NEW.execution_id::text
++        AND t.state->'assignment'->'version'=f->'assignment_version'
++        AND t.state->'assignment'->'agent_id'=f->'agent_id'
++        AND l.result->'fence'=f AND l.lease_id::text=NEW.command->>'lease_id'
++        AND l.version=(NEW.command->>'expected_lease_version')::bigint
++        AND NEW.lease_version=l.version+1 AND NEW.result-'lease'=l.result-'lease'
++        AND NEW.result->'lease'->>'holder_subject'=l.holder_subject
++        AND (NEW.result->'lease'->>'claimed_at')::timestamptz=l.claimed_at
++        AND p->'requirement_revision'=COALESCE(t.state->'revisions'->-1->'revision','null'::jsonb)
++        AND p->'content_hash'=COALESCE(t.state->'revisions'->-1->'content_hash','null'::jsonb)) IS NOT TRUE
++        OR EXISTS(SELECT 1 FROM sdlc_delivery_heads WHERE task_id=NEW.task_id)
++        OR EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=NEW.task_id)
++        OR NOT EXISTS(SELECT 1 FROM users u JOIN projects pr ON pr.id=t.project_id
++            WHERE u.central_sub=l.holder_subject AND u.is_active
++                AND (pr.owner_id=u.id OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=pr.id AND m.user_id=u.id))) THEN
++        RAISE EXCEPTION 'SDLC resume requires exact reserved PM identity/CAS/current checkpoint' USING ERRCODE='23514';
++    END IF;
++    IF p->'requirement_revision'<>'null'::jsonb AND NOT EXISTS(SELECT 1 FROM sdlc_requirements r
++        WHERE r.task_id=NEW.task_id AND r.revision=(p->>'requirement_revision')::bigint AND r.content_hash=p->>'content_hash') THEN
++        RAISE EXCEPTION 'SDLC resume requires current stored requirements hash' USING ERRCODE='23514';
++    END IF;
++    IF NEW.input_kind='answer' THEN
++        SELECT a.payload INTO input FROM sdlc_answers a JOIN sdlc_question_versions q
++            ON q.task_id=a.task_id AND q.question_id=a.question_id AND q.version=a.question_version
++            WHERE a.task_id=NEW.task_id AND a.id=NEW.input_id
++                AND a.payload->>'id'=a.id::text AND a.payload->>'question_id'=a.question_id::text
++                AND a.payload->'question_version'=to_jsonb(a.question_version)
++                AND a.payload->'requirement_revision'=p->'requirement_revision'
++                AND q.payload->'checkpoint_id'=p->'checkpoint_id'
++                AND q.payload->'assignment_id'=f->'assignment_id' AND q.payload->'execution_id'=f->'execution_id'
++                AND q.payload->'agent_id'=f->'agent_id' AND q.payload->'assignment_version'=f->'assignment_version';
++        IF input IS NULL OR input->>'author_subject' IS DISTINCT FROM t.owner_subject
++            OR t.state->>'stage' NOT IN ('Draft','Clarification') OR NOT EXISTS (
++                SELECT 1 FROM jsonb_array_elements(t.state->'questions') q WHERE q->'answer'=input
++                    AND q->'id'=input->'question_id' AND q->'version'=input->'question_version'
++                    AND q->>'state'='answered' AND q->>'task_id'=NEW.task_id::text AND q->>'root_task_id'=NEW.task_id::text
++                    AND q->'requirement_revision'=p->'requirement_revision' AND q->'checkpoint_id'=p->'checkpoint_id'
++                    AND q->'assignment_id'=f->'assignment_id' AND q->'execution_id'=f->'execution_id'
++                    AND q->'agent_id'=f->'agent_id' AND q->'assignment_version'=f->'assignment_version') THEN
++            RAISE EXCEPTION 'SDLC resume requires current owner answer and exact question checkpoint' USING ERRCODE='23514';
++        END IF;
++    ELSIF NEW.input_kind='feedback' THEN
++        SELECT payload INTO input FROM sdlc_pm_feedback WHERE task_id=NEW.task_id AND message_id=NEW.input_id AND actor_subject=t.owner_subject;
++        IF (input->>'message_id'=NEW.input_id::text AND input->>'owner_subject'=t.owner_subject
++            AND input->>'task_id'=NEW.task_id::text AND input->>'root_task_id'=NEW.task_id::text
++            AND input->>'project_id'=t.project_id::text AND input->>'tracker_instance_id'=t.tracker_instance_id
++            AND input->'fence'=f AND input->'requirement_revision'=p->'requirement_revision'
++            AND t.state->>'stage' IN ('Draft','Clarification')) IS NOT TRUE THEN
++            RAISE EXCEPTION 'SDLC resume requires exact owner feedback ledger' USING ERRCODE='23514';
++        END IF;
++    ELSE
++        SELECT payload INTO input FROM sdlc_confirmations WHERE task_id=NEW.task_id AND id=NEW.input_id
++            AND revision=(p->>'requirement_revision')::bigint AND content_hash=p->>'content_hash';
++        IF (input->>'id'=NEW.input_id::text AND input->>'task_id'=NEW.task_id::text
++            AND input->>'owner_subject'=t.owner_subject AND input->>'stage'='Backlog'
++            AND t.state->>'stage' IN ('Backlog','Analysis') AND t.state->'confirmations' @> jsonb_build_array(input)) IS NOT TRUE THEN
++            RAISE EXCEPTION 'SDLC confirmation resume only closes current owner-approved PM continuation' USING ERRCODE='23514';
++        END IF;
++    END IF;
++    IF EXISTS(SELECT 1 FROM sdlc_pm_resume_inputs WHERE execution_id=NEW.execution_id
++        AND checkpoint_id=NEW.checkpoint_id AND checkpoint_revision>=NEW.checkpoint_revision) THEN
++        RAISE EXCEPTION 'SDLC checkpoint resume revision already consumed/stale' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE TRIGGER sdlc_pm_resume_input_gate BEFORE INSERT ON sdlc_pm_resume_inputs
++FOR EACH ROW EXECUTE FUNCTION sdlc_pm_resume_input_gate();
++
++CREATE OR REPLACE FUNCTION sdlc_pm_lease_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF TG_OP='DELETE' THEN
++        RAISE EXCEPTION 'SDLC ownership lease cannot be deleted/reacquired' USING ERRCODE='23514';
++    END IF;
++    IF TG_OP='INSERT' THEN
++        IF NEW.version!=1 THEN RAISE EXCEPTION 'SDLC initial ownership lease version invalid' USING ERRCODE='23514'; END IF;
++        RETURN NEW;
++    END IF;
++    IF NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.lease_id IS DISTINCT FROM OLD.lease_id
++        OR NEW.holder_subject IS DISTINCT FROM OLD.holder_subject OR NEW.claimed_at IS DISTINCT FROM OLD.claimed_at
++        OR NEW.version!=OLD.version+1 OR NEW.heartbeat_at<OLD.heartbeat_at
++        OR (NEW.result-'lease') IS DISTINCT FROM (OLD.result-'lease') THEN
++        RAISE EXCEPTION 'SDLC inconsistent ownership lease CAS' USING ERRCODE='23514';
++    END IF;
++    IF OLD.expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM sdlc_pm_resume_inputs r
++        WHERE r.execution_id=OLD.execution_id AND r.lease_version=NEW.version
++            AND r.transaction_id=pg_current_xact_id() AND r.result=NEW.result
++            AND r.command->'lease_id'=to_jsonb(OLD.lease_id::text)
++            AND r.command->'expected_lease_version'=to_jsonb(OLD.version)) THEN
++        RAISE EXCEPTION 'SDLC expired ownership lease requires exact trusted resume transaction' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
+diff --git a/docs/API.md b/docs/API.md
+index 4ba7d01..a26a883 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -1,5 +1,66 @@
+ # API v1 Specification — Task Tracker
+ 
++## Trusted PM Resume (Producer Source)
++
++Parent registration in the existing SDLC controller:
++`POST /api/v1/issues/{task}/sdlc/pm-draft-execution-lease/resume` takes
++`ResumePmExecutionLease`, returns existing `ExecutionLeaseReceipt` (original on replay).
++`GET .../resume/operations/{key}` returns existing `ExecutionLeaseOperation`.
++Service methods are `resume_pm_execution_lease(task,actor,command)` and
++`pm_resume_operation(task,actor,key)`; POST returns `(receipt,replayed)` internally.
++POST requires exactly configured `reservation_scheduler_subject` with the sole
++`task-tracker:write` scope, non-human session. GET requires the same configured
++subject with the sole `task-tracker:read` scope. Separate delegated child tokens
++stay in Fleet, never an agent. Both recheck active user/project membership/ownership.
++The PM holder's current ACL is also rechecked before a new resume effect.
++
++Strict snake_case DTO (all fields required; canonical nonnil lowercase UUIDs):
++
++```text
++{expected_owner_version,lease_id,expected_lease_version,
++ input:{input_kind:answer|feedback|confirmation,input_id},
++ checkpoint:{checkpoint_id,checkpoint_revision,checkpoint_sha256,fence:MachineFence,
++             requirement_revision,content_hash},
++ previous_run_id,previous_run_terminal:{reference,sha256},idempotency_key}
++```
++
++`checkpoint.requirement_revision` and `content_hash` are required nullable fields:
++both null before publication, otherwise the exact current revision/hash. They are
++never omitted. Versions are positive safe integers, SHA256 lowercase 64hex.
++Input IDs reference real `Answer.id`, `PmFeedbackReceipt.message_id`, `Confirmation.id`
++in this task's own immutable ledger, not a generated event/request/question ID.
++Request hash is canonical SHA256 of
++`{"operation":"resume_pm_execution_lease","payload":<entire command>}`.
++
++Trust boundary is the existing Lifecycle Complete boundary: before POST, the trusted
++Fleet consumer reads the actual current Workflow checkpoint and actual old-run
++terminal using its existing separately credentialed Fleet runtime readback
++`GET /internal/runtime/v1/pm/runs/{run}` / callback receipt. It validates their
++execution/checkpoint/run/assignment relationships. Tracker validates the configured
++trusted producer, stored reservation/binding/fence, exact owner and lease CAS,
++current requirement hash and own input ledger, then immutable consumption/dedup.
++`ArtifactReceipt` alone is NOT independently verified proof of runtime terminal.
++Tracker adds no outbound Fleet client/token, caller boolean or self-certification.
++
++The same lease UUID/holder/claimed_at and assignment/execution/fence survive;
++version increments by one and TTL30 starts from the locked server clock. Ordinary
++expired claim/heartbeat still fail. Answer/feedback resume only Draft (legacy
++Clarification compatible); confirmation resume only closes Backlog/Analysis PM
++Workflow after exact owner consent, without reopening business writes. No new
++assignment, task, chat, business scheduler, question or answer is fabricated.
++409 on stale lease CAS consumes nothing: read fresh existing PM lease GET, reconcile
++the actual checkpoint/run and retry the unaccepted command with current CAS. If
++acceptance is unknown, first read the resume operation by the original key; do not
++change an already accepted payload/key or launch another runtime run. Operation
++GET/replay returns the original receipt; existing PM lease GET remains separate
++fresh `observed_at/current` readback. Input/run/checkpoint consumption is atomic
++with lease update and any canonical issue projection; it emits no duplicate input
++or heartbeat business-outbox message. Old feedback/checkpoint wire is unchanged.
++The existing PM lease GET retains its PM assignment-scoped reader authorization;
++the scheduler's read-only child token authorizes resume operation GET, not that
++holder-only endpoint. Fleet must use its existing delegated holder reader for the
++fresh lease cursor; no scheduler read privilege is silently added here.
++
+ ## Direct Confirmation Readback (Producer Source)
+ 
+ Parent registration: `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 975a0f8..aeed0ba 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -6,7 +6,19 @@ agent proposals. SDLC project access always requires active local ownership or
+ explicit membership; global human hints do not expand the SDLC directory. New
+ queue/reserve is project-opt-in after original-operation replay. Tracker adds no
+ runtime scheduler or Hermes proof protocol; parent integrates existing routes.
+-[Integration boundary and remaining resume blocker](TRACKER_SINGLE_TASK_HANDOFF.md).
++[Integration boundary and trusted PM resume](TRACKER_SINGLE_TASK_HANDOFF.md).
++
++PM resume reuses the current execution/assignment/checkpoint and lease generation,
++with a new runtime run owned by Fleet, not a new Tracker scheduler. Only the configured
++reservation scheduler's separate write-only child credential can consume a real
++owner answer/feedback/confirmation and CAS-renew that retained lease after expiry.
++Before command submission, Fleet reads actual Workflow checkpoint and old runtime
++terminal through its existing credentialed readback/callback path. Tracker trusts
++that configured producer boundary (as Lifecycle Complete), checks local identity,
++ACL, current requirements and immutable input/dedup, and never treats an artifact
++reference/hash alone as independently verified terminal proof. No new outbound
++Fleet client/token or agent terminal/admission protocol is introduced. Ordinary
++claim/heartbeat, historical replay semantics and PM business-write freeze remain.
+ 
+ Reserved PM producer commands use Tracker reservation/lease recheck and atomic
+ command/history write. No Fleet admission HTTP call is made on the producer
+diff --git a/docs/DATA_MODEL.md b/docs/DATA_MODEL.md
+index 6b1067d..5a6e242 100644
+--- a/docs/DATA_MODEL.md
++++ b/docs/DATA_MODEL.md
+@@ -9,6 +9,22 @@ Draft submode are omitted on historical rows without them. Parent owns migration
+ registration/order for the additive SQL fragment.
+ [Schema and wire details](TRACKER_SINGLE_TASK_HANDOFF.md).
+ 
++The same additive `single_task_lifecycle.sql` fragment also adds immutable
++`sdlc_pm_resume_inputs` (not another migration): task/scheduler/key plus canonical
++command hash, typed real input UUID, execution/checkpoint/revision, old runtime run,
++original lease receipt/version and exact transaction ID. Uniqueness consumes each
++task/input once, each execution/old-run once and each checkpoint revision once;
++older consumed checkpoint revisions fail as well. Lease current-source validation
++reads the disjoint union of holder-authored `sdlc_pm_lease_operations` and this
++scheduler ledger; neither historical ledger is rewritten. The existing lease
++trigger permits expired renewal only with the exact matching resume journal row
++inserted in that same transaction. Ordinary claim/heartbeat cannot use historical
++resume rows as an expiry bypass. New resume checks own answer/question, feedback or
++exact owner-confirmation ledgers, retained assignment, active holder/project ACL,
++current requirements and no overlapping delivery hold. Canonical PM status/issue
++projection (when present), consumption and lease CAS commit or roll back together.
++No new business-outbox event or task/execution generation is created by resume.
++
+ Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
+ and tied to assignment version, fence and exact owner observation. Additive
+ 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index 6c6cc41..2569fbc 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -253,19 +253,62 @@ POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session onl
+ CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`
+ and `sdlc pm feedback operation --task UUID --key KEY`. They are not live before registration.
+ 
+-The application exposes `pm_feedback_resume_contract(state,feedback,checkpoint,lease)`:
++The legacy application helper `pm_feedback_resume_contract(state,feedback,checkpoint,lease)` remains unchanged:
+ exact task/project/root/owner/instance, assignment fence, actual prior terminal,
+ checkpoint UUID/version and server-observed live lease produce the existing resume
+ identity `pm-feedback:{message_id}`. It does not dispatch or renew a lease.
+-Tracker has no generic checkpoint/rebind API, and its expired PM lease cannot currently
+-be reclaimed. Fleet must reuse
+-its actual checkpoint/rebind after confirming old runtime terminal, retaining
+-task/chat/execution/checkpoint and creating only a new runtime run. Replay must
+-use the feedback UUID as the stable operation identity. A live lease can use
+-the existing heartbeat; an expired one needs a narrowly guarded resume CAS and
+-new fence generation coordinated with Fleet. Do not change the ordinary expired
+-heartbeat rule or reopen accepted PM business completion. Post-publication
+-dialogue must retain the existing PM business-write freeze.
++Its old checkpoint/feedback wire and stable `pm-feedback:{message_id}` identity are
++preserved for compatibility. It does not grant expired-lease renewal or generic rebind.
++
++New typed source methods are `SdlcService::resume_pm_execution_lease(task,actor,command)`
++returning `(ExecutionLeaseReceipt,replayed)` and `pm_resume_operation(task,actor,key)`
++returning `ExecutionLeaseOperation`. Parent registers POST
++`P/pm-draft-execution-lease/resume` and GET `.../resume/operations/{key}` in the
++existing controller/OpenAPI. POST requires only configured scheduler subject with
++exactly `task-tracker:write`; GET uses its separate exactly-read child token.
++Human/PM/other machine callers cannot resume. Both enforce fresh local project ACL;
++new effects additionally enforce the holder's current active local project ACL.
++
++`ResumePmExecutionLease` is strict snake_case:
++`{expected_owner_version,lease_id,expected_lease_version,input,checkpoint,previous_run_id,previous_run_terminal,idempotency_key}`.
++`input` has exactly `{input_kind:answer|feedback|confirmation,input_id:UUID}`,
++referencing real Answer.id / PmFeedbackReceipt.message_id / Confirmation.id.
++`checkpoint` has exactly `{checkpoint_id,checkpoint_revision,checkpoint_sha256,fence:MachineFence,requirement_revision,content_hash}`;
++revision/hash are REQUIRED null/null before publication and exact current values
++after publication. Shortnames are frozen for Locke/main coordination. Existing
++`PmFeedbackCheckpoint` / resume helper DTOs are not changed.
++
++Before POST, the trusted Fleet consumer reads actual current Workflow checkpoint
++and actual old-run terminal via its existing separately credentialed runtime GET
++`/internal/runtime/v1/pm/runs/{run}` / callback receipt, validating identity pairs.
++Tracker rechecks configured producer, current reserved assignment/execution/fence,
++owner/lease CAS, task/project/root/instance/owner and current requirements, then
++loads the real input from its own immutable ledger. Answer also matches its exact
++question checkpoint/version/fence; confirmation is exact current owner consent.
++`previous_run_terminal:ArtifactReceipt` alone is NOT independently verified proof;
++Tracker makes no new outbound Fleet call and accepts no caller terminal boolean.
++
++The same lease UUID, claimed_at, holder, execution/assignment/fence survive;
++server-clock TTL30 and version+1 commit atomically with input consumption and any
++canonical Draft status/issue projection. The existing SQL fragment adds immutable
++`sdlc_pm_resume_inputs`; no second migration. Each input, old run and checkpoint
++revision is consumed once, and older checkpoint revisions cannot replay as new work.
++Only an exact same-transaction journal entry permits expired lease CAS. Ordinary
++expired claim/heartbeat still fail. No new outbox/input event, question or answer is
++fabricated. Answer/feedback stay Draft (legacy Clarification); confirmation only
++closes PM Workflow in Backlog/Analysis, never reopens business writes or completed PM.
++
++Fleet reuses its existing checkpoint/rebind and the same task/chat/execution, with
++only a new runtime run after actual old-run terminal. Original operation replay/GET
++returns the original receipt and hash, including after completion; fresh clock/current
++is the separate existing PM lease GET. Request hash is canonical
++`{"operation":"resume_pm_execution_lease","payload":<entire command>}` SHA256.
++On 409 CAS, no input is consumed: read fresh lease and actual checkpoint/run before
++retrying an unaccepted command. Unknown acceptance first reads the original key's
++operation; never blindly change an accepted payload or start a duplicate run.
++Existing PM lease GET stays holder/PM-grant scoped: Fleet uses its existing
++delegated holder reader for fresh CAS. Scheduler read-only authorizes the new
++resume operation GET only; it is not a new generic PM read privilege.
+ 
+ ## Canonical projection and optional Context fields
+ 
+@@ -307,7 +350,9 @@ authorization is unchanged except denial of the new assignment-scoped machine gr
+ 1. Register the SQL fragment `backend/migration/src/single_task_lifecycle.sql`
+    once, after 000095, in the migration/order owned by parent. It creates delivery
+    heads, immutable assignments/proposals/results/operations, run bindings and
+-   holds, plus immutable PM feedback. It does not rewrite historical PM rows.
++   holds, plus immutable PM feedback and typed PM resume consumption. It does not
++   rewrite historical PM rows. Apply the updated fragment before the new lease
++   reader (which also validates scheduler resume receipts) is deployed.
+    It also fixes the baseline routing snapshot gate's `pm_execution_id IS NULL`
+    restriction: exact reserved/completed PM executions can now publish the
+    owner-confirmed routing snapshot. Keep the explicit consent/current-policy
+@@ -326,7 +371,8 @@ authorization is unchanged except denial of the new assignment-scoped machine gr
+    acceptance readbacks. Retry policy permits at most three safely replayable
+    transient retries. Tracker exposes guarded reconciliation, not a second scheduler.
+    Unknown runtime acceptance must never produce another run.
+-6. Wire PM feedback, guarded lease resume and actual checkpoint/rebind. Keep
++6. Register the two PM resume methods above and wire typed input, guarded lease
++   resume and actual checkpoint/rebind in Fleet/Workflow. Keep
+    can_send disabled until durable acceptance and the runtime resume path exist.
+ 
+ Requested single parent QA run, after integration:
+@@ -334,8 +380,11 @@ Requested single parent QA run, after integration:
+ ```text
+ cargo test --locked -p app sdlc_lifecycle
+ cargo test --locked -p app sdlc::tests
++cargo test --locked -p app sdlc_pm_resume
++cargo test --locked -p domain resume_inputs_are_closed_short_names_and_checkpoint_nulls_are_required
+ cargo test --locked -p task-tracker-cli --test workflows sdlc_
+ cargo test --locked -p infra canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay -- --ignored --nocapture
++cargo test --locked -p infra pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history -- --ignored --nocapture
+ cargo test --locked -p server --test drafts -- --ignored --nocapture
+ cargo test --locked -p server --test sdlc -- --ignored --nocapture
+ ```
+@@ -348,6 +397,16 @@ outbox-failure rollback, concurrent heartbeat/proposal, expired terminal rejecti
+ reconciliation/retry, stale assignment rejection and disable/replay. All receipts there
+ are explicitly synthetic fixtures, not live runtime evidence.
+ 
++The PM resume PG source test requires a separate fresh disposable
++`TT_PM_RESUME_TEST_DATABASE_URL` ending `_pm_resume_test`. It covers real saved
++feedback/answer/confirmation IDs, strict scheduler auth and ACL revocation, actual
++server-time expiry, ordinary heartbeat/reclaim denial, rollback on lease update
++failure, original historical replay, no input/outbox fabrication, consumed input/run/
++checkpoint denial, heartbeat-CAS readback/retry, concurrent same-key dedup, live
++heartbeat after resume, requirement supersession, owner-confirmation close without
++reopening PM writes, and immutable journal. Runtime artifacts there are synthetic
++trusted-scheduler fixtures only, not evidence of live Fleet verification.
++
+ Remaining parent acceptance coverage includes:
+ concurrent reserve pool2/agent1/task1; duplicate/different-key races; fresh ACL
+ revocation on writes and replay; wrong subject/role/fence/revision/project/root;
+diff --git a/docs/TZ.md b/docs/TZ.md
+index 69600ec..e5156e5 100644
+--- a/docs/TZ.md
++++ b/docs/TZ.md
+@@ -5,8 +5,11 @@ Architect, Developer, Reviewer, Tester and DevOps. Stage, Ready/InProgress/Compl
+ waiting reason and runtime remain separate. Rework returns to Developer, then
+ Review/Testing, bounded to three cycles. An agent submits a typed proposal while
+ its run is alive; Fleet accepts completion only after actual runtime terminal.
+-No live acceptance is claimed before parent registration and QA; expired PM
+-feedback resume remains fail-closed pending guarded checkpoint/lease integration.
++No live acceptance is claimed before parent registration and QA. Producer source
++supports scheduler-only retained-lease PM resume from real owner answer, feedback
++or confirmation. Fleet must verify actual current checkpoint/old-run terminal
++before that command and resume the same execution without a duplicate runtime run.
++Agents cannot self-certify terminal; ordinary expired claim/heartbeat stay denied.
+ [Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
+ 
+ PM producer writes close the reserved-execution write boundary through exact

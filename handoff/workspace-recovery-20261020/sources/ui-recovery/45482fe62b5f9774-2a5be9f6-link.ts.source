@@ -1,0 +1,55 @@
+import { api } from './client'
+import type { components } from './generated'
+
+export type IssueLink = components['schemas']['IssueLinkResponse']
+
+export class IssueLinkMutationError extends Error {
+  readonly outcome: 'rejected' | 'unknown'
+
+  constructor(readonly status?: number) {
+    super('Issue link mutation could not be confirmed')
+    this.name = 'IssueLinkMutationError'
+    this.outcome =
+      status !== undefined && [400, 401, 403, 404, 409, 422, 429].includes(status)
+        ? 'rejected'
+        : 'unknown'
+  }
+}
+
+export async function listIssueLinks(issueId: string): Promise<IssueLink[]> {
+  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/links', {
+    params: { path: { issue_id: issueId } },
+  })
+  if (error || !data) throw new Error('Failed to load links')
+  return data.links
+}
+
+export async function createIssueLink(
+  issueId: string,
+  targetKey: string,
+  linkType: string,
+): Promise<IssueLink> {
+  try {
+    const { data, error, response } = await api.POST('/api/v1/issues/{issue_id}/links', {
+      params: { path: { issue_id: issueId } },
+      body: { target_key: targetKey, link_type: linkType },
+    })
+    if (error || !data || !response.ok) throw new IssueLinkMutationError(response.status)
+    return data
+  } catch (error) {
+    if (error instanceof IssueLinkMutationError) throw error
+    throw new IssueLinkMutationError()
+  }
+}
+
+export async function deleteIssueLink(id: string): Promise<void> {
+  try {
+    const { error, response } = await api.DELETE('/api/v1/issue-links/{id}', {
+      params: { path: { id } },
+    })
+    if (error || !response.ok) throw new IssueLinkMutationError(response.status)
+  } catch (error) {
+    if (error instanceof IssueLinkMutationError) throw error
+    throw new IssueLinkMutationError()
+  }
+}

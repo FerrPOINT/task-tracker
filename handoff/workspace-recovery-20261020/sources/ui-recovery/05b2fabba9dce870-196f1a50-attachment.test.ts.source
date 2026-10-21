@@ -1,0 +1,181 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AttachmentUploadError, downloadAttachment, uploadAttachment } from './attachment'
+import { refreshAccessToken } from './client'
+import { useAuthStore } from '@/shared/auth/store'
+import type { Attachment } from './attachment'
+
+vi.mock('./client', () => ({
+  api: {},
+  apiBaseUrl: '',
+  refreshAccessToken: vi.fn(),
+}))
+
+const attachment: Attachment = {
+  id: 'a1',
+  issue_id: 'i1',
+  author_id: 'u1',
+  file_name: 'report.txt',
+  content_type: 'text/plain',
+  size_bytes: 6,
+  created_at: '2026-08-01T10:00:00Z',
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks()
+  vi.mocked(refreshAccessToken).mockReset().mockResolvedValue(false)
+  document.body.innerHTML = ''
+  useAuthStore.setState({
+    token: 'old-token',
+    userId: 'u1',
+    email: 'user@example.com',
+    username: null,
+    displayName: null,
+  })
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: vi.fn(() => 'blob:test-download'),
+  })
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: vi.fn(),
+  })
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+})
+afterEach(() => vi.unstubAllGlobals())
+
+describe('attachment upload outcomes', () => {
+  let replies: Array<{ status?: number; text?: string; event?: 'error' | 'abort' | 'timeout' }>
+  let requests: Array<{
+    file: FormDataEntryValue | null
+    headers: Record<string, string>
+    timeout: number
+  }>
+  beforeEach(() => {
+    replies = []
+    requests = []
+    class UploadXHR {
+      status = 0
+      responseText = ''
+      timeout = 0
+      headers: Record<string, string> = {}
+      upload = {}
+      onload?: () => void
+      onerror?: () => void
+      onabort?: () => void
+      ontimeout?: () => void
+      open = vi.fn()
+      setRequestHeader(name: string, value: string) {
+        this.headers[name] = value
+      }
+      send(form: FormData) {
+        requests.push({ file: form.get('file'), headers: this.headers, timeout: this.timeout })
+        const reply = replies.shift()
+        if (!reply) throw new Error('Unexpected repeated upload')
+        queueMicrotask(() => {
+          this.status = reply.status ?? 0
+          this.responseText = reply.text ?? ''
+          if (reply.event === 'error') this.onerror?.()
+          else if (reply.event === 'abort') this.onabort?.()
+          else if (reply.event === 'timeout') this.ontimeout?.()
+          else this.onload?.()
+        })
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', UploadXHR)
+  })
+
+  it('confirms a valid response and sends the original file once', async () => {
+    replies.push({ status: 201, text: JSON.stringify(attachment) })
+    const file = new File(['report'], 'report.txt', { type: 'text/plain' })
+    await expect(uploadAttachment('i1', file)).resolves.toEqual(attachment)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.file).toBe(file)
+    expect(requests[0]?.timeout).toBe(120_000)
+  })
+
+  it.each([400, 401, 403, 404, 413, 415, 422, 429])(
+    'retains HTTP %s as an explicit rejection',
+    async (status) => {
+      replies.push({ status, text: '{"error":"private server detail"}' })
+      await expect(uploadAttachment('i1', new File(['x'], 'x.txt'))).rejects.toMatchObject({
+        status,
+        outcome: 'rejected',
+      })
+      expect(requests).toHaveLength(1)
+    },
+  )
+
+  it.each([0, 408, 500, 502, 503, 504])(
+    'does not automatically repeat an unconfirmed HTTP %s',
+    async (status) => {
+      replies.push({ status })
+      const promise = uploadAttachment('i1', new File(['x'], 'x.txt'))
+      await expect(promise).rejects.toBeInstanceOf(AttachmentUploadError)
+      await expect(promise).rejects.toMatchObject({ outcome: 'unknown' })
+      expect(requests).toHaveLength(1)
+      expect(refreshAccessToken).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['error', 'abort', 'timeout'] as const)(
+    'treats transport %s as unconfirmed without replay',
+    async (event) => {
+      replies.push({ event })
+      await expect(uploadAttachment('i1', new File(['x'], 'x.txt'))).rejects.toMatchObject({
+        outcome: 'unknown',
+      })
+      expect(requests).toHaveLength(1)
+    },
+  )
+
+  it.each(['not-json', '{}', JSON.stringify({ ...attachment, issue_id: 'another-issue' })])(
+    'does not declare malformed or mismatched success as uploaded',
+    async (text) => {
+      replies.push({ status: 201, text })
+      await expect(uploadAttachment('i1', new File(['x'], 'x.txt'))).rejects.toMatchObject({
+        outcome: 'unknown',
+      })
+      expect(requests).toHaveLength(1)
+    },
+  )
+
+  it('refreshes only an explicit 401 and retries once with the new credential', async () => {
+    replies.push({ status: 401 }, { status: 201, text: JSON.stringify(attachment) })
+    vi.mocked(refreshAccessToken).mockImplementation(async () => {
+      useAuthStore.setState({ token: 'new-token' })
+      return true
+    })
+    await expect(uploadAttachment('i1', new File(['report'], 'report.txt'))).resolves.toEqual(
+      attachment,
+    )
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.headers.Authorization).toBe('Bearer new-token')
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('attachment api', () => {
+  it('refreshes access token and retries download after 401', async () => {
+    vi.mocked(refreshAccessToken).mockImplementation(async () => {
+      useAuthStore.setState({ token: 'new-token' })
+      return true
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(new Blob(['report']), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await downloadAttachment(attachment)
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/attachments/a1/download',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer new-token' },
+      }),
+    )
+  })
+})

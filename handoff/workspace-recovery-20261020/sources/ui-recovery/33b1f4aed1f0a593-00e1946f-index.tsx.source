@@ -1,0 +1,374 @@
+import { useParams, Link, useSearchParams, useLocation } from 'react-router'
+import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Button } from '@sdlc/ui/ui'
+import { ConfirmDialog, ErrorState, UnsavedChangesGuard } from '@sdlc/ui/ui'
+import { useTrash, useRestoreIssue, usePurgeIssue, invalidateIssueCaches } from '@/shared/api/hooks'
+import { getIssue, TrashMutationError, type Issue } from '@/api/issue'
+
+const TRASH_PAGE_SIZE = 50
+type TrashAction = { kind: 'restore' | 'purge'; id: string; key: string }
+
+export function ProjectTrashPage() {
+  const { projectKey } = useParams<{ projectKey: string }>()
+  const { t } = useTranslation()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const pageParam = searchParams.get('page')
+  const parsedPage = Number(pageParam)
+  const hasValidPage =
+    pageParam !== null &&
+    Number.isSafeInteger(parsedPage) &&
+    parsedPage > 0 &&
+    Number.isSafeInteger((parsedPage - 1) * TRASH_PAGE_SIZE)
+  const page = hasValidPage ? parsedPage : 1
+  const trashOffset = (page - 1) * TRASH_PAGE_SIZE
+  const {
+    data: trashedIssues = [],
+    isLoading,
+    error,
+    refetch,
+  } = useTrash(projectKey, trashOffset, TRASH_PAGE_SIZE)
+  const restoreMutation = useRestoreIssue()
+  const purgeMutation = usePurgeIssue()
+  const [action, setAction] = useState<TrashAction | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [unknown, setUnknown] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const lock = useRef(false)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const initiatorRef = useRef<HTMLButtonElement | null>(null)
+  const ownerLocation = useRef(location.key)
+  const busy = submitting || restoreMutation.isPending || purgeMutation.isPending
+  const unavailable = isLoading || Boolean(error)
+
+  useEffect(() => {
+    if (ownerLocation.current === location.key || busy) return
+    ownerLocation.current = location.key
+    setAction(null)
+    setDialogOpen(false)
+    setUnknown(false)
+    setActionError(null)
+  }, [busy, location.key])
+
+  function complete(target: TrashAction, restored?: Issue) {
+    queryClient.setQueriesData<Issue[]>({ queryKey: ['trash', projectKey] }, (rows) =>
+      rows?.filter((issue) => issue.id !== target.id),
+    )
+    if (restored) {
+      queryClient.setQueryData(['issue', target.id], restored)
+      invalidateIssueCaches(queryClient, projectKey, target.id)
+      void queryClient.invalidateQueries({ queryKey: ['trash', projectKey] })
+    }
+    setAction(null)
+    setDialogOpen(false)
+    setUnknown(false)
+    setActionError(null)
+    toast.success(
+      t(target.kind === 'restore' ? 'trash.restored' : 'trash.purged', { key: target.key }),
+    )
+  }
+
+  function runAction(target: TrashAction) {
+    if (lock.current || busy || unavailable || unknown) return
+    lock.current = true
+    setSubmitting(true)
+    setAction(target)
+    setDialogOpen(true)
+    setActionError(null)
+    const release = () => {
+      lock.current = false
+      setSubmitting(false)
+    }
+    const onError = (cause: unknown) => {
+      const uncertain = !(cause instanceof TrashMutationError) || cause.outcome === 'unknown'
+      setUnknown(uncertain)
+      setActionError(
+        t(
+          uncertain
+            ? 'trash.unknown'
+            : target.kind === 'restore'
+              ? 'trash.restoreError'
+              : 'trash.purgeError',
+          { key: target.key },
+        ),
+      )
+      release()
+    }
+    if (target.kind === 'restore')
+      restoreMutation.mutate(target.id, {
+        onSuccess: (restored) => {
+          complete(target, restored)
+          release()
+        },
+        onError,
+      })
+    else
+      purgeMutation.mutate(target.id, {
+        onSuccess: () => {
+          complete(target)
+          release()
+        },
+        onError,
+      })
+  }
+
+  async function verifyAction() {
+    if (!action || busy || lock.current) return
+    const target = action
+    lock.current = true
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      const active = await getIssue(target.id)
+      if (active && (active.id !== target.id || active.project_key !== projectKey))
+        throw new Error('Unexpected issue verification response')
+      if (active && target.kind === 'restore') {
+        complete(target, active)
+        return
+      }
+      const refreshed = await refetch()
+      if (refreshed.error || !refreshed.data) throw new Error('Trash verification failed')
+      // Page absence cannot distinguish a purge from a concurrent move or restore.
+      if (!active && refreshed.data.some((issue) => issue.id === target.id)) {
+        setUnknown(false)
+        setActionError(t('trash.notChanged'))
+      } else {
+        setUnknown(true)
+        setActionError(t(active ? 'trash.alreadyActive' : 'trash.unconfirmedAbsence'))
+      }
+    } catch {
+      setUnknown(true)
+      setActionError(t('trash.verifyError'))
+    } finally {
+      lock.current = false
+      setSubmitting(false)
+    }
+  }
+
+  const updatePage = useCallback(
+    (nextPage: number, replace = false) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (nextPage > 1) next.set('page', String(nextPage))
+          else next.delete('page')
+          return next
+        },
+        { replace },
+      )
+    },
+    [setSearchParams],
+  )
+
+  useEffect(() => {
+    const canonicalPage = hasValidPage && parsedPage > 1 ? String(parsedPage) : null
+    if (pageParam === canonicalPage) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (canonicalPage) next.set('page', canonicalPage)
+        else next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
+  }, [hasValidPage, pageParam, parsedPage, setSearchParams])
+
+  useEffect(() => {
+    if (!busy && !action && !isLoading && !error && trashedIssues.length === 0 && trashOffset > 0) {
+      updatePage(1, true)
+    }
+  }, [action, busy, error, isLoading, trashedIssues.length, trashOffset, updatePage])
+
+  if (!projectKey) {
+    return <div className="text-text-muted">{t('trash.noProject')}</div>
+  }
+
+  const hasPrev = trashOffset > 0
+  const hasNext = trashedIssues.length === TRASH_PAGE_SIZE
+  const pageFrom = trashedIssues.length > 0 ? trashOffset + 1 : trashOffset
+  const pageTo = trashOffset + trashedIssues.length
+
+  return (
+    <div
+      ref={regionRef}
+      role="region"
+      aria-label={t('trash.title')}
+      tabIndex={-1}
+      className="space-y-4"
+    >
+      <UnsavedChangesGuard
+        when={unknown}
+        isPending={busy}
+        description={unknown ? t('trash.leaveUnknown') : t('trash.leavePending')}
+        returnFocusRef={regionRef}
+      />
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-10 sm:w-10" asChild>
+          <Link to={`/projects/${projectKey}/board`} aria-label={t('trash.backToBoard')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Trash2 className="h-5 w-5 text-text-muted" />
+        <h1 className="text-xl font-semibold">
+          {t('trash.title', 'Trash')} · {projectKey}
+        </h1>
+      </div>
+
+      {isLoading && (
+        <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
+      )}
+
+      {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
+
+      {unknown && !dialogOpen && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger">
+          <span>{actionError ?? t('trash.unknown')}</span>
+          <Button
+            variant="outline"
+            className="min-h-11 sm:min-h-10"
+            disabled={busy}
+            onClick={() => setDialogOpen(true)}
+          >
+            {t('trash.verify')}
+          </Button>
+        </div>
+      )}
+
+      {!error && !isLoading && trashedIssues.length === 0 && (
+        <div className="py-16 text-center text-sm text-text-muted">
+          {hasPrev ? t('trash.emptyPage') : t('trash.noIssues')}
+        </div>
+      )}
+
+      {trashedIssues.length > 0 && (
+        <div className="overflow-hidden rounded-md border border-border bg-surface text-sm">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
+            <span>{t('trash.key')}</span>
+            <span>{t('trash.summary')}</span>
+            <span>{t('trash.type')}</span>
+            <span>{t('trash.priority')}</span>
+            <span className="text-right">{t('trash.actions')}</span>
+          </div>
+          {trashedIssues.map((issue) => (
+            <article
+              key={issue.id}
+              className="grid gap-2 border-b border-border p-3 last:border-0 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3 lg:px-4"
+            >
+              <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
+              <div className="min-w-0 break-words font-medium lg:font-normal">{issue.summary}</div>
+              <div className="text-xs text-text-secondary lg:text-sm">
+                {t(`issueType.${issue.issue_type.toLowerCase()}`, {
+                  defaultValue: issue.issue_type,
+                })}
+              </div>
+              <div className="text-xs text-text-secondary lg:text-sm">
+                {t(`priority.${issue.priority.toLowerCase()}`, { defaultValue: issue.priority })}
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-2 lg:mt-0 lg:flex lg:justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal sm:min-h-10"
+                  aria-label={t('trash.restoreIssue', { key: issue.key })}
+                  disabled={busy || unavailable || action !== null}
+                  onClick={(event) => {
+                    if (lock.current || busy || unavailable || action) return
+                    initiatorRef.current = event.currentTarget
+                    runAction({ kind: 'restore', id: issue.id, key: issue.key })
+                  }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t('trash.restore', 'Restore')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal text-danger hover:text-danger sm:min-h-10"
+                  aria-label={t('trash.purgeIssue', { key: issue.key })}
+                  disabled={busy || unavailable || action !== null}
+                  onClick={(event) => {
+                    if (lock.current || busy || unavailable || action) return
+                    initiatorRef.current = event.currentTarget
+                    purgeMutation.reset()
+                    setActionError(null)
+                    setUnknown(false)
+                    setAction({ kind: 'purge', id: issue.id, key: issue.key })
+                    setDialogOpen(true)
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('trash.purge', 'Delete forever')}
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {(hasPrev || hasNext) && (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-10"
+            disabled={!hasPrev || unavailable || busy || action !== null}
+            onClick={() => updatePage(page - 1)}
+          >
+            {t('trash.prevPage')}
+          </Button>
+          <span className="text-sm text-text-muted">
+            {trashedIssues.length > 0
+              ? t('trash.pageInfo', { from: pageFrom, to: pageTo })
+              : t('trash.emptyPage')}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-10"
+            disabled={!hasNext || unavailable || busy || action !== null}
+            onClick={() => updatePage(page + 1)}
+          >
+            {t('trash.nextPage')}
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={dialogOpen && action !== null}
+        onOpenChange={(open) => {
+          if (!open && !lock.current && !busy) {
+            setDialogOpen(false)
+            if (!unknown) {
+              setAction(null)
+              setActionError(null)
+            }
+            purgeMutation.reset()
+          }
+        }}
+        isPending={busy}
+        error={actionError}
+        returnFocusRef={initiatorRef}
+        fallbackFocusRef={regionRef}
+        confirmLabel={unknown || unavailable ? t('trash.verify') : undefined}
+        confirmVariant={action?.kind === 'purge' && !unknown ? 'destructive' : 'default'}
+        title={t(action?.kind === 'restore' ? 'trash.restore' : 'trash.purge')}
+        description={t(action?.kind === 'restore' ? 'trash.restoreConfirm' : 'trash.purgeConfirm', {
+          key: action?.key,
+        })}
+        onConfirm={() => {
+          if (!action) return
+          if (unknown || unavailable) void verifyAction()
+          else runAction(action)
+        }}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,142 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  closeSprint,
+  createSprint,
+  listSprints,
+  moveIssueToSprint,
+  removeIssueFromSprint,
+  startSprint,
+  updateSprint,
+} from './sprint'
+
+const GET = vi.hoisted(() => vi.fn())
+const POST = vi.hoisted(() => vi.fn())
+const PATCH = vi.hoisted(() => vi.fn())
+vi.mock('./client', () => ({ api: { GET, POST, PATCH } }))
+
+const sprint = {
+  id: 's1',
+  name: 'Sprint 1',
+  goal: '',
+  state: 'future',
+  velocity: 0,
+  issue_ids: [],
+  start_date: null,
+  end_date: null,
+  remaining_days: null,
+}
+const issue = { id: 'i1', key: 'TT-1', project_key: 'TT', sprint_id: 's1' }
+const writes = [
+  () => createSprint('tt', { name: 'Sprint 1' }),
+  () => updateSprint('tt', 's1', { goal: null, start_date: null, end_date: null }),
+  () => startSprint('tt', 's1'),
+  () => closeSprint('tt', 's1'),
+  () => moveIssueToSprint('tt', 's1', 'i1'),
+  () => removeIssueFromSprint('tt', 's1', 'i1'),
+]
+
+beforeEach(() => {
+  GET.mockReset()
+  POST.mockReset()
+  PATCH.mockReset()
+})
+
+describe('sprint transport contracts', () => {
+  it.each([403, 404, 409, 422, 429, 503])(
+    'preserves HTTP status %s for every endpoint',
+    async (status) => {
+      const failure = { error: { error: { message: 'Private diagnostic' } }, response: { status } }
+      GET.mockResolvedValue(failure)
+      POST.mockResolvedValue(failure)
+      PATCH.mockResolvedValue(failure)
+      for (const call of [() => listSprints('tt'), ...writes])
+        await expect(call()).rejects.toMatchObject({ name: 'ApiError', status })
+    },
+  )
+
+  it.each([undefined, {}, { sprints: null }, { sprints: [null] }, { sprints: [{ id: 's1' }] }])(
+    'rejects malformed lists rather than showing an empty catalog',
+    async (data) => {
+      GET.mockResolvedValue({ data, response: { status: 200 } })
+      await expect(listSprints('TT')).rejects.toMatchObject({
+        name: 'InvalidResponseError',
+        status: 200,
+      })
+    },
+  )
+
+  it.each([
+    undefined,
+    {},
+    { ...sprint, id: null },
+    { ...sprint, name: {} },
+    { ...sprint, goal: null },
+    { ...sprint, velocity: 'zero' },
+    { ...sprint, issue_ids: [null] },
+    { ...sprint, start_date: 123 },
+    { ...sprint, end_date: 'not-a-date' },
+  ])('rejects malformed sprint acknowledgements', async (data) => {
+    POST.mockResolvedValue({ data, response: { status: 201 } })
+    PATCH.mockResolvedValue({ data, response: { status: 200 } })
+    for (const call of writes.slice(0, 4))
+      await expect(call()).rejects.toMatchObject({ name: 'InvalidResponseError' })
+  })
+
+  it.each([
+    undefined,
+    {},
+    { ...issue, id: null },
+    { ...issue, project_key: null },
+    { ...issue, sprint_id: [] },
+  ])('rejects malformed issue acknowledgements', async (data) => {
+    POST.mockResolvedValue({ data, response: { status: 200 } })
+    for (const call of writes.slice(4))
+      await expect(call()).rejects.toMatchObject({ name: 'InvalidResponseError', status: 200 })
+  })
+
+  it('distinguishes an actual empty catalog and preserves the request paths and nullable payloads', async () => {
+    GET.mockResolvedValue({ data: { sprints: [] }, response: { status: 200 } })
+    await expect(listSprints('tt')).resolves.toEqual([])
+    expect(GET).toHaveBeenCalledWith('/api/v1/projects/{project_key}/sprints', {
+      params: { path: { project_key: 'tt' } },
+    })
+    POST.mockResolvedValue({ data: sprint, response: { status: 201 } })
+    PATCH.mockResolvedValue({ data: sprint, response: { status: 200 } })
+    for (const call of writes.slice(0, 4)) await expect(call()).resolves.toEqual(sprint)
+    expect(PATCH).toHaveBeenCalledWith('/api/v1/projects/{project_key}/sprints/{sprint_id}', {
+      params: { path: { project_key: 'tt', sprint_id: 's1' } },
+      body: { goal: null, start_date: null, end_date: null },
+    })
+    POST.mockResolvedValue({ data: issue, response: { status: 200 } })
+    await expect(moveIssueToSprint('tt', 's1', 'i1')).resolves.toEqual(issue)
+    await expect(removeIssueFromSprint('tt', 's1', 'i1')).resolves.toEqual(issue)
+    expect(POST).toHaveBeenLastCalledWith(
+      '/api/v1/projects/{project_key}/sprints/{sprint_id}/remove-issue',
+      {
+        params: { path: { project_key: 'tt', sprint_id: 's1' } },
+        body: { issue_id: 'i1' },
+      },
+    )
+  })
+
+  it('does not infer success from a missing error envelope on an HTTP failure', async () => {
+    GET.mockResolvedValue({ response: { status: 403 } })
+    POST.mockResolvedValue({ data: sprint, response: { status: 503 } })
+    PATCH.mockResolvedValue({ data: sprint, response: { status: 422 } })
+    await expect(listSprints('TT')).rejects.toMatchObject({ name: 'ApiError', status: 403 })
+    await expect(createSprint('TT', { name: 'Sprint' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 503,
+    })
+    await expect(updateSprint('TT', 's1', {})).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 422,
+    })
+  })
+
+  it('keeps transport failures distinct from a confirmed rejection', async () => {
+    const failure = new TypeError('Network unavailable')
+    POST.mockRejectedValue(failure)
+    await expect(createSprint('TT', { name: 'Sprint' })).rejects.toBe(failure)
+  })
+})

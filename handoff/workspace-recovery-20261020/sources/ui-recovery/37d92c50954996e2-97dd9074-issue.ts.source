@@ -1,0 +1,93 @@
+import { api } from './client'
+import type { components } from './generated'
+
+type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
+export type Issue = components['schemas']['IssueResponse']
+
+export class IssueDeleteError extends Error {
+  readonly outcome: 'rejected' | 'unknown'
+  constructor(readonly status?: number) {
+    super('Issue deletion was not confirmed')
+    this.name = 'IssueDeleteError'
+    this.outcome =
+      status !== undefined && [400, 401, 403, 409, 422, 429].includes(status)
+        ? 'rejected'
+        : 'unknown'
+  }
+}
+
+export class TrashMutationError extends Error {
+  readonly outcome: 'rejected' | 'unknown'
+  constructor(readonly status?: number) {
+    super('Trash change was not confirmed')
+    this.name = 'TrashMutationError'
+    this.outcome =
+      status !== undefined && [400, 401, 403, 409, 422, 429].includes(status)
+        ? 'rejected'
+        : 'unknown'
+  }
+}
+
+export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {
+  const { data, error } = await api.PATCH('/api/v1/issues/{id}', {
+    params: { path: { id } },
+    body: input,
+  })
+  if (error || !data) throw new Error('Failed to update issue')
+  return data
+}
+
+export async function deleteIssue(id: string): Promise<void> {
+  try {
+    const { error, response } = await api.DELETE('/api/v1/issues/{id}', {
+      params: { path: { id } },
+    })
+    if (error || !response.ok) throw new IssueDeleteError(response.status)
+  } catch (error) {
+    if (error instanceof IssueDeleteError) throw error
+    throw new IssueDeleteError()
+  }
+}
+
+export async function getIssue(id: string): Promise<Issue | null> {
+  const { data, error, response } = await api.GET('/api/v1/issues/{id}', {
+    params: { path: { id } },
+  })
+  if (response.status === 404) return null
+  if (error || !data) throw new Error('Failed to load issue')
+  return data
+}
+
+export async function restoreIssue(id: string): Promise<Issue> {
+  try {
+    const { data, error, response } = await api.POST('/api/v1/issues/{id}/restore', {
+      params: { path: { id } },
+    })
+    if (error || !response.ok || !data || data.id !== id)
+      throw new TrashMutationError(response.status)
+    return data
+  } catch (error) {
+    if (error instanceof TrashMutationError) throw error
+    throw new TrashMutationError()
+  }
+}
+
+export async function purgeIssue(id: string): Promise<void> {
+  try {
+    const { error, response } = await api.DELETE('/api/v1/issues/{id}/trash', {
+      params: { path: { id } },
+    })
+    if (error || !response.ok) throw new TrashMutationError(response.status)
+  } catch (error) {
+    if (error instanceof TrashMutationError) throw error
+    throw new TrashMutationError()
+  }
+}
+
+export async function listTrash(projectKey: string, limit = 50, offset = 0): Promise<Issue[]> {
+  const { data, error, response } = await api.GET('/api/v1/projects/{key}/trash', {
+    params: { path: { key: projectKey }, query: { limit, offset } },
+  })
+  if (error || !response.ok || !data) throw new Error('Failed to list trash')
+  return data.issues
+}

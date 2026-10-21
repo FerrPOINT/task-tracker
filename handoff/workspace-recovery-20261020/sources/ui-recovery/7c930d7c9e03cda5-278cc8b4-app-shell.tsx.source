@@ -1,0 +1,208 @@
+import { Link, useLocation, Outlet } from 'react-router'
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
+import { LayoutDashboard, FolderKanban, Search, List, Columns2, Trash2, Bell, Plus, ChevronDown, BarChart3, ShieldCheck, Settings2, Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { AppShell as BaseAppShell, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@sdlc/ui/ui'
+import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
+import { useCurrentUser, useLogout, useMarkAllNotificationsRead, useMarkNotificationRead, useIssue, useNotifications, useProjects } from '@/shared/api/hooks'
+
+const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
+const issuePattern = /^\/issues\/([^/]+)$/
+
+function useCurrentProjectKey() {
+  const location = useLocation()
+  const match = location.pathname.match(projectKeyPattern)
+  const issueMatch = location.pathname.match(issuePattern)
+  const isCreateIssueRoute = location.pathname === '/issues/create'
+  const issueId = isCreateIssueRoute ? undefined : issueMatch?.[1]
+  const createIssueProjectKey = isCreateIssueRoute
+    ? (new URLSearchParams(location.search).get('project_key') ??
+      (location.state as { project_key?: string } | null)?.project_key)
+    : undefined
+  const reportsProjectKey =
+    location.pathname === '/reports'
+      ? new URLSearchParams(location.search).get('project_key')
+      : undefined
+  // On the issue page the project is not part of the URL; resolve it from
+  // the loaded issue so sidebar Board/Backlog/Trash keep their context.
+  const { data: issue } = useIssue(issueId ?? '')
+  return match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue?.project_key
+}
+
+
+export function AppShell() {
+  const { t } = useTranslation()
+  const location = useLocation()
+  const projectKey = useCurrentProjectKey()
+  const { data: user } = useCurrentUser()
+  const { data: projects = [] } = useProjects()
+  const { data: notificationList } = useNotifications()
+  const markNotificationRead = useMarkNotificationRead()
+  const markAllNotificationsRead = useMarkAllNotificationsRead()
+  const logout = useLogout()
+  useTrackerEvents()
+  const notifications = notificationList?.notifications ?? []
+  const unreadCount = notificationList?.unread_count ?? 0
+  const currentProject = projects.find((project) => project.key === projectKey)
+  const layout = location.pathname === '/issues/create' || location.pathname.endsWith('/settings/custom-fields') ? 'reading' : /^\/issues\/[^/]+$/.test(location.pathname) ? 'detail-with-aside' : 'wide'
+  const navigation = [
+    { to: '/', icon: LayoutDashboard, label: t('navigation.dashboard') },
+    { to: '/projects', icon: FolderKanban, label: t('navigation.projects') },
+    { to: '/search', icon: Search, label: t('navigation.search') },
+    { to: '/reports', icon: BarChart3, label: t('navigation.reports') },
+    { to: '/notifications', icon: Bell, label: t('notifications.title') },
+    { to: '/admin', icon: ShieldCheck, label: t('navigation.admin') },
+    ...(projectKey ? [
+      { to: `/projects/${projectKey}/board`, icon: Columns2, label: t('navigation.board') },
+      { to: `/projects/${projectKey}/backlog`, icon: List, label: t('navigation.backlog') },
+      { to: `/reports?project_key=${encodeURIComponent(projectKey)}`, icon: BarChart3, label: t('navigation.projectReports') },
+      { to: `/projects/${projectKey}/trash`, icon: Trash2, label: t('trash.title') },
+      { to: `/projects/${projectKey}/settings/custom-fields`, icon: Settings2, label: t('navigation.settings') },
+    ] : []),
+  ].map((item) => {
+    if (!item.to.startsWith('/reports')) return item
+    const target = new URLSearchParams(item.to.split('?')[1]).get('project_key')
+    return { ...item, active: location.pathname === '/reports' && target === new URLSearchParams(location.search).get('project_key') }
+  })
+  return <BaseAppShell currentServiceKey="task-tracker" title={t('app.name')} navigation={navigation} layout={layout}
+    account={{ label: user?.display_name ?? user?.username ?? user?.email ?? 'Пользователь', onLogout: () => logout.mutate(), pending: logout.isPending }}
+    context={<>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={currentProject?.name ?? t('navigation.projects')}
+                  title={currentProject?.name ?? t('navigation.projects')}
+                  className="base-control base-icon-control inline-flex min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:max-w-52"
+                >
+                  <FolderKanban className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden truncate md:inline">
+                    {currentProject?.name ?? t('navigation.projects')}
+                  </span>
+                  <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 md:block" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
+              >
+                <DropdownMenuItem asChild>
+                  <Link to="/projects" className="gap-2">
+                    <FolderKanban className="h-4 w-4" />
+                    {t('navigation.allProjects')}
+                  </Link>
+                </DropdownMenuItem>
+                {projects.map((project) => (
+                  <DropdownMenuItem key={project.key} asChild>
+                    <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
+                      <span className="truncate">{project.name}</span>
+                      <span className="text-xs text-text-muted">{project.key}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>} actions={<DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-11 w-11 md:h-10 md:w-10"
+                  aria-label={t('notifications.open')}
+                  data-testid="notification-trigger"
+                >
+                  <Bell className="h-[18px] w-[18px]" />
+                  {unreadCount > 0 && (
+                    <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
+                <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <DropdownMenuPrimitive.Label className="text-sm font-semibold">
+                    {t('notifications.title')}
+                  </DropdownMenuPrimitive.Label>
+                  <DropdownMenuItem
+                    className="min-h-11 px-2 text-xs"
+                    onSelect={() => markAllNotificationsRead.mutate()}
+                    disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+                  >
+                    {t('notifications.markAllRead')}
+                  </DropdownMenuItem>
+                </DropdownMenuPrimitive.Group>
+                <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
+                  {notifications.slice(0, 10).map((notification) => {
+                    const content = (
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 break-words font-medium">
+                          {notification.title}
+                        </div>
+                        {notification.body && (
+                          <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                            {notification.body}
+                          </div>
+                        )}
+                      </div>
+                    )
+                    return (
+                      <DropdownMenuPrimitive.Group
+                        key={notification.id}
+                        className="flex items-start gap-1"
+                      >
+                        {notification.action_url ? (
+                          <DropdownMenuItem
+                            asChild
+                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+                          >
+                            <Link
+                              to={notification.action_url}
+                              onClick={() => {
+                                if (!notification.is_read)
+                                  markNotificationRead.mutate(notification.id)
+                              }}
+                            >
+                              {content}
+                            </Link>
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+                            onSelect={() => {
+                              if (!notification.is_read)
+                                markNotificationRead.mutate(notification.id)
+                            }}
+                          >
+                            {content}
+                          </DropdownMenuItem>
+                        )}
+                        {!notification.is_read && (
+                          <DropdownMenuItem
+                            className="min-h-11 w-11 shrink-0 justify-center p-0"
+                            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+                            title={t('notifications.markRead')}
+                            onSelect={() => markNotificationRead.mutate(notification.id)}
+                          >
+                            <Check className="h-4 w-4" aria-hidden="true" />
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuPrimitive.Group>
+                    )
+                  })}
+                  {notifications.length === 0 && (
+                    <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
+                      {t('notifications.empty')}
+                    </DropdownMenuPrimitive.Label>
+                  )}
+                </DropdownMenuPrimitive.Group>
+                <DropdownMenuPrimitive.Separator className="h-px bg-border" />
+                <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+                  <Link to="/notifications">{t('notifications.viewAll')}</Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>}>
+    {layout === 'wide' && <div className="base-page-actions mb-3"><Button asChild><Link to={projectKey ? `/issues/create?project_key=${encodeURIComponent(projectKey)}` : '/issues/create'}><Plus className="h-4 w-4" aria-hidden />{t('navigation.create')}</Link></Button></div>}
+    <Outlet />
+  </BaseAppShell>
+}

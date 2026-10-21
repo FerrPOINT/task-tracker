@@ -1,0 +1,803 @@
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+index efadd78..cb73c58 100644
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -6,6 +6,7 @@ pub mod dto;
+ pub mod oidc;
+ pub mod sdlc;
+ pub mod sdlc_configuration;
++pub mod sdlc_confirmation;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;
+ pub mod sdlc_reservation;
+diff --git a/backend/app/src/sdlc_confirmation.rs b/backend/app/src/sdlc_confirmation.rs
+new file mode 100644
+index 0000000..f5aa81e
+--- /dev/null
++++ b/backend/app/src/sdlc_confirmation.rs
+@@ -0,0 +1,88 @@
++use domain::sdlc::{Confirmation, MAX_SAFE_VERSION, Principal, Stage, TaskState};
++use shared::AppError;
++use uuid::Uuid;
++
++impl crate::sdlc::SdlcService {
++    pub async fn confirmation_read(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        revision: i64,
++    ) -> Result<Confirmation, AppError> {
++        validate_revision(revision)?;
++        self.repository
++            .confirmation_read(task, actor, revision)
++            .await
++    }
++}
++
++pub fn validate_revision(revision: i64) -> Result<(), AppError> {
++    if !(1..=MAX_SAFE_VERSION).contains(&revision) {
++        return Err(AppError::validation("invalid confirmation revision"));
++    }
++    Ok(())
++}
++
++/// Called only after the PM grant's own-task prefix has been validated.
++pub fn is_confirmation_read(method: &str, resource: &[&str]) -> bool {
++    matches!((method,resource), ("GET",["requirements",revision,"confirmation"])
++        if crate::sdlc::canonical_pm_version(revision))
++}
++
++pub fn authorize_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
++    crate::sdlc::authorize_pm_read(state, actor)?;
++    if crate::sdlc::pm_grant_task(actor)?.is_some() {
++        if !actor.scopes.contains("task-tracker:read") {
++            return Err(AppError::Forbidden);
++        }
++        Ok(())
++    } else {
++        crate::sdlc_reservation::reader(actor)
++    }
++}
++
++pub fn exact_receipt(
++    state: &TaskState,
++    revision: i64,
++    persisted: Option<&Confirmation>,
++    requirement_hash: Option<&str>,
++) -> Result<Confirmation, AppError> {
++    validate_revision(revision)?;
++    state.require_root()?;
++    let history: Vec<_> = state
++        .confirmations
++        .iter()
++        .filter(|c| c.revision == revision)
++        .collect();
++    let inconsistent = || AppError::conflict("owner_confirmation_history_inconsistent");
++    let Some(receipt) = persisted else {
++        return if history.is_empty() {
++            Err(AppError::not_found("owner confirmation", revision))
++        } else {
++            Err(inconsistent())
++        };
++    };
++    let revisions: Vec<_> = state
++        .revisions
++        .iter()
++        .filter(|r| r.revision == revision)
++        .collect();
++    if history.len() != 1 || revisions.len() != 1 {
++        return Err(inconsistent());
++    }
++    let requirement = revisions[0];
++    if history[0] != receipt
++        || receipt.id.is_nil()
++        || receipt.task_id != state.task_id
++        || receipt.revision != revision
++        || receipt.stage != Stage::Backlog
++        || receipt.owner_subject.trim().is_empty()
++        || receipt.owner_subject != state.owner_subject
++        || receipt.content_hash != requirement.content_hash
++        || requirement_hash != Some(receipt.content_hash.as_str())
++        || crate::sdlc::canonical_hash(&requirement.document)? != receipt.content_hash
++    {
++        return Err(inconsistent());
++    }
++    Ok(receipt.clone())
++}
+diff --git a/backend/app/src/sdlc_tests.rs b/backend/app/src/sdlc_tests.rs
+index aea5563..fc438e5 100644
+--- a/backend/app/src/sdlc_tests.rs
++++ b/backend/app/src/sdlc_tests.rs
+@@ -148,6 +148,171 @@ fn document() -> RequirementsDocument {
+     }
+ }
+ 
++#[test]
++fn sdlc_confirmation_read_uses_exact_saved_owner_history_without_current_stage_rewrite() {
++    use crate::sdlc_confirmation::exact_receipt;
++    let (mut state, config, owner, pm, verifier, fence) = fixture();
++    publish(&mut state, &config, &pm, &fence);
++    for check in ["review", "contract"] {
++        record_evidence(&mut state, &config, &verifier, &fence, check, check);
++    }
++    let hash = state.revisions[0].content_hash.clone();
++    let result = apply(
++        &mut state,
++        &owner,
++        &config,
++        &SdlcCommand::Confirm {
++            revision: 1,
++            command: ConfirmCommand {
++                content_hash: hash.clone(),
++                idempotency_key: "direct-confirmation".into(),
++                expected_routing_policy_version: None,
++            },
++        },
++    )
++    .unwrap();
++    let receipt: Confirmation = serde_json::from_value(result.clone()).unwrap();
++    assert_eq!(state.stage, Stage::Analysis);
++    let before = canonical_hash(&state).unwrap();
++    assert_eq!(
++        serde_json::to_value(exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap())
++            .unwrap(),
++        result
++    );
++    assert_eq!(canonical_hash(&state).unwrap(), before);
++    assert!(matches!(
++        exact_receipt(&state, 2, None, None),
++        Err(AppError::NotFound(_))
++    ));
++    assert!(matches!(
++        exact_receipt(&state, 1, None, Some(&hash)),
++        Err(AppError::Conflict(_))
++    ));
++    assert!(matches!(
++        exact_receipt(&state, 1, Some(&receipt), None),
++        Err(AppError::Conflict(_))
++    ));
++    assert!(matches!(
++        exact_receipt(&state, 1, Some(&receipt), Some("wrong-hash")),
++        Err(AppError::Conflict(_))
++    ));
++    let mut inconsistent_history = state.clone();
++    inconsistent_history.confirmations[0].created_at += chrono::Duration::seconds(1);
++    assert!(matches!(
++        exact_receipt(&inconsistent_history, 1, Some(&receipt), Some(&hash)),
++        Err(AppError::Conflict(_))
++    ));
++    let mut duplicate = state.clone();
++    duplicate.confirmations.push(receipt.clone());
++    assert!(matches!(
++        exact_receipt(&duplicate, 1, Some(&receipt), Some(&hash)),
++        Err(AppError::Conflict(_))
++    ));
++    for field in ["owner", "task", "stage", "hash"] {
++        let mut forged = receipt.clone();
++        match field {
++            "owner" => forged.owner_subject = "foreign".into(),
++            "task" => forged.task_id = Uuid::new_v4(),
++            "stage" => forged.stage = Stage::Analysis,
++            _ => forged.content_hash = "b".repeat(64),
++        }
++        let mut forged_state = state.clone();
++        forged_state.confirmations[0] = forged.clone();
++        assert!(matches!(
++            exact_receipt(&forged_state, 1, Some(&forged), Some(&hash)),
++            Err(AppError::Conflict(_))
++        ));
++    }
++    let mut later_revision = state.revisions[0].clone();
++    later_revision.revision = 2;
++    state.revisions.push(later_revision);
++    assert_eq!(
++        exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap(),
++        receipt
++    );
++}
++
++#[test]
++fn sdlc_confirmation_read_grant_does_not_grant_owner_confirmation_or_foreign_task_access() {
++    use crate::sdlc_confirmation::authorize_read;
++    let (state, config, owner, mut pm, _, _) = fixture();
++    assert!(matches!(
++        authorize_read(&state, &pm),
++        Err(AppError::Forbidden)
++    ));
++    pm.scopes.insert("task-tracker:read".into());
++    authorize_read(&state, &pm).unwrap();
++    authorize_read(&state, &owner).unwrap();
++    let mut foreign = pm.clone();
++    foreign.subject = "foreign".into();
++    assert!(matches!(
++        authorize_read(&state, &foreign),
++        Err(AppError::Forbidden)
++    ));
++    let mut foreign_state = state.clone();
++    foreign_state.task_id = Uuid::new_v4();
++    foreign_state.root_task_id = foreign_state.task_id;
++    assert!(matches!(
++        authorize_read(&foreign_state, &pm),
++        Err(AppError::Forbidden)
++    ));
++    let mut stale = state.clone();
++    stale.assignment.as_mut().unwrap().version += 1;
++    assert!(matches!(
++        authorize_read(&stale, &pm),
++        Err(AppError::Forbidden)
++    ));
++    let mut child = state.clone();
++    child.root_task_id = Uuid::new_v4();
++    assert!(authorize_read(&child, &pm).is_err());
++    let command = SdlcCommand::Confirm {
++        revision: 1,
++        command: ConfirmCommand {
++            content_hash: "a".repeat(64),
++            idempotency_key: "forbidden".into(),
++            expected_routing_policy_version: None,
++        },
++    };
++    assert!(matches!(
++        authorize(&state, &pm, &config, &command),
++        Err(AppError::Forbidden)
++    ));
++}
++
++#[test]
++fn sdlc_confirmation_read_allowlist_adds_only_exact_get_with_safe_revision() {
++    use crate::sdlc_confirmation::{is_confirmation_read, validate_revision};
++    for revision in ["1", "9007199254740991"] {
++        assert!(is_confirmation_read(
++            "GET",
++            &["requirements", revision, "confirmation"]
++        ));
++    }
++    for revision in ["0", "01", "+1", "-1", "1.0", "9007199254740992"] {
++        assert!(!is_confirmation_read(
++            "GET",
++            &["requirements", revision, "confirmation"]
++        ));
++    }
++    for method in ["POST", "HEAD", "PATCH", "DELETE"] {
++        assert!(!is_confirmation_read(
++            method,
++            &["requirements", "1", "confirmation"]
++        ));
++    }
++    for resource in [
++        vec!["analysis-intent"],
++        vec!["events"],
++        vec!["requirements", "1", "confirm"],
++        vec!["requirements", "1", "confirmation", "extra"],
++    ] {
++        assert!(!is_confirmation_read("GET", &resource));
++    }
++    for revision in [0, -1, MAX_SAFE_VERSION + 1] {
++        assert!(validate_revision(revision).is_err());
++    }
++}
++
+ #[test]
+ fn canonical_status_and_extensions_survive_aggregate_roundtrip_without_legacy_defaults() {
+     use domain::sdlc_lifecycle::LifecycleStatus;
+diff --git a/backend/cli/src/sdlc_pm_commands.rs b/backend/cli/src/sdlc_pm_commands.rs
+index 308261a..be54c7b 100644
+--- a/backend/cli/src/sdlc_pm_commands.rs
++++ b/backend/cli/src/sdlc_pm_commands.rs
+@@ -16,7 +16,7 @@ pub enum RoutingCommand {
+ 
+ #[derive(Subcommand)]
+ pub enum ConfirmationCommand {
+-    /// Read the retained owner receipt matching the authoritative Analysis intent
++    /// Read the exact retained owner confirmation receipt directly
+     Read {
+         #[arg(long)]
+         task: Uuid,
+@@ -74,61 +74,37 @@ pub async fn routing(api: &Api, command: RoutingCommand) -> Result<Value> {
+ 
+ pub async fn confirmation(api: &Api, command: ConfirmationCommand) -> Result<Value> {
+     let ConfirmationCommand::Read { task, revision } = command;
+-    let intent = api.get(&sdlc_path(task, "/analysis-intent")).await?;
++    let receipt = api
++        .get(&sdlc_path(
++            task,
++            &format!("/requirements/{revision}/confirmation"),
++        ))
++        .await?;
+     let task_text = task.to_string();
+-    let confirmation_id = intent
+-        .get("confirmation_id")
+-        .and_then(Value::as_str)
+-        .filter(|id| {
+-            Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == *id)
+-        })
+-        .ok_or_else(|| anyhow::anyhow!("Analysis intent has no canonical confirmation UUID"))?;
+-    if intent["task_id"].as_str() != Some(task_text.as_str())
+-        || intent["requirement_revision"].as_i64() != Some(revision)
+-        || intent["content_hash"].as_str().is_none()
++    let canonical_id = receipt.get("id").and_then(Value::as_str).is_some_and(|id| {
++        Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == id)
++    });
++    let canonical_hash = receipt["content_hash"].as_str().is_some_and(|hash| {
++        hash.len() == 64
++            && hash
++                .bytes()
++                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
++    });
++    if !canonical_id
++        || !canonical_hash
++        || receipt["task_id"].as_str() != Some(task_text.as_str())
++        || receipt["revision"].as_i64() != Some(revision)
++        || receipt["owner_subject"]
++            .as_str()
++            .is_none_or(|owner| owner.trim().is_empty())
++        || receipt["created_at"]
++            .as_str()
++            .is_none_or(|time| time.trim().is_empty())
++        || receipt["stage"] != "Backlog"
+     {
+-        anyhow::bail!("Analysis intent does not match requested task/revision");
++        anyhow::bail!("owner confirmation receipt does not match requested task/revision");
+     }
+-    let mut after = 0i64;
+-    // Bounded reconciliation of the existing durable outbox, with no POST replay.
+-    for _ in 0..100 {
+-        let page = api
+-            .get(&sdlc_path(task, &format!("/events?after={after}")))
+-            .await?;
+-        let events = page["events"]
+-            .as_array()
+-            .ok_or_else(|| anyhow::anyhow!("invalid Tracker outbox response"))?;
+-        if events.is_empty() {
+-            anyhow::bail!("owner confirmation receipt not found");
+-        }
+-        for event in events {
+-            let sequence = event["sequence"]
+-                .as_i64()
+-                .filter(|n| *n > after)
+-                .ok_or_else(|| anyhow::anyhow!("Tracker outbox cursor did not advance"))?;
+-            if event["task_id"].as_str() != Some(task_text.as_str()) {
+-                anyhow::bail!("Tracker outbox task mismatch");
+-            }
+-            after = sequence;
+-            if event["event_type"] != "requirements.confirmed" {
+-                continue;
+-            }
+-            let receipt = &event["payload"]["result"];
+-            if receipt["id"].as_str() != Some(confirmation_id) {
+-                continue;
+-            }
+-            if receipt["task_id"].as_str() != Some(task_text.as_str())
+-                || receipt["revision"].as_i64() != Some(revision)
+-                || receipt["content_hash"] != intent["content_hash"]
+-                || receipt["owner_subject"].as_str().is_none_or(str::is_empty)
+-                || receipt["stage"] != "Backlog"
+-            {
+-                anyhow::bail!("owner confirmation receipt does not match intent");
+-            }
+-            return Ok(receipt.clone());
+-        }
+-    }
+-    anyhow::bail!("confirmation readback exceeded 100 outbox pages")
++    Ok(receipt)
+ }
+ 
+ #[derive(Subcommand)]
+diff --git a/backend/cli/tests/workflows.rs b/backend/cli/tests/workflows.rs
+index af49e9b..08f1559 100644
+--- a/backend/cli/tests/workflows.rs
++++ b/backend/cli/tests/workflows.rs
+@@ -898,11 +898,7 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
+     const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
+     let receipt = json!({"id":CONSENT,"task_id":TASK,"revision":7,"content_hash":"a".repeat(64),
+         "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
+-    let server = Server::start(vec![
+-        (200,json!({"task_id":TASK,"confirmation_id":CONSENT,"requirement_revision":7,"content_hash":"a".repeat(64)})),
+-        (200,json!({"events":[{"task_id":TASK,"sequence":21,"event_type":"requirements.published","payload":{}}]})),
+-        (200,json!({"events":[{"task_id":TASK,"sequence":25,"event_type":"requirements.confirmed","payload":{"result":receipt}}]})),
+-    ]).await;
++    let server = Server::start(vec![(200, receipt.clone())]).await;
+     let output = server
+         .run(
+             &[
+@@ -923,19 +919,11 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
+         receipt
+     );
+     let requests = server.requests();
+-    assert_eq!(requests.len(), 3);
++    assert_eq!(requests.len(), 1);
+     assert!(requests.iter().all(|r| r.method == "GET"));
+     assert_eq!(
+         requests[0].path,
+-        format!("/api/v1/issues/{TASK}/sdlc/analysis-intent")
+-    );
+-    assert_eq!(
+-        requests[1].path,
+-        format!("/api/v1/issues/{TASK}/sdlc/events?after=0")
+-    );
+-    assert_eq!(
+-        requests[2].path,
+-        format!("/api/v1/issues/{TASK}/sdlc/events?after=21")
++        format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
+     );
+ }
+ 
+@@ -943,11 +931,12 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
+ async fn sdlc_confirmation_read_rejects_mismatched_receipt_without_publishing() {
+     const TASK: &str = "11111111-1111-1111-1111-111111111111";
+     const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
+-    let server = Server::start(vec![
+-        (200,json!({"task_id":TASK,"confirmation_id":CONSENT,"requirement_revision":7,"content_hash":"a".repeat(64)})),
+-        (200,json!({"events":[{"task_id":TASK,"sequence":1,"event_type":"requirements.confirmed",
+-            "payload":{"result":{"id":CONSENT,"task_id":TASK,"revision":7,"content_hash":"b".repeat(64),"owner_subject":"owner","stage":"Backlog"}}}]})),
+-    ]).await;
++    let server = Server::start(vec![(
++        200,
++        json!({"id":CONSENT,"task_id":TASK,"revision":8,"content_hash":"a".repeat(64),
++        "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"}),
++    )])
++    .await;
+     let output = server
+         .run(
+             &[
+@@ -964,9 +953,104 @@ async fn sdlc_confirmation_read_rejects_mismatched_receipt_without_publishing()
+         .await;
+     assert!(!output.status.success());
+     assert!(output.stdout.is_empty());
++    assert_eq!(server.requests().len(), 1);
+     assert!(server.requests().iter().all(|r| r.method == "GET"));
+ }
+ 
++#[tokio::test]
++async fn sdlc_confirmation_read_denials_do_not_fallback_to_intent_outbox_or_post() {
++    const TASK: &str = "11111111-1111-1111-1111-111111111111";
++    for status in [403, 404, 409] {
++        let server = Server::start(vec![(status, json!({"error":"unavailable receipt"}))]).await;
++        let output = server
++            .run(
++                &[
++                    "sdlc",
++                    "confirmation",
++                    "read",
++                    "--task",
++                    TASK,
++                    "--revision",
++                    "7",
++                ],
++                None,
++            )
++            .await;
++        assert!(!output.status.success());
++        assert!(output.stdout.is_empty());
++        let requests = server.requests();
++        assert_eq!(requests.len(), 1);
++        assert_eq!(requests[0].method, "GET");
++        assert_eq!(
++            requests[0].path,
++            format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
++        );
++    }
++}
++
++#[tokio::test]
++async fn sdlc_confirmation_read_rejects_malformed_receipt_without_fallback() {
++    const TASK: &str = "11111111-1111-1111-1111-111111111111";
++    let valid = json!({"id":"22222222-2222-2222-2222-222222222222","task_id":TASK,"revision":7,
++        "content_hash":"a".repeat(64),"owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
++    for (field, value) in [
++        ("id", json!("00000000-0000-0000-0000-000000000000")),
++        ("task_id", json!("33333333-3333-3333-3333-333333333333")),
++        ("revision", json!("7")),
++        ("content_hash", json!("not-a-sha256")),
++        ("owner_subject", json!(" ")),
++        ("created_at", Value::Null),
++        ("stage", json!("Analysis")),
++    ] {
++        let mut receipt = valid.clone();
++        receipt[field] = value;
++        let server = Server::start(vec![(200, receipt)]).await;
++        let output = server
++            .run(
++                &[
++                    "sdlc",
++                    "confirmation",
++                    "read",
++                    "--task",
++                    TASK,
++                    "--revision",
++                    "7",
++                ],
++                None,
++            )
++            .await;
++        assert!(!output.status.success(), "accepted invalid {field}");
++        assert!(output.stdout.is_empty());
++        assert_eq!(server.requests().len(), 1);
++        assert_eq!(server.requests()[0].method, "GET");
++    }
++}
++
++#[tokio::test]
++async fn sdlc_confirmation_read_rejects_invalid_revision_before_http() {
++    const TASK: &str = "11111111-1111-1111-1111-111111111111";
++    let server = Server::start(vec![]).await;
++    for revision in ["0", "-1", "9007199254740992", "1.0", "not-a-revision"] {
++        let output = server
++            .run(
++                &[
++                    "sdlc",
++                    "confirmation",
++                    "read",
++                    "--task",
++                    TASK,
++                    "--revision",
++                    revision,
++                ],
++                None,
++            )
++            .await;
++        assert!(!output.status.success());
++        assert!(output.stdout.is_empty());
++    }
++    assert!(server.requests().is_empty());
++}
++
+ #[tokio::test]
+ async fn sdlc_role_proposal_forwards_workflow_evidence_and_reconciles_its_original_operation() {
+     const TASK: &str = "11111111-1111-1111-1111-111111111111";
+diff --git a/backend/domain/src/sdlc.rs b/backend/domain/src/sdlc.rs
+index 6b18fa6..4011e86 100644
+--- a/backend/domain/src/sdlc.rs
++++ b/backend/domain/src/sdlc.rs
+@@ -400,7 +400,7 @@ pub struct Question {
+     pub created_at: DateTime<Utc>,
+ }
+ 
+-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
+ pub struct Confirmation {
+     pub id: Uuid,
+     pub task_id: Uuid,
+@@ -772,6 +772,12 @@ pub trait SdlcRepository: Send + Sync {
+         key: &str,
+     ) -> Result<CreatedDraft, AppError>;
+     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
++    async fn confirmation_read(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        revision: i64,
++    ) -> Result<Confirmation, AppError>;
+     async fn pm_draft_input(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+index 9dd2315..0247fb7 100644
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -1350,6 +1350,58 @@ impl SdlcRepository for PostgresSdlcRepository {
+         tx.commit().await.map_err(map_db)?;
+         Ok(state)
+     }
++    async fn confirmation_read(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        revision: i64,
++    ) -> Result<Confirmation, AppError> {
++        app::sdlc_confirmation::validate_revision(revision)?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let state = self.load_read(&tx, task, actor).await?;
++        app::sdlc_confirmation::authorize_read(&state, actor)?;
++        let row = tx
++            .query_one(statement(
++                "SELECT c.id,c.revision,c.content_hash,c.payload,r.content_hash AS requirement_hash
++             FROM sdlc_confirmations c LEFT JOIN sdlc_requirements r
++                ON r.task_id=c.task_id AND r.revision=c.revision
++             WHERE c.task_id=$1 AND c.revision=$2",
++                vec![task.into(), revision.into()],
++            ))
++            .await
++            .map_err(map_db)?;
++        let (persisted, requirement_hash) = match row {
++            None => (None, None),
++            Some(row) => {
++                let payload: Json = row.try_get("", "payload").map_err(map_db)?;
++                let receipt: Confirmation = serde_json::from_value(payload.clone())
++                    .map_err(|_| AppError::conflict("owner_confirmation_history_inconsistent"))?;
++                if receipt.id != row.try_get::<Uuid>("", "id").map_err(map_db)?
++                    || receipt.revision != row.try_get::<i64>("", "revision").map_err(map_db)?
++                    || receipt.content_hash
++                        != row.try_get::<String>("", "content_hash").map_err(map_db)?
++                    || serde_json::to_value(&receipt).map_err(AppError::internal)? != payload
++                {
++                    return Err(AppError::conflict(
++                        "owner_confirmation_history_inconsistent",
++                    ));
++                }
++                (
++                    Some(receipt),
++                    row.try_get::<Option<String>>("", "requirement_hash")
++                        .map_err(map_db)?,
++                )
++            }
++        };
++        let receipt = app::sdlc_confirmation::exact_receipt(
++            &state,
++            revision,
++            persisted.as_ref(),
++            requirement_hash.as_deref(),
++        )?;
++        tx.commit().await.map_err(map_db)?;
++        Ok(receipt)
++    }
+     async fn pm_draft_input(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+index 2bea8a3..d634540 100644
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -241,6 +241,64 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         .await
+         .unwrap();
+     }
++    assert!(matches!(
++        repo.confirmation_read(task, &pm, 1).await,
++        Err(AppError::NotFound(_))
++    ));
++    let confirmation = repo
++        .execute_verified(
++            task,
++            &owner,
++            SdlcCommand::Confirm {
++                revision: 1,
++                command: ConfirmCommand {
++                    content_hash: hash.clone(),
++                    idempotency_key: "confirm".into(),
++                    expected_routing_policy_version: Some(1),
++                },
++            },
++            reservation.clone(),
++            None,
++        )
++        .await
++        .unwrap();
++    let before_receipt_reads = [
++        count(&db, "sdlc_confirmations").await,
++        count(&db, "sdlc_outbox").await,
++        count(&db, "sdlc_pm_lease_operations").await,
++        count(&db, "sdlc_idempotency").await,
++    ];
++    let mut pm_reader = pm.clone();
++    pm_reader.scopes.remove("task-tracker:write");
++    let read_confirmation = repo.confirmation_read(task, &pm_reader, 1).await.unwrap();
++    assert_eq!(
++        serde_json::to_value(&read_confirmation).unwrap(),
++        confirmation
++    );
++    assert_eq!(read_confirmation.stage, Stage::Backlog);
++    assert_eq!(
++        repo.read(task, &owner).await.unwrap().stage,
++        Stage::Analysis
++    );
++    assert!(matches!(
++        repo.confirmation_read(task, &pm_reader, 2).await,
++        Err(AppError::NotFound(_))
++    ));
++    exec(&db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",vec![project.into()]).await.unwrap();
++    assert!(matches!(
++        repo.confirmation_read(task, &pm_reader, 1).await,
++        Err(AppError::Forbidden)
++    ));
++    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",vec![project.into()]).await.unwrap();
++    assert_eq!(
++        [
++            count(&db, "sdlc_confirmations").await,
++            count(&db, "sdlc_outbox").await,
++            count(&db, "sdlc_pm_lease_operations").await,
++            count(&db, "sdlc_idempotency").await
++        ],
++        before_receipt_reads
++    );
+     repo.complete_pm_draft(
+         task,
+         &scheduler,
+@@ -260,22 +318,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+     )
+     .await
+     .unwrap();
+-    repo.execute_verified(
+-        task,
+-        &owner,
+-        SdlcCommand::Confirm {
+-            revision: 1,
+-            command: ConfirmCommand {
+-                content_hash: hash,
+-                idempotency_key: "confirm".into(),
+-                expected_routing_policy_version: Some(1),
+-            },
+-        },
+-        reservation,
+-        None,
+-    )
+-    .await
+-    .unwrap();
+     let ensure = LifecycleCommand::EnsureQueued {
+         idempotency_key: "queue".into(),
+     };
+@@ -516,6 +558,17 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+     );
+     // Exercise actual server-clock expiry without disabling guards or mutating protected ledgers.
+     db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
++    let lease_operations_before_receipt = count(&db, "sdlc_pm_lease_operations").await;
++    let outbox_before_receipt = count(&db, "sdlc_outbox").await;
++    assert_eq!(
++        repo.confirmation_read(task, &pm_reader, 1).await.unwrap(),
++        read_confirmation
++    );
++    assert_eq!(
++        count(&db, "sdlc_pm_lease_operations").await,
++        lease_operations_before_receipt
++    );
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_receipt);
+     let fresh = repo.lifecycle_read(task, &reader).await.unwrap();
+     assert_eq!(fresh.runtime_state, RuntimeState::Unknown);
+     assert_eq!(fresh.receipt.task.runtime, RuntimeState::Running);
+diff --git a/docs/API.md b/docs/API.md
+index 44a4db3..4ba7d01 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -1,5 +1,18 @@
+ # API v1 Specification — Task Tracker
+ 
++## Direct Confirmation Readback (Producer Source)
++
++Parent registration: `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`
++returns the existing exact `Confirmation`, without a wrapper or new schema fields.
++The current PM assignment grant with `task-tracker:read` is supported after parent
++adds the narrowly scoped allowlist predicate from `app::sdlc_confirmation`. Fresh
++active-user/project ACL and assignment checks precede exact revision/hash/owner
++history verification. A live execution lease is not required for this read.
++404 means consent has not been recorded, 409 means inconsistent saved history,
++403 means denied access, and invalid revision is 422. Receipt stage remains the
++historical Backlog value. CLI `sdlc confirmation read --task UUID --revision N`
++uses one direct GET, with no analysis-intent/outbox fallback and no mutation.
++
+ Reserved PM requirement/question writes require the exact machine scope/fence and
+ a current Tracker execution lease; the command schema does not accept a readiness
+ claim. Owner answers and separate verifier evidence use admitted history when
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index 8ce6f20..6c6cc41 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -77,11 +77,24 @@ task-tracker sdlc confirmation read --task UUID --revision N
+ `revision confirm` is owner-session only. Payload: `content_hash`,
+ `idempotency_key`, optional `expected_routing_policy_version`.
+ Output is the original `Confirmation` with `stage:Backlog`, even though the
+-transaction queues aggregate Analysis. `confirmation read` performs GET
+-`analysis-intent`, then bounded legacy `events?after=...` pagination. It returns
+-the actual `requirements.confirmed.payload.result` only when confirmation UUID,
+-task UUID, revision and hash match the intent. It never POSTs or fabricates consent.
+-Workflow uses an ordinarily authorized read credential, not a PM assignment PAT.
++transaction queues aggregate Analysis. `confirmation read` performs one GET
++`P/requirements/{revision}/confirmation` and returns the exact saved `Confirmation`.
++It never reads analysis-intent/outbox, POSTs or fabricates consent. The direct
++repository reader accepts the current PM assignment grant plus service read scope,
++with fresh active-user/project ACL, assignment/subject and exact revision/hash/owner
++history checks, but no live lease requirement. Missing consent is 404 (WAIT), ledger
++inconsistency is 409; invalid revision is 422 and unauthorized access is 403.
++Historical receipt stage stays Backlog even when the task has advanced.
++
++Parent must register this GET/OpenAPI and add its PM allowlist case. Producer source
++provides `SdlcService::confirmation_read(task,actor,revision) -> Confirmation` and the
++API-independent predicate `app::sdlc_confirmation::is_confirmation_read(method,parts)`.
++In the existing `pm_request_policy`, AFTER grant and own-task-prefix validation,
++replace the default `false` arm with that predicate on `parts.as_slice()`. No other
++PM route is opened, particularly analysis-intent, owner confirmation POST or resume.
++No new DTO/migration is required. The old CLI scan is removed, not retained as fallback.
++Workflow waits for the real owner receipt before ending its PM Workflow/runtime;
++only the trusted scheduler accepts PM Complete after actual terminal.
+ 
+ ## Internal lifecycle contract for parent
+ 

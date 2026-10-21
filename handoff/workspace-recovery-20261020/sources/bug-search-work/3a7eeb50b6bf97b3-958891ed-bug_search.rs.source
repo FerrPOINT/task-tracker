@@ -1,0 +1,589 @@
+//! Extends the existing real HTTP issuer/Tracker acceptance fixture.
+use super::*;
+#[path = "bug_search_verification.rs"]
+mod verification;
+pub(super) fn tokens(tokens: &mut HashMap<String, Value>) {
+    for (token, subject, scopes) in [
+        (
+            "sdlc_pat_bugs_fleet",
+            "bugs-fleet",
+            vec!["task-tracker:read", "task-tracker:write"],
+        ),
+        (
+            "sdlc_pat_bugs_workflow",
+            "bugs-workflow",
+            vec!["task-tracker:read"],
+        ),
+        (
+            "sdlc_pat_bugs_ci",
+            "bugs-ci-reader",
+            vec!["task-tracker:read"],
+        ),
+        (
+            "sdlc_pat_bugs_ci_mixed",
+            "bugs-ci-reader",
+            vec!["task-tracker:read", "task-tracker:write"],
+        ),
+        (
+            "sdlc_pat_bugs_wrong_scope",
+            "bugs-workflow",
+            vec!["task-tracker:read", "task-tracker:write"],
+        ),
+        (
+            "sdlc_pat_bugs_fleet_read",
+            "bugs-fleet",
+            vec!["task-tracker:read"],
+        ),
+    ] {
+        tokens.insert(
+            token.into(),
+            json!({"sub":subject,"email":format!("{subject}@example.test"),"scopes":scopes,"display_name":format!("Synthetic {subject}")}),
+        );
+    }
+}
+pub(super) async fn verify(
+    client: &Client,
+    base: &str,
+    _db: &DatabaseConnection,
+    project: Uuid,
+    owner: &str,
+    task: Uuid,
+) {
+    let prefix = format!("{base}/api/v1/projects/{project}/sdlc");
+    let response = client
+        .get(format!("{prefix}/bug-search/capabilities"))
+        .bearer_auth(owner)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let caps: Value = response.json().await.unwrap();
+    assert_eq!(caps["can_manage_policy"], true);
+    assert_eq!(caps["can_admit"], false);
+    super::bug_intake::verify(client, base, project, owner).await;
+    for token in ["sdlc_pat_bugs_fleet", "sdlc_pat_bugs_workflow"] {
+        for path in [
+            format!("{base}/api/v1/issues/{task}/sdlc/assignment"),
+            format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-assignment"),
+            format!("{base}/api/v1/issues/{task}/sdlc/analysis-reservation"),
+            format!("{base}/api/v1/issues"),
+        ] {
+            let response = client
+                .post(path)
+                .bearer_auth(token)
+                .json(&json!({}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                403,
+                "new configured machine must not become an old PM or human writer"
+            );
+        }
+    }
+    let agent = Uuid::new_v4();
+    let instance = std::env::var("TASKTRACKER_SDLC__INSTANCE_ID").unwrap();
+    let instance_uuid =
+        Uuid::parse_str(&std::env::var("TT_NAMESPACE__INSTANCE_ID").unwrap()).unwrap();
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../app/tests/fixtures/bug_search_v1.json"
+    ))
+    .unwrap();
+    let mut snapshot = fixture["vectors"][1]["value"].clone();
+    snapshot["project"]["tracker_instance_id"] = json!(instance);
+    snapshot["project"]["project_id"] = json!(project);
+    snapshot["owner_subject"] = json!("owner");
+    snapshot["agent_id"] = json!(agent);
+    snapshot["targets"][0]["source"] = json!({"contract_version":1,"schema":"forge/source-snapshot/v1",
+        "producer_version":"synthetic-http-owner-v1","project":{"tracker_instance_id":instance_uuid,"project_id":project},
+        "configuration_id":Uuid::new_v4(),"repository_id":Uuid::new_v4(),"branch_ref":"refs/heads/main",
+        "observed_head_sha":snapshot["targets"][0]["commit_sha"],"clone_url_sha256":"c".repeat(64)});
+    let policy = json!({"enabled":false,"mode":snapshot["mode"],"targets":[{"repository_ref":snapshot["targets"][0]["repository_ref"],"branch_ref":"main","target_ref":null}],"scope":snapshot["scope"],"excluded_paths":snapshot["excluded_paths"],"interval_minutes":60});
+    let policy_command = json!({"idempotency_key":"http-policy","owner_subject":"owner","expected_revision":0,"desired_revision":3,"policy":policy});
+    let applied = client
+        .put(format!("{prefix}/bug-search/policy"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .json(&policy_command)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(applied.status(), 200);
+    let applied: Value = applied.json().await.unwrap();
+    assert_eq!(applied["revision"], 3);
+    let policy_read = client
+        .get(format!("{prefix}/bug-search/policy"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(policy_read.status(), 200);
+    assert_eq!(policy_read.json::<Value>().await.unwrap(), applied);
+    let op = client
+        .get(format!("{prefix}/bug-search/operations/http-policy"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(op.status(), 200);
+    let op: Value = op.json().await.unwrap();
+    assert_eq!(op["kind"], "policy");
+    assert_eq!(op["result"], applied);
+    let hash = app::bug_search::canonical_hash(&snapshot).unwrap();
+    let reserve = json!({"idempotency_key":"http-reserve","owner_subject":"owner","snapshot":snapshot,"snapshot_sha256":hash,"expected_policy_revision":3,"agent_id":agent});
+    for (field, status) in [("registry", 422), ("branch", 409)] {
+        let mut bad = reserve.clone();
+        bad["idempotency_key"] = json!(format!("http-source-{field}"));
+        if field == "registry" {
+            bad["snapshot"]["targets"][0]["source"]["project"]["tracker_instance_id"] =
+                json!(Uuid::new_v4());
+        } else {
+            bad["snapshot"]["targets"][0]["source"]["branch_ref"] = json!("refs/heads/remapped");
+        }
+        bad["snapshot_sha256"] = json!(app::bug_search::canonical_hash(&bad["snapshot"]).unwrap());
+        post(
+            client,
+            &format!("{prefix}/bug-search/executions"),
+            "sdlc_pat_bugs_fleet",
+            &bad,
+            status,
+        )
+        .await;
+    }
+    let reserved = post(
+        client,
+        &format!("{prefix}/bug-search/executions"),
+        "sdlc_pat_bugs_fleet",
+        &reserve,
+        201,
+    )
+    .await;
+    assert_eq!(reserved["dispatch_allowed"], false);
+    let execution = Uuid::parse_str(reserved["binding"]["execution_id"].as_str().unwrap()).unwrap();
+    let fence = reserved["binding"]["fence"].as_i64().unwrap();
+    let workflow_receipt = json!({"contract_version":1,"execution_id":execution,"binding":reserved["binding"],"snapshot_sha256":hash,"profession":snapshot["profession"],"workflow_id":1,"mode_id":2,"mode_key":"search","state":"prepared","version":1,"fence":fence,"phase_index":0,"phase_contract":{"synthetic_workflow_producer":"http_fixture"},"session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,"runtime_terminal_confirmed":false,"target_observations":null});
+    let admit = json!({"idempotency_key":"http-admit","expected_fence":fence,"workflow_receipt_sha256":app::bug_search::canonical_hash(&workflow_receipt).unwrap(),"workflow_receipt":workflow_receipt});
+    let admitted = post(
+        client,
+        &format!("{prefix}/bug-search/executions/{execution}/admit"),
+        "sdlc_pat_bugs_fleet",
+        &admit,
+        201,
+    )
+    .await;
+    assert_eq!(admitted["dispatch_allowed"], true);
+    let active_read_only = client
+        .get(format!("{prefix}/bug-search/operations/http-admit"))
+        .bearer_auth("sdlc_pat_bugs_fleet_read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(active_read_only.status(), 200);
+    let grant = format!("{prefix}/bug-search/executions/{execution}/grant");
+    let result = client
+        .get(&grant)
+        .bearer_auth("sdlc_pat_bugs_workflow")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(result.status(), 200);
+    let grant_body: Value = result.json().await.unwrap();
+    assert_eq!(
+        grant_body["binding"]["tracker_instance_uuid"],
+        json!(instance_uuid)
+    );
+    assert_eq!(grant_body["dispatch_allowed"], true);
+    let fleet_grant = client
+        .get(&grant)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(fleet_grant.status(), 200);
+    assert_eq!(
+        fleet_grant.json::<Value>().await.unwrap()["binding"],
+        grant_body["binding"]
+    );
+    assert_eq!(
+        client
+            .get(&grant)
+            .bearer_auth("sdlc_pat_bugs_wrong_scope")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let finding = Uuid::new_v4();
+    let command = json!({"idempotency_key":"http-finding","execution_id":execution,"finding_id":finding,"expected_fence":fence,"source_identity":{"schema_version":1,"producer":"BUG_SEARCHER","rule_key":"scope-owner","stable_defect_key":"http-fixture:session-read","repository_id":snapshot["targets"][0]["source"]["repository_id"]},"report":{"title":"Private session read crosses owner","basis":"Owner-scoped contract","expected":"Forbidden","actual":"Returns private content","reproducer":"Read session under second identity","checked_version":"a".repeat(40),"evidence_refs":["evidence:fixture"]}});
+    let url = format!("{prefix}/bugs/register-or-link");
+    for repo in [json!(Uuid::new_v4()), json!(Uuid::nil()), json!(null)] {
+        let mut bad = command.clone();
+        bad["source_identity"]["repository_id"] = repo;
+        post(client, &url, "sdlc_pat_bugs_fleet", &bad, 422).await;
+    }
+    let created = post(client, &url, "sdlc_pat_bugs_fleet", &command, 201).await;
+    assert_eq!(created["outcome"], "created");
+    assert_eq!(
+        post(client, &url, "sdlc_pat_bugs_fleet", &command, 200).await,
+        created
+    );
+    post(client, &url, "sdlc_pat_bugs_workflow", &command, 403).await;
+    let readback = client
+        .get(format!(
+            "{prefix}/bugs/registration-operations/http-finding"
+        ))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(readback.status(), 200);
+    assert_eq!(readback.json::<Value>().await.unwrap(), created);
+    let terminal = json!({"idempotency_key":"http-terminal","expected_fence":fence,"workflow_receipt":null,"workflow_receipt_sha256":null,"runtime_observation":{"contract_version":1,"execution_id":execution,"agent_id":agent,"session_id":Uuid::new_v4(),"session_run_id":Uuid::new_v4(),"hermes_run_ref":"hermes:owned-http-terminal-journal","terminal_status":"stopped","observed_at":shared::now()}});
+    let terminal_url = format!("{prefix}/bug-search/executions/{execution}/terminal");
+    post(
+        client,
+        &terminal_url,
+        "sdlc_pat_bugs_workflow",
+        &terminal,
+        403,
+    )
+    .await;
+    let stopped = post(client, &terminal_url, "sdlc_pat_bugs_fleet", &terminal, 201).await;
+    assert_eq!(stopped["custody_released"], true);
+    assert_eq!(stopped["result_available"], false);
+    super::bug_work::verify(
+        client,
+        base,
+        _db,
+        project,
+        owner,
+        Uuid::parse_str(created["issue_id"].as_str().unwrap()).unwrap(),
+    )
+    .await;
+    assert_eq!(
+        post(client, &terminal_url, "sdlc_pat_bugs_fleet", &terminal, 200).await,
+        stopped
+    );
+    let fresh = client
+        .get(&grant)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(fresh.status(), 200);
+    assert_eq!(
+        fresh.json::<Value>().await.unwrap()["dispatch_allowed"],
+        false
+    );
+    assert_eq!(
+        post(client, &url, "sdlc_pat_bugs_fleet", &command, 200).await,
+        created,
+        "terminal does not erase accepted registration receipt"
+    );
+    let mut cancel_reserve = reserve.clone();
+    cancel_reserve["idempotency_key"] = json!("http-reserve-before-cancel");
+    let ready = post(
+        client,
+        &format!("{prefix}/bug-search/executions"),
+        "sdlc_pat_bugs_fleet",
+        &cancel_reserve,
+        201,
+    )
+    .await;
+    let cancel_execution = ready["binding"]["execution_id"].clone();
+    // Lose the original POST response, then revoke the owner: exact-machine
+    // recovery still learns its canonical ID, without restoring admission.
+    _db.execute_unprepared("UPDATE users SET is_active=false WHERE central_sub='owner'")
+        .await
+        .unwrap();
+    let original_url = format!("{prefix}/bug-search/operations/http-reserve-before-cancel");
+    let original = client
+        .get(&original_url)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(original.status(), 200);
+    assert_eq!(original.headers()["cache-control"], "no-store");
+    let original: Value = original.json().await.unwrap();
+    assert_eq!(original["kind"], "reserve");
+    assert_eq!(original["result"], ready);
+    let admitted_original = client
+        .get(format!("{prefix}/bug-search/operations/http-admit"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(admitted_original.status(), 200);
+    let admitted_original: Value = admitted_original.json().await.unwrap();
+    assert_eq!(admitted_original["kind"], "admit");
+    assert_eq!(admitted_original["result"], admitted);
+    for key in ["http-reserve-before-cancel", "http-admit"] {
+        let denied = client
+            .get(format!("{prefix}/bug-search/operations/{key}"))
+            .bearer_auth("sdlc_pat_bugs_fleet_read")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), 403);
+    }
+    for token in [owner, "sdlc_pat_bugs_workflow", "sdlc_pat_bugs_wrong_scope"] {
+        let denied = client
+            .get(&original_url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), 403);
+    }
+    let revoked_grant = client
+        .get(format!(
+            "{prefix}/bug-search/executions/{}/grant",
+            cancel_execution.as_str().unwrap()
+        ))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked_grant.status(), 403);
+    post(
+        client,
+        &format!("{prefix}/bug-search/executions"),
+        "sdlc_pat_bugs_fleet",
+        &cancel_reserve,
+        403,
+    )
+    .await;
+    _db.execute_unprepared("UPDATE users SET is_active=true WHERE central_sub='owner'")
+        .await
+        .unwrap();
+    let cancel_body = json!({"idempotency_key":"http-cancel-before-start","expected_fence":ready["binding"]["fence"],
+        "not_started_observation":{"contract_version":1,"execution_id":cancel_execution,"agent_id":agent,
+            "snapshot_sha256":hash,"journal_ref":"fleet:synthetic-http-cancel-fence","disposition":"never_submitted","observed_at":shared::now(),
+            "runtime_custody":{"contract_version":1,"disposition":"never_provisioned","context_id":null,"stop_proof":null,"stop_proof_sha256":null}}});
+    let cancel_url = format!(
+        "{prefix}/bug-search/executions/{}/cancel",
+        cancel_execution.as_str().unwrap()
+    );
+    post(
+        client,
+        &cancel_url,
+        "sdlc_pat_bugs_workflow",
+        &cancel_body,
+        403,
+    )
+    .await;
+    let cancelled = post(
+        client,
+        &cancel_url,
+        "sdlc_pat_bugs_fleet",
+        &cancel_body,
+        201,
+    )
+    .await;
+    assert_eq!(cancelled["kind"], "cancelled_before_start");
+    assert_eq!(cancelled["custody_released"], true);
+    assert!(cancelled.get("runtime_observation").is_none());
+    assert_eq!(
+        post(
+            client,
+            &cancel_url,
+            "sdlc_pat_bugs_fleet",
+            &cancel_body,
+            200
+        )
+        .await,
+        cancelled
+    );
+    let mut removed_reserve = reserve.clone();
+    removed_reserve["idempotency_key"] = json!("http-reserve-created-disposal");
+    let removed = post(
+        client,
+        &format!("{prefix}/bug-search/executions"),
+        "sdlc_pat_bugs_fleet",
+        &removed_reserve,
+        201,
+    )
+    .await;
+    let removed_execution = removed["binding"]["execution_id"].as_str().unwrap();
+    let context = Uuid::new_v4();
+    let disposal = json!({"contract_version":1,"operation_id":Uuid::new_v4(),"resource_id":agent,"context_id":context,
+        "generation":Uuid::new_v4(),"container_id":"a".repeat(64),"registration_sha256":"b".repeat(64),"request_sha256":"c".repeat(64),"state":"observed","observation":"never_started_removed"});
+    let removed_body = json!({"idempotency_key":"http-cancel-created-disposal","expected_fence":removed["binding"]["fence"],"not_started_observation":{
+        "contract_version":1,"execution_id":removed_execution,"agent_id":agent,"snapshot_sha256":hash,"journal_ref":"fleet:original-created-disposal","disposition":"never_submitted","observed_at":shared::now(),
+        "runtime_custody":{"contract_version":1,"disposition":"never_started_removed","context_id":context,"stop_proof_sha256":app::bug_search::canonical_hash(&disposal).unwrap(),"stop_proof":disposal}}});
+    let removed_url = format!("{prefix}/bug-search/executions/{removed_execution}/cancel");
+    let mut bad_removed = removed_body.clone();
+    bad_removed["not_started_observation"]["runtime_custody"]["stop_proof"]["observation"] =
+        json!("namespace_exited");
+    post(
+        client,
+        &removed_url,
+        "sdlc_pat_bugs_fleet",
+        &bad_removed,
+        422,
+    )
+    .await;
+    let removed_receipt = post(
+        client,
+        &removed_url,
+        "sdlc_pat_bugs_fleet",
+        &removed_body,
+        201,
+    )
+    .await;
+    assert_eq!(
+        removed_receipt["not_started_observation"]["runtime_custody"]["disposition"],
+        "never_started_removed"
+    );
+    assert_eq!(
+        post(
+            client,
+            &removed_url,
+            "sdlc_pat_bugs_fleet",
+            &removed_body,
+            200
+        )
+        .await,
+        removed_receipt
+    );
+    let mut unknown_reserve = reserve.clone();
+    unknown_reserve["idempotency_key"] = json!("http-reserve-unknown");
+    let unknown = post(
+        client,
+        &format!("{prefix}/bug-search/executions"),
+        "sdlc_pat_bugs_fleet",
+        &unknown_reserve,
+        201,
+    )
+    .await;
+    let unknown_execution = unknown["binding"]["execution_id"].as_str().unwrap();
+    let mut unknown_prepared = workflow_receipt.clone();
+    unknown_prepared["execution_id"] = json!(unknown_execution);
+    unknown_prepared["binding"] = unknown["binding"].clone();
+    unknown_prepared["fence"] = unknown["binding"]["fence"].clone();
+    let unknown_admit = json!({"idempotency_key":"http-admit-unknown","expected_fence":unknown["binding"]["fence"],"workflow_receipt_sha256":app::bug_search::canonical_hash(&unknown_prepared).unwrap(),"workflow_receipt":unknown_prepared});
+    post(
+        client,
+        &format!("{prefix}/bug-search/executions/{unknown_execution}/admit"),
+        "sdlc_pat_bugs_fleet",
+        &unknown_admit,
+        201,
+    )
+    .await;
+    let stop = json!({"contract_version":4,"operation_id":Uuid::new_v4(),"container_id":"a".repeat(64),"generation":Uuid::new_v4(),"resource_id":agent,"snapshot_sha256":"b".repeat(64),"state":"observed","observation":"namespace_exited"});
+    let now = shared::now();
+    let aborted_body = json!({"idempotency_key":"http-abort-unknown","expected_fence":unknown["binding"]["fence"],"unbound_observation":{
+        "contract_version":1,"execution_id":unknown_execution,"agent_id":agent,"snapshot_sha256":hash,"journal_ref":"fleet:sealed-unknown-submit","observed_at":now,
+        "native_submission":{"operation_key":"native:http-original","body_sha256":"c".repeat(64),"submitted_at":now,"acceptance":"unknown","actual_run_ref":null},
+        "workflow_handoff":{"disposition":"bind_and_handoff_never_submitted","bind_journal_ref":"fleet:bind-fence","handoff_journal_ref":"fleet:handoff-fence","observed_at":now},
+        "runtime_custody":{"contract_version":1,"disposition":"namespace_exited","context_id":Uuid::new_v4(),"stop_proof_sha256":app::bug_search::canonical_hash(&stop).unwrap(),"stop_proof":stop}}});
+    let abort_url = format!("{prefix}/bug-search/executions/{unknown_execution}/abort-unbound");
+    post(
+        client,
+        &abort_url,
+        "sdlc_pat_bugs_workflow",
+        &aborted_body,
+        403,
+    )
+    .await;
+    let mut known = aborted_body.clone();
+    known["unbound_observation"]["native_submission"]["actual_run_ref"] =
+        json!("learned-native-id");
+    post(client, &abort_url, "sdlc_pat_bugs_fleet", &known, 422).await;
+    let aborted = post(
+        client,
+        &abort_url,
+        "sdlc_pat_bugs_fleet",
+        &aborted_body,
+        201,
+    )
+    .await;
+    assert_eq!(aborted["kind"], "cancelled_without_bound_run");
+    assert_eq!(aborted["custody_released"], true);
+    assert!(aborted.get("runtime_observation").is_none());
+    assert_eq!(
+        post(
+            client,
+            &abort_url,
+            "sdlc_pat_bugs_fleet",
+            &aborted_body,
+            200
+        )
+        .await,
+        aborted
+    );
+    let mut periodic_policy = policy_command.clone();
+    periodic_policy["idempotency_key"] = json!("http-enable-periodic");
+    periodic_policy["expected_revision"] = json!(3);
+    periodic_policy["desired_revision"] = json!(4);
+    periodic_policy["policy"]["enabled"] = json!(true);
+    let enabled = client
+        .put(format!("{prefix}/bug-search/policy"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .json(&periodic_policy)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(enabled.status(), 200);
+    assert!(enabled.json::<Value>().await.unwrap()["next_due_at"].is_string());
+    _db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,"UPDATE sdlc_bug_search_policy_heads SET next_due_at=clock_timestamp()-interval '1 minute' WHERE project_id=$1",[project.into()])).await.unwrap();
+    let due_url = format!("{base}/api/v1/sdlc/bug-search/due?limit=1");
+    let denied = client
+        .get(&due_url)
+        .bearer_auth("sdlc_pat_bugs_workflow")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403);
+    let invalid = client
+        .get(format!("{base}/api/v1/sdlc/bug-search/due?limit=2"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), 422);
+    let due = client
+        .get(&due_url)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(due.status(), 200);
+    assert_eq!(due.headers()["cache-control"], "no-store");
+    let due = due.json::<Value>().await.unwrap();
+    assert_eq!(due["due"]["project_id"], json!(project));
+    let deferral = json!({"idempotency_key":"http-defer-catalog","owner_subject":"owner","expected_policy_revision":4,
+        "expected_due":{"at":due["due"]["expected_due_at"],"key":due["due"]["due_key"]},"reason":"catalog_unavailable"});
+    let defer_url = format!("{prefix}/bug-search/defer-due");
+    post(client, &defer_url, "sdlc_pat_bugs_workflow", &deferral, 403).await;
+    let deferred = post(client, &defer_url, "sdlc_pat_bugs_fleet", &deferral, 201).await;
+    assert_eq!(deferred["reason"], "catalog_unavailable");
+    assert_eq!(
+        post(client, &defer_url, "sdlc_pat_bugs_fleet", &deferral, 200).await,
+        deferred
+    );
+    let empty = client
+        .get(&due_url)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert!(empty["due"].is_null());
+    verification::verify(
+        client,
+        &prefix,
+        &snapshot,
+        &command,
+        Uuid::parse_str(created["issue_id"].as_str().unwrap()).unwrap(),
+    )
+    .await;
+    println!(
+        "BUG_SEARCH HTTP exact authority, policy/reserve/admit, registration, terminal, cancellations and bounded periodic due/defer passed"
+    );
+}

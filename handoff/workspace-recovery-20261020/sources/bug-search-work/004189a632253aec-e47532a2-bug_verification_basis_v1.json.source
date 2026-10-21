@@ -1,0 +1,27 @@
+{
+  "contract_version": 1,
+  "tracker_instance_id": "tracker",
+  "tracker_instance_uuid": "00000000-0000-4000-8000-000000000040",
+  "project_id": "00000000-0000-4000-8000-000000000010",
+  "bug_id": "00000000-0000-4000-8000-000000000050",
+  "report": {
+    "source": {
+      "schema_version": 1,
+      "producer": "BUG_SEARCHER",
+      "rule_key": "save",
+      "stable_defect_key": "portal:save",
+      "repository_id": "00000000-0000-4000-8000-000000000020"
+    },
+    "source_identity": "cb09c26d2e82ce1098c27b418fc0e204dc397e33e204524b647f1270a85bc916",
+    "title": "Ошибка сохранения",
+    "basis": "Контракт формы",
+    "expected": "Сохранено",
+    "actual": "Ошибка",
+    "reproducer": "Открыть форму и сохранить корректные данные",
+    "checked_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evidence_refs": [
+      "evidence:original"
+    ]
+  },
+  "report_sha256": "208b6edf4f128d45a73a9de9ae831c6402202af770aaab4e954e7e694aa200c0"
+}

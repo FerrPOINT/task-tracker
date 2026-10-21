@@ -1,0 +1,233 @@
+use super::*;
+use app::bug_search_intake::BugIntakeRepository;
+use domain::bug_search_intake::*;
+
+fn command(fleet: Uuid, worker: Uuid) -> ApplyBugIntake {
+    ApplyBugIntake {
+        contract_version: 1,
+        idempotency_key: "intake:first".into(),
+        expected_revision: 0,
+        desired_revision: 7,
+        enabled: true,
+        worker_runtime: BugIntakeWorkerRuntime {
+            fleet_instance_id: fleet,
+            agent_id: worker,
+            agent_config_revision: 3,
+        },
+    }
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only"]
+async fn own_member_preference_replays_before_cas_without_assignment_or_admin_bypass() {
+    let f = Fixture::new().await;
+    let member = Uuid::new_v4();
+    sql(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active,is_system_admin) VALUES($1,'intake-member@example.test','intake-member','Member','!','intake-member',true,false)",vec![member.into()]).await;
+    sql(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'viewer')",
+        vec![f.project.into(), member.into()],
+    )
+    .await;
+    let fleet = Uuid::new_v4();
+    let worker = Uuid::new_v4();
+    let repo = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let actor = machine(&f.config.fleet_subject);
+    let member_actor = Principal {
+        subject: "intake-member".into(),
+        human_session: true,
+        trusted_human: true,
+        scopes: ["task-tracker:read".into()].into(),
+    };
+    let ready = repo.capabilities(f.project, &member_actor).await.unwrap();
+    assert!(ready.can_set_own_intake && !ready.can_manage_policy && !ready.can_admit);
+    assert_eq!(ready.intake_fleet_instance_id, Some(fleet));
+    assert!(
+        !f.repo
+            .capabilities(f.project, &member_actor)
+            .await
+            .unwrap()
+            .can_set_own_intake
+    );
+    let first = command(fleet, worker);
+    let (receipt, replayed) = repo
+        .apply_intake(f.project, "intake-member", worker, &actor, first.clone())
+        .await
+        .unwrap();
+    assert!(!replayed && receipt.enabled && !receipt.can_take_bugs);
+    assert_eq!(receipt.revision, 7);
+    assert_eq!(f.count("issues").await, 0);
+    let mut off = first.clone();
+    off.idempotency_key = "intake:off".into();
+    off.expected_revision = 7;
+    off.desired_revision = 9;
+    off.enabled = false;
+    repo.apply_intake(f.project, "intake-member", worker, &actor, off)
+        .await
+        .unwrap();
+    let replay = repo
+        .apply_intake(f.project, "intake-member", worker, &actor, first.clone())
+        .await
+        .unwrap();
+    assert!(replay.1);
+    assert_eq!(
+        replay.0, receipt,
+        "an old exact key reads its immutable receipt, not the latest preference"
+    );
+    assert!(
+        !repo
+            .intake(f.project, "intake-member", worker, &actor)
+            .await
+            .unwrap()
+            .enabled
+    );
+    let mut changed = first.clone();
+    changed.enabled = false;
+    assert!(matches!(
+        repo.apply_intake(f.project, "intake-member", worker, &actor, changed)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        repo.apply_intake(f.project, "owner", worker, &actor, first.clone())
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    let mut human = actor.clone();
+    human.human_session = true;
+    human.trusted_human = true;
+    assert!(matches!(
+        repo.apply_intake(f.project, "owner", worker, &human, first.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut broad = actor.clone();
+    broad.scopes.insert("task-tracker:sdlc:assign".into());
+    assert!(matches!(
+        repo.intake(f.project, "intake-member", worker, &broad)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut read_only = actor.clone();
+    read_only.scopes.remove("task-tracker:write");
+    assert!(matches!(
+        repo.command(f.project, &read_only, "intake:first").await,
+        Err(AppError::Forbidden)
+    ));
+    let mut wrong = first;
+    wrong.worker_runtime.fleet_instance_id = Uuid::new_v4();
+    assert!(matches!(
+        repo.apply_intake(f.project, "intake-member", worker, &actor, wrong)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        f.repo
+            .intake(f.project, "intake-member", worker, &actor)
+            .await,
+        Err(AppError::Unavailable(_))
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![member.into()],
+    )
+    .await;
+    assert!(matches!(
+        repo.intake_operation(f.project, "intake:first", &actor)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    drop(repo);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only"]
+async fn inactive_namespace_blocks_new_intake_and_original_readback() {
+    use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+    let f = Fixture::new().await;
+    let fleet = Uuid::new_v4();
+    let worker = Uuid::new_v4();
+    let repo = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let actor = machine(&f.config.fleet_subject);
+    let command = command(fleet, worker);
+    repo.apply_intake(f.project, "owner", worker, &actor, command.clone())
+        .await
+        .unwrap();
+    let ns = NamespaceRef {
+        registry_instance_id: std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
+            .unwrap()
+            .parse()
+            .unwrap(),
+        namespace_id: Uuid::new_v4(),
+    };
+    let binding = OwnerCommand {
+        schema_version: 1,
+        namespace: ns.clone(),
+        resource: ResourceRef {
+            kind: ResourceKind::TrackerProject,
+            instance_id: f.config.tracker_instance_uuid,
+            resource_id: f.project,
+        },
+        operation_id: Uuid::new_v4(),
+        generation: 1,
+        state: "active".into(),
+        create_spec: None,
+    };
+    sql(&f.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",vec![f.project.into(),ns.registry_instance_id.into(),ns.namespace_id.into(),serde_json::to_value(binding).unwrap().into()]).await;
+    sql(
+        &f.db,
+        "UPDATE projects SET namespace_managed=true WHERE id=$1",
+        vec![f.project.into()],
+    )
+    .await;
+    let mut archived: serde_json::Value =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT command FROM tracker_namespace_bindings WHERE resource_id=$1",
+            vec![f.project.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "command")
+        .unwrap();
+    archived["state"] = json!("archived");
+    archived["generation"] = json!(2);
+    archived["operation_id"] = json!(Uuid::new_v4());
+    sql(&f.db,"UPDATE tracker_namespace_bindings SET generation=2,state='archived',command=$2 WHERE resource_id=$1",vec![f.project.into(),archived.into()]).await;
+    let owner_reader = Principal {
+        subject: "owner".into(),
+        human_session: true,
+        trusted_human: true,
+        scopes: ["task-tracker:read".into()].into(),
+    };
+    let caps = repo.capabilities(f.project, &owner_reader).await.unwrap();
+    assert!(!caps.can_set_own_intake);
+    assert_eq!(caps.intake_fleet_instance_id, None);
+    assert!(matches!(
+        repo.apply_intake(f.project, "owner", worker, &actor, command)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        repo.intake_operation(f.project, "intake:first", &actor)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        repo.command(f.project, &actor, "intake:first").await,
+        Err(AppError::Conflict(_))
+    ));
+    drop(repo);
+    f.close().await;
+}

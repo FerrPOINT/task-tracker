@@ -1,0 +1,64 @@
+pub mod m20250723_0000015_workflow_and_issue_types;
+pub mod m20250723_0000016_labels;
+pub mod m20250723_0000017_issue_links;
+pub mod m20250723_0000018_fulltext_search;
+pub mod m20250723_000001_create_tables;
+pub mod m20260824_0000020_notifications;
+pub mod m20260824_0000021_admin_audit_settings;
+pub mod m20260824_0000022_performance_indexes;
+pub mod m20260825_0000023_watchers_votes;
+pub mod m20260825_0000024_issue_soft_delete;
+pub mod m20260825_0000025_components_versions;
+pub mod m20260825_0000026_custom_fields;
+pub mod m20260826_0000027_fk_indexes;
+pub mod m20260827_0000028_core_fk_constraints;
+pub mod m20260831_0000029_notification_digest_state;
+pub mod m20260914_0000030_totp;
+mod m20260914_0000031_password_reset;
+mod m20260914_0000032_oidc;
+mod m20260918_0000033_central_subject;
+pub mod m20261001_0000034_sdlc_clarification;
+mod m20261008_0000090_namespace;
+mod m20261010_0000091_pm_native_admission;
+mod m20261010_0000092_pm_state_write_permits;
+mod m20261012_0000093_fleet_mcp_admission;
+mod m20261012_0000094_analysis_result;
+mod m20261012_0000095_pm_lease_state_gate;
+
+pub use sea_orm_migration::prelude::*;
+
+pub struct Migrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![
+            Box::new(m20250723_000001_create_tables::Migration),
+            Box::new(m20250723_0000015_workflow_and_issue_types::Migration),
+            Box::new(m20250723_0000016_labels::Migration),
+            Box::new(m20250723_0000017_issue_links::Migration),
+            Box::new(m20250723_0000018_fulltext_search::Migration),
+            Box::new(m20260824_0000020_notifications::Migration),
+            Box::new(m20260824_0000021_admin_audit_settings::Migration),
+            Box::new(m20260824_0000022_performance_indexes::Migration),
+            Box::new(m20260825_0000023_watchers_votes::Migration),
+            Box::new(m20260825_0000024_issue_soft_delete::Migration),
+            Box::new(m20260825_0000025_components_versions::Migration),
+            Box::new(m20260825_0000026_custom_fields::Migration),
+            Box::new(m20260826_0000027_fk_indexes::Migration),
+            Box::new(m20260827_0000028_core_fk_constraints::Migration),
+            Box::new(m20260831_0000029_notification_digest_state::Migration),
+            Box::new(m20260914_0000030_totp::Migration),
+            Box::new(m20260914_0000031_password_reset::Migration),
+            Box::new(m20260914_0000032_oidc::Migration),
+            Box::new(m20260918_0000033_central_subject::Migration),
+            Box::new(m20261001_0000034_sdlc_clarification::Migration),
+            Box::new(m20261008_0000090_namespace::Migration),
+            Box::new(m20261010_0000091_pm_native_admission::Migration),
+            Box::new(m20261010_0000092_pm_state_write_permits::Migration),
+            Box::new(m20261012_0000093_fleet_mcp_admission::Migration),
+            Box::new(m20261012_0000094_analysis_result::Migration),
+            Box::new(m20261012_0000095_pm_lease_state_gate::Migration),
+        ]
+    }
+}

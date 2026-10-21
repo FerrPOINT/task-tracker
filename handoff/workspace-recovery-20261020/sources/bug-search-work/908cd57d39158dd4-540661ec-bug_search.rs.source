@@ -1,0 +1,1182 @@
+//! Only an external Base ComposeHelper v2 disposable DB may run this suite.
+#[path = "support/bug_work_business.rs"]
+mod business;
+#[path = "support/bug_search_intake.rs"]
+mod intake;
+#[path = "support/issue_verification_transitions.rs"]
+mod verification_transitions;
+use domain::{bug_search::*, bug_search_control::*, bug_search_terminal::*, sdlc::Principal};
+use infra::bug_search::PostgresBugSearchRepository;
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+    Value,
+};
+use serde_json::json;
+use shared::AppError;
+use uuid::Uuid;
+
+#[path = "support/bug_search_cancel.rs"]
+mod cancellation;
+#[path = "support/bug_search_due.rs"]
+mod due;
+#[path = "support/bug_search_namespace_exit.rs"]
+mod namespace_exit;
+#[path = "support/bug_search_repeat.rs"]
+mod repeat;
+#[path = "support/bug_search_unbound.rs"]
+mod unbound;
+#[path = "support/bug_search_verification.rs"]
+mod verification;
+#[path = "support/bug_work.rs"]
+mod work;
+#[path = "support/bug_work_origin.rs"]
+mod work_origin;
+
+async fn sql(db: &DatabaseConnection, q: &str, args: Vec<Value>) {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        q,
+        args,
+    ))
+    .await
+    .unwrap();
+}
+async fn pool(url: &str, schema: &str) -> DatabaseConnection {
+    let mut o = ConnectOptions::new(url.to_owned());
+    o.max_connections(6).set_schema_search_path(schema);
+    Database::connect(o).await.unwrap()
+}
+fn machine(subject: &str) -> Principal {
+    Principal {
+        subject: subject.into(),
+        human_session: false,
+        trusted_human: false,
+        scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+    }
+}
+struct Fixture {
+    admin: DatabaseConnection,
+    db: DatabaseConnection,
+    url: String,
+    schema: String,
+    config: BugSearchConfig,
+    project: Uuid,
+    foreign: Uuid,
+    owner: Uuid,
+    repo: PostgresBugSearchRepository,
+}
+impl Fixture {
+    async fn new() -> Self {
+        assert_eq!(
+            std::env::var("TT_BUG_SEARCH_DISPOSABLE_DB").as_deref(),
+            Ok("1"),
+            "external Base helper must guarantee owned volume teardown even on panic"
+        );
+        let url = std::env::var("TT_TEST_DATABASE_URL").expect("synthetic database URL required");
+        let admin = Database::connect(&url).await.unwrap();
+        let schema = format!("tt_bugs_{}", Uuid::new_v4().simple());
+        admin
+            .execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
+        let db = pool(&url, &schema).await;
+        Migrator::up(&db, None).await.unwrap();
+        sql(
+            &db,
+            "INSERT INTO sdlc_instance(singleton,instance_id) VALUES(true,'tracker-locator')",
+            vec![],
+        )
+        .await;
+        let owner = Uuid::new_v4();
+        let project = Uuid::new_v4();
+        let foreign = Uuid::new_v4();
+        sql(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active,is_system_admin) VALUES($1,'owner@example.test','owner','Owner','!','owner',true,false)",vec![owner.into()]).await;
+        for (p, key) in [(project, "BUGS"), (foreign, "OTHER")] {
+            sql(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,$2,$2,$3,$4)",vec![p.into(),key.into(),owner.into(),Uuid::new_v4().into()]).await;
+        }
+        sql(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Owned QA','[]' FROM projects",vec![]).await;
+        let config = BugSearchConfig {
+            tracker_instance_id: "tracker-locator".into(),
+            tracker_instance_uuid: std::env::var("TT_NAMESPACE__INSTANCE_ID")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(Uuid::new_v4),
+            fleet_subject: "bug-fleet".into(),
+            workflow_reader_subject: "bug-workflow-reader".into(),
+        };
+        let repo =
+            PostgresBugSearchRepository::from_connection(pool(&url, &schema).await, config.clone())
+                .await
+                .unwrap();
+        Self {
+            admin,
+            db,
+            url,
+            schema,
+            config,
+            project,
+            foreign,
+            owner,
+            repo,
+        }
+    }
+    async fn reopened(&self) -> PostgresBugSearchRepository {
+        PostgresBugSearchRepository::from_connection(
+            pool(&self.url, &self.schema).await,
+            self.config.clone(),
+        )
+        .await
+        .unwrap()
+    }
+    async fn execution(&self, n: i64, admitted: bool, capacity: bool) -> Uuid {
+        let e = Uuid::new_v4();
+        let agent = Uuid::new_v4();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json"))
+                .unwrap();
+        let mut snapshot = fixture["vectors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == "immutable-search-snapshot")
+            .unwrap()["value"]
+            .clone();
+        snapshot["project"]["tracker_instance_id"] = json!(self.config.tracker_instance_id);
+        snapshot["project"]["project_id"] = json!(self.project);
+        snapshot["owner_subject"] = json!("owner");
+        snapshot["agent_id"] = json!(agent);
+        snapshot["policy_revision"] = json!(1);
+        snapshot["targets"][0]["commit_sha"] = json!(if n == 2 {
+            "b".repeat(40)
+        } else {
+            "a".repeat(40)
+        });
+        let hash = app::bug_search::canonical_hash(&snapshot).unwrap();
+        sql(&self.db,"INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,workflow_receipt,expires_at,capacity_held) VALUES($1,'tracker-locator',$2,$3,'owner',$4,'search',$5,$6,1,$7,'bug-fleet',$8,$9,$10,clock_timestamp()+interval '1 hour',$11)",vec![e.into(),self.config.tracker_instance_uuid.into(),self.project.into(),agent.into(),hash.into(),snapshot.into(),n.into(),Uuid::new_v4().into(),if admitted {"admitted"}else{"reserved"}.into(),if admitted {Some(json!({"synthetic_qualified_workflow":"fixture-only"}))}else{None}.into(),capacity.into()]).await;
+        e
+    }
+    async fn count(&self, table: &str) -> i64 {
+        self.db
+            .query_one(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!("SELECT count(*) AS n FROM {table}"),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "n")
+            .unwrap()
+    }
+    async fn close(self) {
+        drop(self.repo);
+        self.db.close().await.unwrap();
+        self.admin
+            .execute_unprepared(&format!("DROP SCHEMA {} CASCADE", self.schema))
+            .await
+            .unwrap();
+        self.admin.close().await.unwrap();
+    }
+}
+fn command(e: Uuid, key: &str) -> RegisterBugFinding {
+    RegisterBugFinding {
+        idempotency_key: key.into(),
+        execution_id: e,
+        finding_id: Uuid::new_v4(),
+        expected_fence: 1,
+        source_identity: BugSourceIdentity {
+            repository_id: None,
+            schema_version: 1,
+            producer: "BUG_SEARCHER".into(),
+            rule_key: "read-owner-scope".into(),
+            stable_defect_key: "portal:session-read".into(),
+        },
+        report: BugFindingReport {
+            title: "Cross-owner access".into(),
+            basis: "Session ownership contract".into(),
+            expected: "Deny another owner".into(),
+            actual: "Private data returned".into(),
+            reproducer: "Read private session with another owner".into(),
+            checked_version: "a".repeat(40),
+            evidence_refs: vec!["evidence:bounded".into()],
+        },
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires TT_TEST_DATABASE_URL plus TT_BUG_SEARCH_DISPOSABLE_DB=1 and Base finally teardown"]
+async fn bug_registration_is_atomic_deduplicated_retained_and_fresh_authorized() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let e1 = f.execution(1, true, false).await;
+    let e2 = f.execution(2, true, false).await;
+    let c1 = command(e1, "first");
+    let mut c2 = command(e2, "second");
+    c2.expected_fence = 2;
+    c2.report.checked_version = "b".repeat(40);
+    let (r1, r2) = tokio::join!(
+        f.repo.register(f.project, &a, c1.clone()),
+        f.repo.register(f.project, &a, c2.clone())
+    );
+    let r1 = r1.unwrap().0;
+    let r2 = r2.unwrap().0;
+    assert_eq!(r1.issue_id, r2.issue_id);
+    assert!(matches!(
+        (r1.outcome, r2.outcome),
+        (BugFindingOutcome::Created, BugFindingOutcome::Linked)
+            | (BugFindingOutcome::Linked, BugFindingOutcome::Created)
+    ));
+    assert_eq!(f.count("issues").await, 1);
+    assert_eq!(f.count("issue_creation_receipts").await, 1);
+    assert_eq!(f.count("sdlc_bug_sources").await, 1);
+    assert_eq!(f.count("sdlc_bug_occurrences").await, 2);
+    assert_eq!(f.count("sdlc_bug_registration_operations").await, 2);
+    let restarted = f.reopened().await;
+    let (replay, replayed) = restarted.register(f.project, &a, c1.clone()).await.unwrap();
+    assert!(replayed);
+    assert_eq!(replay, r1);
+    assert_eq!(
+        restarted
+            .registration_operation(f.project, &a, "first")
+            .await
+            .unwrap(),
+        r1
+    );
+    assert!(matches!(
+        restarted
+            .registration_operation(f.foreign, &a, "first")
+            .await,
+        Err(AppError::NotFound(_))
+    ));
+    let mut changed = c1.clone();
+    changed.report.actual = "A different failure".into();
+    assert!(matches!(
+        f.repo.register(f.project, &a, changed.clone()).await,
+        Err(AppError::Conflict(_))
+    ));
+    changed.idempotency_key = "new-key-different-basis".into();
+    changed.finding_id = Uuid::new_v4();
+    assert!(matches!(
+        f.repo.register(f.project, &a, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(f.count("sdlc_bug_occurrences").await, 2);
+    sql(&f.db,"UPDATE issues SET status_id=(SELECT id FROM statuses WHERE is_closed ORDER BY id LIMIT 1) WHERE id=$1",vec![r1.issue_id.into()]).await;
+    let mut regression = c1.clone();
+    regression.idempotency_key = "regression".into();
+    regression.finding_id = Uuid::new_v4();
+    regression.report.checked_version = "a".repeat(40);
+    let receipt = f.repo.register(f.project, &a, regression).await.unwrap().0;
+    assert_eq!(receipt.outcome, BugFindingOutcome::NeedsReopen);
+    assert_eq!(receipt.reason.as_deref(), Some("workflow_reopen_required"));
+    assert!(matches!(
+        f.repo
+            .register(f.project, &machine("different-machine"), c1.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut human = machine("owner");
+    human.human_session = true;
+    human.trusted_human = true;
+    assert!(matches!(
+        f.repo.register(f.project, &human, c1.clone()).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(
+        f.repo
+            .capabilities(f.project, &human)
+            .await
+            .unwrap()
+            .can_manage_policy
+    );
+    let mut read = machine("bug-workflow-reader");
+    read.scopes = ["task-tracker:read".into()].into();
+    let granted = f.repo.execution_grant(f.project, e1, &read).await.unwrap();
+    assert!(granted.authorization_valid && granted.dispatch_allowed);
+    assert_eq!(granted.binding.machine_subject, "bug-fleet");
+    assert!(
+        f.repo
+            .execution_grant(f.project, e1, &a)
+            .await
+            .unwrap()
+            .authorization_valid
+    );
+    assert!(matches!(
+        f.repo
+            .execution_grant(f.project, e1, &machine("unrelated-machine"))
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let e3 = f.execution(3, false, true).await;
+    let reserved = f.repo.execution_grant(f.project, e3, &read).await.unwrap();
+    assert!(reserved.authorization_valid);
+    assert!(!reserved.dispatch_allowed);
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![e3.into()]).await;
+    let expired = f.repo.execution_grant(f.project, e3, &read).await.unwrap();
+    assert!(!expired.authorization_valid && !expired.dispatch_allowed);
+    assert!(
+        f.db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE sdlc_bug_search_executions SET capacity_held=false WHERE execution_id=$1",
+            [e3.into()]
+        ))
+        .await
+        .is_err(),
+        "expiry is not terminal proof"
+    );
+    // A lost successful response remains recoverable after the lease expires;
+    // a new finding/key cannot use the expired execution for another effect.
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![e2.into()]).await;
+    let (expired_replay, replayed) = restarted.register(f.project, &a, c2.clone()).await.unwrap();
+    assert!(replayed);
+    assert_eq!(expired_replay, r2);
+    assert_eq!(
+        restarted
+            .registration_operation(f.project, &a, "second")
+            .await
+            .unwrap(),
+        r2
+    );
+    let mut expired_new = c2.clone();
+    expired_new.idempotency_key = "expired-new-effect".into();
+    expired_new.finding_id = Uuid::new_v4();
+    assert!(matches!(
+        f.repo.register(f.project, &a, expired_new).await,
+        Err(AppError::Forbidden)
+    ));
+    let mut expired_changed = c2.clone();
+    expired_changed.report.actual = "Changed after expiry".into();
+    assert!(matches!(
+        f.repo.register(f.project, &a, expired_changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    // Inject a failure after the issue/ticket insertion: the whole operation rolls back.
+    f.db.execute_unprepared("CREATE FUNCTION reject_bug_occurrence() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic occurrence failure'; END $$; CREATE TRIGGER reject_bug_occurrence BEFORE INSERT ON sdlc_bug_occurrences FOR EACH ROW EXECUTE FUNCTION reject_bug_occurrence()").await.unwrap();
+    let mut failed = c1.clone();
+    failed.idempotency_key = "rollback".into();
+    failed.finding_id = Uuid::new_v4();
+    failed.source_identity.stable_defect_key = "different-new-source".into();
+    assert!(f.repo.register(f.project, &a, failed).await.is_err());
+    assert_eq!(f.count("issues").await, 1);
+    assert_eq!(f.count("issue_creation_receipts").await, 1);
+    f.db.execute_unprepared("DROP TRIGGER reject_bug_occurrence ON sdlc_bug_occurrences; DROP FUNCTION reject_bug_occurrence()").await.unwrap();
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(matches!(
+        f.repo.register(f.project, &a, c1).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        f.repo.registration_operation(f.project, &a, "first").await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        f.repo.execution_grant(f.project, e1, &read).await,
+        Err(AppError::Forbidden)
+    ));
+    drop(restarted);
+    f.close().await;
+}
+
+fn accepted_snapshot(f: &Fixture, revision: i64) -> BugSearchSnapshot {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json")).unwrap();
+    let mut v = fixture["vectors"][1]["value"].clone();
+    v["project"]["tracker_instance_id"] = json!(f.config.tracker_instance_id);
+    v["project"]["project_id"] = json!(f.project);
+    v["owner_subject"] = json!("owner");
+    v["agent_id"] = json!(Uuid::new_v4());
+    v["policy_revision"] = json!(revision);
+    v["trigger"] = json!("manual");
+    serde_json::from_value(v).unwrap()
+}
+fn accepted_policy(s: &BugSearchSnapshot) -> BugSearchPolicy {
+    BugSearchPolicy {
+        enabled: false,
+        mode: s.mode,
+        targets: s
+            .targets
+            .iter()
+            .map(|t| BugPolicyTarget {
+                repository_ref: t.repository_ref.clone(),
+                branch_ref: "refs/heads/main".into(),
+                target_ref: t.target_ref.clone(),
+            })
+            .collect(),
+        scope: s.scope.clone(),
+        excluded_paths: s.excluded_paths.clone(),
+        interval_minutes: 60,
+    }
+}
+#[tokio::test]
+#[ignore = "requires TT_TEST_DATABASE_URL plus TT_BUG_SEARCH_DISPOSABLE_DB=1 and Base finally teardown"]
+async fn bug_policy_manual_admission_is_cas_atomic_fenced_and_recoverable() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let initial = accepted_snapshot(&f, 1);
+    let p1 = ApplyBugSearchPolicy {
+        idempotency_key: "policy-1".into(),
+        owner_subject: "owner".into(),
+        expected_revision: 0,
+        desired_revision: 1,
+        policy: accepted_policy(&initial),
+    };
+    let first = f
+        .repo
+        .apply_policy(f.project, &a, p1.clone())
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(first.revision, 1);
+    assert!(!first.policy.enabled);
+    assert_eq!(
+        f.repo
+            .apply_policy(f.project, &a, p1.clone())
+            .await
+            .unwrap()
+            .0,
+        first
+    );
+    let mut left = p1.clone();
+    left.idempotency_key = "cas-left".into();
+    left.expected_revision = 1;
+    left.desired_revision = 3;
+    let mut right = left.clone();
+    right.idempotency_key = "cas-right".into();
+    right.desired_revision = 4;
+    let (l, r) = tokio::join!(
+        f.repo.apply_policy(f.project, &a, left),
+        f.repo.apply_policy(f.project, &a, right)
+    );
+    assert_eq!(usize::from(l.is_ok()) + usize::from(r.is_ok()), 1);
+    let current = l.or(r).unwrap().0;
+    assert_eq!(f.repo.policy(f.project, &a).await.unwrap(), current);
+    match f.repo.command(f.project, &a, "policy-1").await.unwrap() {
+        BugSearchCommandReceipt::Policy(r) => assert_eq!(r, first),
+        _ => panic!("wrong original receipt"),
+    }
+    let restarted = f.reopened().await;
+    assert!(
+        restarted
+            .apply_policy(f.project, &a, p1.clone())
+            .await
+            .unwrap()
+            .1,
+        "replay is before current CAS"
+    );
+    let mut unauthorized = p1.clone();
+    unauthorized.idempotency_key = "foreign-owner".into();
+    unauthorized.owner_subject = "different-owner".into();
+    assert!(matches!(
+        f.repo.apply_policy(f.project, &a, unauthorized).await,
+        Err(AppError::Forbidden)
+    ));
+    let snapshot = accepted_snapshot(&f, current.revision);
+    let reserve = ReserveBugSearch {
+        idempotency_key: "manual-reserve".into(),
+        owner_subject: "owner".into(),
+        snapshot_sha256: app::bug_search::canonical_hash(&snapshot).unwrap(),
+        expected_policy_revision: current.revision,
+        expected_due: None,
+        agent_id: snapshot.agent_id,
+        snapshot,
+    };
+    let mut bad = reserve.clone();
+    bad.snapshot_sha256 = "0".repeat(64);
+    assert!(matches!(
+        f.repo.reserve(f.project, &a, bad).await,
+        Err(AppError::Validation(_))
+    ));
+    let mut other = reserve.clone();
+    other.idempotency_key = "second-reserve".into();
+    let (l, r) = tokio::join!(
+        f.repo.reserve(f.project, &a, reserve.clone()),
+        f.repo.reserve(f.project, &a, other.clone())
+    );
+    assert_eq!(
+        usize::from(l.is_ok()) + usize::from(r.is_ok()),
+        1,
+        "global custody admitted exactly once"
+    );
+    let (winner, winning_command) = if let Ok(v) = l {
+        (v.0, reserve.clone())
+    } else {
+        (r.unwrap().0, other)
+    };
+    assert!(winner.expires_at > chrono::Utc::now() + chrono::Duration::minutes(34));
+    assert!(winner.expires_at < chrono::Utc::now() + chrono::Duration::minutes(36));
+    assert!(winner.authorization_valid);
+    assert!(!winner.dispatch_allowed);
+    assert_eq!(winner.admission_state, "reserved");
+    assert_eq!(f.count("sdlc_bug_search_executions").await, 1);
+    let b = &winner.binding;
+    let receipt = json!({"contract_version":1,"execution_id":b.execution_id,"binding":b,"snapshot_sha256":b.snapshot_sha256,"profession":reserve.snapshot.profession,"workflow_id":1,"mode_id":2,"mode_key":"search","state":"prepared","version":1,"fence":b.fence,"phase_index":0,"phase_contract":{"fixture_qualified":true},"session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,"runtime_terminal_confirmed":false,"target_observations":null});
+    let admit = AdmitBugSearch {
+        idempotency_key: "admit".into(),
+        expected_fence: b.fence,
+        workflow_receipt_sha256: app::bug_search::canonical_hash(&receipt).unwrap(),
+        workflow_receipt: receipt,
+    };
+    let mut bad = admit.clone();
+    bad.idempotency_key = "wrong-workflow".into();
+    bad.workflow_receipt["binding"]["owner_subject"] = json!("other");
+    bad.workflow_receipt_sha256 = app::bug_search::canonical_hash(&bad.workflow_receipt).unwrap();
+    assert!(matches!(
+        f.repo.admit(f.project, b.execution_id, &a, bad).await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(
+        !f.repo
+            .execution_grant(f.project, b.execution_id, &a)
+            .await
+            .unwrap()
+            .dispatch_allowed
+    );
+    let admitted = f
+        .repo
+        .admit(f.project, b.execution_id, &a, admit.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(admitted.dispatch_allowed);
+    assert!(
+        restarted
+            .admit(f.project, b.execution_id, &a, admit.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    // Actual runtime proof can close custody while Workflow is temporarily unavailable;
+    // the later exact typed result whitelists only its retained occurrence delivery.
+    let runtime = BugRuntimeObservation {
+        contract_version: 1,
+        execution_id: b.execution_id,
+        agent_id: b.agent_id,
+        session_id: Uuid::new_v4(),
+        session_run_id: Uuid::new_v4(),
+        hermes_run_ref: "hermes:actual-owned-test-journal".into(),
+        terminal_status: BugRuntimeTerminalStatus::Succeeded,
+        observed_at: chrono::Utc::now(),
+        observation_source: None,
+    };
+    let terminal = AcceptBugSearchTerminal {
+        idempotency_key: "terminal-runtime-only".into(),
+        expected_fence: b.fence,
+        workflow_receipt: None,
+        workflow_receipt_sha256: None,
+        runtime_observation: runtime.clone(),
+    };
+    let closed = f
+        .repo
+        .terminal(f.project, b.execution_id, &a, terminal.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(closed.custody_released && !closed.result_available);
+    let mut finding = command(b.execution_id, "after-terminal-finding");
+    finding.expected_fence = b.fence;
+    assert!(
+        matches!(
+            f.repo.register(f.project, &a, finding.clone()).await,
+            Err(AppError::Forbidden)
+        ),
+        "no retained technical result yet"
+    );
+    let mut report = serde_json::to_value(&finding.report).unwrap();
+    report["source"] = serde_json::to_value(&finding.source_identity).unwrap();
+    report["source_identity"] =
+        json!(app::bug_search::canonical_hash(&finding.source_identity).unwrap());
+    let mut completed = admit.workflow_receipt.clone();
+    completed["state"] = json!("completed");
+    completed["result_qualification"] = json!("source_pinned");
+    completed["version"] = json!(5);
+    completed["phase_index"] = json!(3);
+    completed["phase_contract"] = json!(null);
+    completed["session_id"] = json!(runtime.session_id);
+    completed["session_run_id"] = json!(runtime.session_run_id);
+    completed["hermes_run_ref"] = json!(runtime.hermes_run_ref);
+    completed["result"] = json!({"coverage":"complete","findings":[{"finding_id":finding.finding_id,"report":report}]});
+    let late = AcceptBugSearchTerminal {
+        idempotency_key: "terminal-late-workflow-result".into(),
+        expected_fence: b.fence,
+        workflow_receipt_sha256: Some(app::bug_search::canonical_hash(&completed).unwrap()),
+        workflow_receipt: Some(completed),
+        runtime_observation: runtime,
+    };
+    let accepted = f
+        .repo
+        .terminal(f.project, b.execution_id, &a, late.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(accepted.result_available);
+    assert!(
+        restarted
+            .terminal(f.project, b.execution_id, &a, late)
+            .await
+            .unwrap()
+            .1
+    );
+    let delivered = f
+        .repo
+        .register(f.project, &a, finding.clone())
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(delivered.finding_id, finding.finding_id);
+    let mut invented = finding.clone();
+    invented.idempotency_key = "unretained-terminal-finding".into();
+    invented.finding_id = Uuid::new_v4();
+    assert!(matches!(
+        f.repo.register(f.project, &a, invented).await,
+        Err(AppError::Forbidden)
+    ));
+    // Original action keys cannot be borrowed by a different action.
+    let mut reused = winning_command.clone();
+    reused.idempotency_key = "policy-1".into();
+    assert!(matches!(
+        f.repo.reserve(f.project, &a, reused).await,
+        Err(AppError::Conflict(_))
+    ));
+    let mut read = a.clone();
+    read.scopes = ["task-tracker:read".into()].into();
+    assert!(matches!(
+        f.repo.command(f.project, &read, "admit").await.unwrap(),
+        BugSearchCommandReceipt::Admit(_)
+    ));
+    assert!(matches!(
+        f.repo.command(f.foreign, &read, "admit").await,
+        Err(AppError::NotFound(_))
+    ));
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![b.execution_id.into()]).await;
+    assert!(
+        f.repo
+            .admit(f.project, b.execution_id, &a, admit.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(
+        f.repo
+            .reserve(f.project, &a, winning_command)
+            .await
+            .unwrap()
+            .1
+    );
+    let fresh = f
+        .repo
+        .execution_grant(f.project, b.execution_id, &a)
+        .await
+        .unwrap();
+    assert!(!fresh.dispatch_allowed && !fresh.authorization_valid);
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(
+        matches!(
+            f.repo.command(f.project, &a, "admit").await.unwrap(),
+            BugSearchCommandReceipt::Admit(_)
+        ),
+        "historical acceptance does not restore current authority"
+    );
+    assert!(matches!(
+        f.repo.admit(f.project, b.execution_id, &a, admit).await,
+        Err(AppError::Forbidden)
+    ));
+    drop(restarted);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn original_reserve_recovery_after_owner_revoke_is_machine_bound_not_new_authority() {
+    let f = Fixture::new().await;
+    let a = machine(&f.config.fleet_subject);
+    let snapshot = accepted_snapshot(&f, 1);
+    f.repo
+        .apply_policy(
+            f.project,
+            &a,
+            ApplyBugSearchPolicy {
+                idempotency_key: "recovery-policy".into(),
+                owner_subject: "owner".into(),
+                expected_revision: 0,
+                desired_revision: 1,
+                policy: accepted_policy(&snapshot),
+            },
+        )
+        .await
+        .unwrap();
+    let c = ReserveBugSearch {
+        idempotency_key: "recovery-original-reserve".into(),
+        owner_subject: "owner".into(),
+        snapshot_sha256: app::bug_search::canonical_hash(&snapshot).unwrap(),
+        expected_policy_revision: 1,
+        expected_due: None,
+        agent_id: snapshot.agent_id,
+        snapshot,
+    };
+    let original = f.repo.reserve(f.project, &a, c.clone()).await.unwrap().0;
+    let b = &original.binding;
+    let receipt = json!({"contract_version":1,"execution_id":b.execution_id,"binding":b,"snapshot_sha256":b.snapshot_sha256,"profession":c.snapshot.profession,"workflow_id":1,"mode_id":2,"mode_key":"search","state":"prepared","version":1,"fence":b.fence,"phase_index":0,"phase_contract":{"synthetic":"original-admit-recovery"},"session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,"runtime_terminal_confirmed":false,"target_observations":null});
+    let admitted = f
+        .repo
+        .admit(
+            f.project,
+            b.execution_id,
+            &a,
+            AdmitBugSearch {
+                idempotency_key: "recovery-original-admit".into(),
+                expected_fence: b.fence,
+                workflow_receipt_sha256: app::bug_search::canonical_hash(&receipt).unwrap(),
+                workflow_receipt: receipt,
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let restarted = f.reopened().await;
+    let recovered = restarted
+        .command(f.project, &a, &c.idempotency_key)
+        .await
+        .unwrap();
+    let BugSearchCommandReceipt::Reserve(recovered) = recovered else {
+        panic!("wrong original kind")
+    };
+    assert_eq!(
+        serde_json::to_value(recovered).unwrap(),
+        serde_json::to_value(&original).unwrap()
+    );
+    let BugSearchCommandReceipt::Admit(recovered) = restarted
+        .command(f.project, &a, "recovery-original-admit")
+        .await
+        .unwrap()
+    else {
+        panic!("wrong original admit kind")
+    };
+    assert_eq!(
+        serde_json::to_value(recovered).unwrap(),
+        serde_json::to_value(admitted).unwrap()
+    );
+    let mut read_only = a.clone();
+    read_only.scopes = ["task-tracker:read".into()].into();
+    for key in [c.idempotency_key.as_str(), "recovery-original-admit"] {
+        assert!(
+            matches!(
+                restarted.command(f.project, &read_only, key).await,
+                Err(AppError::Forbidden)
+            ),
+            "read-only service does not acquire protective authority after revoke"
+        );
+    }
+    for actor in [
+        machine("unrelated-machine"),
+        machine(&f.config.workflow_reader_subject),
+    ] {
+        assert!(matches!(
+            restarted
+                .command(f.project, &actor, "recovery-original-admit")
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(matches!(
+        restarted
+            .command(f.project, &machine("unrelated-machine"), &c.idempotency_key)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        restarted
+            .command(
+                f.project,
+                &machine(&f.config.workflow_reader_subject),
+                &c.idempotency_key
+            )
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        restarted.command(f.foreign, &a, &c.idempotency_key).await,
+        Err(AppError::NotFound(_))
+    ));
+    assert!(matches!(
+        restarted
+            .execution_grant(f.project, original.binding.execution_id, &a)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        restarted.reserve(f.project, &a, c).await,
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(f.count("sdlc_bug_search_executions").await, 1);
+    assert_eq!(
+        f.count("sdlc_bug_search_commands").await,
+        3,
+        "readback never creates a new effect"
+    );
+    drop(restarted);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable DB marker1, TT_NAMESPACE__INSTANCE_ID/REGISTRY_INSTANCE_ID plus Base finally teardown"]
+async fn bug_unknown_capacity_keeps_both_namespace_projections_undrained() {
+    use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+    // Resolve public namespace projection configuration without process-env mutation.
+    let instance: Uuid = std::env::var("TT_NAMESPACE__INSTANCE_ID")
+        .expect("synthetic namespace UUID required")
+        .parse()
+        .unwrap();
+    let registry: Uuid = std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
+        .expect("synthetic registry UUID required")
+        .parse()
+        .unwrap();
+    let f = Fixture::new().await;
+    assert_eq!(f.config.tracker_instance_uuid, instance);
+    let ns = NamespaceRef {
+        registry_instance_id: registry,
+        namespace_id: Uuid::new_v4(),
+    };
+    let namespace_command = OwnerCommand {
+        schema_version: 1,
+        namespace: ns.clone(),
+        resource: ResourceRef {
+            kind: ResourceKind::TrackerProject,
+            instance_id: instance,
+            resource_id: f.project,
+        },
+        operation_id: Uuid::new_v4(),
+        generation: 1,
+        state: "active".into(),
+        create_spec: None,
+    };
+    sql(&f.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",vec![f.project.into(),registry.into(),ns.namespace_id.into(),serde_json::to_value(&namespace_command).unwrap().into()]).await;
+    sql(
+        &f.db,
+        "UPDATE projects SET namespace_managed=true WHERE id=$1",
+        vec![f.project.into()],
+    )
+    .await;
+    let repositories = infra::SeaOrmRepositories::new(pool(&f.url, &f.schema).await);
+    let project = shared::ProjectId::from_uuid(f.project);
+    assert!(
+        repositories
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained
+    );
+    assert!(
+        repositories
+            .projects
+            .namespace_contexts(Some(&ns), 10, 0)
+            .await
+            .unwrap()[0]
+            .binding
+            .drained
+    );
+    let e = f.execution(1, false, true).await;
+    assert!(
+        !repositories
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained
+    );
+    let page = repositories
+        .projects
+        .namespace_contexts(Some(&ns), 1, 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 1);
+    assert!(!page[0].binding.drained);
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![e.into()]).await;
+    assert!(
+        !repositories
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained,
+        "unknown expired custody remains held"
+    );
+    assert!(
+        !repositories
+            .projects
+            .namespace_contexts(Some(&ns), 1, 0)
+            .await
+            .unwrap()[0]
+            .binding
+            .drained
+    );
+    let mut archived = namespace_command.clone();
+    archived.state = "archived".into();
+    archived.generation = 2;
+    archived.operation_id = Uuid::new_v4();
+    sql(&f.db,"UPDATE tracker_namespace_bindings SET generation=2,state='archived',command=$2 WHERE resource_id=$1",vec![f.project.into(),serde_json::to_value(&archived).unwrap().into()]).await;
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let a = machine("bug-fleet");
+    let terminal = AcceptBugSearchTerminal {
+        idempotency_key: "protective-terminal".into(),
+        expected_fence: 1,
+        workflow_receipt: None,
+        workflow_receipt_sha256: None,
+        runtime_observation: BugRuntimeObservation {
+            contract_version: 1,
+            execution_id: e,
+            agent_id: {
+                let row =
+                    f.db.query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "SELECT agent_id FROM sdlc_bug_search_executions WHERE execution_id=$1",
+                        vec![e.into()],
+                    ))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                row.try_get("", "agent_id").unwrap()
+            },
+            session_id: Uuid::new_v4(),
+            session_run_id: Uuid::new_v4(),
+            hermes_run_ref: "hermes:confirmed-stopped-test-journal".into(),
+            terminal_status: BugRuntimeTerminalStatus::Stopped,
+            observed_at: chrono::Utc::now(),
+            observation_source: None,
+        },
+    };
+    assert!(matches!(
+        f.repo
+            .terminal(
+                f.project,
+                e,
+                &machine("unrelated-machine"),
+                terminal.clone()
+            )
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    f.db.execute_unprepared("CREATE FUNCTION reject_terminal_command() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='terminal' THEN RAISE EXCEPTION 'synthetic terminal journal failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_terminal_command BEFORE INSERT ON sdlc_bug_search_commands FOR EACH ROW EXECUTE FUNCTION reject_terminal_command()").await.unwrap();
+    assert!(
+        f.repo
+            .terminal(f.project, e, &a, terminal.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        !repositories
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained,
+        "failed journal cannot release capacity"
+    );
+    f.db.execute_unprepared("DROP TRIGGER reject_terminal_command ON sdlc_bug_search_commands; DROP FUNCTION reject_terminal_command()").await.unwrap();
+    let result = f
+        .repo
+        .terminal(f.project, e, &a, terminal.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(result.custody_released && !result.result_available);
+    assert!(
+        f.repo
+            .terminal(f.project, e, &a, terminal.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(matches!(
+        f.repo
+            .command(f.project, &a, "protective-terminal")
+            .await
+            .unwrap(),
+        BugSearchCommandReceipt::Terminal(_)
+    ));
+    assert!(
+        repositories
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained
+    );
+    assert!(
+        repositories
+            .projects
+            .namespace_contexts(Some(&ns), 1, 0)
+            .await
+            .unwrap()[0]
+            .binding
+            .drained
+    );
+    assert!(matches!(
+        f.repo
+            .register(f.project, &a, command(e, "revoked-new-effect"))
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    drop(repositories);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable synthetic DB marker1 plus Base finally teardown"]
+async fn bug_qa_changed_delivery_retains_result_without_auto_registration() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let mut snapshot = accepted_snapshot(&f, 1);
+    snapshot.mode = BugSearchMode::Qa;
+    snapshot.targets[0].target_ref = Some("qa:portal".into());
+    snapshot.targets[0].deployment_ref = Some(format!("forge:delivered:{}", "e".repeat(64)));
+    f.repo
+        .apply_policy(
+            f.project,
+            &a,
+            ApplyBugSearchPolicy {
+                idempotency_key: "qa-policy".into(),
+                owner_subject: "owner".into(),
+                expected_revision: 0,
+                desired_revision: 1,
+                policy: accepted_policy(&snapshot),
+            },
+        )
+        .await
+        .unwrap();
+    let reserved = f
+        .repo
+        .reserve(
+            f.project,
+            &a,
+            ReserveBugSearch {
+                idempotency_key: "qa-reserve".into(),
+                owner_subject: "owner".into(),
+                snapshot_sha256: app::bug_search::canonical_hash(&snapshot).unwrap(),
+                expected_policy_revision: 1,
+                expected_due: None,
+                agent_id: snapshot.agent_id,
+                snapshot: snapshot.clone(),
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    let b = reserved.binding;
+    let prepared = json!({"contract_version":1,"execution_id":b.execution_id,"binding":b,"snapshot_sha256":b.snapshot_sha256,"profession":snapshot.profession,"workflow_id":1,"mode_id":2,"mode_key":"search","state":"prepared","version":1,"fence":b.fence,"phase_index":0,"phase_contract":{"fixture":"qa"},"session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,"runtime_terminal_confirmed":false,"target_observations":null,"result_qualification":"not_available"});
+    f.repo
+        .admit(
+            f.project,
+            b.execution_id,
+            &a,
+            AdmitBugSearch {
+                idempotency_key: "qa-admit".into(),
+                expected_fence: b.fence,
+                workflow_receipt_sha256: app::bug_search::canonical_hash(&prepared).unwrap(),
+                workflow_receipt: prepared.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let mut finding = command(b.execution_id, "qa-unqualified-finding");
+    finding.expected_fence = b.fence;
+    let mut report = serde_json::to_value(&finding.report).unwrap();
+    report["source"] = json!(finding.source_identity);
+    report["source_identity"] =
+        json!(app::bug_search::canonical_hash(&finding.source_identity).unwrap());
+    let runtime = BugRuntimeObservation {
+        contract_version: 1,
+        execution_id: b.execution_id,
+        agent_id: b.agent_id,
+        session_id: Uuid::new_v4(),
+        session_run_id: Uuid::new_v4(),
+        hermes_run_ref: "hermes:qa-owned-runtime-journal".into(),
+        terminal_status: BugRuntimeTerminalStatus::Succeeded,
+        observed_at: chrono::Utc::now(),
+        observation_source: None,
+    };
+    let observed = json!({"schema":"forge/delivered-target/v1","producerVersion":"fixture:ci:1","project":{"trackerInstanceId":f.config.tracker_instance_uuid,"projectId":f.project},"configurationId":Uuid::new_v4(),"repositoryId":Uuid::new_v4(),"environmentId":Uuid::new_v4(),"targetRef":"qa:portal","status":"confirmed","observedAt":chrono::Utc::now(),"blockedReasons":[],"target":{"deliveryRef":snapshot.targets[0].deployment_ref,"operationKey":"publish:one","generation":"1","manifestSha256":"c".repeat(64),"commitSha":"a".repeat(40),"artifactId":Uuid::new_v4(),"artifactDigest":format!("sha256:{}","d".repeat(64)),"targetUrl":"https://qa.example.test/","servingIdentity":{"versionBodySha256":"c".repeat(64),"artifactBodySha256":"d".repeat(64),"observedAt":chrono::Utc::now()}}});
+    let mut after = observed.clone();
+    after["status"] = json!("changed");
+    after["target"]["generation"] = json!("2");
+    after["blockedReasons"] = json!(["delivered_generation_changed"]);
+    let mut completed = prepared;
+    completed["state"] = json!("completed");
+    completed["version"] = json!(5);
+    completed["phase_index"] = json!(3);
+    completed["phase_contract"] = json!(null);
+    completed["session_id"] = json!(runtime.session_id);
+    completed["session_run_id"] = json!(runtime.session_run_id);
+    completed["hermes_run_ref"] = json!(runtime.hermes_run_ref);
+    completed["target_observations"] = json!({"before":[observed],"after":[after]});
+    completed["result_qualification"] = json!("qa_unconfirmed");
+    completed["result"] = json!({"coverage":"inconclusive","findings":[{"finding_id":finding.finding_id,"report":report}]});
+    let terminal = AcceptBugSearchTerminal {
+        idempotency_key: "qa-terminal".into(),
+        expected_fence: b.fence,
+        workflow_receipt_sha256: Some(app::bug_search::canonical_hash(&completed).unwrap()),
+        workflow_receipt: Some(completed),
+        runtime_observation: runtime,
+    };
+    let accepted = f
+        .repo
+        .terminal(f.project, b.execution_id, &a, terminal.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(accepted.result_available && accepted.custody_released);
+    assert_eq!(
+        f.count("sdlc_bug_search_results").await,
+        1,
+        "inconclusive report history is retained"
+    );
+    assert!(matches!(
+        f.repo.register(f.project, &a, finding.clone()).await,
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(f.count("issues").await, 0);
+    assert_eq!(f.count("sdlc_bug_occurrences").await, 0);
+    let mut declared = terminal;
+    declared.idempotency_key = "qa-declared-only".into();
+    declared.workflow_receipt.as_mut().unwrap()["result_qualification"] = json!("qa_same_version");
+    declared.workflow_receipt_sha256 =
+        Some(app::bug_search::canonical_hash(declared.workflow_receipt.as_ref().unwrap()).unwrap());
+    f.repo
+        .terminal(f.project, b.execution_id, &a, declared)
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            f.repo.register(f.project, &a, finding).await,
+            Err(AppError::Forbidden)
+        ),
+        "a declared label cannot replace actual stable target evidence"
+    );
+    f.close().await;
+}

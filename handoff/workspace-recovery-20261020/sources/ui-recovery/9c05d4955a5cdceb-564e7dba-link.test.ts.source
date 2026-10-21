@@ -1,0 +1,49 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createIssueLink, deleteIssueLink, IssueLinkMutationError } from './link'
+import { api } from './client'
+
+vi.mock('./client', () => ({ api: { POST: vi.fn(), DELETE: vi.fn() } }))
+beforeEach(() => vi.clearAllMocks())
+
+describe('issue link HTTP outcomes', () => {
+  it.each([400, 403, 404, 409, 422, 429])(
+    'preserves a rejected create status %s without server diagnostics',
+    async (status) => {
+      vi.mocked(api.POST).mockResolvedValue({
+        response: new Response('{}', { status }),
+        error: { private: 'diagnostic' },
+      } as never)
+      await expect(createIssueLink('i1', 'TT-2', 'relates')).rejects.toMatchObject({
+        status,
+        outcome: 'rejected',
+      })
+      await expect(createIssueLink('i1', 'TT-2', 'relates')).rejects.not.toThrow('diagnostic')
+    },
+  )
+  it('classifies a missing success body, 500 and network loss as unknown', async () => {
+    for (const status of [201, 500]) {
+      vi.mocked(api.POST).mockResolvedValue({
+        response: new Response(null, { status }),
+        data: undefined,
+      } as never)
+      await expect(createIssueLink('i1', 'TT-2', 'relates')).rejects.toMatchObject({
+        status,
+        outcome: 'unknown',
+      })
+    }
+    vi.mocked(api.POST).mockRejectedValueOnce(new TypeError('network private'))
+    await expect(createIssueLink('i1', 'TT-2', 'relates')).rejects.toBeInstanceOf(
+      IssueLinkMutationError,
+    )
+  })
+  it('checks DELETE HTTP status even when the error body is missing', async () => {
+    vi.mocked(api.DELETE).mockResolvedValueOnce({
+      response: new Response(null, { status: 500 }),
+    } as never)
+    await expect(deleteIssueLink('lk1')).rejects.toMatchObject({ status: 500, outcome: 'unknown' })
+    vi.mocked(api.DELETE).mockResolvedValueOnce({
+      response: new Response(null, { status: 204 }),
+    } as never)
+    await expect(deleteIssueLink('lk1')).resolves.toBeUndefined()
+  })
+})

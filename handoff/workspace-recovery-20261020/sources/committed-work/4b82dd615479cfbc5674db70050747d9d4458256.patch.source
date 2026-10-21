@@ -1,0 +1,117 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index ee108ac..b95c611 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,10 @@
+ 
+ ## [Unreleased]
+ 
++- Swagger UI assets come from the locked vendored Cargo package instead of a
++  separate build-time GitHub ZIP download. Domain API, database schema,
++  application UI and authentication are unchanged.
++
+ - Umbrella frontend recipe синхронизирован с обычным Dockerfile: общий Base
+   recorder, revision labels и digest pins действуют также для workspace-сборки.
+   Проверка candidate не заменяет authenticated runtime/SSO/README приёмку.
+diff --git a/backend/Cargo.lock b/backend/Cargo.lock
+index 6898173..e797b54 100644
+--- a/backend/Cargo.lock
++++ b/backend/Cargo.lock
+@@ -1044,7 +1044,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+ dependencies = [
+  "libc",
+- "windows-sys 0.61.2",
++ "windows-sys 0.52.0",
+ ]
+ 
+ [[package]]
+@@ -2264,7 +2264,7 @@ version = "0.50.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+ dependencies = [
+- "windows-sys 0.61.2",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -2776,7 +2776,7 @@ dependencies = [
+  "once_cell",
+  "socket2",
+  "tracing",
+- "windows-sys 0.61.2",
++ "windows-sys 0.52.0",
+ ]
+ 
+ [[package]]
+@@ -3152,7 +3152,7 @@ dependencies = [
+  "errno",
+  "libc",
+  "linux-raw-sys",
+- "windows-sys 0.61.2",
++ "windows-sys 0.52.0",
+ ]
+ 
+ [[package]]
+@@ -4114,7 +4114,7 @@ dependencies = [
+  "getrandom 0.4.3",
+  "once_cell",
+  "rustix",
+- "windows-sys 0.61.2",
++ "windows-sys 0.52.0",
+ ]
+ 
+ [[package]]
+@@ -4706,9 +4706,16 @@ dependencies = [
+  "serde_json",
+  "url",
+  "utoipa",
++ "utoipa-swagger-ui-vendored",
+  "zip",
+ ]
+ 
++[[package]]
++name = "utoipa-swagger-ui-vendored"
++version = "0.1.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e2eebbbfe4093922c2b6734d7c679ebfebd704a0d7e56dfcb0d05818ce28977d"
++
+ [[package]]
+ name = "uuid"
+ version = "1.26.0"
+@@ -4927,7 +4934,7 @@ version = "0.1.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+ dependencies = [
+- "windows-sys 0.61.2",
++ "windows-sys 0.48.0",
+ ]
+ 
+ [[package]]
+diff --git a/backend/Cargo.toml b/backend/Cargo.toml
+index 0fc217d..174b06b 100644
+--- a/backend/Cargo.toml
++++ b/backend/Cargo.toml
+@@ -58,7 +58,7 @@ http = "1.3"
+ # openapi
+ utoipa = { version = "5.0", features = ["axum_extras", "chrono"] }
+ utoipa-axum = "0.2"
+-utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
++utoipa-swagger-ui = { version = "9.0", features = ["axum", "vendored"] }
+ async-trait = "0.1"
+ moka = { version = "0.12", features = ["future"] }
+ lettre = { version = "0.11", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1-rustls", "tracing", "ring", "webpki-roots"] }
+diff --git a/docs/BASE_INTEGRATION.md b/docs/BASE_INTEGRATION.md
+index c2beef5..7364ded 100644
+--- a/docs/BASE_INTEGRATION.md
++++ b/docs/BASE_INTEGRATION.md
+@@ -15,6 +15,9 @@ CI получает Base на том же SHA. Forge runner sources формир
+ 
+ Rust build toolchain: 1.88.0; Node: 22.20.0; pnpm: 10.28.1.
+ Cargo использует `--locked`; pnpm — `--frozen-lockfile`. MSRV проверяется отдельно.
++Swagger UI использует штатный `vendored` feature: assets входят в Cargo package,
++закреплённый checksum в lockfile, вместо отдельного ZIP-download с GitHub в build
++script. Доменный API, схема БД, основной React UI и авторизация не меняются.
+ Приёмка включает OpenAPI drift/compatibility, package consumer и effective-theme
+ проверки вместе с продуктовыми тестами. После frontend build запустить preview
+ и `pnpm theme:check http://127.0.0.1:4173`.

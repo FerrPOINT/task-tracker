@@ -1,0 +1,65 @@
+diff --git a/backend/migration/src/lib.rs b/backend/migration/src/lib.rs
+index a483ee48..9d6040aa 100644
+--- a/backend/migration/src/lib.rs
++++ b/backend/migration/src/lib.rs
+@@ -21,7 +21,7 @@ pub mod m20261001_0000034_sdlc_clarification;
+ mod m20261008_0000090_namespace;
+ mod m20261010_0000091_pm_native_admission;
+ mod m20261010_0000092_pm_state_write_permits;
+-mod m20261012_0000093_analysis_result;
++mod m20261012_0000094_analysis_result;
+ 
+ pub use sea_orm_migration::prelude::*;
+ 
+@@ -54,7 +54,7 @@ impl MigratorTrait for Migrator {
+             Box::new(m20261008_0000090_namespace::Migration),
+             Box::new(m20261010_0000091_pm_native_admission::Migration),
+             Box::new(m20261010_0000092_pm_state_write_permits::Migration),
+-            Box::new(m20261012_0000093_analysis_result::Migration),
++            Box::new(m20261012_0000094_analysis_result::Migration),
+         ]
+     }
+ }
+diff --git a/backend/migration/src/m20261012_0000093_analysis_result.rs b/backend/migration/src/m20261012_0000094_analysis_result.rs
+similarity index 100%
+rename from backend/migration/src/m20261012_0000093_analysis_result.rs
+rename to backend/migration/src/m20261012_0000094_analysis_result.rs
+diff --git a/docs/DATA_MODEL.md b/docs/DATA_MODEL.md
+index d7d558af..a4fc4230 100644
+--- a/docs/DATA_MODEL.md
++++ b/docs/DATA_MODEL.md
+@@ -13,7 +13,7 @@ observation and its state change commit together; populated downgrade is refused
+ Pending 000034 хранит append-only `sdlc_analysis_reservations` и
+ `sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
+ bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
+-Additive 000093 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
++Additive 000094 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
+ capacity ledger, append-only `sdlc_analysis_results` и
+ `sdlc_analysis_result_operations`, а также transaction-scoped
+ `sdlc_analysis_state_write_permits`. Принятый terminal result удаляет hold в той
+diff --git a/docs/SDLC_LIFECYCLE_V1.md b/docs/SDLC_LIFECYCLE_V1.md
+index 6640b82c..5419955a 100644
+--- a/docs/SDLC_LIFECYCLE_V1.md
++++ b/docs/SDLC_LIFECYCLE_V1.md
+@@ -208,7 +208,7 @@ missing root возвращает 422 без state/history/idempotency/outbox wr
+ 
+ `TaskState::require_root` и repository load отвергают retained non-root/nil task
+ identity с 409; application reads/commands и consent readiness также fail-closed.
+-Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000093
++Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000094
+ ослабляет gate только для одного transaction-permitted перехода
+ Analysis -> Architecture после append-only `sdlc_analysis_results`.
+ Нельзя откатить stage к Backlog/Draft, подменить revision/hash/assignment либо
+diff --git a/docs/SDLC_RESERVATION_V1.md b/docs/SDLC_RESERVATION_V1.md
+index 54bb5c57..d7834b2b 100644
+--- a/docs/SDLC_RESERVATION_V1.md
++++ b/docs/SDLC_RESERVATION_V1.md
+@@ -145,7 +145,7 @@ Reserved resource имеет ровно восемь полей: `assignment_id`
+ 
+ ## SQL и проверка
+ 
+-Расширена pending 000034 плюс additive 000093: singleton capacity lock,
++Расширена pending 000034 плюс additive 000094: singleton capacity lock,
+ ограниченная sequence fence, append-only `sdlc_analysis_reservations`,
+ `sdlc_analysis_reservation_operations`, `sdlc_analysis_results`,
+ `sdlc_analysis_result_operations`, mutable `sdlc_analysis_capacity_holds` и CAS head

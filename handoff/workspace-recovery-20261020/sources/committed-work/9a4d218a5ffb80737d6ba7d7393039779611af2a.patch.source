@@ -1,0 +1,190 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d75eac8..63858c2 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,10 @@
+ 
+ ## [Unreleased]
+ 
++- Действующие документы закрепляют Base как владельца общего UI; прежние
++  UI/UX specification и ADR-0008 явно помечены историческими/superseded.
++  Исходные решения и доменная FSD-композиция сохранены; runtime не меняется.
++
+ - HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
+   дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
+ 
+diff --git a/docs/ADR.md b/docs/ADR.md
+index 948fb20..aee3f23 100644
+--- a/docs/ADR.md
++++ b/docs/ADR.md
+@@ -39,7 +39,7 @@ Positive and negative.
+ | ADR-0005 | Feature-Sliced Design for frontend | Accepted |
+ | ADR-0006 | JWT access + httpOnly refresh cookie | Accepted |
+ | ADR-0007 | Redis for cache and WS pub/sub | Accepted |
+-| ADR-0008 | shadcn/ui + Tailwind CSS 4.1.0 | Accepted |
++| ADR-0008 | shadcn/ui + Tailwind CSS 4.1.0 | [UI ownership superseded by Base](adr/0008-shadcn-tailwind.md) |
+ | ADR-0009 | TanStack Query + Zustand for state | Accepted |
+ | ADR-0010 | apalis for background jobs | Accepted |
+ 
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 8b54bab..b8180fa 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -39,7 +39,7 @@ Self-hosted таск-трекер (Jira-like). MVP покрывает проек
+ | Framework | react + react-dom | 19.1.0 |
+ | Build | vite | 6.2.0 |
+ | Styling | tailwindcss + @tailwindcss/vite | 4.1.0 |
+-| Components | shadcn/ui | — |
++| Components | `@sdlc/ui` (Base) | pinned `.base-revision` |
+ | Router | react-router | 8.1.0 |
+ | Server state | @tanstack/react-query | 5.74.4 |
+ | Client state | zustand | 5.0.3 |
+@@ -227,7 +227,8 @@ CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию исп
+ 
+ - OpenAPI-схема — `openapi/openapi.json`
+ - Детали REST API — `docs/API.md`
+-- UI/UX — `docs/UI_UX.md`
++- UI/UX — [Base Standard](../../services-base/docs/platform/UI_UX_STANDARD.md)
++  и [продуктовая маршрутная карта](UI_UX_MAP.md); [UI_UX.md](UI_UX.md) — историческая спецификация.
+ - Дата-модель — `docs/DATA_MODEL.md`
+ - Тестирование — `docs/TESTING.md`
+ 
+diff --git a/docs/FRONTEND_ARCHITECTURE.md b/docs/FRONTEND_ARCHITECTURE.md
+index 027dbbb..3ffed3e 100644
+--- a/docs/FRONTEND_ARCHITECTURE.md
++++ b/docs/FRONTEND_ARCHITECTURE.md
+@@ -2,7 +2,12 @@
+ 
+ ## 1. Overview
+ 
+-Frontend — одностраничное React-приложение на Vite 6.2.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui. Архитектура построена по методологии **Feature-Sliced Design (FSD)** с элементами **Atomic Design** для презентационных компонентов.
++Frontend — одностраничное React-приложение на Vite 6.2.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0. Общие shell, controls и композиции страниц поставляет `@sdlc/ui`; архитектура продуктового кода использует **Feature-Sliced Design (FSD)**.
++
++UI/UX-контракты принадлежат [Base UI/UX Standard](../../services-base/docs/platform/UI_UX_STANDARD.md).
++Продукт передаёт доменные slots, данные и действия; не копирует Radix/shadcn
++primitives и не поддерживает второй набор токенов. Подключение snapshot описано
++в [Base Integration](BASE_INTEGRATION.md), маршруты и исключения — в [UI/UX Map](UI_UX_MAP.md).
+ 
+ Цели:
+ 
+@@ -20,7 +25,7 @@ Frontend — одностраничное React-приложение на Vite 6
+ | Build | Vite 6.2.0 |
+ | Language | TypeScript 5.9.3 |
+ | Styling | Tailwind CSS 4.1.0 + CSS variables |
+-| Components | shadcn/ui + Radix primitives |
++| Components | `@sdlc/ui` из pinned Base snapshot |
+ | State (server) | @tanstack/react-query 5.74.4 |
+ | State (client) | zustand 5.0.3 |
+ | Routing | react-router 8.1.0 |
+@@ -37,6 +42,10 @@ Frontend — одностраничное React-приложение на Vite 6
+ 
+ ## 3. Folder Structure
+ 
++Ниже — исходная FSD-схема размещения, не полный inventory текущих файлов.
++Общие primitives, shell и tokens находятся в Base, даже когда продуктовые
++adapters и бизнес-виджеты размещены в `shared/ui` или `widgets`.
++
+ ```
+ frontend/src/
+ ├── app/                    # Инициализация приложения
+@@ -90,13 +99,13 @@ frontend/src/
+ │   └── notification/
+ ├── shared/                 # Переиспользуемый код
+ │   ├── api/                # axios/fetch instance, interceptors
+-│   ├── ui/                 # shadcn/ui primitives (Button, Input, Dialog)
++│   ├── ui/                 # Product adapters; primitives imported from Base
+ │   ├── lib/                # utils (cn, formatters)
+ │   ├── config/             # env, constants
+ │   ├── hooks/              # generic hooks (useDebounce, useMediaQuery)
+ │   ├── types/              # глобальные TypeScript types
+ │   ├── i18n/               # настройка локализации
+-│   ├── styles/             # globals.css, tokens.css, animations.css
++│   ├── styles/             # Product styles; canonical tokens owned by Base
+ │   └── tests/              # test utilities, mocks
+ └── public/
+     ├── favicon.svg
+@@ -152,11 +161,15 @@ export { formatIssueKey } from "./lib/formatIssueKey"
+ 
+ ## 5. Atomic Design for UI Components
+ 
++Историческое деление ниже описывает уровни композиции, но не разрешает локальное
++владение общими primitives. Button/Input/Dialog и прочие общие controls импортируются
++из `@sdlc/ui`; продуктовые entities/widgets содержат только доменное представление.
++
+ ### 5.1 Уровни
+ 
+ | Уровень | Папка | Примеры |
+ |---------|-------|---------|
+-| Atoms | `shared/ui/` | Button, Input, Badge, Label |
++| Atoms | `@sdlc/ui/ui` (Base) | Button, Input, Badge, Label |
+ | Molecules | `entities/*/ui/` | IssueSummary, UserAvatar |
+ | Organisms | `widgets/` | IssueCard, BoardColumn, FilterPanel |
+ | Templates | `pages/*/ui/` | ProjectLayout, IssueLayout |
+diff --git a/docs/LIBRARIES.md b/docs/LIBRARIES.md
+index e7afda9..d8548f1 100644
+--- a/docs/LIBRARIES.md
++++ b/docs/LIBRARIES.md
+@@ -159,10 +159,17 @@
+ 
+ ### 3. Компоненты / дизайн-система
+ 
++Действующий владелец общих компонентов — `@sdlc/ui` из pinned Base snapshot:
++[Base UI/UX Standard](../../services-base/docs/platform/UI_UX_STANDARD.md),
++[Base Integration](BASE_INTEGRATION.md). Выбор shadcn/Radix ниже сохранён как
++историческое обоснование primitives; он не разрешает копировать controls в продукт
++или менять общие токены и shell. Общие зависимости и их обновление принадлежат Base.
++
+ | Библиотека | Версия | Назначение | Почему она |
+ |------------|--------|------------|------------|
+-| [`shadcn/ui`](https://ui.shadcn.com/) | latest | Headless компоненты + CLI | Копирует компоненты в проект; полный контроль над стилем; лучший выбор для кастомного дизайна |
+-| [`@radix-ui/react-*`](https://www.radix-ui.com/) | 1.2.0 | Headless primitives | Dialog, Dropdown, Select, Tooltip, Tabs, Accordion — доступность из коробки |
++| `@sdlc/ui` | pinned `.base-revision` | Общие shell, controls, states и композиции | Единое владение, общий UI/UX gate |
++| [`shadcn/ui`](https://ui.shadcn.com/) | historical choice | Исходное обоснование, см. ADR-0008 | Product-local copy/CLI superseded by Base |
++| [`@radix-ui/react-*`](https://www.radix-ui.com/) | historical choice | Исходное обоснование headless primitives | Общая реализация/версии принадлежат Base |
+ | [`lucide-react`](https://www.npmjs.com/package/lucide-react) | 0.487.0 | Иконки | Лёгкие, стильные |
+ 
+ ### 4. Маршрутизация
+@@ -362,7 +369,7 @@ rstest = "0.25.0"
+ ## Выводы
+ 
+ - **Backend:** выбираем **Axum + SeaORM + PostgreSQL + Redis**. SeaORM даёт Spring-подобный опыт (Entity/Repository), Axum — Tower-middleware и DI через `Arc<dyn Trait>`.
+-- **Frontend:** **React 19.1 + Vite 6.2 + Tailwind CSS 4.1 + shadcn-style Radix + TanStack Query + Zustand** — полный набор для Jira-like UI.
++- **Frontend:** **React 19.1 + Vite 6.2 + Tailwind CSS 4.1 + @sdlc/ui + TanStack Query + Zustand**; общие UI/UX-контракты и компоненты принадлежат Base.
+ - **Testing:** mockall + testcontainers на Rust; Vitest + Playwright на React.
+ - **Infra:** Docker Compose, PostgreSQL 17.6, Redis 8.0; Prometheus-метрики отдаёт backend (`/metrics`), Grafana/MinIO — опционально, вне поставки.
+ 
+diff --git a/docs/UI_UX.md b/docs/UI_UX.md
+index 0821ca3..3d6b63d 100644
+--- a/docs/UI_UX.md
++++ b/docs/UI_UX.md
+@@ -1,5 +1,12 @@
+ # UI/UX Specification — Task Tracker (Jira-like)
+ 
++> **Историческая спецификация до унификации через Base.** Описанные ниже
++> локальные shell, tokens, controls и размеры не являются действующими правилами.
++> Нормативный источник: [Base UI/UX Standard](../../services-base/docs/platform/UI_UX_STANDARD.md).
++> Текущие маршруты, layout modes и продуктовые исключения:
++> [UI/UX Map](UI_UX_MAP.md). Разделы ниже сохранены как исходный дизайн/backlog,
++> а не как подтверждение реализации или приёмки каждого сценария.
++
+ ## 1. Общие принципы дизайна
+ 
+ - **Тема по умолчанию**: dark.
+diff --git a/docs/adr/0008-shadcn-tailwind.md b/docs/adr/0008-shadcn-tailwind.md
+index 3c41c51..e6d8528 100644
+--- a/docs/adr/0008-shadcn-tailwind.md
++++ b/docs/adr/0008-shadcn-tailwind.md
+@@ -2,7 +2,12 @@
+ 
+ ## Status
+ 
+-Accepted
++Superseded in UI ownership by [Base UI/UX Standard](../../../services-base/docs/platform/UI_UX_STANDARD.md).
++
++Исходные Context, Alternatives, Decision и Consequences сохранены ниже.
++Это исторический выбор, не действующее разрешение копировать shadcn/Radix в
++продукт. Общие shell, controls, states, page compositions и tokens импортируются
++из `@sdlc/ui`; продукт владеет доменными adapters, данными и действиями.
+ 
+ ## Context
+ 

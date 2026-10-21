@@ -1,0 +1,18 @@
+diff --git a/.base-revision b/.base-revision
+index f317139..53b0f2c 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-d0a10f69e222eef08f803d372d69f6f46bfe056d
++99c40b9f6ab3f33ae05258d1e2ca16f008aefa03
+diff --git a/.gitattributes b/.gitattributes
+index c201fe3..26dc0a4 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -16,3 +16,6 @@ NOTICE text eol=lf
+ scripts/*.sh text eol=lf
+ # UI/source evidence must have identical bytes on Windows and Linux.
+ frontend/** text=auto eol=lf
++# Attested runtime policy and build manifests use portable source bytes.
++Cargo.toml text eol=lf
++Cargo.lock text eol=lf

@@ -1,0 +1,418 @@
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Link2, Plus, RefreshCw, X } from 'lucide-react'
+import { Link } from 'react-router'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
+import { IssueLinkMutationError, type IssueLink } from '@/api/link'
+import { Button, ConfirmDialog, ErrorState, Input, Label, LoadingState } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
+
+const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const
+type LinkInput = { targetKey: string; linkType: (typeof LINK_TYPES)[number] }
+
+function sameIssueKey(left: string, right: string) {
+  const canonical = (value: string) => {
+    const match = /^([A-Za-z0-9-]{1,10})-\+?(\d+)$/.exec(value.trim())
+    return match ? `${match[1]}-${Number(match[2])}` : value.trim()
+  }
+  return canonical(left) === canonical(right)
+}
+
+export function LinkEditor({
+  issueId,
+  currentKey,
+  onProtectionChange,
+  inputRef,
+}: {
+  issueId: string
+  currentKey: string
+  onProtectionChange: (state: { dirty: boolean; pending: boolean }) => void
+  inputRef?: RefObject<HTMLInputElement | null>
+}) {
+  const { t } = useTranslation()
+  const query = useIssueLinks(issueId)
+  const links = query.data ?? []
+  const create = useCreateIssueLink(issueId)
+  const remove = useDeleteIssueLink()
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<IssueLink | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [uncertainCreate, setUncertainCreate] = useState<LinkInput | null>(null)
+  const [uncertainDelete, setUncertainDelete] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const localInputRef = useRef<HTMLInputElement>(null)
+  const targetRef = inputRef ?? localInputRef
+  const restoreFocus = useRef(false)
+  const targetId = useId()
+  const typeId = useId()
+  const schema = z.object({
+    targetKey: z
+      .string()
+      .trim()
+      .min(1, t('links.keyRequired'))
+      .refine((value) => !sameIssueKey(value, currentKey), t('links.selfLink')),
+    linkType: z.enum(LINK_TYPES),
+  })
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setFocus,
+    formState: { errors, isDirty },
+  } = useForm<LinkInput>({
+    resolver: zodResolver(schema),
+    defaultValues: { targetKey: '', linkType: 'relates' },
+  })
+  const busy = submitting || create.isPending || remove.isPending
+  const dirty = adding && (isDirty || uncertainCreate !== null)
+  const unavailable = query.isLoading || Boolean(query.error) || !query.data
+
+  useEffect(() => {
+    onProtectionChange({ dirty, pending: busy })
+  }, [dirty, busy, onProtectionChange])
+  useEffect(() => () => onProtectionChange({ dirty: false, pending: false }), [onProtectionChange])
+  useEffect(() => {
+    if (adding) setFocus('targetKey')
+    else if (restoreFocus.current) {
+      restoreFocus.current = false
+      if (!addButtonRef.current?.disabled) addButtonRef.current?.focus()
+      else regionRef.current?.focus()
+    }
+  }, [adding, setFocus])
+
+  const finishCreate = () => {
+    reset({ targetKey: '', linkType: 'relates' })
+    setUncertainCreate(null)
+    setError(null)
+    restoreFocus.current = true
+    setAdding(false)
+    toast.success(t('common.saved'))
+  }
+  const discard = () => {
+    if (busy || submittingRef.current) return
+    reset({ targetKey: '', linkType: 'relates' })
+    setError(null)
+    setUncertainCreate(null)
+    setDiscardOpen(false)
+    restoreFocus.current = true
+    setAdding(false)
+  }
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (busy || submittingRef.current || (unavailable && !uncertainCreate)) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      if (uncertainCreate) {
+        const result = await query.refetch()
+        if (result.error || !result.data) {
+          setError(t('links.verifyFailed'))
+          return
+        }
+        const found = result.data.some(
+          (link) =>
+            link.link_type === uncertainCreate.linkType &&
+            ((link.source_id === issueId &&
+              sameIssueKey(link.target_key, uncertainCreate.targetKey)) ||
+              (link.link_type === 'relates' &&
+                link.target_id === issueId &&
+                sameIssueKey(link.source_key, uncertainCreate.targetKey))),
+        )
+        if (found) finishCreate()
+        else {
+          setUncertainCreate(null)
+          setError(t('links.notSaved'))
+        }
+        return
+      }
+      await handleSubmit(async (data) => {
+        try {
+          await create.mutateAsync(data)
+          finishCreate()
+        } catch (cause) {
+          const status = cause instanceof IssueLinkMutationError ? cause.status : undefined
+          if (!(cause instanceof IssueLinkMutationError) || cause.outcome === 'unknown') {
+            setUncertainCreate(data)
+            setError(t('links.unknownOutcome'))
+          } else {
+            setError(
+              t(
+                status === 404
+                  ? 'links.endpointNotFound'
+                  : status === 409
+                    ? 'links.exists'
+                    : status === 400 || status === 422
+                      ? 'links.invalid'
+                      : 'links.saveFailed',
+              ),
+            )
+          }
+        }
+      })(event)
+    } catch {
+      setError(t('links.verifyFailed'))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const confirmDelete = async () => {
+    if (!deleting || busy || submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setDeleteError(null)
+    try {
+      if (uncertainDelete) {
+        const result = await query.refetch()
+        if (result.error || !result.data) {
+          setDeleteError(t('links.verifyFailed'))
+          return
+        }
+        if (result.data.some((link) => link.id === deleting.id)) {
+          setUncertainDelete(false)
+          setDeleteError(t('links.notDeleted'))
+          return
+        }
+      } else {
+        await remove.mutateAsync(deleting.id)
+      }
+      setUncertainDelete(false)
+      setDeleting(null)
+      toast.success(t('common.saved'))
+    } catch (cause) {
+      const uncertain =
+        !(cause instanceof IssueLinkMutationError) ||
+        cause.outcome === 'unknown' ||
+        cause.status === 404
+      setUncertainDelete(uncertain)
+      setDeleteError(t(uncertain ? 'links.unknownOutcome' : 'links.deleteFailed'))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const otherKey = (link: IssueLink) =>
+    link.source_id === issueId ? link.target_key : link.source_key
+  const targetField = register('targetKey')
+
+  return (
+    <div
+      ref={regionRef}
+      role="region"
+      aria-label={t('links.title')}
+      tabIndex={-1}
+      className="min-w-0 space-y-2"
+      data-testid="link-editor"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Link2 className="h-4 w-4" aria-hidden />
+          {t('links.title')}
+        </h3>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('links.refresh')}
+          title={t('links.refresh')}
+          className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+          disabled={busy || query.isFetching}
+          onClick={() => {
+            if (!busy && !submittingRef.current) void query.refetch()
+          }}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+      {query.isLoading && !query.data && <LoadingState />}
+      {query.error && (
+        <ErrorState
+          message={t('links.loadFailed')}
+          onRetry={() => {
+            if (!busy) void query.refetch()
+          }}
+        />
+      )}
+      {links.length > 0 && (
+        <ul className="space-y-1">
+          {links.map((link) => {
+            const source = link.source_id === issueId
+            const key = otherKey(link)
+            const known = LINK_TYPES.some((type) => type === link.link_type)
+            return (
+              <li
+                key={link.id}
+                className="flex min-h-11 items-center justify-between gap-2 text-sm sm:min-h-10"
+              >
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  <span className="text-text-muted">
+                    {known
+                      ? t(`links.${source ? 'type' : 'typeInverse'}.${link.link_type}`)
+                      : t('links.unknownType')}
+                  </span>{' '}
+                  <Link
+                    to={`/issues/${source ? link.target_id : link.source_id}`}
+                    className="inline-flex min-h-11 items-center font-medium text-accent hover:underline sm:min-h-10"
+                  >
+                    {key}
+                  </Link>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('links.delete', { key })}
+                  title={t('links.delete', { key })}
+                  disabled={busy || unavailable}
+                  className="min-h-11 min-w-11 shrink-0 sm:min-h-10 sm:min-w-10"
+                  onClick={() => {
+                    if (busy || submittingRef.current || unavailable) return
+                    setDeleteError(null)
+                    setUncertainDelete(false)
+                    setDeleting(link)
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {!unavailable && links.length === 0 && (
+        <p className="text-xs text-text-muted">{t('links.none')}</p>
+      )}
+      {adding ? (
+        <form
+          onSubmit={(event) => void submit(event)}
+          noValidate
+          className="space-y-2"
+          aria-busy={busy}
+        >
+          <fieldset
+            disabled={busy || uncertainCreate !== null}
+            className="flex min-w-0 flex-wrap items-end gap-2"
+          >
+            <div className="min-w-0 flex-1 sm:flex-none">
+              <Label htmlFor={targetId}>{t('links.targetKey')}</Label>
+              <Input
+                {...targetField}
+                ref={(element) => {
+                  targetField.ref(element)
+                  targetRef.current = element
+                }}
+                id={targetId}
+                aria-required="true"
+                aria-invalid={Boolean(errors.targetKey)}
+                aria-describedby={errors.targetKey ? `${targetId}-error` : undefined}
+                className="min-h-11 min-w-0 text-sm sm:min-h-10 sm:w-40"
+                data-testid="link-target-input"
+              />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor={typeId}>{t('links.typeLabel')}</Label>
+              <select
+                {...register('linkType')}
+                id={typeId}
+                className="min-h-11 max-w-full rounded-md border border-border bg-surface px-2 text-sm sm:min-h-10"
+              >
+                {LINK_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t(`links.type.${type}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </fieldset>
+          {errors.targetKey && (
+            <p id={`${targetId}-error`} role="alert" className="text-sm text-danger">
+              {errors.targetKey.message}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={busy || (unavailable && !uncertainCreate)}
+              className="min-h-11 sm:min-h-10"
+              data-testid="link-submit"
+            >
+              <Link2 className="h-4 w-4" aria-hidden />
+              {busy ? t('common.saving') : uncertainCreate ? t('links.verify') : t('links.submit')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              className="min-h-11 sm:min-h-10"
+              onClick={() => {
+                if (busy || submittingRef.current) return
+                if (dirty) setDiscardOpen(true)
+                else discard()
+              }}
+            >
+              <X className="h-4 w-4" aria-hidden />
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button
+          ref={addButtonRef}
+          type="button"
+          variant="ghost"
+          disabled={busy || unavailable}
+          className="min-h-11 px-2 text-sm sm:min-h-10"
+          onClick={() => {
+            if (busy || submittingRef.current || unavailable) return
+            setError(null)
+            setAdding(true)
+          }}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          {t('links.add')}
+        </Button>
+      )}
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title={t('links.discardTitle')}
+        description={t('links.discardDescription')}
+        onConfirm={discard}
+        isPending={busy}
+        returnFocusRef={targetRef}
+        fallbackFocusRef={regionRef}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy && !submittingRef.current) {
+            setDeleting(null)
+            setDeleteError(null)
+            setUncertainDelete(false)
+          }
+        }}
+        title={t('links.delete', { key: deleting ? otherKey(deleting) : '' })}
+        description={t('links.deleteDescription')}
+        onConfirm={() => void confirmDelete()}
+        isPending={busy}
+        error={deleteError}
+        fallbackFocusRef={regionRef}
+        confirmLabel={uncertainDelete ? t('links.verify') : undefined}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,1606 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index b95c611..61d0d97 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,14 @@
+ 
+ ## [Unreleased]
+ 
++- Создание задачи использует Base FormPage/FormField и защиту несохранённых
++  изменений. Значения custom fields и назначение сохраняются отдельно по проектам
++  при переключении и Back/Forward; refetch не снимает исполнителя автоматически.
++  Запись блокируется до подтверждения обязательных данных, 403/404 скрывают форму,
++  повтор доступен только для повторяемых сбоев. Ошибка сохранения сохраняет ввод;
++  pending исключает двойную отправку. Предел заголовка соответствует серверным
++  500 Unicode-символам. Доменные API, схема БД и auth-контракт не меняются.
++
+ - Swagger UI assets come from the locked vendored Cargo package instead of a
+   separate build-time GitHub ZIP download. Domain API, database schema,
+   application UI and authentication are unchanged.
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index b7a4dfe..a403a44 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -274,3 +274,33 @@ images via the former `UPDATE_README_SCREENSHOTS` switch.
+ No GitHub/fetch/Actions, push, default integration, mirror sync or runtime pin
+ changes in this checkpoint. The original dirty checkout was not edited.
+ See [Remaining Acceptance](UI_UX_MAP.md#remaining-acceptance).
++
++## 2026-10-03: Create Form Source Checkpoint
++
++Parent: `4b82dd615479cfbc5674db70050747d9d4458256`; Base:
++`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`. Изолированный checkout сохраняется;
++backend, OpenAPI, dependency locks, auth и schema этим шагом не меняются.
++
++Create использует Base FormPage/FormField/PendingForm/UnsavedChangesGuard и
++ResourceStateView. Runtime API wrappers передают HTTP status для required fields,
++types, directory и members; URL project context не уничтожает проектные drafts.
++Unicode bound заголовка совпадает с серверным пределом 500 code points.
++
++Source browser evidence: `task-create-base-final-browser.json` и одноимённая
++директория в workspace evidence root. 17/17 Chromium tests, 0 skipped/flaky/
++unexpected; 258 PNG, включая 36 create captures. Новый create набор проверяет
++30 geometry cases (3 themes x 10 widths), reading alignment/width, target sizes,
++main axe на375/1920, long input values, drafts/history, Escape/focus return,
++pending double-submit, сохранение ввода после503 и required403/404/422/503.
++При503 проверяется штатная последовательность 5 GET attempts; limiter/retry
++policy не ослаблена. Исходные failed runs сохранены, не считаются приёмкой.
++Desktop1920 и375 captures просмотрены визуально.
++
++Unit regressions проверяют required refetch/write boundary, cached terminal
++errors с восстановлением draft, явное снятие недоступного assignee, unload,
++success navigation и required/help/error semantics всех5 custom control types.
++Финальный source gate записывается в `task-create-base-source-python-no-bytecode-verification.json`
++с commands/logs и digests changed files. Browser API/OIDC mocked; это не
++actual-image/SSO/role acceptance и не новая README gallery. Native backend gate
++не повторялся для frontend-only scope; выпускная приёмка полного продукта
++остаётся обязательной. Default integration/runtime pins/mirror не меняются.
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 74cb037..4cf9cff 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -103,6 +103,14 @@ Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+ 
+ ## Remaining Acceptance
+ 
++Source migration create использует Base FormPage/FormField и ResourceStateView.
++Черновики полей/назначений сохраняются по project key, включая history;
++Base guard защищает pathname и несогласованные URL-параметры. Успешное создание
++снимает guard перед переходом в backlog. 403/404 обязательных источников скрывают
++CRUD; временный refetch блокирует запись, не сбрасывая ввод. Недоступный исполнитель
++требует явного выбора/снятия назначения, а не автоматического изменения payload.
++Backend/API/schema/auth не меняются; actual-image acceptance остаётся обязательной.
++
+ Исторический notification checkpoint: `29c405f084058965a6f8894cacd2362b2d8fa791`, Base
+ `26a9523bf739c2fb4aafa343fdbc194d02a78e6a`. 371 unit tests (47 files), lint,
+ build/typecheck, installed gate и 10 Chromium tests (222 PNG) прошли. Menu и
+@@ -111,7 +119,8 @@ notifications page проверены в трёх темах на десяти 
+ Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+ 
+ 1. Мигрировать остальные list/form/audit/log compositions: board,
+-   backlog, trash, settings, search, reports, admin и create.
++   backlog, trash, settings, search, reports и admin. Для create завершить
++   actual-image/role/SSO приёмку после source regression checkpoint.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+    pending, validation и focus сценарии всех форм/диалогов. Локализовать generic
+diff --git a/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+index bbbe056..663cda5 100644
+--- a/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
++++ b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+@@ -31,6 +31,18 @@ Incoming pin `c083783a37791e277db796361203884b87828a7d` является его
+ 
+ ## Remaining Product Migration
+ 
++### Create Form Source Step
++
++Утверждённый общий план реализуется на действующем `/issues/create`:
++Base FormPage/FormField, стандартные targets без локальных width/height overrides,
++ResourceStateView и статусные API-ошибки обязательных/опциональных read sources.
++Проектные custom fields и assignee хранятся в памяти по key, без credentials или
++draft persistence в browser storage. `project_key` остаётся URL-контекстом;
++прочие context/path changes защищены Base guard. Изменение проекта не уничтожает
++черновик; история и refetch должны сохранять выбор. Требуются unit/state/pending/
++focus tests, source browser матрица, build/lint/installed gate и затем no-mock
++image/role/SSO приёмка. Эта стадия не интегрирует default/runtime pins или mirror.
++
+ 1. Завершить Base compositions на board, backlog, trash, settings, search,
+    reports, admin и create. Общие list/form/detail patterns уже внедрённых
+    экранов не считаются доказательством полного route coverage.
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index a86b714..e986ea1 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -2,6 +2,244 @@ import { generateKeyPairSync, sign } from 'node:crypto'
+ import { test, expect, type Page, type Route } from '@playwright/test'
+ import AxeBuilder from '@axe-core/playwright'
+ 
++async function installCreateFixtures(page: Page) {
++  await installTrackerMocks(page)
++  await page.route('**/api/v1/projects', (route) =>
++    routeJson(route, {
++      projects: ['DEMO', 'OPS'].map((key) => ({
++        id: `fixture-${key}`,
++        key,
++        name: key === 'DEMO' ? mockUser.name : 'Operations',
++        owner_id: mockUser.id,
++        todo_count: 0,
++        in_progress_count: 0,
++        done_count: 0,
++      })),
++    }),
++  )
++  await page.route('**/api/v1/projects/*/custom-fields', (route) =>
++    routeJson(route, {
++      fields: [
++        {
++          id: 'fixture-text',
++          project_id: 'fixture-project',
++          name: 'Required text',
++          field_type: 'text',
++          is_required: true,
++          options: [],
++          created_at: '2026-10-01T10:00:00Z',
++        },
++      ],
++    }),
++  )
++}
++
++test.describe('Base issue create', () => {
++  test('retains project drafts and protects navigation with keyboard focus return', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    await installCreateFixtures(page)
++    await page.goto(`${baseURL}/issues/create?project_key=DEMO&source=board`)
++    await page.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Safe fixture draft')
++    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('DEMO draft')
++    await page.getByLabel('Исполнитель', { exact: true }).selectOption(mockUser.id)
++    await page.getByRole('combobox', { name: 'Проект', exact: true }).selectOption('OPS')
++    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('OPS draft')
++    await page.goBack()
++    await expect(page.getByRole('combobox', { name: 'Проект', exact: true })).toHaveValue('DEMO')
++    await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toHaveValue(
++      'DEMO draft',
++    )
++    await expect(page.getByLabel('Исполнитель', { exact: true })).toHaveValue(mockUser.id)
++    await expect(page).toHaveURL(/project_key=DEMO&source=board$/)
++    const leave = page
++      .getByRole('navigation', { name: 'Основная навигация' })
++      .getByRole('link', { name: 'Проекты', exact: true })
++    await leave.click()
++    await expect(page.getByRole('alertdialog')).toBeVisible()
++    await page.keyboard.press('Escape')
++    await expect(page.getByRole('alertdialog')).toHaveCount(0)
++    await expect(leave).toBeFocused()
++    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toHaveValue(
++      'Safe fixture draft',
++    )
++    await page.screenshot({
++      path: testInfo.outputPath('create-draft-retained.png'),
++      fullPage: true,
++    })
++  })
++
++  test('keeps failed saves and sends only one request during pending', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    await installCreateFixtures(page)
++    let count = 0
++    let release!: () => void
++    await page.route('**/api/v1/issues', async (route) => {
++      if (route.request().method() !== 'POST') return route.fallback()
++      count++
++      await new Promise<void>((done) => {
++        release = done
++      })
++      return routeJson(
++        route,
++        { error: { code: 'UNAVAILABLE', message: 'private diagnostic must not render' } },
++        503,
++      )
++    })
++    await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
++    await page.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Safe fixture draft')
++    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('Retained value')
++    const submit = page.getByRole('button', { name: 'Создать', exact: true })
++    await expect(submit).toBeEnabled()
++    await page.locator('main form').evaluate((form) => {
++      ;(form as HTMLFormElement).requestSubmit()
++      ;(form as HTMLFormElement).requestSubmit()
++    })
++    await expect.poll(() => count).toBe(1)
++    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toBeDisabled()
++    release()
++    await expect(
++      page.getByText('Не удалось создать задачу. Проверьте данные и повторите попытку.'),
++    ).toBeVisible()
++    await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toHaveValue(
++      'Retained value',
++    )
++    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toHaveValue(
++      'Safe fixture draft',
++    )
++    await expect(submit).toBeEnabled()
++    await expect(page.getByText('private diagnostic must not render', { exact: true })).toHaveCount(
++      0,
++    )
++    expect(count).toBe(1)
++    await page.screenshot({ path: testInfo.outputPath('create-save-error.png'), fullPage: true })
++  })
++
++  for (const status of [403, 404, 422, 503]) {
++    test(`required field HTTP ${status} preserves the correct state and write boundary`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      await installCreateFixtures(page)
++      let reads = 0
++      await page.route('**/api/v1/projects/*/custom-fields', (route) => {
++        reads++
++        return routeJson(
++          route,
++          { error: { code: 'CONTROLLED', message: 'private diagnostic must not render' } },
++          status,
++        )
++      })
++      await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
++      await expect.poll(() => reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
++      await expect(
++        page.getByText('Не удалось загрузить поля проекта. Повторите попытку.'),
++      ).toBeVisible()
++      const main = page.locator('main')
++      if (status === 403 || status === 404) {
++        await expect(
++          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
++        ).toBeVisible()
++        await expect(main.locator('form')).toHaveCount(0)
++        await expect(main.getByRole('button', { name: 'Создать', exact: true })).toHaveCount(0)
++      } else await expect(main.getByRole('button', { name: 'Создать', exact: true })).toBeDisabled()
++      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
++        status === 503 ? 1 : 0,
++      )
++      await expect(
++        main.getByText('private diagnostic must not render', { exact: true }),
++      ).toHaveCount(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`create-required-${status}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  test('reading form remains compact and accessible in every theme and shell breakpoint', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(180_000)
++    await installCreateFixtures(page)
++    const failures: string[] = []
++    page.on('pageerror', (error) => failures.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') failures.push(message.text())
++    })
++    for (const theme of ['dark', 'gray', 'light']) {
++      await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++        await page.setViewportSize({ width, height: 1080 })
++        await page.reload()
++        await expect(
++          page.getByRole('textbox', { name: 'Required text', exact: true }),
++        ).toBeVisible()
++        await page
++          .getByRole('textbox', { name: 'Заголовок', exact: true })
++          .fill('Long safe fixture summary '.repeat(18))
++        await page
++          .getByRole('textbox', { name: 'Required text', exact: true })
++          .fill('UnbrokenSafeValue'.repeat(20))
++        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++        await expect(page.locator('main h1')).toHaveCount(1)
++        await expect(page.locator('[data-page-layout]')).toHaveAttribute(
++          'data-page-layout',
++          'reading',
++        )
++        const geometry = await page.locator('[data-page-layout]').evaluate((element) => {
++          const rect = element.getBoundingClientRect()
++          const parent = element.parentElement!
++          const style = getComputedStyle(parent)
++          const header = element.querySelector('.base-page-header')!.getBoundingClientRect()
++          const actions = element.querySelector('.base-page-actions')!.getBoundingClientRect()
++          return {
++            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
++            width: rect.width,
++            left: rect.left,
++            expectedLeft:
++              parent.getBoundingClientRect().left + Number.parseFloat(style.paddingLeft),
++            headerTop: header.top,
++            actionsTop: actions.top,
++            formBottom: element.querySelector('form')!.getBoundingClientRect().bottom,
++            actionsBottom: actions.bottom,
++          }
++        })
++        expect(geometry.overflow).toBe(false)
++        expect(geometry.width).toBeLessThanOrEqual(760)
++        expect(Math.abs(geometry.left - geometry.expectedLeft)).toBeLessThan(1)
++        expect(geometry.actionsTop).toBeGreaterThan(geometry.headerTop)
++        expect(geometry.actionsBottom).toBeLessThanOrEqual(geometry.formBottom)
++        const smallTargets = await page
++          .locator('main input, main select, main textarea, main button')
++          .evaluateAll(
++            (elements, minimum) =>
++              elements
++                .filter((element) => {
++                  const rect = element.getBoundingClientRect()
++                  return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
++                })
++                .map((element) => element.id || element.textContent),
++            width < 768 ? 44 : 40,
++          )
++        expect(smallTargets).toEqual([])
++        if (width === 375 || width === 1920)
++          expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([])
++        await page.screenshot({
++          path: testInfo.outputPath(`create-${theme}-${width}.png`),
++          fullPage: true,
++        })
++      }
++    }
++    expect(failures).toEqual([])
++  })
++})
++
+ const mockUser = {
+   id: '00000000-0000-0000-0000-000000000001',
+   key: 'DEMO',
+diff --git a/frontend/src/api/auth.ts b/frontend/src/api/auth.ts
+index f28cac4..4ae4f67 100644
+--- a/frontend/src/api/auth.ts
++++ b/frontend/src/api/auth.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type LoginRequest = components['schemas']['LoginRequest']
+@@ -22,8 +23,9 @@ export async function register(req: RegisterRequest): Promise<AuthResponse> {
+ export type User = UserResponse
+ 
+ export async function listUsers(): Promise<DirectoryUser[]> {
+-  const { data, error } = await api.GET('/api/v1/users')
+-  if (error || !data) throw new Error('failed to load users')
++  const { data, error, response } = await api.GET('/api/v1/users')
++  const status = response?.status
++  if (error || !data) throw new ApiError(status, 'failed to load users', error)
+   return data.users
+ }
+ 
+diff --git a/frontend/src/api/custom-fields.ts b/frontend/src/api/custom-fields.ts
+index 44f3696..3540555 100644
+--- a/frontend/src/api/custom-fields.ts
++++ b/frontend/src/api/custom-fields.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ 
+ export type CustomFieldType = 'text' | 'number' | 'select' | 'multi-select' | 'date'
+ export interface CustomField {
+@@ -22,11 +23,12 @@ export interface CustomFieldValue {
+ }
+ 
+ export async function listCustomFields(projectKey: string): Promise<CustomField[]> {
+-  const { data, error } = await api.GET(
++  const { data, error, response } = await api.GET(
+     '/api/v1/projects/{project_key}/custom-fields' as never,
+     { params: { path: { project_key: projectKey } } } as never,
+   )
+-  if (error || !data) throw new Error('Failed to load custom fields')
++  const status = response?.status
++  if (error || !data) throw new ApiError(status, 'Failed to load custom fields', error)
+   return (data as { fields: CustomField[] }).fields
+ }
+ export async function createCustomField(
+diff --git a/frontend/src/api/members.ts b/frontend/src/api/members.ts
+index 59346bd..de10889 100644
+--- a/frontend/src/api/members.ts
++++ b/frontend/src/api/members.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type ProjectMember = components['schemas']['ProjectMemberResponse']
+@@ -6,9 +7,9 @@ export type ProjectMember = components['schemas']['ProjectMemberResponse']
+ export async function listProjectMembers(
+   projectKey: string,
+ ): Promise<{ members: ProjectMember[] }> {
+-  const { data, error } = await api.GET('/api/v1/projects/{project_key}/members', {
++  const { data, error, response } = await api.GET('/api/v1/projects/{project_key}/members', {
+     params: { path: { project_key: projectKey } },
+   })
+-  if (error || !data) throw new Error('Failed to load project members')
++  if (error || !data) throw new ApiError(response.status, 'Failed to load project members', error)
+   return data
+ }
+diff --git a/frontend/src/api/read-states.test.ts b/frontend/src/api/read-states.test.ts
+index 95f718c..848bde4 100644
+--- a/frontend/src/api/read-states.test.ts
++++ b/frontend/src/api/read-states.test.ts
+@@ -3,6 +3,10 @@ import { ApiError } from '@sdlc/ui/lib'
+ import { getDashboard } from './dashboard'
+ import { getIssue } from './issue'
+ import { listProjects } from './project'
++import { listUsers } from './auth'
++import { listProjectMembers } from './members'
++import { listCustomFields } from './custom-fields'
++import { listIssueTypes } from './workflow'
+ 
+ const get = vi.hoisted(() => vi.fn())
+ vi.mock('./client', () => ({ api: { GET: get } }))
+@@ -15,6 +19,10 @@ describe('read response states', () => {
+     ['dashboard', getDashboard],
+     ['projects', listProjects],
+     ['issue', () => getIssue('missing')],
++    ['users', listUsers],
++    ['members', () => listProjectMembers('TT')],
++    ['custom fields', () => listCustomFields('TT')],
++    ['issue types', listIssueTypes],
+   ] as const) {
+     it.each([403, 503])(
+       `preserves HTTP %s from ${name} for Base state handling`,
+@@ -28,6 +36,19 @@ describe('read response states', () => {
+       },
+     )
+   }
++  it.each([
++    listUsers,
++    listIssueTypes,
++    () => listProjectMembers('TT'),
++    () => listCustomFields('TT'),
++  ])('preserves not-found without converting it into empty form data', async (read) => {
++    get.mockResolvedValue({
++      data: undefined,
++      error: {},
++      response: new Response(null, { status: 404 }),
++    })
++    await expect(read()).rejects.toMatchObject({ status: 404 })
++  })
+   it('retains the existing null contract for an absent issue', async () => {
+     get.mockResolvedValue({
+       data: undefined,
+diff --git a/frontend/src/api/workflow.ts b/frontend/src/api/workflow.ts
+index db5231c..5a69af3 100644
+--- a/frontend/src/api/workflow.ts
++++ b/frontend/src/api/workflow.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type Status = components['schemas']['StatusResponse']
+@@ -18,7 +19,8 @@ export async function listTransitions(): Promise<Transition[]> {
+ }
+ 
+ export async function listIssueTypes(): Promise<IssueType[]> {
+-  const { data, error } = await api.GET('/api/v1/issue-types')
+-  if (error || !data) throw new Error('Failed to load issue types')
++  const { data, error, response } = await api.GET('/api/v1/issue-types')
++  const status = response?.status
++  if (error || !data) throw new ApiError(status, 'Failed to load issue types', error)
+   return data
+ }
+diff --git a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
+index 6b2280d..7faf418 100644
+--- a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
++++ b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
+@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+ import i18n from '@/shared/i18n/config'
+ import { CustomFieldsPanel, CustomFieldValueInput } from './CustomFieldsPanel'
++import { FormField } from '@sdlc/ui/ui'
+ 
+ beforeAll(() => {
+   i18n.changeLanguage('en')
+@@ -28,6 +29,50 @@ function wrapper(children: React.ReactNode) {
+ }
+ 
+ describe('CustomFieldsPanel', () => {
++  it.each(['text', 'number', 'date', 'select', 'multi-select'] as const)(
++    'forwards Base field semantics to %s controls',
++    (field_type) => {
++      const field = {
++        id: 'f1',
++        project_id: 'p1',
++        name: 'Field',
++        field_type,
++        options: ['One'],
++        is_required: true,
++        created_at: '2026-10-01T00:00:00Z',
++      }
++      render(
++        wrapper(
++          <FormField
++            id="fixture-control"
++            label="Field"
++            required
++            hint="Field help"
++            error="Invalid value"
++          >
++            {(attrs) => (
++              <CustomFieldValueInput
++                field={field}
++                value={field_type === 'multi-select' ? [] : ''}
++                onSave={vi.fn()}
++                inputProps={attrs}
++                commit="change"
++              />
++            )}
++          </FormField>,
++        ),
++      )
++      const control = screen.getByLabelText(/Field/)
++      expect(control).toHaveAttribute('id', 'fixture-control')
++      expect(control).toBeRequired()
++      expect(control).toHaveAttribute('aria-invalid', 'true')
++      expect(control).toHaveAttribute(
++        'aria-describedby',
++        'fixture-control-hint fixture-control-error',
++      )
++    },
++  )
++
+   afterEach(() => {
+     mockFields.mockReset()
+     mockValues.mockReset()
+diff --git a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
+index a83278e..2c2182f 100644
+--- a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
++++ b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from 'react'
++import { useEffect, useMemo, useState, type InputHTMLAttributes } from 'react'
+ import { useTranslation } from 'react-i18next'
+ import {
+   useIssueCustomFieldValues,
+@@ -40,11 +40,16 @@ export function CustomFieldValueInput({
+   value,
+   onSave,
+   commit = 'blur',
++  inputProps = {},
+ }: {
+   field: CustomField
+   value: unknown
+   onSave: (value: unknown) => void
+   commit?: 'blur' | 'change'
++  inputProps?: Pick<
++    InputHTMLAttributes<HTMLInputElement>,
++    'id' | 'required' | 'aria-invalid' | 'aria-describedby'
++  >
+ }) {
+   const { t } = useTranslation()
+   const current = customFieldInputValue(field, value)
+@@ -60,7 +65,7 @@ export function CustomFieldValueInput({
+ 
+   if (field.field_type === 'select') {
+     return (
+-      <Select value={current} onChange={(e) => onSave(e.target.value)}>
++      <Select {...inputProps} value={current} onChange={(e) => onSave(e.target.value)}>
+         <option value="">{t('customFields.selectPlaceholder')}</option>
+         {field.options.map((option) => (
+           <option key={option} value={option}>
+@@ -74,6 +79,7 @@ export function CustomFieldValueInput({
+     const selected = Array.isArray(value) ? value.map(String) : []
+     return (
+       <Select
++        {...inputProps}
+         multiple
+         className="h-auto min-h-24"
+         value={selected}
+@@ -92,6 +98,7 @@ export function CustomFieldValueInput({
+   if (commit === 'change') {
+     return (
+       <Input
++        {...inputProps}
+         type={type}
+         value={current}
+         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
+@@ -100,6 +107,7 @@ export function CustomFieldValueInput({
+   }
+   return (
+     <Input
++      {...inputProps}
+       type={type}
+       value={draft.value}
+       onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+diff --git a/frontend/src/pages/issue-create/index.tsx b/frontend/src/pages/issue-create/index.tsx
+index 72af89b..5abcaa2 100644
+--- a/frontend/src/pages/issue-create/index.tsx
++++ b/frontend/src/pages/issue-create/index.tsx
+@@ -1,10 +1,18 @@
+-import { useEffect, useMemo, useState } from 'react'
++import { useEffect, useMemo, useRef, useState } from 'react'
+ import { useLocation, useNavigate, useSearchParams } from 'react-router'
+ import { Plus } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { Button, Select, Textarea } from '@sdlc/ui/ui'
+-import { ErrorState } from '@sdlc/ui/ui'
+-import { Input } from '@sdlc/ui/ui'
++import {
++  Button,
++  FormField,
++  FormPage,
++  Input,
++  ResourceStateView,
++  Select,
++  Textarea,
++  UnsavedChangesGuard,
++  resourceErrorState,
++} from '@sdlc/ui/ui'
+ import {
+   useCreateIssue,
+   useIssueTypes,
+@@ -24,25 +32,32 @@ export function IssueCreatePage() {
+   const navigate = useNavigate()
+   const location = useLocation()
+   const [searchParams, setSearchParams] = useSearchParams()
+-  const { mutate, isPending, error } = useCreateIssue()
++  const { mutateAsync, isPending, error } = useCreateIssue()
+   const userId = useAuthStore((s) => s.userId)
+   const projectsQuery = useProjects()
+   const usersQuery = useUsers()
+   const issueTypesQuery = useIssueTypes()
++  const pageFocusRef = useRef<HTMLDivElement>(null)
++  const [createdProjectKey, setCreatedProjectKey] = useState<string | null>(null)
+ 
+   const [type, setType] = useState('Task')
++  const [typeChanged, setTypeChanged] = useState(false)
+   const [summary, setSummary] = useState('')
+   const [description, setDescription] = useState('')
+   const [priority, setPriority] = useState('Medium')
+-  const [assignee_id, setAssigneeId] = useState('')
+-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
+-  const [validationError, setValidationError] = useState<string | null>(null)
++  const [assignees, setAssignees] = useState<Record<string, string>>({})
++  const [projectFieldValues, setProjectFieldValues] = useState<
++    Record<string, Record<string, unknown>>
++  >({})
++  const [validationField, setValidationField] = useState<string | null>(null)
+ 
+   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
+   // Prefer ?project_key=..., then router state (board "+ Создать"), else first project.
+   const queryProjectKey = searchParams.get('project_key') ?? ''
+   const stateProjectKey = (location.state as { project_key?: string } | null)?.project_key ?? ''
+   const project_key = queryProjectKey || stateProjectKey || (projects[0]?.key ?? '')
++  const customFieldValues = projectFieldValues[project_key] ?? {}
++  const assignee_id = assignees[project_key] ?? ''
+   const issueTypes = useMemo(
+     () => (issueTypesQuery.data ?? []).filter((issueType) => !issueType.is_subtask),
+     [issueTypesQuery.data],
+@@ -66,11 +81,35 @@ export function IssueCreatePage() {
+     Boolean(projectsQuery.error) ||
+     Boolean(issueTypesQuery.error) ||
+     Boolean(customFieldsQuery.error)
+-  const canSubmit =
+-    !isPending &&
+-    !setupLoading &&
+-    !setupError &&
+-    Boolean(userId && currentProject && selectedType && summary.trim())
++  const setupRefreshing = [projectsQuery, issueTypesQuery, customFieldsQuery].some(
++    (query) => query.isFetching && !query.isPending,
++  )
++  const setupFailures = [
++    projectsQuery.isError &&
++      resourceErrorState(projectsQuery.error, () => void projectsQuery.refetch(), {
++        message: t('issueCreate.projectsError'),
++        hasData: Boolean(projectsQuery.data),
++      }),
++    issueTypesQuery.isError &&
++      resourceErrorState(issueTypesQuery.error, () => void issueTypesQuery.refetch(), {
++        message: t('issueCreate.typesError'),
++        hasData: Boolean(issueTypesQuery.data),
++      }),
++    customFieldsQuery.isError &&
++      resourceErrorState(customFieldsQuery.error, () => void customFieldsQuery.refetch(), {
++        message: t('issueCreate.fieldsError'),
++        hasData: Boolean(customFieldsQuery.data),
++      }),
++  ].filter((failure) => failure !== false)
++  const setupFailure =
++    setupFailures.find(
++      (failure) => failure.kind === 'not-found' || failure.kind === 'permission-denied',
++    ) ?? setupFailures[0]
++  const assigneesReady =
++    usersQuery.isSuccess &&
++    projectMembersQuery.isSuccess &&
++    !usersQuery.isFetching &&
++    !projectMembersQuery.isFetching
+   const assignableUsers = useMemo(() => {
+     const allowedIds = new Set((projectMembersQuery.data?.members ?? []).map((m) => m.user_id))
+     if (currentProject?.owner_id) {
+@@ -79,6 +118,48 @@ export function IssueCreatePage() {
+     const users = usersQuery.data ?? []
+     return users.filter((user) => allowedIds.has(user.id))
+   }, [currentProject?.owner_id, projectMembersQuery.data?.members, usersQuery.data])
++  const assigneeAvailable = assignableUsers.some((user) => user.id === assignee_id)
++  const summaryTooLong = Array.from(summary.trim()).length > 500
++  const canSubmit =
++    !isPending &&
++    !createdProjectKey &&
++    !setupLoading &&
++    !setupError &&
++    !setupRefreshing &&
++    !summaryTooLong &&
++    (!assignee_id || (assigneesReady && assigneeAvailable)) &&
++    Boolean(userId && currentProject && selectedType && summary.trim())
++  const hasDraft = Boolean(
++    summary ||
++    description ||
++    typeChanged ||
++    priority !== 'Medium' ||
++    Object.values(assignees).some(Boolean) ||
++    Object.values(projectFieldValues).some((values) =>
++      Object.values(values).some((value) => !isEmptyCustomFieldValue(value)),
++    ),
++  )
++  const unavailableProject = projectsQuery.isSuccess && Boolean(project_key) && !currentProject
++  const state = !userId
++    ? { kind: 'permission-denied' as const, message: t('issueCreate.noReporter') }
++    : setupFailure?.kind === 'not-found' || setupFailure?.kind === 'permission-denied'
++      ? setupFailure
++      : projectsQuery.isSuccess && projects.length === 0
++        ? { kind: 'empty' as const, message: t('issueCreate.noProjects') }
++        : unavailableProject
++          ? { kind: 'not-found' as const, message: t('issueCreate.projectUnavailable') }
++          : { kind: 'ready' as const }
++  const assigneeFailure = usersQuery.isError
++    ? resourceErrorState(usersQuery.error, () => void usersQuery.refetch(), {
++        message: t('issueCreate.assigneesError'),
++        hasData: Boolean(usersQuery.data),
++      })
++    : projectMembersQuery.isError
++      ? resourceErrorState(projectMembersQuery.error, () => void projectMembersQuery.refetch(), {
++          message: t('issueCreate.assigneesError'),
++          hasData: Boolean(projectMembersQuery.data),
++        })
++      : null
+ 
+   useEffect(() => {
+     if (!project_key || queryProjectKey === project_key) return
+@@ -94,38 +175,28 @@ export function IssueCreatePage() {
+   }, [project_key, queryProjectKey, setSearchParams])
+ 
+   useEffect(() => {
+-    setCustomFieldValues({})
+-    setValidationError(null)
+-  }, [project_key])
++    if (createdProjectKey)
++      void navigate(`/projects/${encodeURIComponent(createdProjectKey)}/backlog`)
++  }, [createdProjectKey, navigate])
+ 
+-  useEffect(() => {
+-    if (selectedType && selectedType !== type) setType(selectedType)
+-  }, [selectedType, type])
+-
+-  useEffect(() => {
+-    if (assignee_id && !assignableUsers.some((user) => user.id === assignee_id)) {
+-      setAssigneeId('')
+-    }
+-  }, [assignableUsers, assignee_id])
+-
+-  async function handleSubmit(e: React.FormEvent) {
++  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+     e.preventDefault()
+     if (!canSubmit) return
+     const missingRequired = customFields.find(
+       (field) => field.is_required && isEmptyCustomFieldValue(customFieldValues[field.id]),
+     )
+     if (missingRequired) {
+-      setValidationError(t('customFields.requiredMissing', { name: missingRequired.name }))
++      setValidationField(missingRequired.id)
+       return
+     }
+-    setValidationError(null)
++    setValidationField(null)
+     const custom_fields = Object.fromEntries(
+       customFields
+         .map((field) => [field.id, customFieldValues[field.id]] as const)
+         .filter(([, value]) => !isEmptyCustomFieldValue(value)),
+     )
+-    mutate(
+-      {
++    try {
++      await mutateAsync({
+         project_key: selectedProjectKey,
+         issue_type: selectedType.toLowerCase(),
+         summary: summary.trim(),
+@@ -133,14 +204,15 @@ export function IssueCreatePage() {
+         priority: priority.toLowerCase(),
+         assignee_id: assignee_id || null,
+         custom_fields,
+-      },
+-      {
+-        onSuccess: () => navigate(`/projects/${selectedProjectKey}/backlog`),
+-      },
+-    )
++      })
++      setCreatedProjectKey(selectedProjectKey)
++    } catch {
++      // Render the mutation error without discarding the draft.
++    }
+   }
+ 
+   function updateProjectKey(nextProjectKey: string) {
++    setValidationField(null)
+     setSearchParams((current) => {
+       const next = new URLSearchParams(current)
+       next.set('project_key', nextProjectKey)
+@@ -148,218 +220,231 @@ export function IssueCreatePage() {
+     })
+   }
+ 
++  const projectPicker = (
++    <FormField id="issue-project" label={t('issueCreate.project')} required>
++      {(attrs) => (
++        <Select
++          {...attrs}
++          value={selectedProjectKey}
++          onChange={(event) => updateProjectKey(event.target.value)}
++          disabled={
++            !projectsQuery.isSuccess ||
++            projectsQuery.isFetching ||
++            projects.length === 0 ||
++            isPending
++          }
++        >
++          {!currentProject && (
++            <option value="" disabled>
++              {t('issueCreate.selectProject')}
++            </option>
++          )}
++          {projects.map((project) => (
++            <option key={project.key} value={project.key}>
++              {project.name} ({project.key})
++            </option>
++          ))}
++        </Select>
++      )}
++    </FormField>
++  )
+   return (
+-    <div>
+-      <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
+-
+-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
+-        {error && <ErrorState message={t('issueCreate.saveError')} />}
+-        {validationError && <ErrorState message={validationError} />}
+-        {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
+-        {setupLoading && <p className="text-sm text-text-muted">{t('issueCreate.loading')}</p>}
+-        {projectsQuery.error && (
+-          <ErrorState
+-            message={t('issueCreate.projectsError')}
+-            onRetry={() => void projectsQuery.refetch()}
+-          />
+-        )}
+-        {!projectsQuery.isLoading && !projectsQuery.error && projects.length === 0 && (
+-          <ErrorState message={t('issueCreate.noProjects')} />
+-        )}
+-        {!projectsQuery.isLoading && !projectsQuery.error && project_key && !currentProject && (
+-          <ErrorState message={t('issueCreate.projectUnavailable')} />
++    <div ref={pageFocusRef} tabIndex={-1} className="min-w-0">
++      <UnsavedChangesGuard
++        when={!createdProjectKey && (hasDraft || isPending)}
++        allowSearchKeys={['project_key']}
++        fallbackFocusRef={pageFocusRef}
++      />
++      <FormPage
++        title={t('issueCreate.title')}
++        state={
++          state.kind === 'not-found' && unavailableProject
++            ? { ...state, back: projectPicker }
++            : state
++        }
++        onSubmit={handleSubmit}
++        pending={isPending}
++        actions={
++          <>
++            <Button type="submit" disabled={!canSubmit}>
++              <Plus className="h-4 w-4" aria-hidden />
++              {isPending ? t('common.creating') : t('issueCreate.submit')}
++            </Button>
++            <Button
++              type="button"
++              variant="outline"
++              disabled={isPending}
++              onClick={() => navigate(-1)}
++            >
++              {t('common.cancel')}
++            </Button>
++          </>
++        }
++      >
++        {error && (
++          <ResourceStateView state={{ kind: 'error', message: t('issueCreate.saveError') }} />
+         )}
+-        {issueTypesQuery.error && (
+-          <ErrorState
+-            message={t('issueCreate.typesError')}
+-            onRetry={() => void issueTypesQuery.refetch()}
+-          />
++        {setupLoading && (
++          <ResourceStateView state={{ kind: 'loading', message: t('issueCreate.loading') }} />
+         )}
+-        {!issueTypesQuery.isLoading && !issueTypesQuery.error && issueTypes.length === 0 && (
+-          <ErrorState message={t('issueCreate.noTypes')} />
++        {setupRefreshing && (
++          <p role="status" className="text-sm text-text-muted">
++            {t('issueCreate.refreshing')}
++          </p>
+         )}
+-        {customFieldsQuery.error && (
+-          <ErrorState
+-            message={t('issueCreate.fieldsError')}
+-            onRetry={() => void customFieldsQuery.refetch()}
+-          />
++        {setupFailure && <ResourceStateView state={setupFailure} />}
++        {issueTypesQuery.isSuccess && issueTypes.length === 0 && (
++          <ResourceStateView state={{ kind: 'empty', message: t('issueCreate.noTypes') }} />
+         )}
+-        {(usersQuery.error || projectMembersQuery.error) && currentProject && (
+-          <ErrorState
+-            message={t('issueCreate.assigneesError')}
+-            onRetry={() => {
+-              if (usersQuery.error) void usersQuery.refetch()
+-              if (projectMembersQuery.error) void projectMembersQuery.refetch()
+-            }}
+-          />
++        {assigneeFailure && currentProject && <ResourceStateView state={assigneeFailure} />}
++        {assigneeFailure && assignee_id && (
++          <Button
++            type="button"
++            variant="outline"
++            onClick={() => setAssignees((previous) => ({ ...previous, [project_key]: '' }))}
++          >
++            {t('issueCreate.clearAssignee')}
++          </Button>
+         )}
+ 
+         <div className="grid gap-4 sm:grid-cols-2">
+-          <div className="space-y-2">
+-            <label htmlFor="issue-project" className="text-sm font-medium">
+-              {t('issueCreate.project')} *
+-            </label>
+-            <Select
+-              id="issue-project"
+-              value={selectedProjectKey}
+-              onChange={(e) => updateProjectKey(e.target.value)}
+-              disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
+-              required
+-            >
+-              {!currentProject && (
+-                <option value="" disabled>
+-                  {t('issueCreate.selectProject')}
+-                </option>
+-              )}
+-              {projects.map((p) => (
+-                <option key={p.key} value={p.key}>
+-                  {p.name} ({p.key})
+-                </option>
+-              ))}
+-            </Select>
+-          </div>
+-          <div className="space-y-2">
+-            <label htmlFor="issue-type" className="text-sm font-medium">
+-              {t('issueCreate.type')} *
+-            </label>
+-            <Select
+-              id="issue-type"
+-              value={selectedType}
+-              onChange={(e) => setType(e.target.value)}
+-              disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
+-              required
+-            >
+-              {issueTypes.map((issueType) => (
+-                <option key={issueType.id} value={issueType.name}>
+-                  {t(`issueType.${issueType.name.toLowerCase()}`, {
+-                    defaultValue: issueType.name,
+-                  })}
+-                </option>
+-              ))}
+-            </Select>
+-          </div>
++          {projectPicker}
++          <FormField id="issue-type" label={t('issueCreate.type')} required>
++            {(attrs) => (
++              <Select
++                {...attrs}
++                value={selectedType}
++                onChange={(e) => {
++                  setType(e.target.value)
++                  setTypeChanged(true)
++                }}
++                disabled={
++                  !issueTypesQuery.isSuccess ||
++                  issueTypesQuery.isFetching ||
++                  issueTypes.length === 0
++                }
++              >
++                {issueTypes.map((issueType) => (
++                  <option key={issueType.id} value={issueType.name}>
++                    {t(`issueType.${issueType.name.toLowerCase()}`, {
++                      defaultValue: issueType.name,
++                    })}
++                  </option>
++                ))}
++              </Select>
++            )}
++          </FormField>
+         </div>
+ 
+-        <div className="space-y-2">
+-          <label htmlFor="issue-summary" className="text-sm font-medium">
+-            {t('issueCreate.summary')} *
+-          </label>
+-          <Input
+-            id="issue-summary"
+-            type="text"
+-            placeholder={t('issueCreate.summaryPlaceholder')}
+-            value={summary}
+-            onChange={(e) => {
+-              setSummary(e.target.value)
+-              setValidationError(null)
+-            }}
+-            required
+-            className="min-h-11 sm:min-h-10"
+-            disabled={isPending}
+-          />
+-        </div>
++        <FormField
++          id="issue-summary"
++          label={t('issueCreate.summary')}
++          required
++          error={summaryTooLong ? t('issueCreate.summaryTooLong') : undefined}
++        >
++          {(attrs) => (
++            <Input
++              {...attrs}
++              type="text"
++              placeholder={t('issueCreate.summaryPlaceholder')}
++              value={summary}
++              onChange={(e) => {
++                setSummary(e.target.value)
++              }}
++            />
++          )}
++        </FormField>
+ 
+-        <div className="space-y-2">
+-          <label htmlFor="issue-description" className="text-sm font-medium">
+-            {t('issueCreate.description')}
+-          </label>
+-          <Textarea
+-            id="issue-description"
+-            rows={5}
+-            placeholder={t('issueCreate.descriptionPlaceholder')}
+-            value={description}
+-            onChange={(e) => setDescription(e.target.value)}
+-            disabled={isPending}
+-          />
+-        </div>
++        <FormField id="issue-description" label={t('issueCreate.description')}>
++          {(attrs) => (
++            <Textarea
++              {...attrs}
++              rows={5}
++              placeholder={t('issueCreate.descriptionPlaceholder')}
++              value={description}
++              onChange={(e) => setDescription(e.target.value)}
++            />
++          )}
++        </FormField>
+ 
+         <div className="grid gap-4 sm:grid-cols-2">
+-          <div className="space-y-2">
+-            <label htmlFor="issue-priority" className="text-sm font-medium">
+-              {t('issueCreate.priority')}
+-            </label>
+-            <Select
+-              id="issue-priority"
+-              value={priority}
+-              onChange={(e) => setPriority(e.target.value)}
+-              disabled={isPending}
+-            >
+-              <option value="Medium">{t('priority.medium')}</option>
+-              <option value="Highest">{t('priority.highest')}</option>
+-              <option value="High">{t('priority.high')}</option>
+-              <option value="Low">{t('priority.low')}</option>
+-              <option value="Lowest">{t('priority.lowest')}</option>
+-            </Select>
+-          </div>
+-          <div className="space-y-2">
+-            <label htmlFor="issue-assignee" className="text-sm font-medium">
+-              {t('issueCreate.assignee')}
+-            </label>
+-            <Select
+-              id="issue-assignee"
+-              value={assignee_id}
+-              onChange={(e) => setAssigneeId(e.target.value)}
+-              disabled={
+-                isPending ||
+-                usersQuery.isLoading ||
+-                projectMembersQuery.isLoading ||
+-                Boolean(usersQuery.error || projectMembersQuery.error)
+-              }
+-            >
+-              <option value="">{t('issueCreate.unassigned')}</option>
+-              {assignableUsers.map((u) => (
+-                <option key={u.id} value={u.id}>
+-                  {u.display_name || u.username}
+-                </option>
+-              ))}
+-            </Select>
+-          </div>
++          <FormField id="issue-priority" label={t('issueCreate.priority')}>
++            {(attrs) => (
++              <Select {...attrs} value={priority} onChange={(e) => setPriority(e.target.value)}>
++                <option value="Medium">{t('priority.medium')}</option>
++                <option value="Highest">{t('priority.highest')}</option>
++                <option value="High">{t('priority.high')}</option>
++                <option value="Low">{t('priority.low')}</option>
++                <option value="Lowest">{t('priority.lowest')}</option>
++              </Select>
++            )}
++          </FormField>
++          <FormField id="issue-assignee" label={t('issueCreate.assignee')}>
++            {(attrs) => (
++              <Select
++                {...attrs}
++                value={assignee_id}
++                onChange={(e) =>
++                  setAssignees((previous) => ({ ...previous, [project_key]: e.target.value }))
++                }
++                disabled={!assigneesReady}
++              >
++                <option value="">{t('issueCreate.unassigned')}</option>
++                {assignee_id && !assigneeAvailable && (
++                  <option value={assignee_id}>{t('issueCreate.assigneeUnavailable')}</option>
++                )}
++                {assignableUsers.map((u) => (
++                  <option key={u.id} value={u.id}>
++                    {u.display_name || u.username}
++                  </option>
++                ))}
++              </Select>
++            )}
++          </FormField>
+         </div>
+ 
++        {assignee_id && assigneesReady && !assigneeAvailable && (
++          <p role="alert" className="text-sm text-danger">
++            {t('issueCreate.assigneeUnavailable')}
++          </p>
++        )}
+         {customFields.length > 0 && (
+-          <fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
+-            <h2 className="text-sm font-semibold">{t('customFields.title')}</h2>
++          <fieldset className="space-y-3 border-t border-border pt-4">
++            <legend className="text-sm font-semibold">{t('customFields.title')}</legend>
+             <div className="grid gap-4 sm:grid-cols-2">
+               {customFields.map((field) => (
+-                <label
+-                  key={field.id}
+-                  className="space-y-2 text-sm font-medium [&_input]:min-h-11 [&_select]:min-h-11 sm:[&_input]:min-h-10 sm:[&_select]:min-h-10"
++                <FormField
++                  key={`${project_key}:${field.id}`}
++                  id={`issue-field-${field.id}`}
++                  label={field.name}
++                  required={field.is_required}
++                  error={
++                    validationField === field.id
++                      ? t('customFields.requiredMissing', { name: field.name })
++                      : undefined
++                  }
+                 >
+-                  <span>
+-                    {field.name}
+-                    {field.is_required ? ' *' : ''}
+-                  </span>
+-                  <CustomFieldValueInput
+-                    field={field}
+-                    value={customFieldValues[field.id]}
+-                    onSave={(value) => {
+-                      setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
+-                      setValidationError(null)
+-                    }}
+-                    commit="change"
+-                  />
+-                </label>
++                  {(attrs) => (
++                    <CustomFieldValueInput
++                      field={field}
++                      inputProps={attrs}
++                      value={customFieldValues[field.id]}
++                      onSave={(value) => {
++                        setProjectFieldValues((previous) => ({
++                          ...previous,
++                          [project_key]: { ...previous[project_key], [field.id]: value },
++                        }))
++                        setValidationField(null)
++                      }}
++                      commit="change"
++                    />
++                  )}
++                </FormField>
+               ))}
+             </div>
+           </fieldset>
+         )}
+-
+-        <div className="flex gap-2 pt-2">
+-          <Button type="submit" disabled={!canSubmit} className="min-h-11 gap-1 sm:min-h-10">
+-            <Plus className="h-4 w-4" />
+-            {isPending ? t('common.creating') : t('issueCreate.submit')}
+-          </Button>
+-          <Button
+-            type="button"
+-            variant="outline"
+-            className="min-h-11 sm:min-h-10"
+-            disabled={isPending}
+-            onClick={() => navigate(-1)}
+-          >
+-            {t('common.cancel')}
+-          </Button>
+-        </div>
+-      </form>
++      </FormPage>
+     </div>
+   )
+ }
+diff --git a/frontend/src/pages/issue-create/issue-create.test.tsx b/frontend/src/pages/issue-create/issue-create.test.tsx
+index 0fe8a2f..39137cc 100644
+--- a/frontend/src/pages/issue-create/issue-create.test.tsx
++++ b/frontend/src/pages/issue-create/issue-create.test.tsx
+@@ -1,12 +1,13 @@
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+-import { render, screen, waitFor } from '@testing-library/react'
++import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
++import { RouterProvider, createMemoryRouter, useLocation, useNavigate } from 'react-router'
+ 
+ import { IssueCreatePage } from './'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+ import { useAuthStore } from '@/shared/auth/store'
++import { ApiError } from '@sdlc/ui/lib'
+ 
+ const createIssue = vi.hoisted(() =>
+   vi.fn((input: Record<string, unknown>) => {
+@@ -114,31 +115,40 @@ function LocationProbe() {
+       <button type="button" onClick={() => navigate(-1)}>
+         Back in history
+       </button>
++      <button type="button" onClick={() => navigate('/projects')}>
++        Leave form
++      </button>
+     </>
+   )
+ }
+ 
+-function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
+-  const qc = new QueryClient({
++function wrapper(
++  children: React.ReactNode,
++  initialEntry = '/issues/create',
++  qc = new QueryClient({
+     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+-  })
++  }),
++) {
++  const router = createMemoryRouter(
++    [
++      {
++        path: '/issues/create',
++        element: (
++          <>
++            {children}
++            <LocationProbe />
++          </>
++        ),
++      },
++      { path: '/projects/:key/backlog', element: <div>Backlog</div> },
++      { path: '/projects', element: <div>Projects</div> },
++    ],
++    { initialEntries: [initialEntry] },
++  )
+   return (
+     <ThemeProvider>
+       <QueryClientProvider client={qc}>
+-        <MemoryRouter initialEntries={[initialEntry]}>
+-          <Routes>
+-            <Route
+-              path="/issues/create"
+-              element={
+-                <>
+-                  {children}
+-                  <LocationProbe />
+-                </>
+-              }
+-            />
+-            <Route path="/projects/:key/backlog" element={<div>Backlog</div>} />
+-          </Routes>
+-        </MemoryRouter>
++        <RouterProvider router={router} />
+       </QueryClientProvider>
+     </ThemeProvider>
+   )
+@@ -178,6 +188,8 @@ describe('IssueCreatePage', () => {
+       summary: 'Test issue',
+       custom_fields: { f1: 'custom value' },
+     })
++    await screen.findByText('Backlog')
++    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+   })
+ 
+   it('requires an explicit project choice when the URL points to an unavailable project', async () => {
+@@ -185,11 +197,12 @@ describe('IssueCreatePage', () => {
+     const user = userEvent.setup()
+ 
+     await screen.findByText('Выбранный проект недоступен. Выберите другой проект.')
+-    await user.type(screen.getByLabelText(/Заголовок/), 'Issue')
+-    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
++    expect(screen.queryByLabelText(/Заголовок/)).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /^создать$/i })).not.toBeInTheDocument()
+     expect(listCustomFields).not.toHaveBeenCalled()
+ 
+     await user.selectOptions(screen.getByLabelText(/Проект/), 'TT')
++    await user.type(await screen.findByLabelText(/Заголовок/), 'Issue')
+     await user.type(await screen.findByLabelText(/Required text/), 'ready')
+     await user.click(screen.getByRole('button', { name: /^создать$/i }))
+     await waitFor(() => expect(createIssue).toHaveBeenCalled())
+@@ -280,4 +293,213 @@ describe('IssueCreatePage', () => {
+       ),
+     )
+   })
++
++  it('keeps project-specific custom fields and assignees through selection and history', async () => {
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT&source=board'))
++    await user.type(await screen.findByLabelText(/Required text/), 'TT draft')
++    await user.selectOptions(screen.getByLabelText(/Исполнитель/), 'u2')
++    await user.selectOptions(screen.getByLabelText(/Проект/), 'OPS')
++    await user.type(await screen.findByLabelText(/Required text/), 'OPS draft')
++    expect(screen.getByLabelText(/Исполнитель/)).toHaveValue('')
++    await user.click(screen.getByRole('button', { name: 'Back in history' }))
++    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toHaveValue('TT'))
++    expect(screen.getByLabelText(/Required text/)).toHaveValue('TT draft')
++    expect(screen.getByLabelText(/Исполнитель/)).toHaveValue('u2')
++    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
++  })
++
++  it('does not silently unassign after a directory refetch failure', async () => {
++    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT', qc))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    await user.selectOptions(screen.getByLabelText(/Исполнитель/), 'u2')
++    listUsers.mockRejectedValueOnce(new ApiError(503, 'controlled failure'))
++    await act(() => qc.invalidateQueries({ queryKey: ['users'] }))
++    expect(screen.getByLabelText(/Исполнитель/)).toHaveValue('u2')
++    await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled())
++    await user.click(screen.getByRole('button', { name: /повторить/i }))
++    await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled())
++    expect(screen.getByLabelText(/Исполнитель/)).toHaveValue('u2')
++  })
++
++  it('requires an explicit clear if the selected assignee has been removed', async () => {
++    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT', qc))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    await user.selectOptions(screen.getByLabelText(/Исполнитель/), 'u2')
++    listUsers.mockResolvedValueOnce([])
++    await act(() => qc.invalidateQueries({ queryKey: ['users'] }))
++    expect(screen.getByLabelText(/Исполнитель/)).toHaveValue('u2')
++    await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled())
++    await user.selectOptions(screen.getByLabelText(/Исполнитель/), '')
++    expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
++  })
++
++  it('allows an explicit unassigned save during a directory outage without discarding other fields', async () => {
++    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT', qc))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    await user.selectOptions(screen.getByLabelText(/Исполнитель/), 'u2')
++    listUsers.mockRejectedValueOnce(new ApiError(503, 'controlled failure'))
++    await act(() => qc.invalidateQueries({ queryKey: ['users'] }))
++    await user.click(await screen.findByRole('button', { name: 'Снять назначение' }))
++    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft')
++    await user.click(screen.getByRole('button', { name: /^создать$/i }))
++    await waitFor(() => expect(createIssue).toHaveBeenCalled())
++    expect(createIssue.mock.calls[0]?.[0]).toMatchObject({ assignee_id: null })
++  })
++
++  it.each([403, 404])(
++    'hides CRUD after required-field HTTP %s while preserving a recoverable draft',
++    async (status) => {
++      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++      const user = userEvent.setup()
++      const view = render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT', qc))
++      await user.type(await screen.findByLabelText(/Required text/), 'private draft')
++      await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++      listCustomFields.mockRejectedValueOnce(new ApiError(status, 'diagnostic must stay hidden'))
++      await act(() => qc.invalidateQueries({ queryKey: ['custom-fields', 'TT'] }))
++      await waitFor(() =>
++        expect(
++          view.container.querySelector(
++            `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++          ),
++        ).toBeInTheDocument(),
++      )
++      expect(view.container.querySelector('form')).not.toBeInTheDocument()
++      expect(screen.queryByRole('button', { name: /^создать$/i })).not.toBeInTheDocument()
++      expect(screen.queryByRole('button', { name: /повторить/i })).not.toBeInTheDocument()
++      expect(screen.queryByText('diagnostic must stay hidden')).not.toBeInTheDocument()
++      await act(() => qc.invalidateQueries({ queryKey: ['custom-fields', 'TT'] }))
++      expect(await screen.findByLabelText(/Required text/)).toHaveValue('private draft')
++      expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft')
++    },
++  )
++
++  it.each([400, 422])(
++    'does not offer automatic retry for required-data HTTP %s',
++    async (status) => {
++      listCustomFields.mockRejectedValueOnce(new ApiError(status, 'diagnostic'))
++      render(wrapper(<IssueCreatePage />))
++      await screen.findByText('Не удалось загрузить поля проекта. Повторите попытку.')
++      expect(screen.queryByRole('button', { name: /повторить/i })).not.toBeInTheDocument()
++      expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
++    },
++  )
++
++  it('disables submission while required fields refresh without resetting editable input', async () => {
++    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT', qc))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    const existing = qc.getQueryData(['custom-fields', 'TT']) as Awaited<
++      ReturnType<typeof listCustomFields>
++    >
++    let resolve!: (value: typeof existing) => void
++    listCustomFields.mockImplementationOnce(
++      () =>
++        new Promise((done) => {
++          resolve = done
++        }),
++    )
++    act(() => {
++      void qc.invalidateQueries({ queryKey: ['custom-fields', 'TT'] })
++    })
++    await screen.findByText('Обновление данных формы...')
++    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
++    await user.type(screen.getByLabelText(/Заголовок/), ' updated')
++    await act(async () => resolve(existing))
++    await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled())
++    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft updated')
++    expect(screen.getByLabelText(/Required text/)).toHaveValue('ready')
++  })
++
++  it('uses Base pending lock to prevent repeated submissions before React updates', async () => {
++    let resolve!: (value: Awaited<ReturnType<typeof createIssue>>) => void
++    createIssue.mockImplementationOnce(
++      () =>
++        new Promise((done) => {
++          resolve = done
++        }),
++    )
++    const user = userEvent.setup()
++    const view = render(wrapper(<IssueCreatePage />))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    const form = view.container.querySelector('form')!
++    act(() => {
++      fireEvent.submit(form)
++      fireEvent.submit(form)
++    })
++    await waitFor(() => expect(createIssue).toHaveBeenCalledTimes(1))
++    expect(screen.getByLabelText(/Заголовок/)).toBeDisabled()
++    await act(async () => resolve({ id: 'new', project_key: 'TT' }))
++    await screen.findByText('Backlog')
++  })
++
++  it('guards navigation, keeps the draft on Escape and returns focus to the initiating action', async () => {
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />))
++    await user.type(await screen.findByLabelText(/Заголовок/), 'Draft')
++    const leave = screen.getByRole('button', { name: 'Leave form' })
++    await user.click(leave)
++    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
++    await user.keyboard('{Escape}')
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft')
++    expect(leave).toHaveFocus()
++    await user.click(leave)
++    await user.click(screen.getByRole('button', { name: 'Подтвердить' }))
++    await screen.findByText('Projects')
++  })
++
++  it('blocks unload only while unsaved values exist', async () => {
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />))
++    const clean = new Event('beforeunload', { cancelable: true })
++    window.dispatchEvent(clean)
++    expect(clean.defaultPrevented).toBe(false)
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    const dirty = new Event('beforeunload', { cancelable: true })
++    window.dispatchEvent(dirty)
++    expect(dirty.defaultPrevented).toBe(true)
++  })
++
++  it('links custom-field validation to its input and keeps the entered value', async () => {
++    const user = userEvent.setup()
++    const view = render(wrapper(<IssueCreatePage />))
++    await user.type(await screen.findByLabelText(/Required text/), '   ')
++    await user.type(screen.getByLabelText(/Заголовок/), 'Draft')
++    fireEvent.submit(view.container.querySelector('form')!)
++    await waitFor(() =>
++      expect(screen.getByLabelText(/Required text/)).toHaveAttribute('aria-invalid', 'true'),
++    )
++    expect(screen.getByLabelText(/Required text/)).toHaveAttribute(
++      'aria-describedby',
++      'issue-field-f1-error',
++    )
++    expect(screen.getByLabelText(/Required text/)).toHaveValue('   ')
++    expect(createIssue).not.toHaveBeenCalled()
++  })
++
++  it('matches the server 500-character summary bound using Unicode code points', async () => {
++    const user = userEvent.setup()
++    render(wrapper(<IssueCreatePage />))
++    await user.type(await screen.findByLabelText(/Required text/), 'ready')
++    fireEvent.change(screen.getByLabelText(/Заголовок/), {
++      target: { value: String.fromCodePoint(0x1f4a1).repeat(500) },
++    })
++    expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
++    fireEvent.change(screen.getByLabelText(/Заголовок/), { target: { value: 'a'.repeat(501) } })
++    expect(screen.getByLabelText(/Заголовок/)).toHaveAttribute('aria-invalid', 'true')
++    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
++  })
+ })
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index a2cfb28..4f6d34d 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -267,6 +267,10 @@
+     "noTypes": "No issue types are available.",
+     "fieldsError": "Could not load project fields. Please try again.",
+     "assigneesError": "Could not load assignees. You can create the issue without assigning it.",
++    "refreshing": "Refreshing form data...",
++    "assigneeUnavailable": "The selected assignee is unavailable. Choose another person or clear the assignment.",
++    "clearAssignee": "Clear assignment",
++    "summaryTooLong": "The summary must contain at most 500 characters.",
+     "submit": "Create"
+   },
+   "priority": {
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index 89ce7aa..a8db1ef 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -267,6 +267,10 @@
+     "noTypes": "Нет доступных типов задач.",
+     "fieldsError": "Не удалось загрузить поля проекта. Повторите попытку.",
+     "assigneesError": "Не удалось загрузить исполнителей. Задачу можно создать без назначения.",
++    "refreshing": "Обновление данных формы...",
++    "assigneeUnavailable": "Выбранный исполнитель недоступен. Выберите другого или снимите назначение.",
++    "clearAssignee": "Снять назначение",
++    "summaryTooLong": "Заголовок должен содержать не более 500 символов.",
+     "submit": "Создать"
+   },
+   "priority": {

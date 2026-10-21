@@ -1,0 +1,82 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useCreateIssueLink, useDeleteIssueLink } from './hooks'
+import type { IssueLink } from '@/api/link'
+
+const create = vi.hoisted(() => vi.fn())
+const remove = vi.hoisted(() => vi.fn())
+vi.mock('@/api/link', () => ({
+  listIssueLinks: vi.fn(),
+  createIssueLink: create,
+  deleteIssueLink: remove,
+}))
+const link: IssueLink = {
+  id: 'lk1',
+  source_id: 'i1',
+  source_key: 'TT-1',
+  target_id: 'i2',
+  target_key: 'TT-2',
+  link_type: 'blocks',
+}
+beforeEach(() => {
+  create.mockReset().mockResolvedValue(link)
+  remove.mockReset().mockResolvedValue(undefined)
+})
+
+describe('confirmed link cache updates', () => {
+  it('adds the acknowledged link to loaded endpoints but does not manufacture an unloaded directory', async () => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(['issue-links', 'i1'], [])
+    client.setQueryData(['issue-links', 'i3'], [link])
+    const { result, unmount } = renderHook(() => useCreateIssueLink('i1'), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await act(async () => {
+      await result.current.mutateAsync({ targetKey: 'TT-2', linkType: 'blocks' })
+    })
+    expect(client.getQueryData(['issue-links', 'i1'])).toEqual([link])
+    expect(client.getQueryData(['issue-links', 'i2'])).toBeUndefined()
+    expect(client.getQueryData(['issue-links', 'i3'])).toEqual([link])
+    unmount()
+    client.clear()
+  })
+
+  it('removes a confirmed deleted row from both endpoint caches and keeps other links', async () => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const other = { ...link, id: 'lk2' }
+    client.setQueryData(['issue-links', 'i1'], [link, other])
+    client.setQueryData(['issue-links', 'i2'], [link])
+    const { result, unmount } = renderHook(() => useDeleteIssueLink(), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await act(async () => {
+      await result.current.mutateAsync('lk1')
+    })
+    expect(client.getQueryData(['issue-links', 'i1'])).toEqual([other])
+    expect(client.getQueryData(['issue-links', 'i2'])).toEqual([])
+    unmount()
+    client.clear()
+  })
+
+  it('does not erase a row or invent success after a rejected deletion', async () => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(['issue-links', 'i1'], [link])
+    remove.mockRejectedValueOnce(new Error('server failed'))
+    const { result, unmount } = renderHook(() => useDeleteIssueLink(), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await act(async () => {
+      await expect(result.current.mutateAsync('lk1')).rejects.toThrow('server failed')
+    })
+    expect(client.getQueryData(['issue-links', 'i1'])).toEqual([link])
+    unmount()
+    client.clear()
+  })
+})

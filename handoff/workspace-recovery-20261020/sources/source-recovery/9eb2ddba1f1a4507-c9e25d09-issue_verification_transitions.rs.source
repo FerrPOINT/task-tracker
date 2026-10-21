@@ -1,0 +1,35 @@
+//! Fresh human project edit + actual Bug/default-board/graph/WIP choices.
+use app::auth::UserClaims;
+use axum::{
+    Extension, Json,
+    extract::{Path, State},
+};
+use domain::issue_verification_transitions::IssueVerificationTransitions;
+use shared::{AppError, IssueId, UserId};
+use std::{str::FromStr, sync::Arc};
+#[utoipa::path(get,path="/api/v1/issues/{id}/verification-transitions",tag="issues",
+ params(("id"=String,Path,description="Actual Bug UUID")),
+ responses((status=200,body=IssueVerificationTransitions),(status=401),(status=403),(status=404)),security(("bearer"=[])))]
+pub async fn read(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
+    Path(id): Path<String>,
+) -> Result<
+    (
+        [(&'static str, &'static str); 1],
+        Json<IssueVerificationTransitions>,
+    ),
+    AppError,
+> {
+    let user = UserId::from_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+    let id = IssueId::from_str(&id).map_err(|_| AppError::validation("invalid Bug UUID"))?;
+    Ok((
+        [("cache-control", "no-store")],
+        Json(
+            ctx.services
+                .issue
+                .verification_transitions(id, user)
+                .await?,
+        ),
+    ))
+}

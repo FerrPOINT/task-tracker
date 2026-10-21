@@ -1,0 +1,1222 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index b8a23cd..5715533 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,16 @@
+ 
+ ## [Unreleased]
+ 
++- Issue detail использует один Base navigation/reload guard для описания и
++  комментариев. Несохранённый комментарий нельзя потерять при смене вкладки,
++  редактора или отмене без подтверждения. Pending блокирует смену редактора,
++  удаление и уход; успешный ACK отменяет устаревший blocked transition.
++  Вкладки активируются кликом/Enter/Space, а не возвратом фокуса: отмена
++  перехода через Escape больше не запускает тот же переход повторно.
++  Удаление использует Base ConfirmDialog, обновляет cache только после ACK и
++  ждёт refetch перед закрытием; focus возвращается к инициатору или списку.
++  SSO draft recovery и unknown-write reconciliation пока не закрыты.
++
+ - Переключение create/edit и разных комментариев открывает форму с правильным
+   исходным текстом. Подтверждение сохранения закрывает только тот сеанс editor,
+   который отправил запрос; поздний ACK не закрывает более новый editor даже
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 2fde97a..afc9a13 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -5,7 +5,9 @@ Route patterns, роли, fixtures и обязательные acceptance states
+ [ui-routes.json](ui-routes.json). Это целевая матрица приёмки, а не доказательство
+ реализации всех состояний. Release acceptance остаётся `pending`.
+ 
+-Текущий create/search source checkpoint: parent
++Актуальный Base pin: [`.base-revision`](../.base-revision). Source checks ниже
++описывают отдельные исторические checkpoints, не текущие runtime images.
++Create/search source checkpoint (исторический): parent
+ `4785447d9b428803395e3a43bbda6b1d49cbb0c7`, Base
+ `ce43bc6b4cfa9c80fbd175958ad6abb38c550639`.
+ [Проверки и ограничения](UI_ACCEPTANCE_EVIDENCE.md).
+@@ -30,7 +32,14 @@ Base `6f63595a891f78b96b665889f80e6eb5cf34381a`.
+   media-query подписка и повторное монтирование aside удалены. PageHeader владеет
+   единственным h1 и actions. Разделы не оформляются вложенными UI cards.
+ - Summary/description editor использует FormField/Input/Textarea/PendingForm и
+-  UnsavedChangesGuard. Query-вкладки не теряют draft; уход со страницы блокируется.
++  общий page-owned UnsavedChangesGuard с комментариями, без конкурирующих blockers.
++  Query-вкладки сохраняют description draft; при dirty comment смена вкладки,
++  pathname и reload защищены. Отмена перехода сохраняет оба draft. Вкладка
++  активируется кликом/Enter/Space; возврат фокуса не повторяет переход. Смена/отмена
++  comment editor требует подтверждения discard, pending блокирует editor actions.
++  Comment delete использует ConfirmDialog и fallback в список; cache удаляет
++  строку только после ACK, dialog ждёт активного refetch. SSO recovery и unknown
++  mutation outcome остаются открытыми; эти source changes не означают release acceptance.
+   Ошибка сохранения сохраняет ввод. Custom field draft не затирается refetch.
+ - HTTP status сохраняется в Base ApiError для dashboard/projects/issue reads.
+   Root 403/404 не показывают cached issue и отключают comments/worklogs reads;
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index e115ce1..d09de2f 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -2231,14 +2231,24 @@ for (const theme of ['dark', 'gray', 'light']) {
+       const edit = panel.getByRole('button', { name: 'Изменить', exact: true })
+       await field.fill('Safe create draft')
+       await edit.nth(0).click()
++      const discard = page.getByRole('alertdialog', { name: 'Отменить изменения комментария?' })
++      await expect(discard).toBeVisible()
++      await discard.getByRole('button', { name: 'Отмена', exact: true }).click()
++      await expect(field).toHaveValue('Safe create draft')
++      await edit.nth(0).click()
++      await discard.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+       await expect(field).toHaveValue('Safe first comment')
+       await field.fill('Submitted first edit')
+       await panel.getByRole('button', { name: 'Сохранить', exact: true }).click()
+       await expect.poll(() => writes).toBe(1)
+-      await edit.nth(1).click()
+-      await expect(field).toHaveValue('Safe second comment')
+-      await edit.nth(0).click()
+-      await field.fill('Safe newer unsaved edit')
++      await expect(edit.nth(1)).toBeDisabled()
++      await expect(
++        panel.getByRole('button', { name: 'Удалить', exact: true }).first(),
++      ).toBeDisabled()
++      await expect(field).toHaveValue('Submitted first edit')
++      await page.getByRole('tab', { name: 'Активность', exact: true }).click()
++      const leave = page.getByRole('alertdialog')
++      await expect(leave.getByRole('button', { name: 'Подтвердить', exact: true })).toBeDisabled()
+       const ack = page.waitForResponse(
+         (response) =>
+           response.url().endsWith('/api/v1/comments/identity-first') &&
+@@ -2246,8 +2256,12 @@ for (const theme of ['dark', 'gray', 'light']) {
+       )
+       release()
+       await ack
++      await expect(leave).toBeHidden()
++      await expect(page).toHaveURL(/tab=comments/)
+       await expect(panel.getByText('Submitted first edit', { exact: true })).toBeVisible()
+-      await expect(field).toHaveValue('Safe newer unsaved edit')
++      await expect(field).toHaveValue('')
++      await edit.nth(1).click()
++      await field.fill('Safe newer unsaved edit')
+       await expect(panel.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
+       await page.screenshot({
+         path: testInfo.outputPath(`comment-editor-identity-${theme}-1920.png`),
+@@ -2255,6 +2269,7 @@ for (const theme of ['dark', 'gray', 'light']) {
+         animations: 'disabled',
+       })
+       await panel.getByRole('button', { name: 'Отмена', exact: true }).click()
++      await discard.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+       await expect(field).toHaveValue('')
+       expect(errors).toEqual([])
+     } finally {
+@@ -2262,6 +2277,138 @@ for (const theme of ['dark', 'gray', 'light']) {
+     }
+   })
+ 
++  test(`comment draft navigation and deletion focus follow Base in ${theme}`, async ({
++    page,
++  }, testInfo) => {
++    test.setTimeout(120_000)
++    await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
++    await installTrackerMocks(page)
++    const errors: string[] = []
++    page.on('pageerror', (error) => errors.push(error.message))
++    let expectedReadStatus = 200
++    page.on('console', (message) => {
++      if (
++        message.type() === 'error' &&
++        !(
++          [403, 404].includes(expectedReadStatus) &&
++          message.text().includes(`status of ${expectedReadStatus}`)
++        )
++      )
++        errors.push(message.text())
++    })
++    let comments = [
++      {
++        id: 'draft-focus',
++        issue_id: mockUser.issueId,
++        author_id: mockUser.id,
++        author_name: 'Demo User',
++        body: 'Safe removable comment',
++        created_at: '2026-09-01T10:00:00Z',
++        updated_at: '2026-09-01T10:00:00Z',
++      },
++    ]
++    let deletes = 0
++    let afterDeleteStatus = 200
++    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
++      routeJson(
++        route,
++        expectedReadStatus === 200 ? { comments } : { error: 'Controlled unavailable comments' },
++        expectedReadStatus,
++      ),
++    )
++    await page.route('**/api/v1/comments/draft-focus', async (route) => {
++      expect(route.request().method()).toBe('DELETE')
++      deletes++
++      comments = []
++      expectedReadStatus = afterDeleteStatus
++      return route.fulfill({ status: 204 })
++    })
++    await page.goto(`/issues/${mockUser.issueId}?tab=comments`)
++    for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++      await page.setViewportSize({ width, height: 1080 })
++      const field = page.getByRole('textbox', { name: 'Комментарий', exact: true })
++      await field.fill(`Safe navigation draft ${width}`)
++      await page.getByRole('tab', { name: 'Активность', exact: true }).click()
++      const leave = page.getByRole('alertdialog')
++      await expect(leave).toBeVisible()
++      if (width === 375 || width === 1920)
++        await page.screenshot({
++          path: testInfo.outputPath(`comment-leave-${theme}-${width}.png`),
++          fullPage: true,
++          animations: 'disabled',
++        })
++      await leave.press('Escape')
++      await expect(leave).toBeHidden()
++      await expect(field).toHaveValue(`Safe navigation draft ${width}`)
++      await expect(page).toHaveURL(/tab=comments/)
++      await page.getByRole('tab', { name: 'Активность', exact: true }).focus()
++      await page.getByRole('tab', { name: 'Активность', exact: true }).press('Enter')
++      await leave.getByRole('button', { name: 'Подтвердить', exact: true }).click()
++      await expect(page).not.toHaveURL(/tab=comments/)
++      await expect(page.getByRole('tabpanel', { name: 'Активность', exact: true })).toBeVisible()
++      await page.goBack()
++      await expect(page).toHaveURL(/tab=comments/)
++      await expect(field).toHaveValue('')
++      expect(
++        await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
++      ).toBeLessThanOrEqual(1)
++    }
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    const panel = page.getByRole('tabpanel')
++    const remove = panel.getByRole('button', { name: 'Удалить', exact: true })
++    await remove.click()
++    let dialog = page.getByRole('alertdialog')
++    await dialog.press('Escape')
++    await expect(remove).toBeFocused()
++    await remove.click()
++    dialog = page.getByRole('alertdialog')
++    await dialog.getByRole('button', { name: 'Подтвердить', exact: true }).click()
++    await expect(panel.getByText('Safe removable comment', { exact: true })).toBeHidden()
++    await expect(panel.locator('[tabindex="-1"][aria-label="Комментарии"]')).toBeFocused()
++    await page.screenshot({
++      path: testInfo.outputPath(`comment-delete-focus-${theme}-1920.png`),
++      fullPage: true,
++      animations: 'disabled',
++    })
++    for (const status of [403, 404]) {
++      expectedReadStatus = 200
++      afterDeleteStatus = status
++      comments = [
++        {
++          id: 'draft-focus',
++          issue_id: mockUser.issueId,
++          author_id: mockUser.id,
++          author_name: 'Demo User',
++          body: 'Safe removable comment',
++          created_at: '2026-09-01T10:00:00Z',
++          updated_at: '2026-09-01T10:00:00Z',
++        },
++      ]
++      await page.goto(`/issues/${mockUser.issueId}?tab=comments`)
++      await page.getByRole('tabpanel').getByRole('button', { name: 'Удалить', exact: true }).click()
++      await page
++        .getByRole('alertdialog')
++        .getByRole('button', { name: 'Подтвердить', exact: true })
++        .click()
++      const currentPanel = page.getByRole('tabpanel')
++      await expect(
++        currentPanel.locator(
++          `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++        ),
++      ).toBeVisible()
++      await expect(currentPanel.locator('[tabindex="-1"][aria-label="Комментарии"]')).toBeFocused()
++      await expect(currentPanel.getByRole('textbox')).toHaveCount(0)
++      await expect(currentPanel.getByText('Safe removable comment', { exact: true })).toHaveCount(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`comment-delete-focus-${theme}-${status}-1920.png`),
++        fullPage: true,
++        animations: 'disabled',
++      })
++    }
++    expect(deletes).toBe(3)
++    expect(errors).toEqual([])
++  })
++
+   test(`comment form uses Base pending and field semantics in ${theme}`, async ({
+     page,
+   }, testInfo) => {
+@@ -3503,46 +3650,48 @@ test.describe('smoke', () => {
+     await page.screenshot({ path: testInfo.outputPath('draft-save-failure.png'), fullPage: true })
+   })
+ 
+-  test('login then navigate through dashboard, projects, board and create issue', async ({
+-    page,
+-    baseURL,
+-  }, testInfo) => {
+-    test.setTimeout(360_000)
+-    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+-    await installTrackerMocks(page)
+-
+-    await page.goto(`${appBaseURL}/`)
+-    await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
+-    await expect(page.getByRole('link', { name: 'Создать', exact: true })).toHaveCount(1)
+-    await expect(
+-      page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
+-    ).toBeVisible()
+-
+-    await page.goto(`${appBaseURL}/projects`)
+-    await expect(page.getByText(mockUser.name)).toBeVisible()
+-
+-    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
+-    await expect(page.getByText('Smoke issue').first()).toBeVisible()
++  for (const theme of ['gray', 'dark', 'light']) {
++    test(`login then navigate through dashboard, projects, board and create issue in ${theme}`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(360_000)
++      const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++      await installTrackerMocks(page)
+ 
+-    await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
+-    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+-    const createLinks = page.locator('main a[href^="/issues/create"]')
+-    await expect(createLinks).toHaveCount(2)
+-    await createLinks.last().click()
+-    await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
+-    await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
++      await page.goto(`${appBaseURL}/`)
++      await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
++      await expect(page.getByRole('link', { name: 'Создать', exact: true })).toHaveCount(1)
++      await expect(
++        page.getByRole('heading', {
++          name: /dashboard|team dashboard|мои задачи|командный дашборд/i,
++        }),
++      ).toBeVisible()
+ 
+-    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
+-    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+-    await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
+-    await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+-    await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
+-    await expect(
+-      page.getByRole('button', { name: /stop watching|перестать следить/i }),
+-    ).toBeVisible()
+-    await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
++      await page.goto(`${appBaseURL}/projects`)
++      await expect(page.getByText(mockUser.name)).toBeVisible()
++
++      await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
++      await expect(page.getByText('Smoke issue').first()).toBeVisible()
++
++      await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
++      await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
++      const createLinks = page.locator('main a[href^="/issues/create"]')
++      await expect(createLinks).toHaveCount(2)
++      await createLinks.last().click()
++      await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
++      await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
++
++      await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
++      await expect(page.getByText('Smoke issue').first()).toBeVisible()
++      await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
++      await expect(page.getByText('Issue detail smoke description')).toBeVisible()
++      await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
++      await expect(
++        page.getByRole('button', { name: /stop watching|перестать следить/i }),
++      ).toBeVisible()
++      await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
+ 
+-    for (const theme of ['gray', 'dark', 'light']) {
+       await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+       for (const viewport of [
+         { width: 375, height: 812 },
+@@ -3661,6 +3810,6 @@ test.describe('smoke', () => {
+           })
+         }
+       }
+-    }
+-  })
++    })
++  }
+ })
+diff --git a/frontend/src/features/comments/model/use-comments.test.tsx b/frontend/src/features/comments/model/use-comments.test.tsx
+new file mode 100644
+index 0000000..ad1a48a
+--- /dev/null
++++ b/frontend/src/features/comments/model/use-comments.test.tsx
+@@ -0,0 +1,84 @@
++import { act, renderHook, waitFor } from '@testing-library/react'
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { describe, expect, it, vi } from 'vitest'
++import { useComments, useDeleteComment } from './use-comments'
++import type { Comment } from '@/entities/comment/model'
++
++const api = vi.hoisted(() => ({ list: vi.fn(), remove: vi.fn() }))
++vi.mock('@/api/comment', () => ({
++  listComments: api.list,
++  deleteComment: api.remove,
++  createComment: vi.fn(),
++  updateComment: vi.fn(),
++}))
++
++const comment: Comment = {
++  id: 'c1',
++  issueId: 'i1',
++  authorId: 'u1',
++  body: 'Safe fixture',
++  createdAt: '2026-10-20T00:00:00Z',
++  updatedAt: '2026-10-20T00:00:00Z',
++}
++
++describe('confirmed comment deletion', () => {
++  it('removes only the acknowledged row and stays pending through the active refresh', async () => {
++    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    client.setQueryData(['comments', 'i1'], [comment, { ...comment, id: 'c2' }])
++    let resolve!: (comments: Comment[]) => void
++    api.list.mockImplementation(
++      () =>
++        new Promise<Comment[]>((done) => {
++          resolve = done
++        }),
++    )
++    api.remove.mockResolvedValue(undefined)
++    const { result, unmount } = renderHook(
++      () => ({
++        query: useComments('i1'),
++        mutation: useDeleteComment('i1'),
++      }),
++      {
++        wrapper: ({ children }) => (
++          <QueryClientProvider client={client}>{children}</QueryClientProvider>
++        ),
++      },
++    )
++    await waitFor(() => expect(api.list).toHaveBeenCalled())
++    let settled = false
++    let write!: Promise<unknown>
++    act(() => {
++      write = result.current.mutation.mutateAsync('c1').then(() => {
++        settled = true
++      })
++    })
++    await waitFor(() => expect(result.current.query.data?.map((item) => item.id)).toEqual(['c2']))
++    expect(result.current.mutation.isPending).toBe(true)
++    expect(settled).toBe(false)
++    await act(async () => {
++      resolve([{ ...comment, id: 'c2' }])
++      await write
++    })
++    await waitFor(() => expect(result.current.mutation.isPending).toBe(false))
++    expect(settled).toBe(true)
++    unmount()
++    client.clear()
++  })
++
++  it('does not remove cached rows before a delete acknowledgement', async () => {
++    const client = new QueryClient()
++    client.setQueryData(['comments', 'i1'], [comment])
++    api.remove.mockRejectedValue(new Error('Controlled rejection'))
++    const { result, unmount } = renderHook(() => useDeleteComment('i1'), {
++      wrapper: ({ children }) => (
++        <QueryClientProvider client={client}>{children}</QueryClientProvider>
++      ),
++    })
++    await act(async () => {
++      await expect(result.current.mutateAsync('c1')).rejects.toThrow('Controlled rejection')
++    })
++    expect(client.getQueryData(['comments', 'i1'])).toEqual([comment])
++    unmount()
++    client.clear()
++  })
++})
+diff --git a/frontend/src/features/comments/model/use-comments.ts b/frontend/src/features/comments/model/use-comments.ts
+index 3e549c0..c295a1d 100644
+--- a/frontend/src/features/comments/model/use-comments.ts
++++ b/frontend/src/features/comments/model/use-comments.ts
+@@ -35,8 +35,11 @@ export function useDeleteComment(issueId: string) {
+   const queryClient = useQueryClient()
+   return useMutation({
+     mutationFn: (id: string) => deleteComment(id),
+-    onSuccess: () => {
+-      queryClient.invalidateQueries({ queryKey: ['comments', issueId] })
++    onSuccess: async (_, id) => {
++      queryClient.setQueryData<Comment[]>(['comments', issueId], (comments) =>
++        comments?.filter((comment) => comment.id !== id),
++      )
++      await queryClient.invalidateQueries({ queryKey: ['comments', issueId] })
+     },
+   })
+ }
+diff --git a/frontend/src/features/comments/ui/CommentList.tsx b/frontend/src/features/comments/ui/CommentList.tsx
+index cc3fc50..04856b8 100644
+--- a/frontend/src/features/comments/ui/CommentList.tsx
++++ b/frontend/src/features/comments/ui/CommentList.tsx
+@@ -1,17 +1,11 @@
+-import { memo, useId, useState } from 'react'
++import { memo, useEffect, useId, useRef, useState } from 'react'
+ import { CommentBody } from '@/entities/comment/ui/CommentBody'
+ import { useTranslation } from 'react-i18next'
+ import { useForm } from 'react-hook-form'
+ import { zodResolver } from '@hookform/resolvers/zod'
+ import { z } from 'zod'
+ import {
+-  AlertDialog,
+-  AlertDialogAction,
+-  AlertDialogCancel,
+-  AlertDialogContent,
+-  AlertDialogDescription,
+-  AlertDialogHeader,
+-  AlertDialogTitle,
++  ConfirmDialog,
+   Button,
+   FormField,
+   PendingForm,
+@@ -32,6 +26,7 @@ interface CommentFormProps {
+   onCancel?: () => void
+   initialBody?: string
+   submitLabel?: string
++  onDraftStateChange?: (state: { dirty: boolean; pending: boolean }) => void
+ }
+ 
+ export function CommentForm({
+@@ -39,6 +34,7 @@ export function CommentForm({
+   onCancel,
+   initialBody = '',
+   submitLabel,
++  onDraftStateChange,
+ }: CommentFormProps) {
+   const { t } = useTranslation()
+   const bodyId = useId()
+@@ -51,6 +47,14 @@ export function CommentForm({
+     defaultValues: { body: initialBody },
+   })
+   const [submitError, setSubmitError] = useState<string | null>(null)
++  const { isDirty, isSubmitting } = form.formState
++  useEffect(() => {
++    onDraftStateChange?.({ dirty: isDirty, pending: isSubmitting })
++  }, [isDirty, isSubmitting, onDraftStateChange])
++  useEffect(
++    () => () => onDraftStateChange?.({ dirty: false, pending: false }),
++    [onDraftStateChange],
++  )
+ 
+   const handleSubmit = form.handleSubmit(async (values) => {
+     setSubmitError(null)
+@@ -103,6 +107,7 @@ interface CommentItemProps {
+   currentUserId?: string
+   onEdit: (comment: Comment) => void
+   onDelete: (commentId: string) => void
++  disabled?: boolean
+ }
+ 
+ export const CommentItem = memo(function CommentItem({
+@@ -110,6 +115,7 @@ export const CommentItem = memo(function CommentItem({
+   currentUserId,
+   onEdit,
+   onDelete,
++  disabled,
+ }: CommentItemProps) {
+   const { t, i18n } = useTranslation()
+   const isAuthor = currentUserId ? comment.authorId === currentUserId : false
+@@ -131,13 +137,14 @@ export const CommentItem = memo(function CommentItem({
+         </div>
+         {isAuthor && (
+           <div className="flex gap-2">
+-            <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
++            <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onEdit(comment)}>
+               {t('common.edit')}
+             </Button>
+             <Button
+               variant="ghost"
+               size="sm"
+               className="text-danger"
++              disabled={disabled}
+               onClick={() => onDelete(comment.id)}
+             >
+               {t('common.delete')}
+@@ -155,9 +162,16 @@ interface CommentListProps {
+   currentUserId?: string
+   onEdit: (comment: Comment) => void
+   onDelete: (commentId: string) => void
++  disabled?: boolean
+ }
+ 
+-export function CommentList({ comments, currentUserId, onEdit, onDelete }: CommentListProps) {
++export function CommentList({
++  comments,
++  currentUserId,
++  onEdit,
++  onDelete,
++  disabled,
++}: CommentListProps) {
+   const { t } = useTranslation()
+   if (comments.length === 0) {
+     return <p className="text-sm text-text-muted">{t('comments.empty')}</p>
+@@ -171,6 +185,7 @@ export function CommentList({ comments, currentUserId, onEdit, onDelete }: Comme
+           currentUserId={currentUserId}
+           onEdit={onEdit}
+           onDelete={onDelete}
++          disabled={disabled}
+         />
+       ))}
+     </div>
+@@ -180,19 +195,34 @@ export function CommentList({ comments, currentUserId, onEdit, onDelete }: Comme
+ interface CommentsPanelProps {
+   issueId: string
+   currentUserId?: string
++  onDraftStateChange?: (state: { dirty: boolean; pending: boolean }) => void
+ }
+ 
+-export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
++export function CommentsPanel({ issueId, currentUserId, onDraftStateChange }: CommentsPanelProps) {
+   const { t } = useTranslation()
+   const [editing, setEditing] = useState<{ comment: Comment } | null>(null)
+   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+   const [deleteError, setDeleteError] = useState<string | null>(null)
++  const [formState, setFormState] = useState({ dirty: false, pending: false })
++  const [requestedEditor, setRequestedEditor] = useState<{ comment: Comment | null } | null>(null)
++  const fallbackRef = useRef<HTMLDivElement>(null)
+   const commentsQuery = useComments(issueId)
+   const { data: comments, isLoading } = commentsQuery
+   const create = useCreateComment(issueId)
+   const update = useUpdateComment(issueId)
+   const remove = useDeleteComment(issueId)
++  const pending = formState.pending || create.isPending || update.isPending || remove.isPending
++  useEffect(() => {
++    onDraftStateChange?.({ dirty: formState.dirty, pending })
++  }, [formState.dirty, pending, onDraftStateChange])
++  useEffect(
++    () => () => onDraftStateChange?.({ dirty: false, pending: false }),
++    [onDraftStateChange],
++  )
++  useEffect(() => {
++    if (!formState.dirty && !pending) setRequestedEditor(null)
++  }, [formState.dirty, pending])
+ 
+   const errorState = commentsQuery.error
+     ? resourceErrorState(commentsQuery.error, () => void commentsQuery.refetch(), {
+@@ -200,14 +230,19 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
+         message: t('comments.loadError'),
+       })
+     : undefined
+-  if (errorState && errorState.kind !== 'partial-error') {
+-    return <ResourceStateView state={errorState} />
+-  }
+-  if (isLoading) {
+-    return <ResourceStateView state={{ kind: 'loading', message: t('common.loading') }} />
+-  }
+-  if (comments === undefined) {
+-    return <ResourceStateView state={{ kind: 'error', message: t('common.noData') }} />
++  if ((errorState && errorState.kind !== 'partial-error') || isLoading || comments === undefined) {
++    return (
++      <div ref={fallbackRef} tabIndex={-1} aria-label={t('comments.title')} className="space-y-6">
++        <ResourceStateView
++          state={
++            errorState ??
++            (isLoading
++              ? { kind: 'loading', message: t('common.loading') }
++              : { kind: 'error', message: t('common.noData') })
++          }
++        />
++      </div>
++    )
+   }
+ 
+   const handleCreate = (input: CreateCommentInput) => create.mutateAsync(input)
+@@ -219,67 +254,85 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
+   }
+ 
+   const handleEdit = (comment: Comment) => {
+-    setEditing({ comment })
++    if (editing?.comment.id === comment.id) return
++    requestEditor(comment)
++  }
++
++  const requestEditor = (comment: Comment | null) => {
++    if (pending) return
++    if (formState.dirty) setRequestedEditor({ comment })
++    else setEditing(comment ? { comment } : null)
+   }
+ 
+   const handleDelete = (commentId: string) => {
++    if (pending) return
+     setPendingDeleteId(commentId)
+     setDeleteError(null)
+     setDeleteConfirmOpen(true)
+   }
+ 
+   return (
+-    <div className="space-y-6">
++    <div ref={fallbackRef} tabIndex={-1} aria-label={t('comments.title')} className="space-y-6">
+       {errorState && <ResourceStateView state={errorState} />}
+       {editing ? (
+         <CommentForm
+           key={`edit:${editing.comment.id}`}
+           initialBody={editing.comment.body}
+           onSubmit={handleUpdate}
+-          onCancel={() => setEditing(null)}
++          onCancel={() => requestEditor(null)}
++          onDraftStateChange={setFormState}
+           submitLabel={t('common.save')}
+         />
+       ) : (
+-        <CommentForm key="create" onSubmit={handleCreate} submitLabel={t('comments.add')} />
++        <CommentForm
++          key="create"
++          onSubmit={handleCreate}
++          submitLabel={t('comments.add')}
++          onDraftStateChange={setFormState}
++        />
+       )}
+       <CommentList
+         comments={comments}
+         currentUserId={currentUserId}
+         onEdit={handleEdit}
+         onDelete={handleDelete}
++        disabled={pending}
+       />
+-      <AlertDialog
++      <ConfirmDialog
++        open={requestedEditor !== null}
++        onOpenChange={(open) => {
++          if (!open) setRequestedEditor(null)
++        }}
++        title={t('comments.discardTitle')}
++        description={t('comments.discardDescription')}
++        confirmDisabled={pending}
++        fallbackFocusRef={fallbackRef}
++        onConfirm={() => {
++          if (pending || !requestedEditor) return
++          setEditing(requestedEditor.comment ? { comment: requestedEditor.comment } : null)
++          setRequestedEditor(null)
++        }}
++      />
++      <ConfirmDialog
+         open={deleteConfirmOpen}
+-        onOpenChange={(open) => !remove.isPending && setDeleteConfirmOpen(open)}
+-      >
+-        <AlertDialogContent>
+-          <AlertDialogHeader>
+-            <AlertDialogTitle>{t('common.delete')}</AlertDialogTitle>
+-            <AlertDialogDescription>{t('comments.deleteConfirm')}</AlertDialogDescription>
+-          </AlertDialogHeader>
+-          {deleteError && (
+-            <p role="alert" className="text-sm text-danger">
+-              {deleteError}
+-            </p>
+-          )}
+-          <div className="flex justify-end gap-2">
+-            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
+-            <AlertDialogAction
+-              disabled={remove.isPending}
+-              onClick={(event) => {
+-                event.preventDefault()
+-                if (!pendingDeleteId) return
+-                remove.mutate(pendingDeleteId, {
+-                  onSuccess: () => setDeleteConfirmOpen(false),
+-                  onError: (error) => setDeleteError(error.message),
+-                })
+-              }}
+-            >
+-              {remove.isPending ? t('common.loading') : t('common.confirm')}
+-            </AlertDialogAction>
+-          </div>
+-        </AlertDialogContent>
+-      </AlertDialog>
++        onOpenChange={setDeleteConfirmOpen}
++        title={t('common.delete')}
++        description={t('comments.deleteConfirm')}
++        error={deleteError}
++        isPending={remove.isPending}
++        fallbackFocusRef={fallbackRef}
++        onConfirm={async () => {
++          if (!pendingDeleteId || pending) return
++          setDeleteError(null)
++          try {
++            await remove.mutateAsync(pendingDeleteId)
++            setEditing((current) => (current?.comment.id === pendingDeleteId ? null : current))
++            setDeleteConfirmOpen(false)
++          } catch (error) {
++            setDeleteError(error instanceof Error ? error.message : t('common.error'))
++          }
++        }}
++      />
+     </div>
+   )
+ }
+diff --git a/frontend/src/features/comments/ui/CommentsPanel.test.tsx b/frontend/src/features/comments/ui/CommentsPanel.test.tsx
+index 69ccc24..2affc78 100644
+--- a/frontend/src/features/comments/ui/CommentsPanel.test.tsx
++++ b/frontend/src/features/comments/ui/CommentsPanel.test.tsx
+@@ -1,15 +1,20 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
++import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+ import { I18nextProvider } from 'react-i18next'
+ import i18n from '@/shared/i18n/test-config'
+ import { CommentsPanel } from './CommentList'
+ 
+-const mocks = vi.hoisted(() => ({ query: vi.fn(), refetch: vi.fn(), update: vi.fn() }))
++const mocks = vi.hoisted(() => ({
++  query: vi.fn(),
++  refetch: vi.fn(),
++  update: vi.fn(),
++  remove: vi.fn(),
++}))
+ vi.mock('../model/use-comments', () => ({
+   useComments: mocks.query,
+   useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+   useUpdateComment: () => ({ mutateAsync: mocks.update, isPending: false }),
+-  useDeleteComment: () => ({ mutate: vi.fn(), isPending: false }),
++  useDeleteComment: () => ({ mutateAsync: mocks.remove, isPending: false }),
+ }))
+ 
+ const comment = {
+@@ -32,7 +37,9 @@ function show(data: (typeof comment)[] | undefined, error: unknown = null, isLoa
+ beforeEach(() => {
+   vi.clearAllMocks()
+   mocks.update.mockReset()
++  mocks.remove.mockReset()
+   i18n.addResource('ru', 'translation', 'common.retry', 'Повторить')
++  i18n.addResource('ru', 'translation', 'common.confirm', 'Подтвердить')
+ })
+ 
+ describe('CommentsPanel editor identity', () => {
+@@ -44,13 +51,36 @@ describe('CommentsPanel editor identity', () => {
+     fireEvent.click(button)
+   }
+ 
+-  it('loads the selected comment instead of reusing the create draft', () => {
++  it('requires confirmation before replacing a create draft and allows staying', async () => {
+     show([comment, second])
+     fireEvent.change(field(), { target: { value: 'Unsubmitted create draft' } })
+     edit(0)
++    let dialog = await screen.findByRole('alertdialog')
++    expect(screen.getByDisplayValue('Unsubmitted create draft')).toBeInTheDocument()
++    fireEvent.click(within(dialog).getByRole('button', { name: /отмен/i }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(field()).toHaveValue('Unsubmitted create draft')
++    edit(0)
++    dialog = await screen.findByRole('alertdialog')
++    fireEvent.click(within(dialog).getByRole('button', { name: /подтвердить/i }))
+     expect(field()).toHaveValue(comment.body)
+   })
+ 
++  it('protects cancellation and switching of a dirty edit', async () => {
++    show([comment, second])
++    edit(0)
++    fireEvent.change(field(), { target: { value: 'Unsaved edited comment' } })
++    fireEvent.click(screen.getByRole('button', { name: /отмен/i }))
++    let dialog = await screen.findByRole('alertdialog')
++    fireEvent.click(within(dialog).getByRole('button', { name: /отмен/i }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(field()).toHaveValue('Unsaved edited comment')
++    edit(1)
++    dialog = await screen.findByRole('alertdialog')
++    fireEvent.click(within(dialog).getByRole('button', { name: /подтвердить/i }))
++    expect(field()).toHaveValue(second.body)
++  })
++
+   it('loads the newly selected comment instead of the previous editor values', () => {
+     show([comment, second])
+     edit(0)
+@@ -61,8 +91,8 @@ describe('CommentsPanel editor identity', () => {
+   })
+ 
+   it.each([false, true])(
+-    'a late ACK cannot close a newer editor (same comment: %s)',
+-    async (same) => {
++    'cannot replace an editor during a pending save (dirty: %s)',
++    async (dirty) => {
+       let resolve!: () => void
+       mocks.update.mockImplementation(
+         () =>
+@@ -72,20 +102,21 @@ describe('CommentsPanel editor identity', () => {
+       )
+       show([comment, second])
+       edit(0)
+-      fireEvent.change(field(), { target: { value: 'First submitted edit' } })
++      if (dirty) fireEvent.change(field(), { target: { value: 'First submitted edit' } })
+       fireEvent.submit(field().closest('form')!)
+       await waitFor(() =>
+         expect(mocks.update).toHaveBeenCalledWith({
+           id: comment.id,
+-          input: { body: 'First submitted edit' },
++          input: { body: dirty ? 'First submitted edit' : comment.body },
+         }),
+       )
+       edit(1)
+-      if (same) edit(0)
+-      fireEvent.change(field(), { target: { value: 'Newer unsaved edit' } })
++      expect(screen.getAllByRole('button', { name: /изменить|удалить/i })).toSatisfy(
++        (buttons: HTMLButtonElement[]) => buttons.every((button) => button.disabled),
++      )
++      expect(field()).toHaveValue(dirty ? 'First submitted edit' : comment.body)
+       await act(async () => resolve())
+-      expect(field()).toHaveValue('Newer unsaved edit')
+-      expect(screen.getByRole('button', { name: /отмен/i })).toBeVisible()
++      await waitFor(() => expect(field()).toHaveValue(''))
+     },
+   )
+ 
+@@ -103,6 +134,57 @@ describe('CommentsPanel editor identity', () => {
+   })
+ })
+ 
++describe('CommentsPanel delete lifecycle', () => {
++  it.each([null, { status: 403 }, { status: 404 }])(
++    'returns focus after deletion even if the refresh is denied (%j)',
++    async (error) => {
++      const view = show([comment])
++      const opener = screen.getByRole('button', { name: /удалить/i })
++      opener.focus()
++      fireEvent.click(opener)
++      let dialog = await screen.findByRole('alertdialog')
++      fireEvent.click(within(dialog).getByRole('button', { name: /отмен/i }))
++      await waitFor(() => expect(opener).toHaveFocus())
++      mocks.remove.mockImplementation(async () => {
++        mocks.query.mockReturnValue({
++          data: [],
++          error,
++          isLoading: false,
++          refetch: mocks.refetch,
++        })
++      })
++      fireEvent.click(opener)
++      dialog = await screen.findByRole('alertdialog')
++      fireEvent.click(within(dialog).getByRole('button', { name: /подтвердить/i }))
++      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++      expect(mocks.remove).toHaveBeenCalledWith(comment.id)
++      await waitFor(() => expect(view.container.querySelector('[tabindex="-1"]')).toHaveFocus())
++    },
++  )
++
++  it('retains the delete dialog on failure and locks repeated confirmation until settlement', async () => {
++    let reject!: (error: Error) => void
++    mocks.remove.mockImplementation(
++      () =>
++        new Promise<void>((_, fail) => {
++          reject = fail
++        }),
++    )
++    show([comment])
++    fireEvent.click(screen.getByRole('button', { name: /удалить/i }))
++    const dialog = await screen.findByRole('alertdialog')
++    const confirm = within(dialog).getByRole('button', { name: /подтвердить/i })
++    fireEvent.click(confirm)
++    fireEvent.click(confirm)
++    expect(mocks.remove).toHaveBeenCalledOnce()
++    expect(confirm).toBeDisabled()
++    expect(within(dialog).getByRole('button', { name: /отмен/i })).toBeDisabled()
++    await act(async () => reject(new Error('Delete rejected')))
++    expect(within(dialog).getByRole('alert')).toHaveTextContent('Delete rejected')
++    expect(confirm).toBeEnabled()
++  })
++})
++
+ describe('CommentsPanel Base freshness states', () => {
+   for (const cached of [false, true]) {
+     for (const status of [403, 404, 422, 503]) {
+diff --git a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
+index 5f077ed..be6fcca 100644
+--- a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
+@@ -1,4 +1,4 @@
+-import { useId, useState } from 'react'
++import { useEffect, useId, useState } from 'react'
+ import { useTranslation } from 'react-i18next'
+ import { useForm } from 'react-hook-form'
+ import { zodResolver } from '@hookform/resolvers/zod'
+@@ -21,6 +21,7 @@ interface IssueDescriptionEditorProps {
+   onSubmit: (patch: { summary: string; description: string | null }) => Promise<unknown>
+   disabled?: boolean
+   showTitle?: boolean
++  onDraftStateChange?: (state: { dirty: boolean; pending: boolean }) => void
+ }
+ 
+ export function IssueDescriptionEditor({
+@@ -28,6 +29,7 @@ export function IssueDescriptionEditor({
+   onSubmit,
+   disabled,
+   showTitle = true,
++  onDraftStateChange,
+ }: IssueDescriptionEditorProps) {
+   const { t } = useTranslation()
+   const [editing, setEditing] = useState(false)
+@@ -52,6 +54,14 @@ export function IssueDescriptionEditor({
+       description: issue.description ?? '',
+     },
+   })
++  const pending = editing && (Boolean(disabled) || isSubmitting)
++  useEffect(() => {
++    onDraftStateChange?.({ dirty: editing && isDirty, pending })
++  }, [editing, isDirty, pending, onDraftStateChange])
++  useEffect(
++    () => () => onDraftStateChange?.({ dirty: false, pending: false }),
++    [onDraftStateChange],
++  )
+ 
+   const startEdit = () => {
+     if (disabled) return
+@@ -139,7 +149,9 @@ export function IssueDescriptionEditor({
+ 
+   return (
+     <PendingForm onSubmit={submit} pending={disabled || isSubmitting}>
+-      <UnsavedChangesGuard when={isDirty} allowSearchChanges />
++      {!onDraftStateChange && (
++        <UnsavedChangesGuard when={isDirty} pending={pending} allowSearchChanges />
++      )}
+       <FormField
+         id={`${descriptionId}-summary`}
+         label={t('issueCreate.summary')}
+diff --git a/frontend/src/pages/issue-detail/index.tsx b/frontend/src/pages/issue-detail/index.tsx
+index 41fe1d6..024a5e4 100644
+--- a/frontend/src/pages/issue-detail/index.tsx
++++ b/frontend/src/pages/issue-detail/index.tsx
+@@ -17,6 +17,7 @@ import {
+   DetailPage,
+   type PageHeaderProps,
+   type ResourceState,
++  UnsavedChangesGuard,
+ } from '@sdlc/ui/ui'
+ import {
+   useWorklogs,
+@@ -49,12 +50,42 @@ function parseIssueTab(value: string | null): IssueTab {
+ }
+ 
+ export function IssueDetailPage() {
++  const { id = '' } = useParams()
++  return <IssueDetailDraftBoundary key={id} />
++}
++
++function IssueDetailDraftBoundary() {
++  const [description, setDescription] = useState({ dirty: false, pending: false })
++  const [comments, setComments] = useState({ dirty: false, pending: false })
++  const fallbackRef = useRef<HTMLDivElement>(null)
++  return (
++    <div ref={fallbackRef} tabIndex={-1} className="min-w-0">
++      <UnsavedChangesGuard
++        when={description.dirty || comments.dirty}
++        pending={description.pending || comments.pending}
++        allowSearchKeys={comments.dirty || comments.pending ? undefined : ['tab']}
++        fallbackFocusRef={fallbackRef}
++      />
++      <IssueDetailContent
++        onDescriptionDraftChange={setDescription}
++        onCommentDraftChange={setComments}
++      />
++    </div>
++  )
++}
++
++function IssueDetailContent({
++  onDescriptionDraftChange,
++  onCommentDraftChange,
++}: {
++  onDescriptionDraftChange: (state: { dirty: boolean; pending: boolean }) => void
++  onCommentDraftChange: (state: { dirty: boolean; pending: boolean }) => void
++}) {
+   const { id = '' } = useParams()
+   const { t } = useTranslation()
+   const [searchParams, setSearchParams] = useSearchParams()
+   const tabParam = searchParams.get('tab')
+   const activeTab = parseIssueTab(tabParam)
+-  const latestTab = useRef(activeTab)
+   const currentUserId = useAuthStore((s) => s.userId)
+   const [dialogOpen, setDialogOpen] = useState(false)
+   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
+@@ -80,10 +111,6 @@ export function IssueDetailPage() {
+   const update = useUpdateWorklog(id)
+   const remove = useDeleteWorklog(id)
+ 
+-  useEffect(() => {
+-    latestTab.current = activeTab
+-  }, [activeTab])
+-
+   useEffect(() => {
+     const isCanonical = tabParam === null || (activeTab !== 'activity' && tabParam === activeTab)
+     if (isCanonical) return
+@@ -178,8 +205,7 @@ export function IssueDetailPage() {
+ 
+   const updateActiveTab = (value: string) => {
+     const nextTab = parseIssueTab(value)
+-    if (nextTab === latestTab.current) return
+-    latestTab.current = nextTab
++    if (nextTab === activeTab) return
+     const next = new URLSearchParams(searchParams)
+     if (nextTab === 'activity') next.delete('tab')
+     else next.set('tab', nextTab)
+@@ -262,6 +288,7 @@ export function IssueDetailPage() {
+               issue={issue}
+               showTitle={false}
+               disabled={updateIssue.isPending}
++              onDraftStateChange={onDescriptionDraftChange}
+               onSubmit={async (patch) => {
+                 await updateIssue.mutateAsync(patch)
+                 toast.success(t('common.saved'))
+@@ -287,7 +314,7 @@ export function IssueDetailPage() {
+         }
+         activity={
+           <div className="base-page-stack">
+-            <Tabs value={activeTab} onValueChange={updateActiveTab}>
++            <Tabs activationMode="manual" value={activeTab} onValueChange={updateActiveTab}>
+               <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                 <TabsTrigger className="min-h-10" value="activity">
+                   {t('issue.activity')}
+@@ -312,7 +339,11 @@ export function IssueDetailPage() {
+                 ) : null}
+               </TabsContent>
+               <TabsContent value="comments">
+-                <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
++                <CommentsPanel
++                  issueId={id}
++                  currentUserId={currentUserId ?? undefined}
++                  onDraftStateChange={onCommentDraftChange}
++                />
+               </TabsContent>
+               <TabsContent value="worklog">
+                 {worklogsErrorState && <ResourceStateView state={worklogsErrorState} />}
+diff --git a/frontend/src/pages/issue-detail/issue-detail.test.tsx b/frontend/src/pages/issue-detail/issue-detail.test.tsx
+index d064890..084c353 100644
+--- a/frontend/src/pages/issue-detail/issue-detail.test.tsx
++++ b/frontend/src/pages/issue-detail/issue-detail.test.tsx
+@@ -16,6 +16,7 @@ const mockWorklogs = vi.hoisted(() => vi.fn())
+ const mockIssueLinks = vi.hoisted(() => vi.fn())
+ const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
+ const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
++const mockCreateComment = vi.hoisted(() => vi.fn())
+ 
+ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+ 
+@@ -127,7 +128,7 @@ vi.mock('@/shared/api/hooks', () => ({
+ 
+ vi.mock('@/features/comments/model/use-comments', () => ({
+   useComments: (...args: unknown[]) => mockComments(...args),
+-  useCreateComment: () => ({ mutate: vi.fn(), isPending: false }),
++  useCreateComment: () => ({ mutateAsync: mockCreateComment, isPending: false }),
+   useUpdateComment: () => ({ mutate: vi.fn(), isPending: false }),
+   useDeleteComment: () => ({ mutate: vi.fn(), isPending: false }),
+ }))
+@@ -203,6 +204,7 @@ describe('IssueDetailPage', () => {
+ 
+   beforeEach(() => {
+     vi.clearAllMocks()
++    mockCreateComment.mockReset()
+     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
+     mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
+@@ -229,6 +231,87 @@ describe('IssueDetailPage', () => {
+     })
+   })
+ 
++  it('uses one navigation guard for simultaneous description and comment drafts and permits a repeated tab attempt', async () => {
++    const user = userEvent.setup()
++    const warn = vi.spyOn(console, 'warn')
++    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
++    fireEvent.click(screen.getByText('Test issue description'))
++    fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
++      target: { value: 'Retained summary' },
++    })
++    const field = screen.getByRole('textbox', { name: /комментарий|comment/i })
++    fireEvent.change(field, { target: { value: 'Retained comment' } })
++    const tab = screen.getByRole('tab', { name: /активность|activity/i })
++    await user.click(tab)
++    let dialog = await screen.findByRole('alertdialog')
++    await user.keyboard('{Escape}')
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(field).toHaveValue('Retained comment')
++    expect(screen.getByDisplayValue('Retained summary')).toBeInTheDocument()
++    expect(document.activeElement).not.toBe(document.body)
++    fireEvent.keyDown(tab, { key: 'Enter' })
++    dialog = await screen.findByRole('alertdialog')
++    fireEvent.click(within(dialog).getByRole('button', { name: /подтвердить|confirm/i }))
++    await waitFor(() =>
++      expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1'),
++    )
++    expect(screen.getByLabelText('current location')).not.toHaveTextContent('tab=comments')
++    expect(screen.getByDisplayValue('Retained summary')).toBeInTheDocument()
++    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/one blocker|single blocker/i)
++    warn.mockRestore()
++  })
++
++  it('blocks navigation and reload during comment submission and cancels stale navigation after ACK', async () => {
++    const user = userEvent.setup()
++    let resolve!: () => void
++    mockCreateComment.mockImplementation(
++      () =>
++        new Promise<void>((done) => {
++          resolve = done
++        }),
++    )
++    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
++    const field = screen.getByRole('textbox', { name: /комментарий|comment/i })
++    fireEvent.change(field, { target: { value: 'Submitted draft' } })
++    fireEvent.submit(field.closest('form')!)
++    await waitFor(() => expect(mockCreateComment).toHaveBeenCalledOnce())
++    const unload = new Event('beforeunload', { cancelable: true })
++    window.dispatchEvent(unload)
++    expect(unload.defaultPrevented).toBe(true)
++    await user.click(screen.getByRole('tab', { name: /активность|activity/i }))
++    const dialog = await screen.findByRole('alertdialog')
++    expect(within(dialog).getByRole('button', { name: /подтвердить|confirm/i })).toBeDisabled()
++    await act(async () => resolve())
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByLabelText('current location')).toHaveTextContent('tab=comments')
++    expect(field).toHaveValue('')
++    const cleanUnload = new Event('beforeunload', { cancelable: true })
++    window.dispatchEvent(cleanUnload)
++    expect(cleanUnload.defaultPrevented).toBe(false)
++  })
++
++  it('focuses tabs without navigating until keyboard activation', async () => {
++    const user = userEvent.setup()
++    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
++    const field = screen.getByRole('textbox', { name: /комментарий|comment/i })
++    fireEvent.change(field, { target: { value: 'Keyboard draft' } })
++    act(() => screen.getByRole('tab', { name: /комментарии|comments/i }).focus())
++    await user.keyboard('{ArrowLeft}')
++    await waitFor(() =>
++      expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveFocus(),
++    )
++    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
++    expect(screen.getByLabelText('current location')).toHaveTextContent('tab=comments')
++    const unload = new Event('beforeunload', { cancelable: true })
++    window.dispatchEvent(unload)
++    expect(unload.defaultPrevented).toBe(true)
++    fireEvent.keyDown(screen.getByRole('tab', { name: /активность|activity/i }), { key: 'Enter' })
++    expect(await screen.findByRole('alertdialog')).toBeVisible()
++    await user.keyboard('{Escape}')
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(field).toHaveValue('Keyboard draft')
++  })
++
+   it('renders loading state while the issue itself loads', () => {
+     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
+     render(wrapper(<IssueDetailPage />))
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index d91507e..633c867 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -407,6 +407,8 @@
+     "empty": "No comments yet.",
+     "unknown": "Unknown user",
+     "deleteConfirm": "Delete this comment?",
++    "discardTitle": "Discard comment changes?",
++    "discardDescription": "Unsaved text will be lost.",
+     "validation": {
+       "required": "Comment text is required"
+     }
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index 237e379..940fb05 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -407,6 +407,8 @@
+     "empty": "Пока нет комментариев.",
+     "unknown": "Неизвестный пользователь",
+     "deleteConfirm": "Удалить комментарий?",
++    "discardTitle": "Отменить изменения комментария?",
++    "discardDescription": "Несохранённый текст будет потерян.",
+     "validation": {
+       "required": "Введите текст комментария"
+     }

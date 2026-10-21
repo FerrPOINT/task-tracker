@@ -1,0 +1,67 @@
+//! Narrow SDK proof hash guard for the existing original terminal owner path.
+use domain::bug_search_terminal::BugRuntimeObservation;
+use sha2::{Digest, Sha256};
+use shared::AppError;
+
+pub fn validate_observation(observation: &BugRuntimeObservation) -> Result<(), AppError> {
+    observation.validate()?;
+    if let Some(source) = &observation.observation_source {
+        source.require_hashes(|bytes| hex::encode(Sha256::digest(bytes)))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    #[test]
+    fn namespace_source_hashes_match_base_ascii_not_workflow_utf8_and_reject_substitution() {
+        let wire: Value = serde_json::from_str(include_str!(
+            "../../domain/tests/fixtures/bug-known-run-namespace-exit-v1.json"
+        ))
+        .unwrap();
+        let observation: BugRuntimeObservation =
+            serde_json::from_value(wire["observation"].clone()).unwrap();
+        validate_observation(&observation).unwrap();
+        let source = observation.observation_source.as_ref().unwrap();
+        assert_eq!(
+            source.stop_proof_sha256,
+            "dfce2c15dc1a8ff1c5db0105083fc679884c6a7e298a673206eeedc91af8f02a"
+        );
+        assert_ne!(
+            crate::bug_search::canonical_hash(&source.original_running_receipt["snapshot"])
+                .unwrap(),
+            source.stop_proof["snapshot_sha256"]
+        );
+        for field in ["stop_proof_sha256", "registration_sha256"] {
+            let mut wrong = wire["observation"].clone();
+            wrong["observation_source"][field] = json!("0".repeat(64));
+            assert!(validate_observation(&serde_json::from_value(wrong).unwrap()).is_err());
+        }
+        let mut swapped = observation.clone();
+        swapped
+            .observation_source
+            .as_mut()
+            .unwrap()
+            .original_running_receipt["snapshot"]["engine"]["KernelVersion"] =
+            json!("another-version");
+        assert!(validate_observation(&swapped).is_err());
+        let old: BugRuntimeObservation =
+            serde_json::from_value(wire["legacy_observation"].clone()).unwrap();
+        validate_observation(&old).unwrap();
+        assert_eq!(
+            crate::bug_search::canonical_hash(&old).unwrap(),
+            crate::bug_search::canonical_hash(&wire["legacy_observation"]).unwrap()
+        );
+    }
+    #[test]
+    fn namespace_hashes_reuse_exact_base_unicode_del_surrogate_golden() {
+        let value = json!({"z":{"\\":"\"\\\n\t\u{7f}","\u{1f600}":"/srv/\u{430}\u{433}\u{435}\u{43d}\u{442}\u{44b}"},"\u{e9}":"\u{2028}\u{2029}"});
+        let bytes = domain::bug_search_namespace_exit::sdk_canonical_json(&value).unwrap();
+        assert_eq!(
+            hex::encode(Sha256::digest(bytes.as_bytes())),
+            "9f8e9d6aa4038a3f5ee775ae03966955cbb132701da1266358b48d5af159b8a6"
+        );
+    }
+}

@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest'
+import { reportFormatters } from './report-formatters'
+
+describe('report formatters', () => {
+  it('localizes dates in Russian and English without a raw API timestamp', () => {
+    expect(reportFormatters('ru', 'нет данных').compactDate('2026-08-01T00:00:00Z')).toBe(
+      '01.08.2026',
+    )
+    expect(reportFormatters('en', 'unavailable').date('2026-08-01T00:00:00Z')).toBe('Aug 1, 2026')
+  })
+  it('preserves the UTC bucket across an offset crossing midnight', () => {
+    expect(reportFormatters('en', 'unavailable').date('2026-08-01T23:30:00-02:00')).toBe(
+      'Aug 2, 2026',
+    )
+    expect(reportFormatters('en', 'unavailable').eventDate('2026-08-01T23:30:00-02:00')).toContain(
+      'UTC',
+    )
+  })
+  it('localizes cycle time and rejects non-finite values', () => {
+    expect(reportFormatters('ru', 'нет данных').number(2.5)).toBe('2,5')
+    expect(reportFormatters('en', 'unavailable').number(2.5)).toBe('2.5')
+    expect(reportFormatters('ru', 'нет данных').number(NaN)).toBe('нет данных')
+  })
+  it('handles missing and malformed dates without throwing or leaking the raw value', () => {
+    const format = reportFormatters('ru', 'Дата недоступна')
+    for (const value of [undefined, null, '', 'broken timestamp', 123]) {
+      expect(format.date(value)).toBe('Дата недоступна')
+      expect(format.compactDate(value)).toBe('Дата недоступна')
+      expect(format.eventDate(value)).toBe('Дата недоступна')
+    }
+  })
+})

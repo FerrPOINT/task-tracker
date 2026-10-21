@@ -1,0 +1,385 @@
+//! Fixed-owner CI proof. Neither a model report nor an API caller supplies authority.
+use crate::{
+    bug_search::{bounded_text, sha256},
+    bug_search_control::validate_key,
+    bug_work::BugWorkState,
+    bug_work_origin::BugWorkSourceContext,
+    sdlc::MAX_SAFE_VERSION,
+};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[async_trait::async_trait]
+pub trait BugWorkDeliveryReader: Send + Sync {
+    /// Configuration and QA locator come from Tracker's retained source/policy.
+    async fn read(
+        &self,
+        configuration_id: Uuid,
+        target_ref: &str,
+        locator: &BugWorkDeliveryLocator,
+    ) -> Result<BugWorkDeliveryProof, AppError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveryProject {
+    pub tracker_instance_id: Uuid,
+    pub project_id: Uuid,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkCandidateOperation {
+    pub operation_id: Uuid,
+    pub operation_key: String,
+    pub request_sha256: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveredBinding {
+    pub bug_id: Uuid,
+    pub assignment_id: Uuid,
+    pub assignment_sha256: String,
+    pub fence: i64,
+    pub owner_subject: String,
+    pub runtime_binding_sha256: String,
+    pub source_context_sha256: String,
+    pub verification_basis_sha256: String,
+    pub canonical_basis_sha256: String,
+    pub base_commit_sha: String,
+    pub candidate_commit_sha: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveryPipeline {
+    pub pipeline_id: Uuid,
+    pub config_sha256: String,
+    pub plan_sha256: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveryArtifact {
+    pub artifact_id: Uuid,
+    pub job_id: Uuid,
+    pub attempt_id: Uuid,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkServingIdentity {
+    pub version_body_sha256: String,
+    pub artifact_body_sha256: String,
+    pub observed_at: DateTime<Utc>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveredVersion {
+    pub delivery_ref: String,
+    pub operation_key: String,
+    pub generation: String,
+    pub manifest_sha256: String,
+    pub commit_sha: String,
+    pub artifact_id: Uuid,
+    pub artifact_digest: String,
+    pub serving_identity: BugWorkServingIdentity,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugWorkDeliveryStatus {
+    Confirmed,
+    Unavailable,
+    Changed,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BugWorkDeliveryProof {
+    pub schema: String,
+    pub producer_version: String,
+    pub observed_at: DateTime<Utc>,
+    pub project: BugWorkDeliveryProject,
+    pub configuration_id: Uuid,
+    pub repository_id: Uuid,
+    pub environment_id: Uuid,
+    pub target_ref: String,
+    pub operation: BugWorkCandidateOperation,
+    pub bug_work: BugWorkDeliveredBinding,
+    pub pipeline: BugWorkDeliveryPipeline,
+    pub artifact: Option<BugWorkDeliveryArtifact>,
+    pub delivery: Option<BugWorkDeliveredVersion>,
+    pub status: BugWorkDeliveryStatus,
+    pub blocked_reasons: Vec<String>,
+}
+
+/// Only locators accepted from Fleet; the response is read by Tracker from its
+/// deployment-owned CI endpoint. Operator mapping supplies configuration/target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkDeliveryLocator {
+    pub operation_key: String,
+    pub request_sha256: String,
+    pub assignment_id: Uuid,
+    pub assignment_sha256: String,
+    pub expected_fence: i64,
+    pub candidate_commit_sha: String,
+}
+impl BugWorkDeliveryLocator {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.operation_key)?;
+        if self.assignment_id.is_nil()
+            || !sha256(&self.request_sha256)
+            || !sha256(&self.assignment_sha256)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence)
+            || !git_sha(&self.candidate_commit_sha)
+        {
+            return Err(AppError::validation("invalid Bug delivery locator"));
+        }
+        Ok(())
+    }
+}
+pub fn git_sha(value: &str) -> bool {
+    matches!(value.len(), 40 | 64)
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+fn text(value: &str, maximum: usize) -> bool {
+    bounded_text(value, maximum) && !value.chars().any(char::is_control)
+}
+impl BugWorkDeliveryProof {
+    /// Validate an owner-read original candidate against Tracker's retained103
+    /// assignment and independently hashed binding. Availability is checked
+    /// separately so an original accepted pipeline can be pinned before build.
+    pub fn require_candidate(
+        &self,
+        locator: &BugWorkDeliveryLocator,
+        state: &BugWorkState,
+        binding_sha256: &str,
+        source: &BugWorkSourceContext,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError> {
+        locator.validate()?;
+        let assignment = &state.assignment;
+        assignment.validate()?;
+        source.validate()?;
+        let origin = assignment
+            .origin
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("Bug delivery requires original qualified source"))?;
+        let b = &self.bug_work;
+        let observation_age = now.signed_duration_since(self.observed_at).num_seconds();
+        if self.schema != "forge/bug-work-delivery-proof/v1"
+            || !text(&self.producer_version, 256)
+            || !(-5..=60).contains(&observation_age)
+            || self.project.tracker_instance_id != assignment.tracker_instance_uuid
+            || self.project.project_id != assignment.project_id
+            || [
+                self.configuration_id,
+                self.repository_id,
+                self.environment_id,
+                self.operation.operation_id,
+                self.pipeline.pipeline_id,
+            ]
+            .iter()
+            .any(Uuid::is_nil)
+            || !text(&self.target_ref, 512)
+            || self.operation.operation_key != locator.operation_key
+            || self.operation.request_sha256 != locator.request_sha256
+            || b.bug_id != assignment.bug_id
+            || b.assignment_id != assignment.assignment_id
+            || b.assignment_id != locator.assignment_id
+            || b.assignment_sha256 != locator.assignment_sha256
+            || b.assignment_sha256 != state.assignment_sha256
+            || state.binding.is_none()
+            || b.fence != assignment.fence
+            || b.fence != locator.expected_fence
+            || b.owner_subject != assignment.owner_subject
+            || b.runtime_binding_sha256 != binding_sha256
+            || !sha256(binding_sha256)
+            || b.source_context_sha256 != origin.source_context_sha256
+            || b.verification_basis_sha256 != assignment.verification_basis_sha256
+            || b.canonical_basis_sha256 != assignment.canonical_basis_sha256
+            || assignment.source_identity.repository_id != Some(self.repository_id)
+            || !git_sha(&b.base_commit_sha)
+            || b.candidate_commit_sha != locator.candidate_commit_sha
+            || b.base_commit_sha == b.candidate_commit_sha
+            || source.project.project_id != assignment.project_id
+            || source.project.tracker_instance_id != assignment.tracker_instance_id
+            || !source.targets.iter().any(|target| {
+                target.commit_sha == b.base_commit_sha
+                    && target.source.as_ref().is_some_and(|source| {
+                        source.repository_id == self.repository_id
+                            && source.configuration_id == self.configuration_id
+                            && source.project.tracker_instance_id
+                                == assignment.tracker_instance_uuid
+                            && source.project.project_id == assignment.project_id
+                    })
+            })
+            || !sha256(&self.pipeline.config_sha256)
+            || !sha256(&self.pipeline.plan_sha256)
+            || self.blocked_reasons.len() > 32
+            || self.blocked_reasons.iter().any(|r| !text(r, 128))
+        {
+            return Err(AppError::conflict(
+                "CI Bug candidate differs from retained authority",
+            ));
+        }
+        Ok(())
+    }
+
+    /// A healthy old deployment never proves delivery of the expected fix B.
+    pub fn require_delivered(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<&BugWorkDeliveredVersion, AppError> {
+        let a = self
+            .artifact
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("Bug artifact unavailable"))?;
+        let d = self
+            .delivery
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("Bug delivery unavailable"))?;
+        let age = now
+            .signed_duration_since(d.serving_identity.observed_at)
+            .num_seconds();
+        if self.status != BugWorkDeliveryStatus::Confirmed
+            || !self.blocked_reasons.is_empty()
+            || [a.artifact_id, a.job_id, a.attempt_id, d.artifact_id]
+                .iter()
+                .any(Uuid::is_nil)
+            || a.size_bytes == 0
+            || !sha256(&a.sha256)
+            || !text(&d.delivery_ref, 512)
+            || validate_key(&d.operation_key).is_err()
+            || d.generation.starts_with('0')
+            || d.generation.len() > 20
+            || !d.generation.bytes().all(|b| b.is_ascii_digit())
+            || !d.generation.parse::<u64>().is_ok_and(|n| n > 0)
+            || !sha256(&d.manifest_sha256)
+            || d.commit_sha != self.bug_work.candidate_commit_sha
+            || d.artifact_id != a.artifact_id
+            || d.artifact_digest != format!("sha256:{}", a.sha256)
+            || d.serving_identity.version_body_sha256 != d.manifest_sha256
+            || d.serving_identity.artifact_body_sha256 != a.sha256
+            || !(-5..=60).contains(&age)
+        {
+            return Err(AppError::conflict(
+                "expected Bug fix is not confirmed as delivered",
+            ));
+        }
+        Ok(d)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    #[derive(Deserialize)]
+    struct Vector {
+        state: BugWorkState,
+        source: BugWorkSourceContext,
+        locator: BugWorkDeliveryLocator,
+        binding_sha256: String,
+        proof: BugWorkDeliveryProof,
+    }
+    fn vector() -> Vector {
+        serde_json::from_str(include_str!("../tests/fixtures/bug-work-delivery-v1.json")).unwrap()
+    }
+    fn now() -> DateTime<Utc> {
+        "2026-10-18T12:01:05Z".parse().unwrap()
+    }
+    fn candidate(v: &Vector) -> Result<(), AppError> {
+        v.proof
+            .require_candidate(&v.locator, &v.state, &v.binding_sha256, &v.source, now())
+    }
+    #[test]
+    fn original_pipeline_can_be_pinned_before_build_but_cannot_claim_delivery() {
+        let mut v = vector();
+        candidate(&v).unwrap();
+        v.proof.require_delivered(now()).unwrap();
+        v.proof.status = BugWorkDeliveryStatus::Unavailable;
+        v.proof.artifact = None;
+        v.proof.delivery = None;
+        v.proof.blocked_reasons = vec!["pipeline_in_progress".into()];
+        candidate(&v).unwrap();
+        assert!(v.proof.require_delivered(now()).is_err());
+    }
+    #[test]
+    fn original_bug_source_assignment_binding_and_actual_candidate_are_not_interchangeable() {
+        for field in 0..17 {
+            let mut v = vector();
+            match field {
+                0 => v.proof.project.project_id = Uuid::new_v4(),
+                1 => v.proof.project.tracker_instance_id = Uuid::new_v4(),
+                2 => v.proof.bug_work.bug_id = Uuid::new_v4(),
+                3 => v.proof.bug_work.assignment_id = Uuid::new_v4(),
+                4 => v.proof.bug_work.assignment_sha256 = "a".repeat(64),
+                5 => v.proof.bug_work.fence += 1,
+                6 => v.proof.bug_work.runtime_binding_sha256 = "a".repeat(64),
+                7 => v.proof.bug_work.source_context_sha256 = "a".repeat(64),
+                8 => v.proof.bug_work.verification_basis_sha256 = "a".repeat(64),
+                9 => v.proof.bug_work.canonical_basis_sha256 = "a".repeat(64),
+                10 => v.proof.bug_work.owner_subject = "different-owner".into(),
+                11 => v.proof.operation.request_sha256 = "a".repeat(64),
+                12 => v.proof.configuration_id = Uuid::new_v4(),
+                13 => v.proof.repository_id = Uuid::new_v4(),
+                14 => v.proof.bug_work.base_commit_sha = "c".repeat(40),
+                15 => v.proof.bug_work.candidate_commit_sha = "c".repeat(40),
+                _ => v.state.binding = None,
+            }
+            assert!(candidate(&v).is_err(), "field {field}");
+        }
+    }
+    #[test]
+    fn pass_on_old_a_wrong_artifact_stale_probe_or_changed_generation_shape_is_not_delivered() {
+        for field in 0..11 {
+            let mut v = vector();
+            let d = v.proof.delivery.as_mut().unwrap();
+            match field {
+                0 => d.commit_sha = "a".repeat(40),
+                1 => d.artifact_id = Uuid::new_v4(),
+                2 => d.artifact_digest = format!("sha256:{}", "a".repeat(64)),
+                3 => d.serving_identity.version_body_sha256 = "b".repeat(64),
+                4 => d.serving_identity.artifact_body_sha256 = "b".repeat(64),
+                5 => d.generation = "03".into(),
+                6 => d.generation = "18446744073709551616".into(),
+                7 => d.serving_identity.observed_at = "2026-10-18T11:59:00Z".parse().unwrap(),
+                8 => v.proof.status = BugWorkDeliveryStatus::Changed,
+                9 => v.proof.blocked_reasons = vec!["pointer_changed".into()],
+                _ => v.proof.artifact.as_mut().unwrap().attempt_id = Uuid::nil(),
+            }
+            assert!(v.proof.require_delivered(now()).is_err(), "field {field}");
+        }
+        let mut stale = vector();
+        stale.proof.observed_at = "2026-10-18T11:59:00Z".parse().unwrap();
+        assert!(candidate(&stale).is_err());
+    }
+    #[test]
+    fn proof_and_locator_reject_caller_success_url_role_or_foreign_authority_fields() {
+        let raw: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/bug-work-delivery-v1.json"))
+                .unwrap();
+        for path in [
+            "",
+            "/bugWork",
+            "/operation",
+            "/artifact",
+            "/delivery",
+            "/delivery/servingIdentity",
+        ] {
+            let mut proof = raw["proof"].clone();
+            proof.pointer_mut(path).unwrap()["verified"] = json!(true);
+            assert!(
+                serde_json::from_value::<BugWorkDeliveryProof>(proof).is_err(),
+                "{path}"
+            );
+        }
+        let mut locator = raw["locator"].clone();
+        locator["proof"] = raw["proof"].clone();
+        assert!(serde_json::from_value::<BugWorkDeliveryLocator>(locator).is_err());
+    }
+}

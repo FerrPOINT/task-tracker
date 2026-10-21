@@ -1,0 +1,511 @@
+//! Tracker-owned policy and pre-Bug admission. Inputs are immutable, bounded pins.
+use crate::{bug_search::*, sdlc::MAX_SAFE_VERSION};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugSearchMode {
+    SourceOnly,
+    Qa,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugSearchTrigger {
+    Manual,
+    Periodic,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugPolicyTarget {
+    pub repository_ref: String,
+    pub branch_ref: String,
+    pub target_ref: Option<String>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchPolicy {
+    pub enabled: bool,
+    pub mode: BugSearchMode,
+    pub targets: Vec<BugPolicyTarget>,
+    pub scope: Vec<String>,
+    pub excluded_paths: Vec<String>,
+    pub interval_minutes: u32,
+}
+fn text(v: &str, max: usize) -> bool {
+    bounded_text(v, max) && !v.chars().any(char::is_control)
+}
+pub(crate) fn paths(v: &[String], empty: bool) -> bool {
+    (empty || !v.is_empty())
+        && v.len() <= 128
+        && v.iter().all(|s| {
+            text(s, 512)
+                && !s.starts_with('/')
+                && !s.contains('\\')
+                && !s.contains(':')
+                && !s.split('/').any(|p| p == "..")
+        })
+}
+pub fn bounded_json(v: &impl Serialize) -> bool {
+    serde_json::to_vec_pretty(v).is_ok_and(|v| v.len() <= 65536)
+}
+impl BugSearchPolicy {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if !(60..=10080).contains(&self.interval_minutes)
+            || self.targets.is_empty()
+            || self.targets.len() > 16
+            || !paths(&self.scope, false)
+            || !paths(&self.excluded_paths, true)
+            || !bounded_json(self)
+            || self.targets.iter().any(|t| {
+                !text(&t.repository_ref, 512)
+                    || !text(&t.branch_ref, 512)
+                    || t.target_ref.as_ref().is_some_and(|v| !text(v, 512))
+                    || (self.mode == BugSearchMode::Qa && t.target_ref.is_none())
+            })
+        {
+            return Err(AppError::validation("invalid bug search policy"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSnapshotProject {
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugProfession {
+    pub code: String,
+    pub profession_id: i64,
+    pub profile_revision: String,
+    pub catalog_version: u32,
+    pub catalog_sha256: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugResolvedTarget {
+    pub repository_ref: String,
+    pub commit_sha: String,
+    pub target_ref: Option<String>,
+    pub deployment_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::bug_search_source::BugTargetSourceIdentity>,
+}
+impl BugResolvedTarget {
+    pub fn validate(&self, mode: BugSearchMode) -> Result<(), AppError> {
+        if let Some(source) = &self.source {
+            source.validate(&self.commit_sha, mode)?;
+        }
+        if !text(&self.repository_ref, 512)
+            || !matches!(self.commit_sha.len(), 40 | 64)
+            || !self
+                .commit_sha
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || self.target_ref.as_ref().is_some_and(|v| !text(v, 512))
+            || self.deployment_ref.as_ref().is_some_and(|v| !text(v, 512))
+            || (mode == BugSearchMode::Qa
+                && (self.target_ref.is_none() || self.deployment_ref.is_none()))
+        {
+            return Err(AppError::validation("invalid resolved bug search target"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchSnapshot {
+    pub project: BugSnapshotProject,
+    pub owner_subject: String,
+    pub agent_id: Uuid,
+    pub profession: BugProfession,
+    pub agent_config_revision: String,
+    pub instruction_revision: String,
+    pub policy_revision: i64,
+    pub kind: BugSearchPurpose,
+    pub trigger: BugSearchTrigger,
+    pub mode: BugSearchMode,
+    pub targets: Vec<BugResolvedTarget>,
+    pub scope: Vec<String>,
+    pub excluded_paths: Vec<String>,
+    pub bug_id: Option<Uuid>,
+    pub expected_fixed_deployment_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_basis: Option<crate::bug_search_terminal::BugProducedFindingReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_guidance: Option<crate::bug_search_guidance::BugSearchUserGuidance>,
+}
+impl BugSearchSnapshot {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if let Some(guidance) = &self.user_guidance {
+            guidance.validate()?;
+            if self.trigger != BugSearchTrigger::Manual {
+                return Err(AppError::validation("repeat guidance is manual only"));
+            }
+        }
+        if !bounded_text(&self.project.tracker_instance_id, 128)
+            || self.project.project_id.is_nil()
+            || !text(&self.owner_subject, 256)
+            || self.agent_id.is_nil()
+            || self.profession.code != "BUG_SEARCHER"
+            || self.profession.profession_id <= 0
+            || !text(&self.profession.profile_revision, 128)
+            || self.profession.catalog_version == 0
+            || !sha256(&self.profession.catalog_sha256)
+            || !text(&self.agent_config_revision, 512)
+            || !text(&self.instruction_revision, 512)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.policy_revision)
+            || self.targets.is_empty()
+            || self.targets.len() > 16
+            || !paths(&self.scope, false)
+            || !paths(&self.excluded_paths, true)
+            || !bounded_json(self)
+        {
+            return Err(AppError::validation(
+                "invalid immutable bug search snapshot",
+            ));
+        }
+        for t in &self.targets {
+            t.validate(self.mode)?;
+            if t.source
+                .as_ref()
+                .is_some_and(|s| s.project.project_id != self.project.project_id)
+            {
+                return Err(AppError::validation(
+                    "original source project differs from snapshot",
+                ));
+            }
+        }
+        match self.kind {
+            BugSearchPurpose::Search
+                if self.bug_id.is_none()
+                    && self.expected_fixed_deployment_ref.is_none()
+                    && self.verification_basis.is_none() => {}
+            BugSearchPurpose::Verification
+                if self.trigger == BugSearchTrigger::Manual
+                    && self.mode == BugSearchMode::Qa
+                    && self.bug_id.is_some_and(|v| !v.is_nil())
+                    && self
+                        .expected_fixed_deployment_ref
+                        .as_deref()
+                        .is_some_and(|v| text(v, 512))
+                    && self
+                        .targets
+                        .iter()
+                        .all(|t| t.deployment_ref == self.expected_fixed_deployment_ref) => {}
+            _ => return Err(AppError::validation("invalid verification snapshot")),
+        }
+        if let Some(basis) = &self.verification_basis {
+            basis.validate()?;
+        }
+        Ok(())
+    }
+    pub fn require_source_registry(&self, registry: Uuid) -> Result<(), AppError> {
+        if registry.is_nil()
+            || self.targets.iter().any(|t| {
+                t.source
+                    .as_ref()
+                    .is_some_and(|s| s.project.tracker_instance_id != registry)
+            })
+        {
+            return Err(AppError::validation(
+                "original source registry differs from configured Tracker",
+            ));
+        }
+        Ok(())
+    }
+    pub fn require_policy(&self, p: &BugSearchPolicy) -> Result<(), AppError> {
+        self.validate()?;
+        p.validate()?;
+        let same_target = |a: &BugResolvedTarget, b: &BugPolicyTarget| {
+            a.repository_ref == b.repository_ref
+                && a.target_ref == b.target_ref
+                && a.source.as_ref().is_none_or(|s| {
+                    crate::bug_search_source::canonical_source_branch(&b.branch_ref).as_deref()
+                        == Some(s.branch_ref.as_str())
+                })
+        };
+        let targets_authorized = match self.kind {
+            BugSearchPurpose::Search => {
+                self.targets.len() == p.targets.len()
+                    && self
+                        .targets
+                        .iter()
+                        .zip(&p.targets)
+                        .all(|(a, b)| same_target(a, b))
+            }
+            // One exact delivered target is selected from the project's allowed search targets.
+            BugSearchPurpose::Verification => {
+                self.targets.len() == 1
+                    && p.targets.iter().any(|b| same_target(&self.targets[0], b))
+            }
+        };
+        if self.mode != p.mode
+            || self.scope != p.scope
+            || self.excluded_paths != p.excluded_paths
+            || !targets_authorized
+            || (self.trigger == BugSearchTrigger::Periodic && !p.enabled)
+        {
+            return Err(AppError::conflict(
+                "snapshot differs from accepted bug policy",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyBugSearchPolicy {
+    pub idempotency_key: String,
+    pub owner_subject: String,
+    pub expected_revision: i64,
+    pub desired_revision: i64,
+    pub policy: BugSearchPolicy,
+}
+impl ApplyBugSearchPolicy {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        if !text(&self.owner_subject, 256)
+            || !(0..MAX_SAFE_VERSION).contains(&self.expected_revision)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.desired_revision)
+            || self.desired_revision <= self.expected_revision
+        {
+            return Err(AppError::validation("invalid policy revision command"));
+        }
+        self.policy.validate()
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchPolicyState {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub owner_subject: String,
+    pub revision: i64,
+    pub policy: BugSearchPolicy,
+    pub policy_sha256: String,
+    pub operation_id: Uuid,
+    pub accepted_at: DateTime<Utc>,
+    pub next_due_at: Option<DateTime<Utc>>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReserveBugSearch {
+    pub idempotency_key: String,
+    pub owner_subject: String,
+    pub snapshot: BugSearchSnapshot,
+    pub snapshot_sha256: String,
+    pub expected_policy_revision: i64,
+    pub agent_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_due: Option<crate::bug_search_due::BugSearchExpectedDue>,
+}
+impl ReserveBugSearch {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.snapshot.validate()?;
+        if self.snapshot.kind == BugSearchPurpose::Verification
+            && (self.snapshot.verification_basis.is_none() || self.snapshot.targets.len() != 1)
+        {
+            return Err(AppError::validation(
+                "new verification requires the original Bug scenario and one delivered target",
+            ));
+        }
+        if let Some(due) = &self.expected_due {
+            due.validate()?;
+        }
+        if (self.snapshot.trigger == BugSearchTrigger::Manual && self.expected_due.is_some())
+            || (self.snapshot.trigger == BugSearchTrigger::Periodic && self.expected_due.is_none())
+        {
+            return Err(AppError::validation(
+                "reservation trigger/due witness differs",
+            ));
+        }
+        if self.owner_subject != self.snapshot.owner_subject
+            || self.agent_id != self.snapshot.agent_id
+            || self.expected_policy_revision != self.snapshot.policy_revision
+            || !sha256(&self.snapshot_sha256)
+        {
+            return Err(AppError::validation("reservation snapshot binding differs"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AdmitBugSearch {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub workflow_receipt: serde_json::Value,
+    pub workflow_receipt_sha256: String,
+}
+impl AdmitBugSearch {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        if !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence)
+            || !sha256(&self.workflow_receipt_sha256)
+            || !self.workflow_receipt.is_object()
+            || !bounded_json(&self.workflow_receipt)
+        {
+            return Err(AppError::validation("invalid Workflow admission receipt"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(
+    tag = "kind",
+    content = "result",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum BugSearchCommandReceipt {
+    Policy(BugSearchPolicyState),
+    Reserve(BugSearchGrantReadback),
+    Admit(BugSearchGrantReadback),
+    Register(BugFindingReceipt),
+    Terminal(crate::bug_search_terminal::BugSearchTerminalReceipt),
+    Cancel(crate::bug_search_cancel::BugSearchCancellationReceipt),
+    AbortUnbound(crate::bug_search_unbound::BugUnboundCancellationReceipt),
+    DeferDue(crate::bug_search_due::BugSearchDueDeferral),
+    Intake(crate::bug_search_intake::BugIntakeApplied),
+    BugWork(crate::bug_work::BugWorkReceipt),
+    BugBusiness(crate::bug_work_business::BugBusinessReceipt),
+}
+pub fn validate_key(k: &str) -> Result<(), AppError> {
+    if !text(k, 128) || k.chars().any(char::is_whitespace) {
+        return Err(AppError::validation("invalid bug operation key"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn verification_selects_one_original_repo_target_from_a_multi_repo_policy() {
+        let vectors: serde_json::Value =
+            serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json"))
+                .unwrap();
+        let mut s: BugSearchSnapshot =
+            serde_json::from_value(vectors["vectors"][1]["value"].clone()).unwrap();
+        s.kind = BugSearchPurpose::Verification;
+        s.mode = BugSearchMode::Qa;
+        s.bug_id = Some(Uuid::new_v4());
+        s.expected_fixed_deployment_ref = Some("forge:delivered:fixed-b".into());
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../app/tests/fixtures/bug-target-source-v1.json"
+        ))
+        .unwrap();
+        let mut source: crate::bug_search_source::BugTargetSourceIdentity =
+            serde_json::from_value(fixture["source"].clone()).unwrap();
+        source.project.project_id = s.project.project_id;
+        let target = &mut s.targets[0];
+        target.source = Some(source.clone());
+        target.commit_sha = "b".repeat(40);
+        target.target_ref = Some("qa:portal".into());
+        target.deployment_ref = s.expected_fixed_deployment_ref.clone();
+        let original = BugPolicyTarget {
+            repository_ref: target.repository_ref.clone(),
+            branch_ref: source.branch_ref.clone(),
+            target_ref: target.target_ref.clone(),
+        };
+        let other = BugPolicyTarget {
+            repository_ref: "repo:other".into(),
+            branch_ref: "refs/heads/other".into(),
+            target_ref: Some("qa:other".into()),
+        };
+        let p = BugSearchPolicy {
+            enabled: false,
+            mode: BugSearchMode::Qa,
+            targets: vec![other.clone(), original.clone()],
+            scope: s.scope.clone(),
+            excluded_paths: s.excluded_paths.clone(),
+            interval_minutes: 60,
+        };
+        s.require_policy(&p).unwrap();
+        for field in 0..5 {
+            let mut wrong = s.clone();
+            match field {
+                0 => wrong.targets[0].repository_ref = "repo:foreign".into(),
+                1 => wrong.targets[0].target_ref = Some("qa:foreign".into()),
+                2 => {
+                    wrong.targets[0].source.as_mut().unwrap().branch_ref =
+                        "refs/heads/foreign".into()
+                }
+                3 => wrong.scope = vec!["different".into()],
+                _ => wrong.excluded_paths = vec!["different".into()],
+            }
+            assert!(wrong.require_policy(&p).is_err());
+        }
+        let mut duplicate = s.clone();
+        duplicate.targets.push(s.targets[0].clone());
+        duplicate.validate().unwrap();
+        assert!(duplicate.require_policy(&p).is_err());
+        let mut search = s;
+        search.kind = BugSearchPurpose::Search;
+        search.bug_id = None;
+        search.expected_fixed_deployment_ref = None;
+        assert!(
+            search.require_policy(&p).is_err(),
+            "search must still include the whole policy target set"
+        );
+        let single = BugSearchPolicy {
+            targets: vec![original],
+            ..p
+        };
+        search.require_policy(&single).unwrap();
+    }
+
+    #[test]
+    fn immutable_snapshot_and_policy_reject_privileged_unknown_and_changed_pins() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json"))
+                .unwrap();
+        let v = fixture["vectors"][1]["value"].clone();
+        let snapshot: BugSearchSnapshot = serde_json::from_value(v.clone()).unwrap();
+        snapshot.validate().unwrap();
+        let mut unknown = v.clone();
+        unknown["allow_global_credentials"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<BugSearchSnapshot>(unknown).is_err());
+        for n in 0..4 {
+            let mut wrong = snapshot.clone();
+            match n {
+                0 => wrong.profession.code = "custom".into(),
+                1 => wrong.profession.profile_revision.clear(),
+                2 => wrong.targets[0].commit_sha = "main".into(),
+                _ => wrong.expected_fixed_deployment_ref = Some("fake".into()),
+            };
+            assert!(wrong.validate().is_err());
+        }
+        let policy = BugSearchPolicy {
+            enabled: false,
+            mode: snapshot.mode,
+            targets: snapshot
+                .targets
+                .iter()
+                .map(|t| BugPolicyTarget {
+                    repository_ref: t.repository_ref.clone(),
+                    branch_ref: "main".into(),
+                    target_ref: t.target_ref.clone(),
+                })
+                .collect(),
+            scope: snapshot.scope.clone(),
+            excluded_paths: snapshot.excluded_paths.clone(),
+            interval_minutes: 60,
+        };
+        snapshot.require_policy(&policy).unwrap();
+        let mut wrong = snapshot.clone();
+        wrong.scope = vec!["different".into()];
+        assert!(wrong.require_policy(&policy).is_err());
+        let mut periodic = snapshot;
+        periodic.trigger = BugSearchTrigger::Periodic;
+        assert!(periodic.require_policy(&policy).is_err());
+    }
+}

@@ -1,0 +1,249 @@
+//! Actual Tracker-created Bug/report origin, reserve/admit and fresh grant checks.
+use super::*;
+use domain::bug_search_source::{BugTargetSourceIdentity, BugTargetSourceProject};
+
+fn reserve(snapshot: &BugSearchSnapshot, key: &str) -> ReserveBugSearch {
+    ReserveBugSearch {
+        idempotency_key: key.into(),
+        owner_subject: snapshot.owner_subject.clone(),
+        snapshot_sha256: app::bug_search::canonical_hash(snapshot).unwrap(),
+        expected_policy_revision: snapshot.policy_revision,
+        expected_due: None,
+        agent_id: snapshot.agent_id,
+        snapshot: snapshot.clone(),
+    }
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn verification_requires_actual_bug_origin_and_preserves_binding_through_admission() {
+    let f = Fixture::new().await;
+    let actor = machine(&f.config.fleet_subject);
+    let seed = f.execution(1, true, false).await;
+    let mut original = accepted_snapshot(&f, 1);
+    let source = BugTargetSourceIdentity {
+        contract_version: 1,
+        schema: "forge/source-snapshot/v1".into(),
+        producer_version: "synthetic-owner-v1".into(),
+        project: BugTargetSourceProject {
+            tracker_instance_id: f.config.tracker_instance_uuid,
+            project_id: f.project,
+        },
+        configuration_id: Uuid::new_v4(),
+        repository_id: Uuid::new_v4(),
+        branch_ref: "refs/heads/main".into(),
+        observed_head_sha: "a".repeat(40),
+        clone_url_sha256: "d".repeat(64),
+    };
+    original.targets[0].source = Some(source.clone());
+    let original_execution = Uuid::new_v4();
+    // The parent fixture represents admitted execution; its immutable original
+    // source-qualified snapshot is inserted once, never rewritten after receipt.
+    sql(&f.db,"INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,workflow_receipt,expires_at,capacity_held) SELECT $2,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,$3,purpose,$4,$5,policy_revision,99,machine_subject,$6,admission_state,workflow_receipt,expires_at,false FROM sdlc_bug_search_executions WHERE execution_id=$1",vec![seed.into(),original_execution.into(),original.agent_id.into(),app::bug_search::canonical_hash(&original).unwrap().into(),serde_json::to_value(&original).unwrap().into(),Uuid::new_v4().into()]).await;
+    let mut finding = command(original_execution, "verification:original-finding");
+    finding.expected_fence = 99;
+    finding.source_identity.repository_id = Some(source.repository_id);
+    let created = f
+        .repo
+        .register(f.project, &actor, finding.clone())
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(created.outcome, BugFindingOutcome::Created);
+    let report = finding.report;
+    let basis = BugProducedFindingReport {
+        source_identity: app::bug_search::canonical_hash(&finding.source_identity).unwrap(),
+        source: finding.source_identity,
+        title: report.title,
+        basis: report.basis,
+        expected: report.expected,
+        actual: report.actual,
+        reproducer: report.reproducer,
+        checked_version: report.checked_version,
+        evidence_refs: report.evidence_refs,
+    };
+    let discovered = f
+        .repo
+        .verification_basis(f.project, created.issue_id, &actor, "owner")
+        .await
+        .unwrap();
+    assert_eq!(discovered.report, basis);
+    assert_eq!(
+        discovered.report_sha256,
+        app::bug_search::canonical_hash(&basis).unwrap()
+    );
+    assert_eq!(
+        discovered.tracker_instance_uuid,
+        f.config.tracker_instance_uuid
+    );
+    for denied in [
+        machine(&f.config.workflow_reader_subject),
+        machine("unrelated-service"),
+    ] {
+        assert!(matches!(
+            f.repo
+                .verification_basis(f.project, created.issue_id, &denied, "owner")
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(
+        f.repo
+            .verification_basis(f.foreign, created.issue_id, &actor, "owner")
+            .await
+            .is_err()
+    );
+    assert!(
+        f.repo
+            .verification_basis(f.project, created.issue_id, &actor, "another-owner")
+            .await
+            .is_err()
+    );
+    let mut snapshot = accepted_snapshot(&f, 1);
+    snapshot.kind = BugSearchPurpose::Verification;
+    snapshot.mode = BugSearchMode::Qa;
+    snapshot.bug_id = Some(created.issue_id);
+    snapshot.expected_fixed_deployment_ref = Some("forge:delivered:fixed-b".into());
+    snapshot.verification_basis = Some(basis);
+    snapshot.targets[0].commit_sha = "b".repeat(40);
+    snapshot.targets[0].target_ref = Some("qa:portal".into());
+    snapshot.targets[0].deployment_ref = snapshot.expected_fixed_deployment_ref.clone();
+    snapshot.targets[0].source = Some(BugTargetSourceIdentity {
+        observed_head_sha: "b".repeat(40),
+        ..source
+    });
+    f.repo
+        .apply_policy(
+            f.project,
+            &actor,
+            ApplyBugSearchPolicy {
+                idempotency_key: "verification:policy".into(),
+                owner_subject: "owner".into(),
+                expected_revision: 0,
+                desired_revision: 1,
+                policy: accepted_policy(&snapshot),
+            },
+        )
+        .await
+        .unwrap();
+    // The parent fixture inserts explicit historical fences (1 and99); a real
+    // owner reservation uses the sequence, which must follow those retained IDs.
+    sql(
+        &f.db,
+        "SELECT setval('sdlc_bug_search_fence',99,true)",
+        vec![],
+    )
+    .await;
+    for n in 0..4 {
+        let mut bad = snapshot.clone();
+        match n {
+            0 => bad.bug_id = Some(Uuid::new_v4()),
+            1 => bad.verification_basis.as_mut().unwrap().reproducer = "Different scenario".into(),
+            2 => bad.targets[0].source.as_mut().unwrap().repository_id = Uuid::new_v4(),
+            _ => bad.verification_basis = None,
+        }
+        assert!(
+            f.repo
+                .reserve(
+                    f.project,
+                    &actor,
+                    reserve(&bad, &format!("verification:bad:{n}"))
+                )
+                .await
+                .is_err()
+        );
+    }
+    let command = reserve(&snapshot, "verification:reserve");
+    let original_reserve = f
+        .repo
+        .reserve(f.project, &actor, command.clone())
+        .await
+        .unwrap()
+        .0;
+    let binding = &original_reserve.binding;
+    assert_eq!(binding.purpose, BugSearchPurpose::Verification);
+    assert_eq!(binding.bug_id, Some(created.issue_id));
+    assert_eq!(
+        binding.expected_delivery_ref,
+        snapshot.expected_fixed_deployment_ref
+    );
+    let prepared = json!({"contract_version":1,"execution_id":binding.execution_id,
+        "binding":binding,"snapshot_sha256":binding.snapshot_sha256,"profession":snapshot.profession,
+        "workflow_id":1,"mode_id":3,"mode_key":"verification","state":"prepared","version":1,
+        "fence":binding.fence,"phase_index":0,"phase_contract":{"synthetic":"verification-test"},
+        "session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,
+        "runtime_terminal_confirmed":false,"target_observations":null});
+    let admit = AdmitBugSearch {
+        idempotency_key: "verification:admit".into(),
+        expected_fence: binding.fence,
+        workflow_receipt_sha256: app::bug_search::canonical_hash(&prepared).unwrap(),
+        workflow_receipt: prepared,
+    };
+    // Fresh grant and admission stop when the actual original Bug is unavailable.
+    sql(
+        &f.db,
+        "UPDATE issues SET deleted_at=clock_timestamp() WHERE id=$1",
+        vec![created.issue_id.into()],
+    )
+    .await;
+    assert!(
+        !f.repo
+            .execution_grant(f.project, binding.execution_id, &actor)
+            .await
+            .unwrap()
+            .authorization_valid
+    );
+    assert!(
+        f.repo
+            .admit(f.project, binding.execution_id, &actor, admit.clone())
+            .await
+            .is_err()
+    );
+    sql(
+        &f.db,
+        "UPDATE issues SET deleted_at=NULL WHERE id=$1",
+        vec![created.issue_id.into()],
+    )
+    .await;
+    let admitted = f
+        .repo
+        .admit(f.project, binding.execution_id, &actor, admit)
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(admitted.binding.purpose, BugSearchPurpose::Verification);
+    assert!(admitted.dispatch_allowed);
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let reopened = f.reopened().await;
+    assert!(matches!(
+        reopened
+            .verification_basis(f.project, created.issue_id, &actor, "owner")
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let BugSearchCommandReceipt::Reserve(recovered) = reopened
+        .command(f.project, &actor, &command.idempotency_key)
+        .await
+        .unwrap()
+    else {
+        panic!("wrong original command")
+    };
+    assert_eq!(
+        serde_json::to_value(recovered).unwrap(),
+        serde_json::to_value(&original_reserve).unwrap()
+    );
+    assert!(
+        reopened
+            .execution_grant(f.project, binding.execution_id, &actor)
+            .await
+            .is_err()
+    );
+    assert!(reopened.reserve(f.project, &actor, command).await.is_err());
+    drop(reopened);
+    f.close().await;
+}

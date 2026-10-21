@@ -1,0 +1,341 @@
+//! Dedicated server credential and fixed CI root; I/O stays outside SQL locks.
+use domain::bug_work_delivery::{
+    BugWorkDeliveryLocator, BugWorkDeliveryProof, BugWorkDeliveryReader,
+};
+use shared::AppError;
+use std::path::PathBuf;
+use uuid::Uuid;
+
+pub struct ForgeBugWorkDeliveryReader {
+    client: reqwest::Client,
+    endpoint: reqwest::Url,
+    token_file: PathBuf,
+}
+impl ForgeBugWorkDeliveryReader {
+    pub fn from_deployment() -> Result<Option<Self>, AppError> {
+        let Some(file) = std::env::var_os("TT_BUG_DELIVERY__FORGE_TOKEN_FILE") else {
+            return Ok(None);
+        };
+        let root = std::env::var("TT_NAMESPACE__FORGE_URL")
+            .map_err(|_| AppError::Unavailable("bug_delivery_owner_unconfigured".into()))?;
+        Self::new(&root, PathBuf::from(file)).map(Some)
+    }
+    fn new(root: &str, token_file: PathBuf) -> Result<Self, AppError> {
+        let endpoint = reqwest::Url::parse(root)
+            .map_err(|_| AppError::validation("invalid_bug_delivery_owner_root"))?;
+        if !matches!(endpoint.scheme(), "http" | "https")
+            || endpoint.host_str().is_none()
+            || !endpoint.username().is_empty()
+            || endpoint.password().is_some()
+            || endpoint.path() != "/"
+            || endpoint.query().is_some()
+            || endpoint.fragment().is_some()
+            || !token_file.is_absolute()
+        {
+            return Err(AppError::validation(
+                "invalid_bug_delivery_owner_configuration",
+            ));
+        }
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| AppError::Unavailable("bug_delivery_client_unavailable".into()))?;
+        Ok(Self {
+            client,
+            endpoint,
+            token_file,
+        })
+    }
+    async fn token(&self) -> Result<String, AppError> {
+        // Rotation/removal takes effect without restarting Tracker.
+        let bytes = tokio::fs::read(&self.token_file)
+            .await
+            .map_err(|_| AppError::Unavailable("bug_delivery_credential_unavailable".into()))?;
+        if bytes.len() > 16384 {
+            return Err(AppError::Unavailable(
+                "bug_delivery_credential_invalid".into(),
+            ));
+        }
+        let token = String::from_utf8(bytes)
+            .map_err(|_| AppError::Unavailable("bug_delivery_credential_invalid".into()))?;
+        let token = token.trim();
+        if token.is_empty() || token.chars().any(char::is_control) {
+            return Err(AppError::Unavailable(
+                "bug_delivery_credential_invalid".into(),
+            ));
+        }
+        Ok(token.to_owned())
+    }
+}
+#[async_trait::async_trait]
+impl BugWorkDeliveryReader for ForgeBugWorkDeliveryReader {
+    async fn read(
+        &self,
+        configuration_id: Uuid,
+        target_ref: &str,
+        locator: &BugWorkDeliveryLocator,
+    ) -> Result<BugWorkDeliveryProof, AppError> {
+        locator.validate()?;
+        if configuration_id.is_nil()
+            || target_ref.trim().is_empty()
+            || target_ref.len() > 512
+            || target_ref.chars().any(char::is_control)
+        {
+            return Err(AppError::validation("invalid_bug_delivery_owner_scope"));
+        }
+        let token = self.token().await?;
+        let mut endpoint = self.endpoint.clone();
+        endpoint
+            .path_segments_mut()
+            .map_err(|_| AppError::Unavailable("bug_delivery_owner_unavailable".into()))?
+            .clear()
+            .extend([
+                "api",
+                "v1",
+                "projects",
+                &configuration_id.to_string(),
+                "bug-work-operations",
+                &locator.operation_key,
+                "delivery-proof",
+                target_ref,
+            ]);
+        let mut response = self
+            .client
+            .get(endpoint)
+            .query(&[
+                ("request_sha256", locator.request_sha256.clone()),
+                ("assignment_id", locator.assignment_id.to_string()),
+                ("assignment_sha256", locator.assignment_sha256.clone()),
+                ("expected_fence", locator.expected_fence.to_string()),
+                ("candidate_commit_sha", locator.candidate_commit_sha.clone()),
+            ])
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|_| AppError::Unavailable("bug_delivery_owner_unavailable".into()))?;
+        if response.status() != reqwest::StatusCode::OK {
+            return Err(AppError::Unavailable("bug_delivery_owner_rejected".into()));
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > 65536)
+        {
+            return Err(AppError::Unavailable(
+                "bug_delivery_owner_response_invalid".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| AppError::Unavailable("bug_delivery_owner_unavailable".into()))?
+        {
+            if bytes.len() + chunk.len() > 65536 {
+                return Err(AppError::Unavailable(
+                    "bug_delivery_owner_response_invalid".into(),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if self.token().await? != token {
+            return Err(AppError::Unavailable(
+                "bug_delivery_credential_changed".into(),
+            ));
+        }
+        let proof: BugWorkDeliveryProof = serde_json::from_slice(&bytes)
+            .map_err(|_| AppError::Unavailable("bug_delivery_owner_response_invalid".into()))?;
+        if proof.configuration_id != configuration_id || proof.target_ref != target_ref {
+            return Err(AppError::conflict("bug_delivery_owner_scope_changed"));
+        }
+        Ok(proof)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+
+    struct Credential(PathBuf);
+    impl Drop for Credential {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    fn fixture() -> (serde_json::Value, BugWorkDeliveryLocator, Credential) {
+        let value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../domain/tests/fixtures/bug-work-delivery-v1.json"
+        ))
+        .unwrap();
+        let locator = serde_json::from_value(value["locator"].clone()).unwrap();
+        let file =
+            std::env::temp_dir().join(format!("tracker-bug-delivery-token-{}", Uuid::new_v4()));
+        std::fs::write(&file, "synthetic-owner-reader").unwrap();
+        (value, locator, Credential(file))
+    }
+    fn owner(
+        status: u16,
+        body: Vec<u8>,
+        rotate: Option<PathBuf>,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let root = format!("http://{}/", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let task = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let mut socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "owner client did not connect"
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    Err(_) => panic!("owner accept failed"),
+                }
+            };
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let mut chunk = [0; 1024];
+                let n = socket.read(&mut chunk).unwrap();
+                assert!(n > 0 && request.len() + n <= 8192);
+                request.extend_from_slice(&chunk[..n]);
+            }
+            let first_line = String::from_utf8(request)
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap()
+                .to_owned();
+            if let Some(file) = rotate {
+                std::fs::write(file, "rotated-owner-reader").unwrap();
+            }
+            write!(socket, "HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+            // An oversized response can be rejected before its body is consumed.
+            let _ = socket.write_all(&body);
+            first_line
+        });
+        (root, task)
+    }
+    #[tokio::test]
+    async fn fixed_owner_get_uses_original_locator_and_typed_bounded_response() {
+        let (v, locator, credential) = fixture();
+        let configuration: Uuid = v["proof"]["configurationId"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let (root, server) = owner(200, serde_json::to_vec(&v["proof"]).unwrap(), None);
+        let reader = ForgeBugWorkDeliveryReader::new(&root, credential.0.clone()).unwrap();
+        let proof = reader
+            .read(configuration, "qa:portal", &locator)
+            .await
+            .unwrap();
+        assert_eq!(serde_json::to_value(proof).unwrap(), v["proof"]);
+        let request = server.join().unwrap();
+        let path = request.split(' ').nth(1).unwrap();
+        let url = reqwest::Url::parse(&format!("http://owner{path}")).unwrap();
+        assert_eq!(
+            url.path_segments().unwrap().take(6).collect::<Vec<_>>(),
+            [
+                "api",
+                "v1",
+                "projects",
+                &configuration.to_string(),
+                "bug-work-operations",
+                "fix:1"
+            ]
+        );
+        let query: std::collections::BTreeMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query.len(), 5);
+        assert_eq!(query["assignment_id"], locator.assignment_id.to_string());
+        assert_eq!(query["assignment_sha256"], locator.assignment_sha256);
+        assert_eq!(query["request_sha256"], locator.request_sha256);
+        assert_eq!(query["expected_fence"], locator.expected_fence.to_string());
+        assert_eq!(query["candidate_commit_sha"], locator.candidate_commit_sha);
+    }
+    #[tokio::test]
+    async fn missing_rotated_credential_redirect_oversize_foreign_or_untyped_owner_response_is_denied()
+     {
+        for case in 0..6 {
+            let (mut v, locator, credential) = fixture();
+            let configuration: Uuid = v["proof"]["configurationId"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let mut status = 200;
+            if case == 1 {
+                status = 302;
+            }
+            if case == 3 {
+                v["proof"]["configurationId"] = serde_json::json!(Uuid::new_v4());
+            }
+            if case == 4 {
+                v["proof"]["verified"] = serde_json::json!(true);
+            }
+            if case == 5 {
+                v["proof"]["targetRef"] = serde_json::json!("qa:foreign");
+            }
+            let body = if case == 2 {
+                vec![b'x'; 65537]
+            } else {
+                serde_json::to_vec(&v["proof"]).unwrap()
+            };
+            let (root, server) = owner(
+                status,
+                body,
+                if case == 0 {
+                    Some(credential.0.clone())
+                } else {
+                    None
+                },
+            );
+            let reader = ForgeBugWorkDeliveryReader::new(&root, credential.0.clone()).unwrap();
+            assert!(
+                reader
+                    .read(configuration, "qa:portal", &locator)
+                    .await
+                    .is_err(),
+                "case {case}"
+            );
+            server.join().unwrap();
+        }
+        let (v, locator, credential) = fixture();
+        let reader =
+            ForgeBugWorkDeliveryReader::new("http://127.0.0.1:1/", credential.0.clone()).unwrap();
+        std::fs::remove_file(&credential.0).unwrap();
+        assert!(
+            reader
+                .read(
+                    v["proof"]["configurationId"]
+                        .as_str()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
+                    "qa:portal",
+                    &locator
+                )
+                .await
+                .is_err()
+        );
+        for root in [
+            "http://owner/path/",
+            "http://user:secret@owner/",
+            "http://owner/?other=1",
+            "file:///tmp/",
+        ] {
+            assert!(ForgeBugWorkDeliveryReader::new(root, credential.0.clone()).is_err());
+        }
+    }
+}

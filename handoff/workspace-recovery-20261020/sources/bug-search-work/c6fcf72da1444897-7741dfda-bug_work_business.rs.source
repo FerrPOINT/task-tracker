@@ -1,0 +1,672 @@
+//! Owner I/O is performed by the app service before these short transactions.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, exec, field, stmt};
+use crate::bug_search_control::{command_hash, locks, save, saved};
+use app::bug_work_business::*;
+use domain::{
+    bug_search_control::{
+        BugSearchCommandReceipt, BugSearchMode, BugSearchPolicyState, BugSearchSnapshot,
+    },
+    bug_work_business::*,
+    bug_work_delivery::*,
+    sdlc::Principal,
+};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, TransactionTrait};
+use serde_json::{Value, json};
+use shared::{AppError, IssueId, ProjectId, StatusId, UserId};
+use uuid::Uuid;
+
+fn value(v: &impl serde::Serialize) -> Result<Value, AppError> {
+    serde_json::to_value(v).map_err(AppError::internal)
+}
+fn conflict() -> AppError {
+    AppError::conflict("Bug candidate, original scenario or current authority changed")
+}
+async fn candidate(
+    tx: &DatabaseTransaction,
+    p: Uuid,
+    b: Uuid,
+) -> Result<Option<(BugWorkCandidate, String)>, AppError> {
+    let row=tx.query_one(stmt("SELECT c.payload,c.payload_sha256 FROM sdlc_bug_candidate_heads h JOIN sdlc_bug_candidates c USING(bug_id,project_id,revision) WHERE h.project_id=$1 AND h.bug_id=$2",vec![p.into(),b.into()])).await.map_err(db_error)?;
+    row.map(|r| {
+        let raw: Value = field(&r, "payload")?;
+        let hash: String = field(&r, "payload_sha256")?;
+        let c: BugWorkCandidate = serde_json::from_value(raw.clone()).map_err(|_| conflict())?;
+        if app::bug_search::canonical_hash(&raw)? != hash
+            || c.project_id != p
+            || c.bug_id != b
+            || c.contract_version != 1
+            || c.revision < 1
+            || c.assignment_id != c.locator.assignment_id
+        {
+            return Err(conflict());
+        }
+        Ok((c, hash))
+    })
+    .transpose()
+}
+fn pin_hash(p: Uuid, c: &PinBugWorkCandidate) -> Result<String, AppError> {
+    command_hash(
+        "bug_business",
+        p,
+        &json!({"action":"pin","command":without_key(c)?}),
+    )
+}
+fn apply_hash(p: Uuid, b: Uuid, c: &ApplyBugWorkVerification) -> Result<String, AppError> {
+    command_hash(
+        "bug_business",
+        p,
+        &json!({"action":"verify","bug_id":b,"command":without_key(c)?}),
+    )
+}
+fn without_key(c: &impl serde::Serialize) -> Result<Value, AppError> {
+    let mut v = value(c)?;
+    v.as_object_mut()
+        .ok_or_else(conflict)?
+        .remove("idempotency_key");
+    Ok(v)
+}
+impl PostgresBugSearchRepository {
+    async fn business_context(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        fresh: bool,
+    ) -> Result<BugBusinessContext, AppError> {
+        let fleet = self.work_machine(a)?;
+        let state = crate::bug_work::state(&self.work_row(tx, p, id).await?)?;
+        self.work_binding(p, fleet, &state)?;
+        if fresh {
+            self.manage(tx, p, &state.assignment.owner_subject).await?;
+            self.work_fresh(tx, &state).await?;
+        } else {
+            self.owner_access(tx, p, &state.assignment.owner_subject, false)
+                .await?;
+        }
+        let (origin, source) = self
+            .canonical_work_origin(
+                tx,
+                p,
+                state.assignment.bug_id,
+                &state.assignment.source_identity,
+                &state.assignment.verification_basis,
+            )
+            .await?;
+        if state.assignment.origin.as_ref() != Some(&origin) {
+            return Err(conflict());
+        }
+        let head = candidate(tx, p, state.assignment.bug_id).await?;
+        Ok(BugBusinessContext {
+            state,
+            source,
+            candidate: head.as_ref().map(|(c, _)| c.clone()),
+            candidate_sha256: head.map(|(_, h)| h),
+        })
+    }
+    pub(super) async fn business_receipt_access(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        r: &BugBusinessReceipt,
+    ) -> Result<(), AppError> {
+        let fleet = self.work_machine(a)?;
+        let state = crate::bug_work::state(&self.work_row(tx, p, r.assignment_id).await?)?;
+        self.work_binding(p, fleet, &state)?;
+        if r.contract_version != 1
+            || r.operation_id.is_nil()
+            || r.project_id != p
+            || r.bug_id != state.assignment.bug_id
+            || r.fleet_instance_id != fleet
+            || r.machine_subject != a.subject
+            || r.owner_subject != state.assignment.owner_subject
+            || r.assignment_sha256 != state.assignment_sha256
+        {
+            return Err(AppError::Forbidden);
+        }
+        let revision = match &r.outcome {
+            BugBusinessOutcome::CandidatePinned(c) => c.revision,
+            BugBusinessOutcome::VerificationApplied {
+                candidate_revision, ..
+            } => *candidate_revision,
+        };
+        let saved=tx.query_one(stmt("SELECT payload,payload_sha256 FROM sdlc_bug_candidates WHERE project_id=$1 AND bug_id=$2 AND revision=$3",vec![p.into(),r.bug_id.into(),revision.into()])).await.map_err(db_error)?.ok_or_else(conflict)?;
+        let raw: Value = field(&saved, "payload")?;
+        let hash: String = field(&saved, "payload_sha256")?;
+        if app::bug_search::canonical_hash(&raw)? != hash {
+            return Err(conflict());
+        }
+        match &r.outcome {
+            BugBusinessOutcome::CandidatePinned(c) if value(c)? != raw => return Err(conflict()),
+            BugBusinessOutcome::VerificationApplied {
+                candidate_sha256, ..
+            } if candidate_sha256 != &hash => return Err(conflict()),
+            _ => (),
+        }
+        // Immutable historical acceptance only; no owner refresh, CI fetch or new effect.
+        Ok(())
+    }
+    async fn business_replay(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+        hash: &str,
+    ) -> Result<Option<BugBusinessReceipt>, AppError> {
+        let original = saved(tx, p, a, key, "bug_business", hash).await?;
+        match original {
+            None => Ok(None),
+            Some(BugSearchCommandReceipt::BugBusiness(r)) => {
+                self.business_receipt_access(tx, p, a, &r).await?;
+                Ok(Some(r))
+            }
+            _ => Err(conflict()),
+        }
+    }
+    async fn business_save(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+        hash: &str,
+        r: &BugBusinessReceipt,
+    ) -> Result<(), AppError> {
+        if serde_json::to_vec_pretty(r)
+            .map_err(AppError::internal)?
+            .len()
+            > 131000
+        {
+            return Err(AppError::validation("Bug business receipt exceeds bound"));
+        }
+        save(
+            tx,
+            p,
+            a,
+            key,
+            &r.owner_subject,
+            hash,
+            &BugSearchCommandReceipt::BugBusiness(r.clone()),
+        )
+        .await
+    }
+}
+fn receipt(ctx: &BugBusinessContext, outcome: BugBusinessOutcome) -> BugBusinessReceipt {
+    let g = &ctx.state.assignment;
+    BugBusinessReceipt {
+        contract_version: 1,
+        operation_id: Uuid::new_v4(),
+        project_id: g.project_id,
+        bug_id: g.bug_id,
+        assignment_id: g.assignment_id,
+        fleet_instance_id: g.worker_runtime.fleet_instance_id,
+        machine_subject: g.machine_subject.clone(),
+        owner_subject: g.owner_subject.clone(),
+        assignment_sha256: ctx.state.assignment_sha256.clone(),
+        accepted_at: chrono::Utc::now(),
+        outcome,
+    }
+}
+fn revision(ctx: &BugBusinessContext, expected: i64) -> Result<(), AppError> {
+    if ctx.candidate.as_ref().map_or(0, |c| c.revision) != expected {
+        return Err(conflict());
+    }
+    Ok(())
+}
+fn require_same_candidate(
+    ctx: &BugBusinessContext,
+    proof: &BugWorkDeliveryProof,
+) -> Result<(), AppError> {
+    let c = ctx.candidate.as_ref().ok_or_else(conflict)?;
+    ctx.require_proof(proof, &c.locator, &c.target_ref)?;
+    let old = &c.accepted_proof;
+    if proof.operation != old.operation
+        || proof.pipeline != old.pipeline
+        || proof.bug_work != old.bug_work
+        || proof.configuration_id != old.configuration_id
+        || proof.repository_id != old.repository_id
+        || proof.environment_id != old.environment_id
+        || proof.project != old.project
+    {
+        return Err(conflict());
+    }
+    proof.require_delivered(chrono::Utc::now())?;
+    Ok(())
+}
+#[async_trait::async_trait]
+impl BugWorkBusinessRepository for PostgresBugSearchRepository {
+    async fn begin_pin(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: &PinBugWorkCandidate,
+    ) -> Result<BusinessBegin, AppError> {
+        c.validate(id)?;
+        self.work_machine(a)?;
+        let hash = pin_hash(p, c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        if let Some(r) = self
+            .business_replay(&tx, p, a, &c.idempotency_key, &hash)
+            .await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok(BusinessBegin::Replay(Box::new(r)));
+        }
+        let ctx = self.business_context(&tx, p, id, a, true).await?;
+        revision(&ctx, c.expected_candidate_revision)?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(BusinessBegin::Observe(Box::new(ctx)))
+    }
+    async fn commit_pin(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: PinBugWorkCandidate,
+        proof: BugWorkDeliveryProof,
+    ) -> Result<(BugBusinessReceipt, bool), AppError> {
+        c.validate(id)?;
+        self.work_machine(a)?;
+        let hash = pin_hash(p, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        if let Some(r) = self
+            .business_replay(&tx, p, a, &c.idempotency_key, &hash)
+            .await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        let ctx = self.business_context(&tx, p, id, a, true).await?;
+        revision(&ctx, c.expected_candidate_revision)?;
+        ctx.require_proof(&proof, &c.locator, &c.target_ref)?;
+        // Respect an existing current QA target allowlist; SourceOnly has no
+        // fabricated QA target. CI validates its actual configured mapping.
+        let policy=tx.query_one(stmt("SELECT r.payload FROM sdlc_bug_search_policy_heads h JOIN sdlc_bug_search_policy_revisions r USING(project_id,revision) WHERE h.project_id=$1 FOR SHARE OF h,r",vec![p.into()])).await.map_err(db_error)?;
+        if let Some(policy) = policy {
+            let current: BugSearchPolicyState = decode(&policy, "payload")?;
+            current.policy.validate()?;
+            if current.contract_version != 1
+                || current.project_id != p
+                || app::bug_search::canonical_hash(&current.policy)? != current.policy_sha256
+            {
+                return Err(conflict());
+            }
+            if current.policy.mode == BugSearchMode::Qa {
+                let refs: Vec<_> = ctx
+                    .source
+                    .targets
+                    .iter()
+                    .filter(|t| {
+                        t.commit_sha == proof.bug_work.base_commit_sha
+                            && t.source
+                                .as_ref()
+                                .is_some_and(|s| s.repository_id == proof.repository_id)
+                    })
+                    .map(|t| t.repository_ref.as_str())
+                    .collect();
+                if !current.policy.targets.iter().any(|t| {
+                    refs.contains(&t.repository_ref.as_str())
+                        && t.target_ref.as_deref() == Some(c.target_ref.as_str())
+                }) {
+                    return Err(AppError::Forbidden);
+                }
+            }
+        }
+        let g = &ctx.state.assignment;
+        let candidate = BugWorkCandidate {
+            contract_version: 1,
+            operation_id: Uuid::new_v4(),
+            project_id: p,
+            bug_id: g.bug_id,
+            assignment_id: id,
+            revision: c.expected_candidate_revision + 1,
+            locator: c.locator,
+            target_ref: c.target_ref,
+            accepted_proof: proof,
+            accepted_at: chrono::Utc::now(),
+        };
+        let raw = value(&candidate)?;
+        let sha = app::bug_search::canonical_hash(&raw)?;
+        if serde_json::to_vec_pretty(&raw)
+            .map_err(AppError::internal)?
+            .len()
+            > 98304
+        {
+            return Err(AppError::validation("Bug candidate exceeds bound"));
+        }
+        exec(&tx,"INSERT INTO sdlc_bug_candidates(bug_id,project_id,revision,assignment_id,payload,payload_sha256) VALUES($1,$2,$3,$4,$5,$6)",vec![g.bug_id.into(),p.into(),candidate.revision.into(),id.into(),raw.into(),sha.into()]).await?;
+        let changed=if c.expected_candidate_revision==0 {
+            tx.execute(stmt("INSERT INTO sdlc_bug_candidate_heads(bug_id,project_id,revision) VALUES($1,$2,$3)",vec![g.bug_id.into(),p.into(),candidate.revision.into()])).await
+        } else {
+            tx.execute(stmt("UPDATE sdlc_bug_candidate_heads SET revision=$3 WHERE bug_id=$1 AND project_id=$2 AND revision=$4",vec![g.bug_id.into(),p.into(),candidate.revision.into(),c.expected_candidate_revision.into()])).await
+        }.map_err(db_error)?;
+        if changed.rows_affected() != 1 {
+            return Err(conflict());
+        }
+        let operation_id = candidate.operation_id;
+        let mut r = receipt(&ctx, BugBusinessOutcome::CandidatePinned(candidate));
+        r.operation_id = operation_id;
+        self.business_save(&tx, p, a, &c.idempotency_key, &hash, &r)
+            .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((r, false))
+    }
+    async fn begin_verification(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        a: &Principal,
+        c: &ApplyBugWorkVerification,
+    ) -> Result<BusinessBegin, AppError> {
+        c.validate()?;
+        self.work_machine(a)?;
+        let hash = apply_hash(p, b, c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        if let Some(r) = self
+            .business_replay(&tx, p, a, &c.idempotency_key, &hash)
+            .await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok(BusinessBegin::Replay(Box::new(r)));
+        }
+        let (head, _) = candidate(&tx, p, b).await?.ok_or_else(conflict)?;
+        let ctx = self
+            .business_context(&tx, p, head.assignment_id, a, true)
+            .await?;
+        revision(&ctx, c.expected_candidate_revision)?;
+        let candidate = ctx.candidate.as_ref().ok_or_else(conflict)?;
+        let known=tx.query_one(stmt("SELECT r.execution_id FROM sdlc_bug_search_results r JOIN sdlc_bug_search_executions e USING(execution_id,project_id) WHERE r.project_id=$1 AND r.execution_id=$2 AND e.created_at>=$3 AND e.snapshot->>'bug_id'=$4 AND e.snapshot->'targets'->0->>'commit_sha'=$5 AND r.result->>'coverage'='complete' AND r.result->'verification'->>'verdict' IN('passed','failed')",vec![p.into(),c.verification_execution_id.into(),candidate.accepted_at.into(),b.to_string().into(),candidate.locator.candidate_commit_sha.clone().into()])).await.map_err(db_error)?;
+        if known.is_none() {
+            return Err(conflict());
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(BusinessBegin::Observe(Box::new(ctx)))
+    }
+    async fn commit_verification(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        a: &Principal,
+        c: ApplyBugWorkVerification,
+        proof: BugWorkDeliveryProof,
+    ) -> Result<(BugBusinessReceipt, bool), AppError> {
+        c.validate()?;
+        self.work_machine(a)?;
+        let hash = apply_hash(p, b, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        if let Some(r) = self
+            .business_replay(&tx, p, a, &c.idempotency_key, &hash)
+            .await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        // Same target->issue lock order as ordinary atomic status transitions.
+        crate::repos::lock_transition_target(&tx, StatusId::from_uuid(c.target_status_id)).await?;
+        let (head, _) = candidate(&tx, p, b).await?.ok_or_else(conflict)?;
+        let ctx = self
+            .business_context(&tx, p, head.assignment_id, a, true)
+            .await?;
+        revision(&ctx, c.expected_candidate_revision)?;
+        require_same_candidate(&ctx, &proof)?;
+        let (result_hash, verdict) = require_verification(&tx, &ctx, &c, &proof).await?;
+        let target = tx
+            .query_one(stmt(
+                "SELECT is_closed FROM statuses WHERE id=$1 FOR SHARE",
+                vec![c.target_status_id.into()],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(conflict)?;
+        if verdict == app::bug_search_verification::Verdict::Failed
+            && field::<bool>(&target, "is_closed")?
+        {
+            return Err(conflict());
+        }
+        let owner = self
+            .owner_access(&tx, p, &ctx.state.assignment.owner_subject, true)
+            .await?
+            .0;
+        let board=tx.query_one(stmt("SELECT b.* FROM boards b JOIN projects p ON p.default_board_id=b.id AND p.id=b.project_id WHERE p.id=$1 FOR SHARE OF b",vec![p.into()])).await.map_err(db_error)?.ok_or_else(conflict)?;
+        let model = <crate::entities::board::Model as sea_orm::FromQueryResult>::from_query_result(
+            &board, "",
+        )
+        .map_err(db_error)?;
+        let columns = crate::repos::map_board(model).columns;
+        let column = columns
+            .iter()
+            .find(|col| col.id.as_uuid() == c.target_status_id)
+            .ok_or_else(|| AppError::validation("unknown target board column"))?;
+        let allowed=tx.query_one(stmt("SELECT id FROM workflow_transitions WHERE from_status_id=$1 AND to_status_id=$2 FOR SHARE",vec![c.expected_status_id.into(),c.target_status_id.into()])).await.map_err(db_error)?;
+        if allowed.is_none() {
+            return Err(AppError::validation("workflow transition not allowed"));
+        }
+        let guard = domain::TransitionGuard {
+            wip_limit: column
+                .wip_limit
+                .map(|n| u32::try_from(n).map_err(|_| conflict()))
+                .transpose()?,
+            target_count: 0,
+            column_name: column.name.to_string(),
+        };
+        crate::repos::change_status_in_transaction(
+            &tx,
+            IssueId::from_uuid(b),
+            ProjectId::from_uuid(p),
+            StatusId::from_uuid(c.expected_status_id),
+            StatusId::from_uuid(c.target_status_id),
+            UserId::from_uuid(owner),
+            &guard,
+            Some(c.expected_updated_at),
+        )
+        .await?;
+        let updated = tx
+            .query_one(stmt(
+                "SELECT updated_at FROM issues WHERE id=$1",
+                vec![b.into()],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(conflict)?;
+        let updated: chrono::DateTime<chrono::FixedOffset> = field(&updated, "updated_at")?;
+        let r = receipt(
+            &ctx,
+            BugBusinessOutcome::VerificationApplied {
+                candidate_revision: head.revision,
+                candidate_sha256: ctx.candidate_sha256.clone().ok_or_else(conflict)?,
+                verification_execution_id: c.verification_execution_id,
+                result_sha256: result_hash,
+                from_status_id: c.expected_status_id,
+                target_status_id: c.target_status_id,
+                updated_at: updated.with_timezone(&chrono::Utc),
+                delivery_proof: proof,
+            },
+        );
+        self.business_save(&tx, p, a, &c.idempotency_key, &hash, &r)
+            .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((r, false))
+    }
+    async fn current_candidate(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        a: &Principal,
+    ) -> Result<Option<BugWorkCandidate>, AppError> {
+        self.work_machine(a)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let head = candidate(&tx, p, b).await?;
+        if let Some((c, _)) = &head {
+            self.business_context(&tx, p, c.assignment_id, a, false)
+                .await?;
+        } else {
+            return Err(AppError::not_found("bug_candidate", b));
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(head.map(|(c, _)| c))
+    }
+    async fn business_operation(
+        &self,
+        p: Uuid,
+        key: &str,
+        a: &Principal,
+    ) -> Result<BugBusinessReceipt, AppError> {
+        self.work_machine(a)?;
+        domain::bug_search_control::validate_key(key)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let row=tx.query_one(stmt("SELECT receipt FROM sdlc_bug_search_commands WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3 AND kind='bug_business'",vec![p.into(),a.subject.clone().into(),key.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_business_operation",key))?;
+        let BugSearchCommandReceipt::BugBusiness(r) = decode(&row, "receipt")? else {
+            return Err(conflict());
+        };
+        self.business_receipt_access(&tx, p, a, &r).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(r)
+    }
+}
+
+async fn require_verification(
+    tx: &DatabaseTransaction,
+    ctx: &BugBusinessContext,
+    c: &ApplyBugWorkVerification,
+    proof: &BugWorkDeliveryProof,
+) -> Result<(String, app::bug_search_verification::Verdict), AppError> {
+    let g = &ctx.state.assignment;
+    let row=tx.query_one(stmt("SELECT e.fence,e.created_at,e.machine_subject,e.snapshot,e.snapshot_sha256,e.terminal_receipt,e.capacity_held,r.result,r.result_sha256,r.workflow_receipt,r.workflow_receipt_sha256 FROM sdlc_bug_search_executions e JOIN sdlc_bug_search_results r USING(execution_id,project_id) WHERE e.execution_id=$1 AND e.project_id=$2 FOR SHARE OF e,r",vec![c.verification_execution_id.into(),g.project_id.into()])).await.map_err(db_error)?.ok_or_else(conflict)?;
+    let raw: Value = field(&row, "snapshot")?;
+    let snapshot: BugSearchSnapshot =
+        serde_json::from_value(raw.clone()).map_err(|_| conflict())?;
+    snapshot.require_source_registry(g.tracker_instance_uuid)?;
+    let result: domain::bug_search_terminal::BugSearchTechnicalResult = decode(&row, "result")?;
+    let workflow: Value = field(&row, "workflow_receipt")?;
+    let hash: String = field(&row, "result_sha256")?;
+    let delivery = proof.require_delivered(chrono::Utc::now())?;
+    let terminal: domain::bug_search_terminal::BugSearchTerminalReceipt =
+        decode(&row, "terminal_receipt")?;
+    terminal.runtime_observation.validate()?;
+    if terminal.contract_version != 1
+        || terminal.execution_id != c.verification_execution_id
+        || terminal.project_id != g.project_id
+        || terminal.fence != field::<i64>(&row, "fence")?
+        || terminal.tracker_instance_id != g.tracker_instance_id
+        || terminal.runtime_observation.execution_id != c.verification_execution_id
+        || terminal.runtime_observation.agent_id != snapshot.agent_id
+        || !terminal.custody_released
+        || !terminal.result_available
+        || terminal.result_sha256.as_deref() != Some(hash.as_str())
+        || workflow.get("state") != Some(&json!("completed"))
+        || workflow.get("phase_index") != Some(&json!(3))
+        || workflow.get("execution_id") != Some(&json!(c.verification_execution_id))
+        || workflow.get("snapshot_sha256") != Some(&json!(app::bug_search::canonical_hash(&raw)?))
+        || workflow.get("session_id") != Some(&json!(terminal.runtime_observation.session_id))
+        || workflow.get("session_run_id")
+            != Some(&json!(terminal.runtime_observation.session_run_id))
+        || workflow.get("hermes_run_ref")
+            != Some(&json!(terminal.runtime_observation.hermes_run_ref))
+    {
+        return Err(conflict());
+    }
+    let original = snapshot.verification_basis.as_ref().ok_or_else(conflict)?;
+    let verdict =
+        app::bug_search_verification::require_result(&snapshot, &result)?.ok_or_else(conflict)?;
+    let created: chrono::DateTime<chrono::FixedOffset> = field(&row, "created_at")?;
+    let pinned = ctx.candidate.as_ref().ok_or_else(conflict)?;
+    if snapshot.project.project_id != g.project_id
+        || snapshot.project.tracker_instance_id != g.tracker_instance_id
+        || snapshot.bug_id != Some(g.bug_id)
+        || snapshot.owner_subject != g.owner_subject
+        || field::<String>(&row, "machine_subject")? != g.machine_subject
+        || original.source != g.source_identity
+        || original.report() != g.verification_basis
+        || app::bug_search::canonical_hash(&raw)? != field::<String>(&row, "snapshot_sha256")?
+        || app::bug_search::canonical_hash(&result)? != hash
+        || app::bug_search::canonical_hash(&workflow)?
+            != field::<String>(&row, "workflow_receipt_sha256")?
+        || workflow.get("result") != Some(&value(&result)?)
+        || field::<bool>(&row, "capacity_held")?
+        || field::<Option<Value>>(&row, "terminal_receipt")?.is_none()
+        || verdict == app::bug_search_verification::Verdict::Inconclusive
+        || created.with_timezone(&chrono::Utc) < pinned.accepted_at
+        || snapshot.expected_fixed_deployment_ref.as_deref() != Some(delivery.delivery_ref.as_str())
+        || snapshot.targets.len() != 1
+        || snapshot.targets[0].commit_sha != proof.bug_work.candidate_commit_sha
+        || snapshot.targets[0].target_ref.as_deref() != Some(proof.target_ref.as_str())
+        || !crate::bug_search_terminal::qa_delivery_qualified(
+            &workflow,
+            &raw,
+            g.tracker_instance_uuid,
+            g.project_id,
+        )
+    {
+        return Err(conflict());
+    }
+    // The old successful A, previous candidate B, or an ABA generation cannot
+    // authorize the current fix C. Compare actual producer observations too.
+    for side in ["before", "after"] {
+        let observed = workflow
+            .pointer(&format!("/target_observations/{side}/0"))
+            .ok_or_else(conflict)?;
+        if observed.get("configurationId") != Some(&json!(proof.configuration_id))
+            || observed.get("repositoryId") != Some(&json!(proof.repository_id))
+            || observed.get("environmentId") != Some(&json!(proof.environment_id))
+        {
+            return Err(conflict());
+        }
+        let target = observed.get("target").ok_or_else(conflict)?;
+        for (key, expected) in [
+            ("deliveryRef", json!(delivery.delivery_ref)),
+            ("operationKey", json!(delivery.operation_key)),
+            ("generation", json!(delivery.generation)),
+            ("manifestSha256", json!(delivery.manifest_sha256)),
+            ("commitSha", json!(delivery.commit_sha)),
+            ("artifactId", json!(delivery.artifact_id)),
+            ("artifactDigest", json!(delivery.artifact_digest)),
+        ] {
+            if target.get(key) != Some(&expected) {
+                return Err(conflict());
+            }
+        }
+        if target.pointer("/servingIdentity/versionBodySha256")
+            != Some(&json!(delivery.serving_identity.version_body_sha256))
+            || target.pointer("/servingIdentity/artifactBodySha256")
+                != Some(&json!(delivery.serving_identity.artifact_body_sha256))
+        {
+            return Err(conflict());
+        }
+    }
+    Ok((hash, verdict))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn business_hash_excludes_transport_key_but_binds_candidate_revision_and_action() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../domain/tests/fixtures/bug-work-delivery-v1.json"
+        ))
+        .unwrap();
+        let mut c = PinBugWorkCandidate {
+            contract_version: 1,
+            idempotency_key: "key:first".into(),
+            expected_candidate_revision: 0,
+            target_ref: "qa:portal".into(),
+            locator: serde_json::from_value(fixture["locator"].clone()).unwrap(),
+        };
+        let p = Uuid::new_v4();
+        let first = pin_hash(p, &c).unwrap();
+        c.idempotency_key = "key:second".into();
+        assert_eq!(pin_hash(p, &c).unwrap(), first);
+        c.expected_candidate_revision = 1;
+        assert_ne!(pin_hash(p, &c).unwrap(), first);
+        c.expected_candidate_revision = 0;
+        c.locator.candidate_commit_sha = "c".repeat(40);
+        assert_ne!(pin_hash(p, &c).unwrap(), first);
+    }
+}

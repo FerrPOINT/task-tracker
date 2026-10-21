@@ -1,0 +1,181 @@
+//! Synthetic Fleet/SDK attestations exercise the actual existing owner contract.
+//! These tests do not qualify physical namespace stopping or Hermes availability.
+use super::*;
+
+fn observation(e: Uuid, agent: Uuid) -> BugRuntimeObservation {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../domain/tests/fixtures/bug-known-run-namespace-exit-v1.json"
+    ))
+    .unwrap();
+    let mut o: BugRuntimeObservation =
+        serde_json::from_value(fixture["observation"].clone()).unwrap();
+    o.execution_id = e;
+    o.agent_id = agent;
+    o.observed_at = chrono::Utc::now();
+    let source = o.observation_source.as_mut().unwrap();
+    source.journal_ref = format!("fleet:bug-protective-context-stop:{e}");
+    source.original_running_receipt["resource_id"] = json!(agent);
+    source.stop_proof["resource_id"] = json!(agent);
+    // This closed proof contains only ASCII fields; its snapshot digest remains
+    // the independently generated Base-ASCII Unicode-engine fixture digest.
+    source.stop_proof_sha256 = app::bug_search::canonical_hash(&source.stop_proof).unwrap();
+    o
+}
+async fn held(f: &Fixture, e: Uuid) -> bool {
+    f.db.query_one(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT capacity_held FROM sdlc_bug_search_executions WHERE execution_id=$1",
+        vec![e.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "capacity_held")
+    .unwrap()
+}
+#[tokio::test]
+#[ignore = "requires TT_TEST_DATABASE_URL plus TT_BUG_SEARCH_DISPOSABLE_DB=1 and Base finally teardown"]
+async fn known_run_sdk_exit_requires_admission_and_preserves_original_proof_after_revoke_and_late_result()
+ {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let e = f.execution(410, false, true).await;
+    let grant = f.repo.execution_grant(f.project, e, &a).await.unwrap();
+    let b = &grant.binding;
+    let mut request = AcceptBugSearchTerminal {
+        idempotency_key: "known-sdk-original".into(),
+        expected_fence: b.fence,
+        workflow_receipt: None,
+        workflow_receipt_sha256: None,
+        runtime_observation: observation(e, b.agent_id),
+    };
+    assert!(matches!(
+        f.repo.terminal(f.project, e, &a, request.clone()).await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(held(&f, e).await);
+    let row =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT snapshot FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            vec![e.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let snapshot: serde_json::Value = row.try_get("", "snapshot").unwrap();
+    let prepared = json!({"contract_version":1,"execution_id":e,"binding":b,"snapshot_sha256":b.snapshot_sha256,"profession":snapshot["profession"],"workflow_id":1,"mode_id":2,"mode_key":"search","state":"prepared","version":1,"fence":b.fence,"phase_index":0,"phase_contract":{"synthetic":true},"session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,"runtime_terminal_confirmed":false,"target_observations":null});
+    f.repo
+        .admit(
+            f.project,
+            e,
+            &a,
+            AdmitBugSearch {
+                idempotency_key: "sdk-admit".into(),
+                expected_fence: b.fence,
+                workflow_receipt_sha256: app::bug_search::canonical_hash(&prepared).unwrap(),
+                workflow_receipt: prepared.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.repo
+            .terminal(f.project, e, &machine("foreign"), request.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut invalid = request.clone();
+    invalid.runtime_observation.terminal_status = BugRuntimeTerminalStatus::Succeeded;
+    assert!(matches!(
+        f.repo.terminal(f.project, e, &a, invalid).await,
+        Err(AppError::Validation(_))
+    ));
+    let mut invalid = request.clone();
+    invalid
+        .runtime_observation
+        .observation_source
+        .as_mut()
+        .unwrap()
+        .stop_proof_sha256 = "0".repeat(64);
+    assert!(matches!(
+        f.repo.terminal(f.project, e, &a, invalid).await,
+        Err(AppError::Validation(_))
+    ));
+    assert!(held(&f, e).await);
+    assert_eq!(f.count("sdlc_bug_search_results").await, 0);
+    // Protective original machine/fence survives owner deactivation. No new Bug
+    // or ordinary user authority is created by accepting physical cessation.
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let (closed, replayed) = f
+        .repo
+        .terminal(f.project, e, &a, request.clone())
+        .await
+        .unwrap();
+    assert!(!replayed && closed.custody_released && !closed.result_available);
+    assert_eq!(closed.runtime_observation, request.runtime_observation);
+    assert!(!held(&f, e).await);
+    assert!(
+        f.repo
+            .terminal(f.project, e, &a, request.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    let mut completed = prepared;
+    completed["state"] = json!("completed");
+    completed["version"] = json!(5);
+    completed["phase_index"] = json!(3);
+    completed["phase_contract"] = json!(null);
+    completed["session_id"] = json!(request.runtime_observation.session_id);
+    completed["session_run_id"] = json!(request.runtime_observation.session_run_id);
+    completed["hermes_run_ref"] = json!(request.runtime_observation.hermes_run_ref);
+    completed["result"] = json!({"coverage":"partial","findings":[]});
+    completed["result_qualification"] = json!("source_pinned");
+    request.idempotency_key = "known-sdk-original-late".into();
+    request.workflow_receipt_sha256 = Some(app::bug_search::canonical_hash(&completed).unwrap());
+    request.workflow_receipt = Some(completed);
+    let attached = f
+        .repo
+        .terminal(f.project, e, &a, request.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(attached.result_available);
+    assert_eq!(attached.runtime_observation, closed.runtime_observation);
+    assert!(
+        f.repo
+            .terminal(f.project, e, &a, request.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    let mut swapped = request.clone();
+    swapped.idempotency_key = "known-sdk-foreign-observation".into();
+    swapped
+        .runtime_observation
+        .observation_source
+        .as_mut()
+        .unwrap()
+        .reason = domain::bug_search_namespace_exit::KnownRunStopReason::ManualStop;
+    assert!(matches!(
+        f.repo.terminal(f.project, e, &a, swapped).await,
+        Err(AppError::Conflict(_))
+    ));
+    let read = f
+        .repo
+        .command(f.project, &a, "known-sdk-original")
+        .await
+        .unwrap();
+    let BugSearchCommandReceipt::Terminal(original) = read else {
+        panic!("original terminal ACK required")
+    };
+    assert!(!original.result_available);
+    assert_eq!(original.runtime_observation, closed.runtime_observation);
+    f.close().await;
+}
