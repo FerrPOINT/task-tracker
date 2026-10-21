@@ -44,3 +44,16 @@ Source/tests/publication/images/migration/live — отдельные gates. П�
 планы исторические; новая модель не меняет смысл технических receipts.
 Production, PDLC1/2/3, Hermes и соседи исключены. Не смешивать с прежними Workflow
 исправлениями профессий. Зависимые PR без автоматического merge.
+
+## Общий допуск на human SDLC API (21 октября 2026)
+
+Старый SDLC project-access читает native ACL и не заменяет общий допуск.
+Human SDLC routes используют тот же verified request frame, что обычный API:
+одну исходную проверку identity/role, SpaceActor, original deadline и body guard.
+Прямой доступ, каталоги и счётчики фильтруются по настоящим M:N до pagination.
+Чтение по пространству не добавляет native write/owner роль. Native job grants
+остаются отдельным ограниченным протоколом с собственными ownership/lease guards;
+машинный principal не становится human или платформенным администратором.
+
+Утверждённое продолжение включает production после qualified dev/migration/rollback;
+раннее исключение production в исходном плане относилось к предыдущему этапу.

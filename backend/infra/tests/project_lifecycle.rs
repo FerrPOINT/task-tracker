@@ -19,6 +19,7 @@ fn permit(user: UserId, spaces: &[SpaceRef], seconds: i64) -> SpaceWritePermit {
         subject: user.to_string(),
     };
     let admission = SpaceAdmission {
+        inheritance: None,
         schema_version: 1,
         identity: identity.clone(),
         identity_active: true,

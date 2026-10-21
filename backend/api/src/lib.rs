@@ -187,6 +187,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::projects::create_project,
         routes::project_spaces::create,
         routes::project_catalog::visible,
+        routes::project_access::get,
         routes::project_contexts::query,
         routes::project_lifecycle::get,
         routes::project_lifecycle::change,
@@ -802,6 +803,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             routes::project_contexts::reader_auth,
         ));
     let space_api = Router::new()
+        .route("/sdlc/project-access", get(routes::project_access::get))
         .route("/spaces/visible", get(routes::space_catalog::visible))
         .route(
             "/projects",
@@ -845,7 +847,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .merge(protected)
         .merge(attachment_routes)
         .merge(owner_routes)
-        .merge(routes::sdlc::router());
+        .merge(routes::sdlc::router().route_layer(from_fn_with_state(
+            ctx.clone(),
+            middleware::sdlc_auth::space_guard,
+        )));
 
     // The SSE stream is a long-lived connection, not a request/response the
     // burst limiter was designed for: each reconnect burns a permit from the

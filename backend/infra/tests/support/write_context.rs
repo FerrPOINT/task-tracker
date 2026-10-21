@@ -89,6 +89,7 @@ impl Fixture {
             subject: subject.to_string(),
         };
         let admission = SpaceAdmission {
+            inheritance: None,
             schema_version: 1,
             identity,
             identity_active: true,

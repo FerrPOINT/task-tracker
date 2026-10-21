@@ -171,6 +171,7 @@ mod permit_tests {
         };
         let now = chrono::Utc::now().timestamp();
         let mut admission = SpaceAdmission {
+            inheritance: None,
             schema_version: 1,
             identity: identity.clone(),
             identity_active: true,
@@ -301,6 +302,7 @@ impl ProjectSpaceOperationReceipt {
 /// Internal catalog query; it does not alter the legacy ProjectQuery wire contract.
 #[derive(Debug, Clone)]
 pub struct ProjectCatalogQuery {
+    pub working_only: bool,
     pub limit: u64,
     pub offset: u64,
     pub search: String,

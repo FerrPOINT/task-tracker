@@ -342,11 +342,11 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   })
 }
 
-export function useProjects(offset = 0, limit = 100, search = '') {
+export function useProjects(offset = 0, limit = 100, search = '', workingOnly = false) {
   const context = readSpaceLocation(useLocation().search)
   const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
   const visible = useVisibleProjects(
-    { space: context.space, offset, limit, q: search },
+    { space: context.space, offset, limit, q: search, workingOnly },
     v2 && !context.invalid,
   )
   const legacy = useQuery({

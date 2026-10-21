@@ -591,3 +591,52 @@ Fleet владеет атомарным submission barrier и защищённы
 native terminal или подтверждения владельца нет.
 
 Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).
+
+## Общий допуск на human SDLC API (21 октября 2026)
+
+Старый SDLC project-access читает native ACL и не заменяет общий допуск.
+Human SDLC routes используют тот же verified request frame, что обычный API:
+одну исходную проверку identity/role, SpaceActor, original deadline и body guard.
+Прямой доступ, каталоги и счётчики фильтруются по настоящим M:N до pagination.
+Чтение по пространству не добавляет native write/owner роль. Native job grants
+остаются отдельным ограниченным протоколом с собственными ownership/lease guards;
+машинный principal не становится human или платформенным администратором.
+
+Утверждённое продолжение включает production после qualified dev/migration/rollback;
+раннее исключение production в исходном плане относилось к предыдущему этапу.
+
+Human SDLC project directory/access применяет тот же набор SpaceRef, включая
+наследование, до сортировки и страниц. Native ACL не сохраняет чтение отозванного
+пространства. Допуск пространства открывает чтение проекта, а SDLC изменение
+дополнительно требует прежнего native project membership/ownership и active
+space permit. ProjectRef берётся из текущего владельца Tracker; legacy instance
+строка SDLC сохраняет прежний wire и не преобразуется в UUID неявно.
+
+SDLC repository использует существующий GuardedDb для request-owned write context;
+не создаётся второй допуск, пул или копия членства. Отсутствующий human proof при
+активной политике закрывает доступ. Native capability не становится human proof.
+
+## Архивные проекты в рабочей навигации
+
+Боковое меню, выбор проекта и обычные рабочие списки исключают проекты со
+статусом `archived`. Полные owner-каталоги, записи и адресное чтение сохраняются
+для управления архивом через Admin. Отбор выполняется в UI-проекции после
+полной загрузки страниц каталога, по статусу и immutable resource identity;
+имя проекта не влияет на видимость. Неподключённые и локальные проекты
+не считаются архивными по отсутствию связи.
+
+### Исходные часы SDLC и границы владельцев
+
+Human SDLC использует общий request scope. Отдельные owner-порты routing,
+critical blocker и PM reservation также проверяют SpaceRef проекта; старое
+native membership не восстанавливает отозванное членство. Историческая source
+policy дополнительно проверяет сохранённого владельца Forge.
+
+Native SDLC получает свежий service_account kind, исходный срок и точную
+проверенную задачу после блокировок профиля/проекта/aggregate. SQL scope не
+является human session: действуют прежняя native роль и точные PM/delivery
+capabilities. Транзакция повторно проверяет исходный срок после ожидания и при
+коммите. Начало исполнения фиксирует только связанные с проектом допущенные
+пространства и настоящий owner репозитория; Forge owner не становится Wiki owner.
+Повторный owner readback не продлевает human/native срок. При недоступности или
+неизвестной классификации запуск закрыт до совместимой квалификации.

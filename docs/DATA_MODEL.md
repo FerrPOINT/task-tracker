@@ -2243,3 +2243,24 @@ HTTP обеспечивается приложением, а не JSON-утве�
 и не переписывают старую lineage. [Протокол и ограничения](PROJECT_LIFECYCLE_V2.md).
 
 Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).
+
+Human SDLC project directory/access применяет тот же набор SpaceRef, включая
+наследование, до сортировки и страниц. Native ACL не сохраняет чтение отозванного
+пространства. Допуск пространства открывает чтение проекта, а SDLC изменение
+дополнительно требует прежнего native project membership/ownership и active
+space permit. ProjectRef берётся из текущего владельца Tracker; legacy instance
+строка SDLC сохраняет прежний wire и не преобразуется в UUID неявно.
+
+SDLC repository использует существующий GuardedDb для request-owned write context;
+не создаётся второй допуск, пул или копия членства. Отсутствующий human proof при
+активной политике закрывает доступ. Native capability не становится human proof.
+
+### Дополнения unified spaces 0100/0101
+
+0100 расширяет human SQL guard на обычные SDLC записи. 0101 добавляет
+transaction-local native caller/task scope, проверки фактического issue/project
+и namespace владельцев, отдельный узкий порт проекции lifecycle status и
+отложенный commit clock. Исторические миграции и ID/ledger не переписываются.
+Начальный execution grant сохраняет original actor и реальный footprint;
+проверенный Forge NamespaceRef не используется как предполагаемый Wiki SpaceRef.
+Rollback требует совместимого защищённого cohort с сохранением каталогов и grants.

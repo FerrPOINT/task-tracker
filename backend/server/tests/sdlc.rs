@@ -110,6 +110,17 @@ async fn introspect(
         // This rejection fixture must corrupt required identity instead.
         value["sub"] = json!("");
     }
+    let now = shared::now();
+    value["observed_at"] = json!(now);
+    value["expires_at"] = json!(now + std::time::Duration::from_secs(3600));
+    value["subject_role"] = json!(if matches!(
+        value["sub"].as_str(),
+        Some("owner" | "operator" | "foreign")
+    ) {
+        "member"
+    } else {
+        "service_account"
+    });
     Ok(Json(value))
 }
 
@@ -140,7 +151,11 @@ async fn session(
     } else {
         subject
     };
-    Ok(Json(json!({"id":id,"display_name":subject})))
+    Ok(Json(
+        json!({"id":id,"display_name":subject,"status":"active",
+        "role":if matches!(subject,"operator"|"foreign"){"admin"}else{"member"},
+        "email":format!("{subject}@example.test")}),
+    ))
 }
 
 async fn sql(db: &DatabaseConnection, query: &str, values: Vec<sea_orm::Value>) {

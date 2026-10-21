@@ -41,3 +41,5 @@ pub mod project_contexts;
 
 pub mod project_lifecycle;
 pub mod space_catalog;
+
+pub mod project_access;

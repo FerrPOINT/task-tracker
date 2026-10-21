@@ -1,13 +1,18 @@
-import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import {
+  ProjectCardActionItems,
+  ProjectCardLink,
+  ProjectCardState,
+} from '@/widgets/project-actions'
 import { ProjectAvatar, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 
-import { Plus, Search, Trash2, MoreHorizontal } from 'lucide-react'
+import { Plus, Search, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@pdlc/ui/ui'
 import { ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { Input } from '@pdlc/ui/ui'
-import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
+import { useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
 import {
@@ -20,12 +25,7 @@ import {
   AlertDialogTitle,
 } from '@pdlc/ui/ui'
 import type { Project } from '@/api/project'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@pdlc/ui/ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@pdlc/ui/ui'
 
 export function ProjectsPage() {
   const { t } = useTranslation()
@@ -38,6 +38,7 @@ export function ProjectsPage() {
     error,
     refetch,
     catalog,
+    unfilteredCount,
   } = useProjects(offset, 50, spaceEnabled ? search : '')
   const [formOpen, setFormOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
@@ -67,7 +68,7 @@ export function ProjectsPage() {
         </Button>
         <Button
           variant="outline"
-          disabled={spaceEnabled ? !catalog?.has_more : (projects?.length ?? 0) < 50}
+          disabled={spaceEnabled ? !catalog?.has_more : unfilteredCount < 50}
           onClick={() => setOffset(offset + 50)}
         >
           Далее
@@ -189,6 +190,7 @@ export function ProjectsPage() {
                         {project.key} · {t('projects.lead')}:{' '}
                         {project.owner_name || project.owner_id}
                       </span>
+                      <ProjectCardState projectId={project.id} />
                     </span>
                   </ProjectCardLink>
                   <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
@@ -220,17 +222,13 @@ export function ProjectsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <ProjectCardActionItems project={project} />
-                        <DropdownMenuItem
-                          onClick={() => {
+                        <ProjectCardActionItems
+                          project={project}
+                          onDelete={() => {
                             remove.reset()
                             setDeletingProject(project)
                           }}
-                          className="gap-2 text-danger"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {t('common.delete')}
-                        </DropdownMenuItem>
+                        />
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

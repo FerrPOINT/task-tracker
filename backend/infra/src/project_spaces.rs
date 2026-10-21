@@ -413,8 +413,9 @@ pub async fn visible_project_catalog_ids<C: ConnectionTrait>(
         (query.offset as i64).into(),
     ]);
     values.push(query.project_key.as_ref().map(|key| key.to_string()).into());
+    values.push(query.working_only.into());
     let sql = format!(
-        "WITH visible AS (SELECT p.id,p.key FROM projects p WHERE {VISIBLE_PROJECT_PREDICATE} AND ($3='' OR strpos(lower(p.key || ' ' || p.name),lower($3))>0) AND ($6::text IS NULL OR p.key=$6)), page AS (SELECT id,key FROM visible ORDER BY key,id LIMIT $4 OFFSET $5) SELECT (SELECT count(*) FROM visible) AS total,coalesce((SELECT jsonb_agg(id ORDER BY key,id) FROM page),'[]'::jsonb) AS ids"
+        "WITH visible AS (SELECT p.id,p.key FROM projects p WHERE {VISIBLE_PROJECT_PREDICATE} AND ($3='' OR strpos(lower(p.key || ' ' || p.name),lower($3))>0) AND ($6::text IS NULL OR p.key=$6) AND (NOT $7::boolean OR (p.archived_at IS NULL AND EXISTS(SELECT 1 FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id) JOIN unnest($1::uuid[],$2::uuid[]) a(registry,id) ON a.registry=l.registry_instance_id AND a.id=l.space_id WHERE l.project_id=p.id AND c.admin_revision IS NOT NULL AND c.state='active')))), page AS (SELECT id,key FROM visible ORDER BY key,id LIMIT $4 OFFSET $5) SELECT (SELECT count(*) FROM visible) AS total,coalesce((SELECT jsonb_agg(id ORDER BY key,id) FROM page),'[]'::jsonb) AS ids"
     );
     let row = db
         .query_one(statement(&sql, values))
@@ -511,4 +512,35 @@ pub async fn operation<C: ConnectionTrait>(
         applied_revision: revision,
         change,
     }))
+}
+
+/// One snapshot and one bounded result, rather than per-project owner lookups.
+pub async fn admitted_project_ids<C: ConnectionTrait>(
+    db: &C,
+    readable: &[SpaceRef],
+    active: &[SpaceRef],
+) -> Result<(Vec<Uuid>, Vec<Uuid>), AppError> {
+    if readable.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let mut values = visibility_values(readable)?;
+    values.extend(visibility_values(active)?);
+    let sql = format!(
+        "WITH visible AS MATERIALIZED (SELECT p.id, p.archived_at IS NULL AND EXISTS(SELECT 1 FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id) JOIN unnest($3::uuid[],$4::uuid[]) a(registry,id) ON a.registry=l.registry_instance_id AND a.id=l.space_id WHERE l.project_id=p.id AND c.admin_revision IS NOT NULL AND c.state='active') AS writable FROM projects p WHERE {VISIBLE_PROJECT_PREDICATE} ORDER BY p.id LIMIT 10001) SELECT COALESCE(jsonb_agg(id ORDER BY id),'[]'::jsonb) AS readable,COALESCE(jsonb_agg(id ORDER BY id) FILTER(WHERE writable),'[]'::jsonb) AS writable FROM visible"
+    );
+    let row = db
+        .query_one(statement(&sql, values))
+        .await
+        .map_err(crate::db_error::map)?
+        .ok_or_else(|| AppError::Unavailable("project_admission_snapshot_missing".into()))?;
+    let read: serde_json::Value = row.try_get("", "readable").map_err(crate::db_error::map)?;
+    let write: serde_json::Value = row.try_get("", "writable").map_err(crate::db_error::map)?;
+    let read: Vec<Uuid> = serde_json::from_value(read).map_err(AppError::internal)?;
+    let write: Vec<Uuid> = serde_json::from_value(write).map_err(AppError::internal)?;
+    if read.len() > 10000 {
+        return Err(AppError::Unavailable(
+            "project_access_catalog_too_large".into(),
+        ));
+    }
+    Ok((read, write))
 }
