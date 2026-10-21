@@ -2,10 +2,19 @@ import { useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@pdlc/ui/ui'
-import { Button } from '@pdlc/ui/ui'
-import { ConfirmDialog } from '@pdlc/ui/ui'
-import { Card, CardContent } from '@pdlc/ui/ui'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Button,
+  ConfirmDialog,
+  Card,
+  CardContent,
+} from '@pdlc/ui/ui'
+
 import { formatDuration } from '@/shared/lib/time'
 import type { Worklog } from '@/entities/worklog/model'
 
@@ -132,7 +141,7 @@ export function WorklogTab({
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="destructive-outline"
                             size="icon"
                             className="h-10 w-10 text-danger hover:opacity-80"
                             onClick={(event) => openDelete(w.id, event.currentTarget)}
@@ -169,7 +178,7 @@ export function WorklogTab({
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="destructive-outline"
                           size="icon"
                           className="h-10 w-10 text-danger hover:opacity-80"
                           onClick={(event) => openDelete(w.id, event.currentTarget)}

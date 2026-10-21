@@ -1,5 +1,5 @@
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { Select, Textarea, ProjectPicker, EmptyState } from '@pdlc/ui/ui'
+import { Select, Textarea, ProjectPicker, EmptyState, Button, ErrorState, Input } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -11,9 +11,7 @@ import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigati
 import { useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
+
 import {
   useCreateIssue,
   useIssueTypes,
@@ -283,18 +281,20 @@ export function IssueCreatePage() {
               id="issue-type"
               className="w-full"
               value={selectedType}
-              onChange={(e) => setType(e.target.value)}
+              onValueChange={(nextValue) => setType(nextValue)}
               disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
               required
-            >
-              {issueTypes.map((issueType) => (
-                <option key={issueType.id} value={issueType.name}>
-                  {t(`issueType.${issueType.name.toLowerCase()}`, {
-                    defaultValue: issueType.name,
-                  })}
-                </option>
-              ))}
-            </Select>
+              options={[
+                ...(issueTypes.map((issueType) => ({
+                  value: String(issueType.name),
+                  label: String(
+                    t(`issueType.${issueType.name.toLowerCase()}`, {
+                      defaultValue: issueType.name,
+                    }),
+                  ),
+                })) ?? []),
+              ]}
+            />
           </div>
         </div>
 
@@ -340,15 +340,16 @@ export function IssueCreatePage() {
               id="issue-priority"
               className="w-full"
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
+              onValueChange={(nextValue) => setPriority(nextValue)}
               disabled={isPending}
-            >
-              <option value="Medium">{t('priority.medium')}</option>
-              <option value="Highest">{t('priority.highest')}</option>
-              <option value="High">{t('priority.high')}</option>
-              <option value="Low">{t('priority.low')}</option>
-              <option value="Lowest">{t('priority.lowest')}</option>
-            </Select>
+              options={[
+                { value: 'Medium', label: String(t('priority.medium')) },
+                { value: 'Highest', label: String(t('priority.highest')) },
+                { value: 'High', label: String(t('priority.high')) },
+                { value: 'Low', label: String(t('priority.low')) },
+                { value: 'Lowest', label: String(t('priority.lowest')) },
+              ]}
+            />
           </div>
           <div className="space-y-2">
             <label htmlFor="issue-assignee" className="text-sm font-medium">
@@ -358,21 +359,21 @@ export function IssueCreatePage() {
               id="issue-assignee"
               className="w-full"
               value={assignee_id}
-              onChange={(e) => setAssigneeId(e.target.value)}
+              onValueChange={(nextValue) => setAssigneeId(nextValue)}
               disabled={
                 isPending ||
                 usersQuery.isLoading ||
                 projectMembersQuery.isLoading ||
                 Boolean(usersQuery.error || projectMembersQuery.error)
               }
-            >
-              <option value="">{t('issueCreate.unassigned')}</option>
-              {assignableUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name || u.username}
-                </option>
-              ))}
-            </Select>
+              options={[
+                { value: '', label: String(t('issueCreate.unassigned')) },
+                ...(assignableUsers.map((u) => ({
+                  value: String(u.id),
+                  label: String(u.display_name || u.username),
+                })) ?? []),
+              ]}
+            />
           </div>
         </div>
 

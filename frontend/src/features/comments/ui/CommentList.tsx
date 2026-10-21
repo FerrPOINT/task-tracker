@@ -14,9 +14,10 @@ import {
   AlertDialogTitle,
   Button,
   ErrorState,
+  Textarea,
+  Label,
 } from '@pdlc/ui/ui'
-import { Textarea } from '@pdlc/ui/ui'
-import { Label } from '@pdlc/ui/ui'
+
 import {
   useComments,
   useCreateComment,
@@ -129,7 +130,7 @@ export const CommentItem = memo(function CommentItem({
               {t('common.edit')}
             </Button>
             <Button
-              variant="ghost"
+              variant="destructive-outline"
               size="sm"
               className="text-danger"
               onClick={() => onDelete(comment.id)}

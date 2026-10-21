@@ -1,3 +1,4 @@
+import { chooseValue } from '../../test/choice'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -184,9 +185,9 @@ async function selectProject(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
 }
 
-async function selectSprint(user: ReturnType<typeof userEvent.setup>) {
+async function selectSprint() {
   const select = screen.getByRole('combobox', { name: /спринт|sprint/i })
-  await user.selectOptions(select, 'sprint-1')
+  await chooseValue(select, 'sprint-1')
 }
 
 // --- Tests --------------------------------------------------------------------
@@ -267,7 +268,7 @@ describe('ReportsPage', () => {
     renderPage()
     await selectProject(user)
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
-    await selectSprint(user)
+    await selectSprint()
 
     await waitFor(() => {
       expect(within(screen.getByTestId('chart')).getByText('2026-08-01')).toBeInTheDocument()
@@ -303,7 +304,7 @@ describe('ReportsPage', () => {
     const table = screen.getByRole('table', { name: /кумулятивный поток|cumulative flow/i })
     expect(within(table).getByRole('row', { name: /2026-08-01 5 2 1/i })).toBeInTheDocument()
     expect(within(table).getByRole('row', { name: /2026-08-02 3 4 2/i })).toBeInTheDocument()
-    expect(table.parentElement).toHaveClass('sr-only')
+    expect(table.closest('.sr-only')).toBeInTheDocument()
     expect(table).not.toHaveClass('sr-only')
     expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })
@@ -350,7 +351,7 @@ describe('ReportsPage', () => {
     renderPage()
     await selectProject(user)
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
-    await selectSprint(user)
+    await selectSprint()
     expect(screen.getByText(/нет данных burndown|no burndown data/i)).toBeInTheDocument()
   })
 

@@ -82,16 +82,16 @@ export function IssueMetaEditor({
         <Select
           id="issue-status"
           value={issue.status_id}
-          onChange={(e) => onChange({ status_id: e.target.value })}
+          onValueChange={(nextValue) => onChange({ status_id: nextValue })}
           disabled={disabled}
           className="w-full"
-        >
-          {statusOptions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {statusLabel(s.name, t)}
-            </option>
-          ))}
-        </Select>
+          options={[
+            ...(statusOptions.map((s) => ({
+              value: String(s.id),
+              label: String(statusLabel(s.name, t)),
+            })) ?? []),
+          ]}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -101,16 +101,16 @@ export function IssueMetaEditor({
         <Select
           id="issue-priority"
           value={issue.priority}
-          onChange={(e) => onChange({ priority: e.target.value })}
+          onValueChange={(nextValue) => onChange({ priority: nextValue })}
           disabled={disabled}
           className="w-full"
-        >
-          {priorities.map((p) => (
-            <option key={p} value={p}>
-              {t(`priority.${p.toLowerCase()}`, { defaultValue: p })}
-            </option>
-          ))}
-        </Select>
+          options={[
+            ...(priorities.map((p) => ({
+              value: String(p),
+              label: String(t(`priority.${p.toLowerCase()}`, { defaultValue: p })),
+            })) ?? []),
+          ]}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -120,16 +120,17 @@ export function IssueMetaEditor({
         <Select
           id="issue-assignee"
           value={issue.assignee_id ?? ''}
-          onChange={(e) => onChange({ assignee_id: e.target.value || null })}
+          onValueChange={(nextValue) => onChange({ assignee_id: nextValue || null })}
           disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
           className="w-full"
-        >
-          {assigneeOptions.map((opt) => (
-            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
+          options={[
+            ...(assigneeOptions.map((opt) => ({
+              value: String(opt.value),
+              label: String(opt.label),
+              disabled: opt.disabled,
+            })) ?? []),
+          ]}
+        />
         {usersQuery.isError && (
           <div className="flex flex-wrap items-center gap-2">
             <p role="alert" className="text-xs text-danger">
@@ -161,17 +162,14 @@ export function IssueMetaEditor({
           <Select
             id="issue-sprint"
             value={issue.sprint_id ?? ''}
-            onChange={(e) => onChange({ sprint_id: e.target.value || null })}
+            onValueChange={(nextValue) => onChange({ sprint_id: nextValue || null })}
             disabled={disabled}
             className="w-full"
-          >
-            <option value="">{t('issue.noSprint')}</option>
-            {sprints.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
+            options={[
+              { value: '', label: String(t('issue.noSprint')) },
+              ...(sprints.map((s) => ({ value: String(s.id), label: String(s.name) })) ?? []),
+            ]}
+          />
         </div>
       )}
     </div>

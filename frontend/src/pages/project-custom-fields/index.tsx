@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { Trash2 } from 'lucide-react'
 import {
+  toast,
   Input,
   Select,
   Button,
@@ -11,8 +10,14 @@ import {
   ErrorState,
   ResourceList,
   ResourceListRow,
+  Checkbox,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
 } from '@pdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
+import { Trash2 } from 'lucide-react'
+
 import {
   useCreateCustomField,
   useDeleteCustomField,
@@ -88,17 +93,17 @@ export function ProjectCustomFieldsPage() {
                   aria-label={t('customFields.fieldType')}
                   className="w-auto"
                   value={draft.field_type}
-                  onChange={(e) => {
+                  onValueChange={(nextValue) => {
                     create.reset()
-                    setDraft({ ...draft, field_type: e.target.value as CustomFieldType })
+                    setDraft({ ...draft, field_type: nextValue as CustomFieldType })
                   }}
-                >
-                  {types.map((type) => (
-                    <option key={type} value={type}>
-                      {t(`customFields.types.${type}`)}
-                    </option>
-                  ))}
-                </Select>
+                  options={[
+                    ...(types.map((type) => ({
+                      value: String(type),
+                      label: String(t(`customFields.types.${type}`)),
+                    })) ?? []),
+                  ]}
+                />
                 {needsOptions && (
                   <Input
                     aria-label={t('customFields.options')}
@@ -111,13 +116,11 @@ export function ProjectCustomFieldsPage() {
                   />
                 )}
                 <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
+                  <Checkbox
                     checked={draft.is_required}
-                    onChange={(e) => {
+                    onCheckedChange={(checked) => {
                       create.reset()
-                      setDraft({ ...draft, is_required: e.target.checked })
+                      setDraft({ ...draft, is_required: checked === true })
                     }}
                   />
                   {t('customFields.required')}
@@ -184,7 +187,7 @@ export function ProjectCustomFieldsPage() {
                           </p>
                         </div>
                         <Button
-                          variant="ghost"
+                          variant="destructive-outline"
                           size="icon"
                           className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
                           aria-label={t('customFields.deleteField', { name: field.name })}

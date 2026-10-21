@@ -216,6 +216,8 @@ task-tracker/
 
 ## Документы
 
+[Общий UI и управляемый брендинг Base](docs/shared-design-system.md).
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура.
 - [docs/TZ.md](docs/TZ.md) — техническое задание.
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — модель данных.
