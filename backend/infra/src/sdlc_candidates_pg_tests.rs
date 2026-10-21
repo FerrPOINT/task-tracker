@@ -360,9 +360,13 @@ impl Fixture {
         ));
         let row = self.db.query_one(statement("SELECT
             (SELECT count(*) FROM sdlc_analysis_intents WHERE task_id=$1) AS intents,
+            (SELECT count(*) FROM sdlc_analysis_reservations WHERE task_id=$1) AS reservations,
+            (SELECT count(*) FROM sdlc_delivery_assignments WHERE task_id=$1) AS assignments,
             (SELECT count(*) FROM sdlc_outbox WHERE task_id=$1 AND event_type='analysis.intent_created') AS events",
             vec![task.into()])).await.unwrap().unwrap();
         assert_eq!(row.try_get::<i64>("", "intents").unwrap(), 0);
+        assert_eq!(row.try_get::<i64>("", "reservations").unwrap(), 0);
+        assert_eq!(row.try_get::<i64>("", "assignments").unwrap(), 0);
         assert_eq!(row.try_get::<i64>("", "events").unwrap(), 0);
     }
 
