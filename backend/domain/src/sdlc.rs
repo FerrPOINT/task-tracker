@@ -581,7 +581,6 @@ impl TaskState {
             .max();
         self.require_root().is_ok()
             && self.clarifying()
-            && self.current_confirmation().is_none()
             && self.confirmation_revision == Some(revision.revision)
             && !self
                 .questions
@@ -676,7 +675,9 @@ impl TaskState {
             },
             permissions: Permissions {
                 can_answer,
-                can_confirm: self.owner(actor) && self.ready(),
+                can_confirm: self.owner(actor)
+                    && self.current_confirmation().is_none()
+                    && self.ready(),
             },
             assignment: self.assignment.clone(),
         }
