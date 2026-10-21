@@ -118,8 +118,13 @@ state writes remain the fallback until real parent/root/dependencies, revisioned
 coverage, dependency cycle validation and active-decomposition root barrier are
 implemented.
 
-Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
-revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
+Opt-in Draft -> assigned PM preparation -> full requirements revision -> trusted
+readiness evidence -> exact owner confirmation -> Backlog publication.
+Clarification questions and owner answers are conditional on incomplete or
+contradictory input; a complete brief does not require a question first.
+Backlog is the immutable publication receipt, not the current aggregate stage:
+the same transaction queues Analysis/Ready. UI reads current context and the
+validated Analysis intent; the receipt alone grants no admission or runtime.
 Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
 Strict project membership and central task-owner identity apply to this slice,
 independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
