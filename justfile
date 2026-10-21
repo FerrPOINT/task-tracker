@@ -81,13 +81,21 @@ clippy:
 typecheck:
     cd frontend && pnpm typecheck
 
-# Run frontend unit tests
+# Fast frontend unit tests
 test-frontend:
-    cd frontend && pnpm test
+    cd frontend && pnpm test:unit
 
-# Run backend unit + integration tests (single-threaded for env safety)
+# Manual complete frontend test inventory
+test-frontend-all:
+    cd frontend && pnpm test:all
+
+# Fast backend units without integration targets
 test-backend:
-    cd backend && cargo test --workspace -- --test-threads=1
+    cd backend && cargo test --locked -p domain --lib
+
+# Manual complete backend acceptance (single-threaded for env safety)
+test-backend-all:
+    cd backend && cargo test --locked --workspace -- --test-threads=1
 
 # Run backend coverage gate (Rust 1.88, cargo-llvm-cov and Docker Compose required).
 test-backend-coverage:
@@ -101,7 +109,7 @@ e2e:
     cd frontend && pnpm exec playwright test
 
 # Full quality gate (CI-like)
-gate: fmt-check-rust clippy typecheck lint test-frontend test-backend
+gate: fmt-check-rust clippy typecheck lint test-frontend-all test-backend-all
 
 # Lint frontend
 lint:

@@ -12,3 +12,6 @@ NOTICE text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Canonical bytes for the exact Base selector.
+scripts/vendor/base_quality_selection.py text eol=lf

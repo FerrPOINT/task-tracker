@@ -2,11 +2,18 @@
 
 ## 1. Принципы
 
+Повседневный цикл и полный gate разделены по [плану сборок](plans/build-performance.md).
+`just test` / `pnpm test:unit` выполняют быстрый набор; `just gate`,
+`just test-backend-all`, `pnpm test:all` и workflow `release.yml` запускаются
+вручную на согласованной вехе. PostgreSQL/ignored tests, browser acceptance
+и полный workspace inventory сохранены в `release.yml`. Coverage60% остаётся
+ручным release requirement; зелёный unit-набор не подтверждает этот порог.
+
 - Каждый тест проверяет значимый путь и конкретное поведение.
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
 - Frontend: unit-тесты на Vitest; E2E на Playwright.
 - После изменений UI — скриншоты в 375×812, 1920×1080, 2560×1440.
-- Coverage gate в CI: ≥60% (`cargo-llvm-cov`, job `coverage`); локальный полный прогон — `just test-backend-coverage`.
+- Coverage gate: ≥60% (`cargo-llvm-cov`); локальный ручной полный прогон — `just test-backend-coverage`. Отдельного hosted job `coverage` в текущем workflow нет.
 
 ## 2. Backend тесты
 
@@ -51,7 +58,7 @@ cd backend && cargo test -p infra --test repos --test fk_regression -- --include
 cd backend && ./scripts/run-e2e-tests.sh
 ```
 
-CI-порог покрытия — 60% (`coverage` job); цель по слоям ниже — ориентир, не гейт.
+Порог ручного coverage gate — 60%; цель по слоям ниже — ориентир, не гейт.
 
 ## 3. Frontend тесты
 

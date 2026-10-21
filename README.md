@@ -195,12 +195,16 @@ flowchart TD
 | Frontend dev | `just frontend-dev` |
 | API codegen | `just api-codegen` |
 | Backend workspace | `cd backend && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --test-threads=1` |
-| Frontend | `cd frontend && pnpm openapi:check && pnpm typecheck && pnpm test -- --run && pnpm lint && pnpm build` |
+| Frontend | `cd frontend && pnpm openapi:check && pnpm typecheck && pnpm test:unit && pnpm lint && pnpm exec vite build` |
 | Browser E2E | `cd frontend && pnpm test:e2e -- --project=chromium` |
 | Compose contract | `docker compose config -q` |
-| Full gates | `just gate` / `just test` / `just e2e` |
+| Fast checks | `just test` |
+| Manual full gates | `just gate` / `just e2e` |
 
-GitHub Actions прогоняет docs-гейт, backend fmt/clippy/tests, OpenAPI drift и frontend gates (typecheck/tests/lint/build). Browser E2E и тяжёлые проверки запускаются локально по необходимости.
+GitHub Actions выбирает изменившиеся компоненты и выполняет unit/static,
+OpenAPI compatibility и необходимые application checks. Полный workspace,
+PostgreSQL, packed consumer и browser theme acceptance сохранены в ручном
+`release.yml`; команды и границы — [план сборок](docs/plans/build-performance.md).
 
 ## Карта проекта
 
