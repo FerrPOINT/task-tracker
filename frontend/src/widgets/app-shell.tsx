@@ -1,12 +1,25 @@
-import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
-import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@pdlc/ui/ui'
-import { useProjectDisclosures } from '@pdlc/ui/lib'
 import {
+  AppShell as BaseAppShell,
+  Button,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   ProjectAvatar,
   ProjectNavigationGroup,
   SidebarNavigationGroup,
   useSidebarDisclosure,
+  SidebarItem,
+  PlatformMark,
+  ThemeMenuItems,
+  PlatformHeader,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
+
+import { useProjectDisclosures } from '@pdlc/ui/lib'
+
 import { ProjectActions } from './project-actions'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
@@ -14,7 +27,7 @@ import {
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { SidebarItem } from '@pdlc/ui/ui'
+
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
@@ -33,9 +46,7 @@ import {
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PlatformMark } from '@pdlc/ui/ui'
-import { ThemeMenuItems } from '@pdlc/ui/ui'
-import { PlatformHeader } from '@pdlc/ui/ui'
+
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -46,12 +57,6 @@ import {
   useNotifications,
   useProjects,
 } from '@/shared/api/hooks'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@pdlc/ui/ui'
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/
@@ -398,7 +403,8 @@ export function AppShell() {
             ) : (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     aria-label={t('navigation.projects')}
                     title={currentProject?.name ?? t('navigation.projects')}
@@ -409,7 +415,7 @@ export function AppShell() {
                       {currentProject?.name ?? t('navigation.projects')}
                     </span>
                     <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"

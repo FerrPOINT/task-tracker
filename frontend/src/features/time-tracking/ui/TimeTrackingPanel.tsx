@@ -1,6 +1,6 @@
 import { formatDuration } from '@/shared/lib/time'
-import { Progress } from '@pdlc/ui/ui'
-import { Button } from '@pdlc/ui/ui'
+import { Progress, Button } from '@pdlc/ui/ui'
+
 import { useTranslation } from 'react-i18next'
 
 interface TimeTrackingPanelProps {

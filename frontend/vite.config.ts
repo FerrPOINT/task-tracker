@@ -1,3 +1,4 @@
+import { createUiFontAssetsPlugin } from '@pdlc/ui/build'
 import { createUiManualChunks } from '@pdlc/ui/build'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -6,7 +7,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   base: process.env.VITE_APP_BASE_PATH ?? '/',
-  plugins: [react(), tailwindcss()],
+  plugins: [createUiFontAssetsPlugin(), react(), tailwindcss()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

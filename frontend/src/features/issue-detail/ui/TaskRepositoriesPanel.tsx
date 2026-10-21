@@ -1,8 +1,15 @@
-import { Select, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import {
+  Select,
+  ResourceList,
+  ResourceListRow,
+  LoadingState,
+  Button,
+  usePlatformServices,
+} from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { LoadingState, Button, usePlatformServices } from '@pdlc/ui/ui'
+
 import { withNamespaceLocation } from '@pdlc/ui/lib'
 import { api } from '@/api/client'
 import { useNamespaceContext } from '@/widgets/namespace-context'
@@ -190,18 +197,15 @@ export function TaskRepositoriesPanel({
                 <Select
                   className="mt-2 w-full"
                   value={selected}
-                  onChange={(event) => setSelected(event.target.value)}
-                >
-                  <option value="">Выберите репозиторий</option>
-                  {available.data?.map((repository) => (
-                    <option
-                      key={repository.repository_id}
-                      value={`${repository.forge_instance_id}/${repository.repository_id}`}
-                    >
-                      {repository.public_name}
-                    </option>
-                  ))}
-                </Select>
+                  onValueChange={(nextValue) => setSelected(nextValue)}
+                  options={[
+                    { value: '', label: 'Выберите репозиторий' },
+                    ...(available.data?.map((repository) => ({
+                      value: String(`${repository.forge_instance_id}/${repository.repository_id}`),
+                      label: String(repository.public_name),
+                    })) ?? []),
+                  ]}
+                />
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button

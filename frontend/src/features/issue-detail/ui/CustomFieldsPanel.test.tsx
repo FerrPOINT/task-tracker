@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { chooseValue } from '@/test/choice'
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -28,10 +30,11 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('CustomFieldsPanel', () => {
-  it('saves the full multi-selection through the shared Base listbox', () => {
+  it('saves the full multi-selection through the shared Base menu', async () => {
     const onSave = vi.fn()
-    render(
-      wrapper(
+    function Harness() {
+      const [values, setValues] = useState(['Low', 'High'])
+      return wrapper(
         <label>
           Priority
           <CustomFieldValueInput
@@ -44,17 +47,19 @@ describe('CustomFieldsPanel', () => {
               is_required: false,
               created_at: '2026-08-01T00:00:00Z',
             }}
-            value={['Low', 'High']}
-            onSave={onSave}
+            value={values}
+            onSave={(next) => {
+              onSave(next)
+              setValues(next as string[])
+            }}
           />
         </label>,
-      ),
-    )
-    const select = screen.getByRole('listbox', { name: 'Priority' }) as HTMLSelectElement
-    expect(Array.from(select.selectedOptions, (option) => option.value)).toEqual(['Low', 'High'])
-    for (const option of Array.from(select.options))
-      option.selected = option.value === 'Medium' || option.value === 'High'
-    fireEvent.change(select)
+      )
+    }
+    render(<Harness />)
+    const select = screen.getByRole('button', { name: 'Priority' })
+    expect(select.textContent).toContain('Low, High')
+    await chooseValue(select, ['Medium', 'High'])
     expect(onSave).toHaveBeenLastCalledWith(['Medium', 'High'])
   })
 

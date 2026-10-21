@@ -1,18 +1,23 @@
-import { ProjectAvatar, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
-import { ProjectLink as Link } from '@/shared/lib/project-navigation'
-import { useSearchParams } from 'react-router'
-import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import { useState, useMemo, useEffect } from 'react'
-import { Button } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
-import { Card, CardContent, ErrorState } from '@pdlc/ui/ui'
 import {
+  ProjectAvatar,
+  ResourceList,
+  ResourceListRow,
+  Button,
+  Input,
+  Card,
+  CardContent,
+  ErrorState,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useSearchParams } from 'react-router'
+import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useState, useMemo, useEffect } from 'react'
+
 import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
 import { SearchRequestError, type Issue } from '@/api/search'
 
@@ -200,22 +205,24 @@ export default function SearchPage() {
       </div>
 
       <div className="mb-4 inline-grid grid-cols-2 rounded-md border border-border bg-surface p-1">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => setMode('simple')}
           aria-pressed={mode === 'simple'}
           className={`min-h-10 rounded px-4 text-sm ${mode === 'simple' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
         >
           {t('search.modeSimple')}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => setMode('jql')}
           aria-pressed={mode === 'jql'}
           className={`min-h-10 rounded px-4 text-sm ${mode === 'jql' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
         >
           JQL
-        </button>
+        </Button>
       </div>
 
       {mode === 'simple' ? (

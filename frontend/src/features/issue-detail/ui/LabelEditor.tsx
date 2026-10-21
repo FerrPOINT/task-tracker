@@ -8,9 +8,7 @@ import {
   useDetachLabel,
   useCreateLabel,
 } from '@/shared/api/hooks'
-import { Button } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
-import { toast } from 'sonner'
+import { Button, Input, toast } from '@pdlc/ui/ui'
 
 const PALETTE = [
   '#ef4444',
@@ -91,7 +89,8 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
               data-testid="issue-label"
             >
               {l.name}
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 aria-label={t('labels.detach', { name: l.name })}
                 onClick={() =>
@@ -100,7 +99,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
                 className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full hover:bg-black/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
               >
                 <X className="h-3 w-3" aria-hidden />
-              </button>
+              </Button>
             </span>
           ))}
         </div>
@@ -147,17 +146,19 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
           {projectLabels
             .filter((l) => !issueLabelIds.has(l.id))
             .map((l) => (
-              <button
+              <Button
+                variant="ghost"
                 key={l.id}
                 type="button"
                 onClick={() =>
                   attach.mutate(l.id, { onError: (error) => toast.error(error.message) })
                 }
                 className="min-h-10 rounded-full px-3 text-xs font-medium transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+                data-subject-color={l.color}
                 style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
               >
                 + {l.name}
-              </button>
+              </Button>
             ))}
           <Button
             type="button"

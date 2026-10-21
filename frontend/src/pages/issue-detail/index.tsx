@@ -1,15 +1,16 @@
-import { ProjectAvatar } from '@pdlc/ui/ui'
-import { ProjectLink as Link } from '@/shared/lib/project-navigation'
-import { useParams, useSearchParams } from 'react-router'
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
-import { toast } from 'sonner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@pdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
-import { Button } from '@pdlc/ui/ui'
-import { ConfirmDialog } from '@pdlc/ui/ui'
 import {
+  ProjectAvatar,
+  toast,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Button,
+  ConfirmDialog,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -17,6 +18,12 @@ import {
   LoadingState,
   ErrorState,
 } from '@pdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useParams, useSearchParams } from 'react-router'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
+
 import {
   useWorklogs,
   useCreateWorklog,

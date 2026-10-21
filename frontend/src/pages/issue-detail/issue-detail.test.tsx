@@ -2,13 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate, toast } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueDetailPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
-import { toast } from 'sonner'
 
 const mockGetIssue = vi.hoisted(() => vi.fn())
 const mockUseIssue = vi.hoisted(() => vi.fn())
@@ -18,7 +17,10 @@ const mockIssueLinks = vi.hoisted(() => vi.fn())
 const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
+  ...(await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()),
+}))
 vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
   SdlcPanel: ({ issueId }: { issueId: string }) => (
     <section aria-label="SDLC mount">{issueId}</section>
