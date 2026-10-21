@@ -1104,7 +1104,7 @@ async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
         vec![r.task.into()],
     )).await.unwrap().unwrap().try_get("", "payload").unwrap());
     // A real second root supplies collision-only immutable source data; the two review cycles retain task above.
-    let donor_task = Box::pin(r.f.confirmed("cycles-collision-donor", true)).await;
+    let donor_task = Box::pin(r.f.queued_analysis("cycles-collision-donor", true)).await;
     let donor =
         r.f.db
             .query_one(statement(

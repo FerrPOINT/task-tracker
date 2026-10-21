@@ -579,7 +579,13 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     assert_eq!(snapshot.requirement_revision, 1);
     assert_eq!(snapshot.content_hash, hash);
     assert!(snapshot.policy == policy4 || snapshot.policy == policy5);
-    let intent = repo.analysis_intent(task, &owner).await.unwrap();
+    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
+    assert!(matches!(
+        repo.analysis_intent(task, &owner).await,
+        Err(AppError::NotFound(_))
+    ));
+    // The following routing-shape regressions deliberately seed historical Analysis data.
+    let intent = crate::sdlc::seed_analysis_fixture(&db, task, &owner).await;
     assert_eq!(intent.workflow, "single-task-v1:analyst");
     for version in [json!(1), json!(3), json!("2"), json!(null)] {
         let mut wrong = serde_json::to_value(&snapshot).unwrap();
@@ -807,15 +813,12 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         count(&db, "sdlc_task_routing_snapshots").await,
         snapshot_count
     );
-    assert_eq!(
-        disabled
-            .analysis_intent(legacy_task, &owner)
-            .await
-            .unwrap()
-            .workflow,
-        "hermes-sdlc:analyst"
-    );
+    assert!(matches!(
+        disabled.analysis_intent(legacy_task, &owner).await,
+        Err(AppError::NotFound(_))
+    ));
     let old_state = disabled.read(legacy_task, &owner).await.unwrap();
+    assert_eq!(old_state.stage, Stage::Backlog);
     assert_eq!(old_state.draft_flow().unwrap(), None);
     assert_eq!(old_state.status, None);
     assert_eq!(

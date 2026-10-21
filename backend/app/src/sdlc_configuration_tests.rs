@@ -341,3 +341,54 @@ async fn unsubmitted_pm_readback_rejects_redirect_denial_and_caller_boolean() {
         task.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn bootstrap_retry_readback_uses_only_existing_fleet_origin_reader_token_and_exact_barrier() {
+    use domain::sdlc_pm_bootstrap_retry::*;
+    let run = Uuid::new_v4();
+    let next = Uuid::new_v4();
+    let chat = Uuid::new_v4();
+    let barrier = Uuid::new_v4();
+    let lease = Uuid::new_v4();
+    let assignment = Uuid::new_v4();
+    let identity = json!({"task":"SDLC-1","execution_ref":Uuid::new_v4(),"tracker_instance_ref":"tracker",
+        "tracker_project_ref":Uuid::new_v4(),"task_ref":Uuid::new_v4(),"root_ref":Uuid::new_v4(),
+        "agent_ref":Uuid::new_v4(),"assignment_operation_key":format!("pm-draft:{assignment}"),"assignment_ref":assignment,"assignment_revision":1});
+    let predecessor = json!({"task_id":7,"assignment_operation_key":identity["assignment_operation_key"],"assignment_revision":1,
+        "attempt":1,"finalized_binding":{"bind_operation_key":"original-bind","bind_request_sha256":"a".repeat(64),
+            "binding_ref":"fixture://binding","session_run_id":run,"native_run_ref":"run_original"}});
+    let command:BootstrapRetryCommand=serde_json::from_value(json!({"expected_owner_version":1,
+        "fence":{"assignment_id":assignment,"execution_id":identity["execution_ref"],"agent_id":identity["agent_ref"],"assignment_version":1},
+        "lease_id":lease,"expected_lease_version":4,"creation_operation_id":run,"previous_session_run_id":run,
+        "next_session_run_id":next,"previous_native_run_ref":"run_original","chat_id":chat,"barrier_id":barrier,
+        "predecessor":predecessor,"idempotency_key":"original-retry"})).unwrap();
+    let body=json!({"contract_version":1,"observed_at":"2026-10-21T00:00:00Z","identity":identity,"owner_subject":"owner",
+        "input":{"snapshot_ref":Uuid::new_v4(),"sha256":"a".repeat(64)},"owner_version":1,"lease_id":lease,"lease_version":4,
+        "creation_operation_id":run,"session_run_id":run,"native_run_ref":"run_original","chat_id":chat,"barrier_id":barrier,
+        "next_session_run_id":next,"terminal":"stopped","predecessor":predecessor,"initial_phase_id":2,"current_phase_id":2,
+        "workflow_status":"active","first_instruction":"absent","pm_enrollment":"absent","generic_binding":"present",
+        "business_result":"absent","inflight_work":"absent",
+        "terminal_receipt":{"reference":"fixture://native","sha256":"b".repeat(64)},
+        "bootstrap_receipt":{"reference":"fixture://workflow","sha256":"c".repeat(64)}}).to_string();
+    let (origin,task)=serve(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len())).await;
+    let token = format!("sdlc_pat_{}", "a".repeat(64));
+    let reader = FleetConfigurationReader::new(&origin, &token).unwrap();
+    let result = reader.read_pm_bootstrap_retry(&command).await.unwrap();
+    assert_eq!(result.terminal, Some(BootstrapNativeTerminal::Stopped));
+    assert_eq!(result.predecessor, command.predecessor);
+    let request = task.await.unwrap();
+    assert!(request.starts_with(&format!("GET /internal/runtime/v1/pm/runs/{run}/bootstrap-retry?barrier_id={barrier}&next_session_run_id={next} HTTP/1.1")));
+    assert!(request.contains(&format!("authorization: Bearer {token}")));
+    assert!(request.contains("cache-control: no-cache, no-store"));
+    for response in [
+        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/steal\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 4\r\n\r\ntrue",
+    ] {
+        let (origin, task) = serve(response.into()).await;
+        let reader = FleetConfigurationReader::new(&origin, &token).unwrap();
+        assert!(reader.read_pm_bootstrap_retry(&command).await.is_err());
+        task.await.unwrap();
+    }
+}

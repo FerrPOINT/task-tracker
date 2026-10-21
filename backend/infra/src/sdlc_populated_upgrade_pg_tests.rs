@@ -165,10 +165,8 @@ struct OriginalCommand {
     result: Json,
 }
 
-// Only the legacy confirmation tail needs the predecessor selector. Current finish's
-// current_analysis_intent reads the096 inventory/new FK columns, absent on095.
-// This fixture writes the same legacy state, projection, original operation and two
-// outbox events in ONE task-locked transaction; no new-schema compatibility facade.
+// Historical095 confirmation queued Analysis. This fixture explicitly reconstructs
+// that predecessor policy; the current PM producer stops at Backlog instead.
 async fn finish_predecessor_confirmation(
     tx: &DatabaseTransaction,
     state: &TaskState,
@@ -280,6 +278,23 @@ async fn predecessor_command(
         result,
     };
     if event == "requirements.confirmed" {
+        // Test-only historical intent, not a current confirmation side effect.
+        state.stage = Stage::Analysis;
+        let confirmation = state.confirmations.last().unwrap();
+        let row = tx
+            .query_one(statement(
+                "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let routing: domain::sdlc_routing::TaskRoutingSnapshot =
+            parse(row.try_get("", "payload").unwrap());
+        let mut intent = app::sdlc::analysis_intent(&state, confirmation, Uuid::new_v4()).unwrap();
+        intent.workflow = routing.policy.routes.analyst.workflow_key;
+        exec(&tx,"INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+            vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),routing.snapshot_id.into()]).await.unwrap();
         finish_predecessor_confirmation(&tx, &state, &original).await;
     } else {
         PostgresSdlcRepository::finish(
@@ -643,7 +658,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 30));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 31));
     assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
         names[predecessor + 1],
@@ -654,8 +669,12 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         "m20261018_0000098_pm_unsubmitted_recovery"
     );
     assert_eq!(
-        names.last().unwrap(),
+        names[predecessor + 3],
         "m20261018_0000098_project_repository_catalog"
+    );
+    assert_eq!(
+        names.last().unwrap(),
+        "m20261021_0000099_pm_bootstrap_retry"
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("fresh isolated upgrade database required");
@@ -995,7 +1014,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     );
     let before_pm_recovery = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_pm_recovery = ledger(&db, &names[..names.len() - 1]).await;
+    let ledger_pm_recovery = ledger(&db, &names[..predecessor + 3]).await;
     for entry in ledger_097.as_array().unwrap() {
         assert!(ledger_pm_recovery.as_array().unwrap().contains(entry));
     }
@@ -1011,13 +1030,13 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             .contains("PM recovery history is immutable; destructive rollback is disabled")
     );
     assert_eq!(
-        ledger(&db, &names[..names.len() - 1]).await,
+        ledger(&db, &names[..predecessor + 3]).await,
         ledger_pm_recovery
     );
     assert_eq!(history(&db, &all_tables, false).await, before_pm_recovery);
     let before_catalog = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_catalog = ledger(&db, &names).await;
+    let ledger_catalog = ledger(&db, &names[..predecessor + 4]).await;
     for entry in ledger_pm_recovery.as_array().unwrap() {
         assert!(ledger_catalog.as_array().unwrap().contains(entry));
     }
@@ -1031,11 +1050,31 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             .to_string()
             .contains("project repository associations must be preserved")
     );
-    assert_eq!(ledger(&db, &names).await, ledger_catalog);
+    assert_eq!(ledger(&db, &names[..predecessor + 4]).await, ledger_catalog);
     assert_eq!(history(&db, &all_tables, false).await, before_catalog);
+    let before_retry = history(&db, &all_tables, false).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_retry = ledger(&db, &names).await;
+    for entry in ledger_catalog.as_array().unwrap() {
+        assert!(ledger_retry.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(tables(&db).await, all_tables);
+    assert_eq!(history(&db, &all_tables, false).await, before_retry);
+    assert_eq!(original.snapshot(&db, true).await, business_0033);
+    assert_eq!(scalar_json(&db,
+        "SELECT to_jsonb(count(*)) AS value FROM pg_indexes WHERE schemaname='public' AND indexname IN ('sdlc_pm_bootstrap_retry_original','sdlc_pm_bootstrap_retry_successor')",
+        vec![]).await, json!(2));
+    let error = migration::Migrator::down(&db, Some(1)).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("PM bootstrap retry history is immutable; destructive rollback is disabled")
+    );
+    assert_eq!(ledger(&db, &names).await, ledger_retry);
+    assert_eq!(history(&db, &all_tables, false).await, before_retry);
     let before_rerun = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger(&db, &names).await, ledger_catalog);
+    assert_eq!(ledger(&db, &names).await, ledger_retry);
     assert_eq!(history(&db, &all_tables, false).await, before_rerun);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
     assert_eq!(count(&db, "issues").await, 3);

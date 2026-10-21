@@ -1,5 +1,11 @@
 # Архитектура Task Tracker
 
+Initial PM bootstrap retry reads a composite witness from the EXISTING Fleet
+reader outside SQL, then rechecks task/lease/authorization under locks. Fleet,
+not Tracker, reads Workflow. Original-key recovery is ledger-first; no public
+boolean, fake checkpoint, new execution/owner or direct Workflow credential.
+[Source-only boundary](contracts/pm-bootstrap-technical-retry.md).
+
 Project counters читают сохранённые `statuses.category` без учёта ASCII-регистра:
 Debug-формат записи `Todo`/`InProgress`/`Done`, wire-формат и прежнее
 `in_progress` дают соответствующую категорию как в status mapping, так и в batch
@@ -146,8 +152,9 @@ resolves active users by central subject and locks project/member authorization
 rows together with issue/task state. Global admin roles confer no SDLC access.
 Requirements hash covers the full typed document with canonical JSON. Questions
 invalidate readiness until PM publishes a new revision; independent verifier
-evidence plus exact owner-session consent atomically publish Backlog and queue
-the issue for Analysis/Ready.
+evidence plus exact owner-session consent atomically publish Backlog/Ready,
+without queuing Analysis. The existing terminal/Workflow PM completion ledger
+remains separate and mandatory for accepted PM completion.
 The issue gate is also enforced at PostgreSQL so legacy mutations cannot bypass
 it. Durable pull outbox separates Tracker persistence from Workflow resume.
 Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
@@ -226,15 +233,16 @@ the generic issue status gate. Fresh ACL, existing issue/aggregate lock order,
 outbox and historical replay remain unchanged. This is a fail-closed lifecycle
 guard, not a decomposition graph, accepted terminal protocol or root barrier.
 
-Exact confirmation preserves its Backlog publication receipt while the final
-aggregate becomes Analysis and its issue status remains in todo category. The
-existing `execute` task lock and replay ledger serialize confirmation; application
-policy rejects new PM commands after queueing. Repository persists one frozen
-intent with a composite consent FK before `finish` writes state/history/receipt
-and ordered confirmation/intent outbox events. All share the original transaction;
-an outbox failure rolls back consent and queue. Readback reconstructs backend
-routing from the retained current confirmation and compares the typed intent.
-The queue intent is admission input only; no scheduler, run or dispatch is added.
+Exact initial confirmation preserves its Backlog receipt and publishes the current
+aggregate as Backlog/Ready. The existing task lock and replay ledger serialize
+confirmation; confirmed requirements reject new PM business commands. Routing and
+source snapshots still freeze in the consent transaction, together with issue
+projection/history, receipt and `requirements.confirmed`. There is no automatic
+Analysis intent or `analysis.intent_created`; an outbox failure rolls back consent.
+The separate PM completion keeps its exact terminal/Workflow refs and lease/fence
+gates. Neither completion nor replay queues Analysis. Historical queued Analysis
+readback/admission and critical-review generation handling are unchanged; their
+tests seed deliberate historical Analysis fixtures, not a new promotion API.
 
 ## 1. Контекст
 

@@ -28,7 +28,7 @@ fn critical_pg_future_size_probe() {
         ("fixture_new", future_size(Fixture::new)),
         (
             "fixture_confirmed",
-            future_size(|| Fixture::confirmed(type_only(), "type-only", true)),
+            future_size(|| Fixture::queued_analysis(type_only(), "type-only", true)),
         ),
         (
             "start",
@@ -253,7 +253,7 @@ async fn start(
     storage: &domain::InMemoryStorage,
 ) -> Running {
     eprintln!("critical_pg.phase.start.confirm.begin");
-    let task = f.confirmed(key, true).await;
+    let task = f.queued_analysis(key, true).await;
     eprintln!("critical_pg.phase.start.confirm.done");
     f.repo
         .lifecycle_command(

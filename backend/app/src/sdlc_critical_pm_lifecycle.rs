@@ -1191,6 +1191,7 @@ mod tests {
         assert_eq!(plan.result["id"], json!(id(207)));
         f.accept(plan);
         f.confirmed();
+        assert!(!f.state.context(&f.owner()).permissions.can_confirm);
         assert_eq!(f.state.stage, Stage::Draft);
         assert_eq!(f.lifecycle.task.stage, LifecycleStage::Draft);
         assert_eq!(

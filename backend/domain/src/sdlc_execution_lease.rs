@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub const LEASE_TTL_SECONDS: i64 = 30;
 pub const LEASE_HEARTBEAT_SECONDS: i64 = 10;
 
-fn canonical_uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
+pub(crate) fn canonical_uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
     let raw = String::deserialize(d)?;
     let id = Uuid::parse_str(&raw).map_err(D::Error::custom)?;
     if id.is_nil() || id.to_string() != raw {
@@ -16,7 +16,7 @@ fn canonical_uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
     }
     Ok(id)
 }
-fn canonical_fence<'de, D: Deserializer<'de>>(d: D) -> Result<MachineFence, D::Error> {
+pub(crate) fn canonical_fence<'de, D: Deserializer<'de>>(d: D) -> Result<MachineFence, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     let fence: MachineFence = serde_json::from_value(raw.clone()).map_err(D::Error::custom)?;
     if [fence.assignment_id, fence.execution_id, fence.agent_id]

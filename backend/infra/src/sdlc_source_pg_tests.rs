@@ -761,11 +761,12 @@ async fn assert_legacy_routed_confirmation(
     assert_eq!(snapshot.policy, policy);
     assert_eq!(saved["id"], json!(snapshot.confirmation_id));
     assert_eq!(saved["stage"], json!("Backlog"));
-    let intent = repo.analysis_intent(task, owner).await.unwrap();
-    assert_eq!(intent.confirmation_id, snapshot.confirmation_id);
-    assert_eq!(intent.workflow, snapshot.policy.routes.analyst.workflow_key);
+    assert!(matches!(
+        repo.analysis_intent(task, owner).await,
+        Err(AppError::NotFound(_))
+    ));
     let after = repo.read(task, owner).await.unwrap();
-    assert_eq!(after.stage, Stage::Analysis);
+    assert_eq!(after.stage, Stage::Backlog);
     assert_eq!(after.status, None);
     assert_eq!(
         serde_json::to_value(after.assignment).unwrap(),
@@ -785,7 +786,7 @@ async fn assert_legacy_routed_confirmation(
     assert_eq!(inventory.try_get::<i64>("", "selections").unwrap(), 0);
     assert_eq!(inventory.try_get::<i64>("", "bindings").unwrap(), 0);
     assert_eq!(inventory.try_get::<i64>("", "snapshots").unwrap(), 1);
-    assert_eq!(inventory.try_get::<i64>("", "intents").unwrap(), 1);
+    assert_eq!(inventory.try_get::<i64>("", "intents").unwrap(), 0);
     assert_eq!(
         repo.execute_verified(task, owner, command, reservation, None)
             .await

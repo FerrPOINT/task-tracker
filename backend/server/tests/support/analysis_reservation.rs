@@ -37,6 +37,14 @@ async fn publication(
         200,
     )
     .await;
+    let task_url = format!("{base}/api/v1/issues/{task}/sdlc");
+    // Confirmation stays in Backlog and never queues Analysis. The reservation
+    // cases below exercise an explicitly seeded historical downstream aggregate.
+    analysis_intent::read(client, &task_url, owner, 404).await;
+    let context = read(client, &format!("{task_url}/context"), owner, 200).await;
+    assert_eq!(context["stage"], "Backlog");
+    assert_eq!(context["permissions"]["can_confirm"], false);
+    analysis_intent::seed_historical_analysis(db, task).await;
     let intent = read(
         client,
         &format!("{base}/api/v1/issues/{task}/sdlc/analysis-intent"),

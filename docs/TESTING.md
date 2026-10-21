@@ -401,3 +401,30 @@ repository создаёт 102 связи, включая одинаковый re
 HTTP fixture дополнительно проверяет 409 для создания и удаления существующей/отсутствующей
 связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
 после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.
+
+## Initial PM Stops At Backlog (21 October 2026)
+
+New source policy: exact owner confirmation publishes Backlog/Ready; accepted PM
+completion separately retains the current terminal/Workflow/lease receipt.
+Neither path nor replay creates an Analysis intent/event. No migration/DTO change.
+The following Rust/PG checks are required for this change, not claimed executed
+by the earlier 24-case bootstrap-retry qualification:
+
+- `cargo test -p app --lib sdlc::tests`: exact consent, full revision/hash,
+  zero-question complete brief, frozen PM writes, retained historical receipt.
+- `cargo check -p domain -p app -p infra --all-targets` and affected Clippy.
+- `cargo test -p infra --lib sdlc::candidates::tests::pm_publication_stops_at_backlog_without_analysis_on_confirmation_completion_or_replay -- --exact --ignored`:
+  fresh `TT_CANDIDATES_TEST_DATABASE_URL` ending `_candidates_test`, one executed case.
+- Existing `sdlc::lifecycle::regression_tests::pm_resume_tests::pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history`:
+  fresh `TT_PM_RESUME_TEST_DATABASE_URL` ending `_pm_resume_test`; confirmation
+  resumes the existing PM closing step from Backlog and completion stays Backlog.
+- Changed downstream fixtures remain executable: candidate discovery, lifecycle
+  heartbeat/recovery, one-task Rework, source publication and populated095 upgrade.
+  They explicitly seed historical Analysis; no test is disabled or skipped anew.
+- `cargo test -p server --test sdlc postgres_http_clarification_ownership_replay_gate_and_restart -- --exact`:
+  existing isolated HTTP/PG harness. Its confirmation checks Backlog/no intent
+  before deliberately seeding Analysis for the historical admission/restart cases.
+
+Focused UI case: `keeps confirmed requirements at Backlog without inventing
+Analysis or PM completion`. Historical intent readback tests remain separate.
+Use existing owned Compose/PG transport for native qualification; no live DB.
