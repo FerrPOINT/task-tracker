@@ -1,3 +1,4 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
   ProjectCardActionItems,
   ProjectCardLink,
@@ -11,7 +12,7 @@ import { useState } from 'react'
 import { Button } from '@pdlc/ui/ui'
 import { ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { Input } from '@pdlc/ui/ui'
-import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
+import { useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 import {
   AlertDialog,
@@ -28,7 +29,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@pdlc/ui
 export function ProjectsPage() {
   const { t } = useTranslation()
   const [offset, setOffset] = useState(0)
-  const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
+  const { data: projects, unfilteredCount, isLoading, error, refetch } = useProjects(offset, 50)
   const [formOpen, setFormOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
   const [search, setSearch] = useState('')
@@ -56,7 +57,7 @@ export function ProjectsPage() {
         </Button>
         <Button
           variant="outline"
-          disabled={(projects?.length ?? 0) < 50}
+          disabled={unfilteredCount < 50}
           onClick={() => setOffset(offset + 50)}
         >
           Далее

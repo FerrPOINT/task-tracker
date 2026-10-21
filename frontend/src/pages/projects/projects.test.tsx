@@ -14,7 +14,10 @@ const useDeleteProject = vi.hoisted(() => vi.fn())
 const namespaceCatalog = vi.hoisted(() => vi.fn())
 const platformServices = vi.hoisted(() => vi.fn())
 
-vi.mock('@/widgets/namespace-context', () => ({ useNamespaceCatalog: namespaceCatalog }))
+vi.mock('@/widgets/namespace-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/namespace-context')>()),
+  useNamespaceCatalog: namespaceCatalog,
+}))
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
   usePlatformServices: platformServices,
@@ -60,7 +63,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'false')
-  namespaceCatalog.mockReturnValue({ data: [], isPending: false, isError: false })
+  namespaceCatalog.mockReturnValue({ data: [], isPending: false, isError: false, isSuccess: true })
   platformServices.mockReturnValue({
     services: [{ key: 'admin-panel', ui_url: 'https://platform.test/custom-admin/' }],
   })
@@ -186,33 +189,35 @@ function boundProject(state = 'active') {
   }
 }
 
-it.each(['active', 'archived'])(
-  'uses lifecycle management for a %s shared project',
-  async (state) => {
-    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
-    namespaceCatalog.mockReturnValue({
-      data: [boundProject(state)],
-      isPending: false,
-      isError: false,
-    })
-    renderPage()
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
-    expect(screen.queryByRole('menuitem', { name: 'Удалить' })).not.toBeInTheDocument()
-    const action = screen.getByRole('menuitem', { name: 'Управление проектом' })
-    const url = new URL(action.getAttribute('href')!)
-    expect(url.pathname).toBe(`/custom-admin/namespaces/${managedNamespace.namespace_id}`)
-    expect(url.searchParams.get('registry_instance_id')).toBe(managedNamespace.registry_instance_id)
-    expect(url.searchParams.get('namespace_id')).toBe(managedNamespace.namespace_id)
-    if (state === 'archived') expect(screen.getByText('В архиве')).toBeInTheDocument()
-    else expect(screen.queryByText('В архиве')).not.toBeInTheDocument()
-    expect(useDeleteProject().mutate).not.toHaveBeenCalled()
-  },
-)
+it.each(['active'])('uses lifecycle management for a %s shared project', async (state) => {
+  vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+  namespaceCatalog.mockReturnValue({
+    data: [boundProject(state)],
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+  })
+  renderPage()
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
+  expect(screen.queryByRole('menuitem', { name: 'Удалить' })).not.toBeInTheDocument()
+  const action = screen.getByRole('menuitem', { name: 'Управление проектом' })
+  const url = new URL(action.getAttribute('href')!)
+  expect(url.pathname).toBe(`/custom-admin/namespaces/${managedNamespace.namespace_id}`)
+  expect(url.searchParams.get('registry_instance_id')).toBe(managedNamespace.registry_instance_id)
+  expect(url.searchParams.get('namespace_id')).toBe(managedNamespace.namespace_id)
+  expect(screen.queryByText('В архиве')).not.toBeInTheDocument()
+  expect(useDeleteProject().mutate).not.toHaveBeenCalled()
+})
 
 it('keeps deletion for an unbound project beside a shared project', async () => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
-  namespaceCatalog.mockReturnValue({ data: [boundProject()], isPending: false, isError: false })
+  namespaceCatalog.mockReturnValue({
+    data: [boundProject()],
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+  })
   renderPage()
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: 'Действия с проектом Knowledge Base' }))
@@ -224,18 +229,32 @@ it('keeps deletion for an unbound project beside a shared project', async () => 
 it.each([
   { data: undefined, isPending: true, isError: false },
   { data: undefined, isPending: false, isError: true },
-  { data: [boundProject(), boundProject()], isPending: false, isError: false },
+  { data: [boundProject(), boundProject()], isPending: false, isError: false, isSuccess: true },
 ])('does not offer deletion when project ownership is unresolved: %j', async (query) => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
-  namespaceCatalog.mockReturnValue(query)
+  namespaceCatalog.mockReturnValue({
+    ...query,
+    isSuccess: !query.isPending && !query.isError,
+    error: query.isError ? new Error('catalog unavailable') : null,
+  })
   renderPage()
-  await userEvent.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
+  if (query.isPending || query.isError) {
+    expect(screen.queryByRole('button', { name: 'Действия с проектом Task Tracker' })).toBeNull()
+    expect(screen.getByRole(query.isPending ? 'status' : 'alert')).toBeInTheDocument()
+  } else {
+    await userEvent.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
+  }
   expect(screen.queryByRole('menuitem', { name: 'Удалить' })).not.toBeInTheDocument()
 })
 
 it('keeps a shared project protected when lifecycle management is unavailable', async () => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
-  namespaceCatalog.mockReturnValue({ data: [boundProject()], isPending: false, isError: false })
+  namespaceCatalog.mockReturnValue({
+    data: [boundProject()],
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+  })
   platformServices.mockReturnValue({ services: [] })
   renderPage()
   await userEvent.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
@@ -244,4 +263,17 @@ it('keeps a shared project protected when lifecycle management is unavailable', 
     'aria-disabled',
     'true',
   )
+})
+
+it('hides an archived shared row without hiding its active standalone neighbor', () => {
+  vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+  namespaceCatalog.mockReturnValue({
+    data: [boundProject('archived')],
+    isPending: false,
+    isError: false,
+    isSuccess: true,
+  })
+  renderPage()
+  expect(screen.queryByRole('link', { name: /Task Tracker/i })).toBeNull()
+  expect(screen.getByRole('link', { name: /Knowledge Base/i })).toBeInTheDocument()
 })

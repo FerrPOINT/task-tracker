@@ -1,3 +1,4 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { ProjectPicker } from '@pdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
@@ -21,7 +22,6 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import {
-  useProjects,
   useVelocityReport,
   useBurndownReport,
   useCumulativeFlowReport,

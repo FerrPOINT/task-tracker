@@ -1,3 +1,5 @@
+import { isUnarchivedProject } from './namespace-context'
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
 import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@pdlc/ui/ui'
 import { useProjectDisclosures } from '@pdlc/ui/lib'
@@ -44,7 +46,6 @@ import {
   useMarkNotificationRead,
   useIssue,
   useNotifications,
-  useProjects,
 } from '@/shared/api/hooks'
 import {
   DropdownMenu,
@@ -237,7 +238,7 @@ export function AppShell() {
           ? []
           : (catalog.data ?? [])
   const projectGroups: ProjectNavigationGroup[] = namespaceEnabled
-    ? contexts.map((context) => ({
+    ? contexts.filter(isUnarchivedProject).map((context) => ({
         id: `${context.binding.resource.instance_id}/${context.binding.resource.resource_id}`,
         key: context.resource_key,
         name: context.label,

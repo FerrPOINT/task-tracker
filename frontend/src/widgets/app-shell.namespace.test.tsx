@@ -390,4 +390,35 @@ describe('project sidebar and Namespace selection', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
     expect(screen.getAllByRole('menuitemradio')).toHaveLength(102)
   })
+  it.each([0, 1])(
+    'excludes archived identity %s from navigation and project choices',
+    async (archived) => {
+      const entries = contexts.map((context, index) => ({
+        ...context,
+        binding: { ...context.binding, state: index === archived ? 'archived' : 'active' },
+      }))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          const entry = entries.find((item) =>
+            new URL(url, 'http://tracker.test').pathname.endsWith(
+              '/' + item.binding.namespace.namespace_id,
+            ),
+          )
+          return new Response(JSON.stringify(entry ?? entries), { status: 200 })
+        }),
+      )
+      mount(
+        `/projects?project_scope=all&registry_instance_id=${registry}&namespace_id=${refs[archived]}`,
+      )
+      const activeKey = archived ? 'A' : 'B',
+        archivedKey = archived ? 'B' : 'A'
+      await screen.findByRole('button', { name: `Одинаковый проект · ${activeKey}` })
+      expect(
+        screen.queryByRole('button', { name: `Одинаковый проект · ${archivedKey}` }),
+      ).toBeNull()
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
+      expect(screen.getAllByRole('menuitemradio')).toHaveLength(2)
+    },
+  )
 })

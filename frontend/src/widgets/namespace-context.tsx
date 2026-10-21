@@ -12,6 +12,8 @@ import { apiBaseUrl } from '@/api/client'
 import { useAuthStore } from '@/shared/auth/store'
 import { isAllProjects } from '@/shared/lib/project-navigation'
 export type ResourceContext = components['schemas']['ResourceContextSummary']
+export const isUnarchivedProject = (context: ResourceContext) =>
+  context.binding.state !== 'archived'
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = useAuthStore.getState().token
   const response = await fetch(apiBaseUrl + path, {
@@ -87,7 +89,7 @@ export function NamespaceShellContext() {
       value={value}
       loading={catalog.isPending}
       unavailable={catalog.isError}
-      options={items.map((item) => ({
+      options={items.filter(isUnarchivedProject).map((item) => ({
         value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
         label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
         projectKey: item.resource_key,
