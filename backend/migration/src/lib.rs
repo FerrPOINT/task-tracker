@@ -37,6 +37,7 @@ mod m20261018_0000098_project_repository_catalog;
 mod m20261019_0000099_unified_spaces;
 mod m20261021_0000100_human_sdlc_spaces;
 mod m20261021_0000101_native_sdlc_spaces;
+mod m20261022_0000102_request_commit_clock;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -124,6 +125,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261019_0000099_unified_spaces::Migration),
             Box::new(m20261021_0000100_human_sdlc_spaces::Migration),
             Box::new(m20261021_0000101_native_sdlc_spaces::Migration),
+            Box::new(m20261022_0000102_request_commit_clock::Migration),
         ]
     }
 }
