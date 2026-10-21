@@ -390,7 +390,7 @@ export function AppShell() {
               {navigationTrigger}
               <Link
                 to="/"
-                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:-ml-1.5 md:flex"
+                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
                 aria-label={t('app.name')}
               >
                 <PlatformMark size="shell" withName={false} />
