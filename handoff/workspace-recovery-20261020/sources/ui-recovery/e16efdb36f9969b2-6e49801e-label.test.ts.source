@@ -1,0 +1,74 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { api } from './client'
+import {
+  attachLabel,
+  createLabel,
+  detachLabel,
+  LabelMutationError,
+  listIssueLabels,
+  listProjectLabels,
+} from './label'
+
+vi.mock('./client', () => ({ api: { POST: vi.fn(), DELETE: vi.fn(), GET: vi.fn() } }))
+beforeEach(() => vi.resetAllMocks())
+
+describe('label HTTP outcomes', () => {
+  it.each([400, 401, 403, 404, 409, 422, 429])(
+    'preserves a rejected create status %s without diagnostics',
+    async (status) => {
+      vi.mocked(api.POST).mockResolvedValue({
+        response: new Response('{}', { status }),
+        error: { private: 'diagnostic' },
+      } as never)
+      await expect(createLabel('TT', 'bug', '#ef4444')).rejects.toMatchObject({
+        status,
+        outcome: 'rejected',
+      })
+      await expect(createLabel('TT', 'bug', '#ef4444')).rejects.not.toThrow('diagnostic')
+    },
+  )
+  it('does not confirm creation after a missing success body, server error or network loss', async () => {
+    for (const status of [201, 500]) {
+      vi.mocked(api.POST).mockResolvedValueOnce({
+        response: new Response(null, { status }),
+      } as never)
+      await expect(createLabel('TT', 'bug', '#ef4444')).rejects.toMatchObject({
+        status,
+        outcome: 'unknown',
+      })
+    }
+    vi.mocked(api.POST).mockRejectedValueOnce(new TypeError('private network details'))
+    await expect(createLabel('TT', 'bug', '#ef4444')).rejects.toBeInstanceOf(LabelMutationError)
+  })
+  it.each(['attach', 'detach'] as const)(
+    'checks a bodyless %s failure rather than treating it as success',
+    async (operation) => {
+      const method = operation === 'attach' ? api.POST : api.DELETE
+      const mutate = operation === 'attach' ? attachLabel : detachLabel
+      vi.mocked(method).mockResolvedValueOnce({
+        response: new Response(null, { status: 500 }),
+      } as never)
+      await expect(mutate('i1', 'l1')).rejects.toMatchObject({ status: 500, outcome: 'unknown' })
+      vi.mocked(method).mockResolvedValueOnce({
+        response: new Response(null, { status: 204 }),
+      } as never)
+      await expect(mutate('i1', 'l1')).resolves.toBeUndefined()
+      vi.mocked(method).mockRejectedValueOnce(new Error('private network'))
+      await expect(mutate('i1', 'l1')).rejects.toMatchObject({ outcome: 'unknown' })
+    },
+  )
+  it.each([listProjectLabels, listIssueLabels])(
+    'does not expose GET errors as an empty directory',
+    async (list) => {
+      vi.mocked(api.GET).mockResolvedValueOnce({
+        response: new Response(null, { status: 500 }),
+      } as never)
+      await expect(list('parent')).rejects.toThrow('Failed to load')
+      vi.mocked(api.GET).mockResolvedValueOnce({
+        response: new Response('{}'),
+        data: { labels: [] },
+      } as never)
+      await expect(list('parent')).resolves.toEqual([])
+    },
+  )
+})

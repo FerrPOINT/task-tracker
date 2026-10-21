@@ -1,0 +1,104 @@
+# AGENTS.md — Task Tracker
+
+## Репозиторий
+
+- **GitHub**: `git@github.com:FerrPOINT/task-tracker.git`
+- **Стек**: backend Rust (Axum + SeaORM + PostgreSQL), frontend React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0
+- **Env prefix**: `TASKTRACKER_`
+- **Публичные порты по умолчанию**: frontend docker `19877`, backend `3456`. PostgreSQL и Redis внутренние (compose-сеть), наружу не публикуются
+
+## Правила работы
+
+### 1. Перед началом работы
+
+1. Прочитать `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`.
+2. Проверить текущее состояние ветки: `git status`.
+3. Составить план, показать пользователю, получить подтверждение.
+
+### 2. Код
+
+- Backend: слоистая архитектура `controller → service → repository`.
+- DI через `AppContext`.
+- Все публичные API покрыты OpenAPI через `utoipa-axum`.
+- Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
+- Все endpoint тестируются интеграционно через testcontainers.
+- Frontend: компоненты на `shadcn/ui` + Tailwind.
+- Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
+- Формы — `react-hook-form` + `zod`.
+
+### 3. Коммиты
+
+- Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
+- Один коммит = одна логическая единица.
+- Не amend/squash без явного запроса.
+- Push только после проверки `cargo test`, `pnpm typecheck`, `pnpm test`.
+
+### 4. Тестирование
+
+- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
+- Frontend: Vitest + Playwright.
+- После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
+- Все новые endpoint — curl-проверка.
+
+### 5. Документация
+
+- При изменении API обновлять `docs/API.md`.
+- При изменении дата-модели обновлять `docs/DATA_MODEL.md`.
+- При новом функционале добавлять/обновлять `docs/TZ.md`.
+- Любые неочевидные решения фиксировать в `docs/ARCHITECTURE.md`.
+
+### 6. Безопасность
+
+- Никогда не коммитить credentials, токены, пароли, email коллег, реальные данные клиентов.
+- Все secrets — через env vars.
+- Перед push проверять, что в diff нет чувствительных данных.
+
+### 7. Docker
+
+- Сборка: `docker compose build`.
+- Пересоздание контейнера: `docker compose up -d` (не `docker compose restart`).
+- Проверка: `docker compose ps` и health endpoint.
+
+### 8. Проверка перед завершением
+
+- [x] Все тесты проходят.
+- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
+- [x] Документация актуальна.
+- [x] Коммиты запушены в `origin/main`.
+- [x] Пользователь увидел результат (скриншот / curl / лог).
+
+## Контакты
+
+- Техлид: Александр Жуков.
+- Основной язык общения и документов: русский.
+
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/CODE_STYLE.md`
+- `docs/TESTING.md`
+
+## Обязательная группировка Docker
+
+- Любой локальный контейнер запускается через Docker Compose с явным project name.
+  Постоянные проекты: только `sdlc1`, `sdlc2`, `sdlc-common`.
+- QA, тесты, restore drills и контейнерные проверки сборки используют отдельный
+  временный проект `sdlc-qa-<task>-<unique>` или `sdlc-build-<task>-<unique>`.
+  Не помещать тестовые сервисы в постоянные группы.
+- Прямые `docker run`/`docker create`, случайные имена и контейнеры без Compose
+  project запрещены, включая одноразовые helpers. Поддельные Compose labels
+  не заменяют Compose. Docker build/BuildKit разрешены; контейнерные runners
+  должны быть Compose-сервисами временного проекта.
+- До запуска задать владельца задачи (`sdlc.task`), назначение (`sdlc.purpose`),
+  явные имена сервисов, уникальный project и отдельные тестовые сети/volumes.
+  Не публиковать secrets в labels, логах или tracked Compose.
+- После проверки и при ошибке выполнять в finally/trap `docker compose -p
+  <exact-project> -f <exact-file> down --remove-orphans`. После прерывания
+  проверить и убрать собственные остатки при следующем запуске.
+- Volumes удалять только по точному перечню собственных disposable QA-ресурсов.
+  Shared caches, runtime volumes, backups и чужие ресурсы сохранять;
+  глобальные prune и массовое удаление контейнеров запрещены.
+- Перед запуском старого QA-скрипта с docker run сначала перевести его на Compose.
+  Проверка правил: `python services-base/scripts/audit_docker_groups.py` из
+  корня workspace; ненулевой exit означает контейнеры вне разрешённых групп
+  либо отсутствие owner/purpose у временного проекта.

@@ -1,0 +1,158 @@
+//! Existing-Issue work metadata only. Runtime dispatch and acceptance remain disabled.
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    routing::{get, post},
+};
+use domain::{bug_work::*, sdlc::Principal};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+pub(super) fn router() -> Router<Arc<app::AppContext>> {
+    Router::new()
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/claim",
+            post(claim),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/current",
+            get(current),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/grant",
+            get(grant),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/origin",
+            get(origin),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/bind",
+            post(bind),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/close",
+            post(close),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/work-operations/{idempotency_key}",
+            get(operation),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(32768))
+}
+fn service(ctx: &app::AppContext) -> Result<&app::bug_work::BugWorkService, AppError> {
+    ctx.bug_work
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Tracker Bug work is not configured".into()))
+}
+fn no_store() -> HeaderMap {
+    let mut h = HeaderMap::new();
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/claim",tag="bug-search",params(("project_id"=Uuid,Path),("worker_id"=Uuid,Path)),request_body=ClaimBugWork,responses((status=201,body=BugWorkReceipt),(status=200,body=BugWorkReceipt),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn claim(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, w)): Path<(Uuid, Uuid)>,
+    Json(c): Json<ClaimBugWork>,
+) -> Result<(StatusCode, HeaderMap, Json<BugWorkReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.claim(p, w, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+pub struct WorkOwnerQuery {
+    pub owner_subject: String,
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/current",tag="bug-search",params(("project_id"=Uuid,Path),("worker_id"=Uuid,Path),WorkOwnerQuery),responses((status=200,body=Option<BugWorkState>),(status=401),(status=403),(status=503)),security(("bearer"=[])))]
+pub async fn current(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, w)): Path<(Uuid, Uuid)>,
+    Query(q): Query<WorkOwnerQuery>,
+) -> Result<(HeaderMap, Json<Option<BugWorkState>>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.current(p, &q.owner_subject, w, &a).await?),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/grant",tag="bug-search",params(("project_id"=Uuid,Path),("assignment_id"=Uuid,Path)),responses((status=200,body=BugWorkState),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn grant(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+) -> Result<(HeaderMap, Json<BugWorkState>), AppError> {
+    Ok((no_store(), Json(service(&ctx)?.read(p, id, &a).await?)))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/origin",tag="bug-search",params(("project_id"=Uuid,Path),("assignment_id"=Uuid,Path)),responses((status=200,body=domain::bug_work_origin::BugWorkOriginReadback),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn origin(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+) -> Result<
+    (
+        HeaderMap,
+        Json<domain::bug_work_origin::BugWorkOriginReadback>,
+    ),
+    AppError,
+> {
+    Ok((no_store(), Json(service(&ctx)?.origin(p, id, &a).await?)))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/bind",tag="bug-search",params(("project_id"=Uuid,Path),("assignment_id"=Uuid,Path)),request_body=BindBugWork,responses((status=201,body=BugWorkReceipt),(status=200,body=BugWorkReceipt),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn bind(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+    Json(c): Json<BindBugWork>,
+) -> Result<(StatusCode, HeaderMap, Json<BugWorkReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.bind(p, id, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/close",tag="bug-search",params(("project_id"=Uuid,Path),("assignment_id"=Uuid,Path)),request_body=CloseBugWork,responses((status=201,body=BugWorkReceipt),(status=200,body=BugWorkReceipt),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn close(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+    Json(c): Json<CloseBugWork>,
+) -> Result<(StatusCode, HeaderMap, Json<BugWorkReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.close(p, id, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/work-operations/{idempotency_key}",tag="bug-search",params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=BugWorkReceipt),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugWorkReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.operation(p, &key, &a).await?),
+    ))
+}

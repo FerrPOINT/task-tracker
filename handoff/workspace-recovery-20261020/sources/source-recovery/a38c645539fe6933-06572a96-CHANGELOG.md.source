@@ -1,0 +1,192 @@
+# Changelog
+
+Все значимые изменения проекта документируются здесь.
+Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
+версионирование — [SemVer](https://semver.org/lang/ru/).
+
+## [Unreleased]
+
+- Создание и редактирование спринта используют Base FormDialog/FormField/Textarea.
+  Черновик сохраняется при refetch и переходе бэклога в error/loading; закрытие
+  и navigation/reload защищены подтверждением. Promise записи блокирует ввод,
+  закрытие и double-submit; ошибочный диапазон дат связан с полем и получает фокус.
+  Sprint API сохраняет HTTP status и проверяет consumed response shape без новых
+  доменных ограничений.403/404 блокируют сохранение, подтверждённый отказ сохраняет
+  ввод. Неизвестный исход блокирует повторную отправку до отдельной сверки списка
+  спринтов и нового явного действия; background recovery не снимает блокировку.
+  Публичные API, UTC/null semantics, backend, auth, DB и locks не меняются.
+
+- Доска проекта использует Base ListPage/Tabs/FormField/Select и targets40/44.
+  Создание задачи принадлежит одному action header; колонки больше не создают
+  карточки-контейнеры вокруг карточек задач. Плотность ограничивает summary до
+  4/2 строк, не уменьшает controls; полный текст остаётся в ссылке и tooltip.
+  Density/status сохраняют внешний query/hash и Back/Forward. Ошибки доски
+  и transition rules различаются; cached403/404 и неповторяемые ошибки скрывают
+  недоступные данные, временный сбой оставляет partial view без writes.
+  Keyboard и native drag/drop используют общую same-tick защиту; pending/refresh
+  блокируют перенос. После сбоя нужна явная сверка доски и правил без auto-retry
+  записи и без ложного success; фокус получает стабильный именованный region.
+  Доменные API, backend, auth, DB и dependency locks не меняются.
+
+- Корзина проекта использует Base ListPage, общие состояния и controls40/44.
+  HTTP403/404 и неповторяемые ошибки скрывают cached строки; временный сбой
+  сохраняет данные с partial-error и блокирует запись. Pagination/history/reload
+  сохраняют внешний URL context/hash. Restore/purge защищены от двойной отправки;
+  неизвестный результат требует отдельной read-only сверки и явного повтора.
+  Исчезновение строки при сверке не объявляется успешным удалением. Escape/Cancel
+  возвращают фокус инициатору, после удаления используется безопасная область.
+  HTTP statuses и документированный204 acknowledgement проверяются без изменения
+  публичных API, схемы БД, auth или dependency locks.
+
+- Поиск задач использует Base ListPage/FormField/Select/Tabs и общие resource
+  states без локальных карточек фильтров и размеров controls. URL сохраняет
+  фильтры, сортировку, pagination, историю и внешний context/hash; reset удаляет
+  только параметры поиска. 403/404 скрывают cached данные, временная ошибка
+  refresh оставляет строки с partial-error. Ошибки справочников не подменяют
+  успешные результаты поиска; JQL validation связана с полем без retry-loop.
+  Пустая последующая страница сохраняет переход назад. API/auth/schema неизменны.
+
+- Создание задачи использует Base FormPage/FormField и защиту несохранённых
+  изменений. Значения custom fields и назначение сохраняются отдельно по проектам
+  при переключении и Back/Forward; refetch не снимает исполнителя автоматически.
+  Запись блокируется до подтверждения обязательных данных, 403/404 скрывают форму,
+  повтор доступен только для повторяемых сбоев. Ошибка сохранения сохраняет ввод;
+  pending исключает двойную отправку. Предел заголовка соответствует серверным
+  500 Unicode-символам. Доменные API, схема БД и auth-контракт не меняются.
+
+- Swagger UI assets come from the locked vendored Cargo package instead of a
+  separate build-time GitHub ZIP download. Domain API, database schema,
+  application UI and authentication are unchanged.
+
+- Umbrella frontend recipe синхронизирован с обычным Dockerfile: общий Base
+  recorder, revision labels и digest pins действуют также для workspace-сборки.
+  Проверка candidate не заменяет authenticated runtime/SSO/README приёмку.
+
+- Frontend image использует общий Base recorder происхождения сборки:
+  product/Base SHA, fingerprints и asset digests в `/ui-build.json`, OCI labels
+  и закреплённые Node/nginx digests. Route manifest объявляет каталог React assets.
+  Упаковка не означает завершённую runtime/SSO/README приёмку.
+
+- Base закреплён на `193ad1e8fd6260f001640943a5ec07ff04f527d1`: общий
+  cross-platform fingerprint и согласованная локальная UI/UX-поставка.
+  Checklist завершения ссылается на Base DoD вместо сохранённых отметок прошлой
+  задачи. Source/dependency checkpoint не заменяет приёмку фактических images и SSO.
+
+- CLI сохраняет прежние текстовые подтверждения удаления и отметки уведомлений в table/compact; JSON успешных пустых ответов остаётся `{"status":"ok"}`.
+
+- Справка CLI скрывает значения token env variables, сохраняя имена переменных.
+
+- CLI принимает UUID и ключ задачи с серверной проверкой доступа; поддерживает статусы/переходы,
+  связи, вложения, custom field values, worklogs, корзину и восстановление. Добавлены file/stdin,
+  явное снятие исполнителя, пагинация, JSON ошибок/пустых ответов и безопасный download. CI
+  проверяет восстановление удалённого ключа в отдельной PostgreSQL БД. Диагностика скрывает исходные
+  и обрезанные credentials, включая newline в secret stdin.
+
+- Повторный явный вход разрешён после отменённого перехода Central Auth;
+  автоматический guard не отменяет logout. Отмена перехода не показывает
+  ложную ошибку доступности Auth, а ошибка сервера остаётся видимой.
+
+### Changed
+- Остальные живые SSO-сценарии Admin (первичный выход, переход к Task и
+  пользователь с одноразовой ссылкой) используют меню аккаунта; identity
+  проверяется внутри меню, а не в закрытой шапке.
+- Живая проверка глобального выхода определяет меню аккаунта по доступному
+  control, а не списку продуктов; сохраняет проверки отзыва сессий и PAT
+  при одновременном перенаправлении соседней вкладки.
+- Task Tracker подключён к общему `PlatformHeader`: один переключатель сервисов,
+  единые размеры действий, без повторного поиска в шапке. Создание задачи сохраняет
+  выбранный проект и доступно в мобильном меню; аккаунт не дублирует email и не
+  допускает повторного выбора выхода во время pending.
+
+- Выход через Central Auth больше не очищает локальный UI до навигации на
+  центральный logout endpoint.
+
+### Changed
+- Desktop/tablet board получил сохраняемый в URL переключатель обычной и
+  компактной плотности без уменьшения 40 px действий или потери metadata.
+- С доски убрана вводящая в заблуждение панель локальных участников: в Central Auth
+  она не управляла доступом. При создании и редактировании задачи исполнители
+  выбираются из активного центрального каталога, с явной ошибкой и повтором загрузки.
+
+### Added
+- Live visual QA по локализованному флоту (#69), live CI project CRUD + Workflow touch shell (#66).
+### Fixed
+- Выбор проекта, вкладки и спринта в отчётах сохраняется в browser history;
+  Back/Forward восстанавливают контекст, а default/invalid `tab` получает
+  канонический URL без потери соседних параметров.
+- Доступные таблицы графиков помещены в clipping-wrapper: длинные ISO-даты
+  cumulative flow больше не расширяют документ на mobile и tablet.
+- Фильтр и страница уведомлений сохраняются в URL и восстанавливаются после
+  reload, Back/Forward и прямого открытия без потери соседних параметров.
+- Создание задачи сохраняет выбранный проект в URL, а карточка задачи — активную
+  вкладку; прямые ссылки, reload и Back/Forward больше не сбрасывают контекст.
+- Вкладка журнала аудита хранится в URL, восстанавливается после прямого
+  открытия, reload, Back и Forward, а цели вкладок, формы настройки и загрузки
+  аудита имеют минимум 44 px на mobile и 40 px на больших экранах.
+- Пагинация backlog хранит `offset` в URL, сохраняет остальные query-параметры
+  и восстанавливает страницу после reload, Back и Forward; локальные действия и
+  ссылки задач получили устойчивые цели не меньше 40 px.
+- Страница корзины проекта сохраняется в URL, восстанавливается после reload и
+  browser history, пустой offset вне диапазона возвращается на первую страницу,
+  tablet-раскладка больше не сжимает summary до нулевой ширины, а destructive
+  actions сохраняют AA-контраст.
+- Issue detail actions touch-sized, live workflows верифицированы (#67); live Wiki space navigation (#65); патч аудита dev-зависимостей frontend (#68).
+### Added
+- Live E2E-покрытие: Workflow- и CI/CD-страницы по темам и viewport (#58, #59); SSO-тест синхронизирован с Admin UI (#60).
+- Root AGENTS.md и SECURITY.md (стандарты Base); из индекса удалён артефакт аудита review-findings.md.
+### Fixed
+- Usability борда и уведомлений (#61).
+### Added
+- OIDC SSO (SYSTEM_ADMIN 4.2): single provider, authorization code + PKCE S256, single-use state/nonce, JIT-provisioning, identity linking (миграция 0032: `oidc_identities`, `oidc_state`).
+- Password reset по email (SYSTEM_ADMIN §1.2): одноразовые SHA-256-hashed токены (TTL 30 мин), no-enumeration 202, атомарное потребление + отзыв refresh-сессий; `POST /auth/password/{request,reset}`; миграция m31 `password_reset_token`; env `TASKTRACKER_RESET_BASE_URL`.
+- TOTP MFA (SECURITY.md §2): зашифрованные AES-256-GCM RFC 6238 секреты, replay protection, 8 одноразовых recovery-кодов; challenge при логине (`totp_code`), self-service энроллмент `POST /api/v1/auth/totp/{setup,enable,disable}`.
+
+## [0.2.0] — 2026-08-26
+
+### Added
+- Watchers и votes для задач (API + UI + CLI).
+- Custom fields: текст/число/дата/select/checkbox, валидация значений по типу поля.
+- Components и versions в проектах (API + UI).
+- Soft-delete: корзина, restore, purge с каскадным удалением comments/worklogs/attachments/links.
+- Notifications: генерация из событий задач, SSE push, настройки email digest.
+- CLI: 12 групп команд (auth, projects, issues, sprints, board, comments, labels, search, notifications, reports, admin, members).
+- Миграция FK-индексов для 15 внешних ключей.
+- 30 backend integration tests (316 total), 28 frontend component tests (88 total).
+
+### Security
+- IDOR-фиксы: delete/restore/purge задач, add/remove участника проекта, labels, attachments, issue links, custom fields теперь требуют UserClaims и проверяют права.
+- Ошибки Database/Internal больше не раскрывают внутренние детали клиенту (логируются через tracing).
+- Board move_issue: валидация принадлежности задачи проекту.
+
+### Fixed
+- 21 баг существующего функционала: SSE query keys, search status filter, upload progress, notification mark-as-read, audit log pagination и др.
+- CLI: имена полей issue create, URL и метод notification endpoints.
+- Issue create возвращает 201 Created.
+- Restore неудалённой задачи возвращает 409 Conflict.
+
+### Changed
+- Backend декомпозиция: services.rs (2492 строки) → 20 доменных модулей, context.rs (843 строки) → 4 модуля.
+- Frontend: единые LoadingState/EmptyState/ErrorState/ConfirmDialog компоненты.
+- Native `window.confirm` → shared ConfirmDialog.
+- Полный i18n: 393+ ключа RU/EN, захардкоженные строки устранены.
+- Accessibility: aria-label на всех icon-кнопках.
+
+### Removed
+- Saved filters (API без frontend UI; JQL сохранён — используется search и CLI).
+- 20 stale документов, seed demo data, CHANGELOG-заглушка.
+- Неиспользуемые зависимости: garde, tokio-test, redis, sqlx (direct), sea-orm из app.
+
+### Docs
+- MIGRATIONS.md переписан с Refinery на SeaORM Migrator.
+- SECURITY.md: нереализованные controls помечены «не реализовано».
+- .env.example и docker-compose.yml: формат env vars `TASKTRACKER_SECTION__KEY`.
+- ROUTING.md приведён к 14 реальным маршрутам, DATA_MODEL.md — к фактической схеме.
+- API.md: WebSocket секция заменена на SSE.
+
+## [0.1.0] — 2026-08-24
+
+### Added
+- Initial release: проекты, kanban board, backlog, sprints, задачи с workflow, labels, comments, attachments, issue links, search (JQL), reports (velocity/burndown/cumulative flow/control chart), auth (JWT + refresh rotation), admin panel, audit log, worklog/time tracking.
+- React 19 + Vite 6 + Tailwind 4 frontend, Rust/Axum/SeaORM backend, PostgreSQL.
+- Docker Compose: postgres, redis, backend (3456), frontend (19877).
+- CI: fmt + clippy + tests + typecheck + lint + build + E2E smoke.

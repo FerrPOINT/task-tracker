@@ -1,0 +1,26 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 14c87b4..5660942 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -24,7 +24,7 @@
+ - Все endpoint тестируются интеграционно с PostgreSQL; контейнерные проверки
+   выполняются через собственный временный Compose project, не через прямой launch.
+ - Frontend: shell, controls и композиции страниц из `@sdlc/ui`; нормативные
+-  правила принадлежат [Base UI/UX Standard](../services-base/docs/UI_UX_STANDARD.md).
++  правила принадлежат [Base UI/UX Standard](../services-base/docs/platform/UI_UX_STANDARD.md).
+   Продукт задаёт доменные slots и действия, не создаёт второй UI-kit.
+ - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
+ - Формы — `react-hook-form` + `zod`.
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 3068e59..fa46709 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,8 @@
+ 
+ ## [Unreleased]
+ 
++- Исправлена ссылка AGENTS на действующий UI/UX Standard в Base docs/platform.
++
+ - README и инструкции разработки используют штатный workspace launcher,
+   общий UI-kit Base и desktop-only галерею; responsive QA остаётся обязательной.
+ 

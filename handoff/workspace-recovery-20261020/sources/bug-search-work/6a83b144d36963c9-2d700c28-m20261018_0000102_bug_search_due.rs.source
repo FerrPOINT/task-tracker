@@ -1,0 +1,23 @@
+use sea_orm_migration::prelude::*;
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.get_connection().execute_unprepared(
+            "CREATE INDEX sdlc_bug_search_due_heads ON sdlc_bug_search_policy_heads(next_due_at,project_id) WHERE next_due_at IS NOT NULL;
+             CREATE INDEX sdlc_bug_search_outbox_execution_topic ON sdlc_bug_search_outbox(execution_id,event_type);
+             CREATE INDEX sdlc_bug_search_periodic_pending ON sdlc_bug_search_executions(project_id,policy_revision)
+              WHERE admission_state='reserved' AND revoked_at IS NULL AND snapshot->>'trigger'='periodic';
+             ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+             ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check
+              CHECK(kind IN ('policy','reserve','admit','register','terminal','intake','cancel','abort_unbound','defer_due'));"
+        ).await?;
+        Ok(())
+    }
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        Err(DbErr::Custom(
+            "Periodic owner occurrence receipts are retained; use forward migration".into(),
+        ))
+    }
+}

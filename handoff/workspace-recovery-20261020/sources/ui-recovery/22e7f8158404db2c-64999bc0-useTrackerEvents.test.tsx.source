@@ -1,0 +1,247 @@
+import { act, render } from '@testing-library/react'
+import { MutationObserver, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { useTrackerEvents } from './useTrackerEvents'
+import { useAuthStore } from '@/shared/auth/store'
+import { connectAuthenticatedEventStream } from '@sdlc/ui/lib'
+
+vi.mock('@sdlc/ui/lib', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@sdlc/ui/lib')>()),
+  connectAuthenticatedEventStream: vi.fn(() => vi.fn()),
+}))
+
+function emit(type: string, payload: object) {
+  const options = vi.mocked(connectAuthenticatedEventStream).mock.lastCall?.[0]
+  options?.onEvent('tracker', { type, ...payload })
+}
+
+function Subscriber() {
+  useTrackerEvents()
+  return null
+}
+
+describe('useTrackerEvents', () => {
+  afterEach(() => {
+    useAuthStore.getState().logout()
+    vi.mocked(connectAuthenticatedEventStream).mockClear()
+    vi.unstubAllGlobals()
+  })
+
+  it('subscribes without exposing the access token in the stream URL', () => {
+    useAuthStore.setState({ token: 'test.token+/=' })
+    const client = new QueryClient()
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    expect(connectAuthenticatedEventStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/api/v1/events',
+        token: 'test.token+/=',
+      }),
+    )
+  })
+
+  it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      emit('worklog_logged', { issue_id: 'issue-1', project_key: 'TT' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worklogs', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
+
+  it('invalidates issue collection caches when an issue SSE event arrives', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      emit('issue_moved', { issue_id: 'issue-1', project_key: 'TT' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-labels', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['attachments', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-votes', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-watchers', 'issue-1'] })
+  })
+
+  it('invalidates sprint-backed project caches when a sprint SSE event arrives', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      emit('sprint_changed', { project_key: 'TT' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+  })
+
+  it('records deletion as a missing issue without requesting removed endpoints', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => emit('issue_deleted', { issue_id: 'issue-1', project_key: 'TT' }))
+
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    for (const key of [
+      'issue-labels',
+      'issue-links',
+      'issue-custom-fields',
+      'attachments',
+      'issue-votes',
+      'issue-watchers',
+    ]) {
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: [key, 'issue-1'] })
+    }
+    client.clear()
+  })
+
+  it.each(['issue-1', 'another-issue'])(
+    'does not race deletion owner %s with a detail GET before or after HTTP completion',
+    async (deletingId) => {
+      useAuthStore.setState({ token: 'test-token' })
+      const client = new QueryClient()
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const view = render(
+        <QueryClientProvider client={client}>
+          <Subscriber />
+        </QueryClientProvider>,
+      )
+      let finish!: () => void
+      const deletion = new MutationObserver<void, Error, string>(client, {
+        mutationKey: ['delete-issue'],
+        mutationFn: () =>
+          new Promise<void>((resolve) => {
+            finish = resolve
+          }),
+      })
+      const pending = deletion.mutate(deletingId)
+      try {
+        await act(async () => {
+          await Promise.resolve()
+        })
+        act(() => emit('issue_deleted', { issue_id: 'issue-1', project_key: 'TT' }))
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+        expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+        expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+        expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['issue-labels', 'issue-1'] })
+        await act(async () => {
+          finish()
+          await pending
+        })
+        invalidate.mockClear()
+        act(() => emit('issue_deleted', { issue_id: 'issue-1', project_key: 'TT' }))
+        expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+        expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+      } finally {
+        view.unmount()
+        client.clear()
+      }
+    },
+  )
+
+  it('does not let an earlier detail GET resurrect a deleted issue', async () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    let finish!: (value: { id: string }) => void
+    const view = render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    const pending = client
+      .fetchQuery({
+        queryKey: ['issue', 'issue-1'],
+        queryFn: () =>
+          new Promise<{ id: string }>((resolve) => {
+            finish = resolve
+          }),
+      })
+      .catch(() => undefined)
+    try {
+      act(() => emit('issue_deleted', { issue_id: 'issue-1', project_key: 'TT' }))
+      expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+      await act(async () => {
+        finish({ id: 'issue-1' })
+        await pending
+      })
+      expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+
+  it('still refetches the detail for subsequent update or restore events', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const view = render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    try {
+      act(() => emit('issue_deleted', { issue_id: 'issue-1', project_key: 'TT' }))
+      expect(client.getQueryData(['issue', 'issue-1'])).toBeNull()
+      invalidate.mockClear()
+      act(() => emit('issue_updated', { issue_id: 'issue-1', project_key: 'TT' }))
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
+})

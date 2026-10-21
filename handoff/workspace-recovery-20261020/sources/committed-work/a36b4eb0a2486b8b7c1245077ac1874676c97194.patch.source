@@ -1,0 +1,194 @@
+diff --cc .base-revision
+index 119f6c9,e7bc130..ace32ea
+--- a/.base-revision
++++ b/.base-revision
+@@@ -1,1 -1,1 +1,1 @@@
+- deceff88a55675858ca59eb6aee13104bff9b1c7
+ -9408802dfa978cba2f67162a49adca6f65851b01
+++c0f175c67fc02ba0910a310b163b8032dac92d06
+diff --cc AGENTS.md
+index ed289c2,f34bb97..14c87b4
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@@ -21,8 -21,8 +21,11 @@@
+  - DI через `AppContext`.
+  - Все публичные API покрыты OpenAPI через `utoipa-axum`.
+  - Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
+--- Все endpoint тестируются интеграционно через testcontainers.
+--- Frontend: компоненты на `shadcn/ui` + Tailwind.
+++- Все endpoint тестируются интеграционно с PostgreSQL; контейнерные проверки
+++  выполняются через собственный временный Compose project, не через прямой launch.
+++- Frontend: shell, controls и композиции страниц из `@sdlc/ui`; нормативные
+++  правила принадлежат [Base UI/UX Standard](../services-base/docs/UI_UX_STANDARD.md).
+++  Продукт задаёт доменные slots и действия, не создаёт второй UI-kit.
+  - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
+  - Формы — `react-hook-form` + `zod`.
+  
+@@@ -35,9 -35,9 +38,13 @@@
+  
+  ### 4. Тестирование
+  
+--- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
+++- Backend: `cargo test --locked`, интеграционные тесты с PostgreSQL в собственном
+++  временном Compose project с labels владельца и назначения.
+  - Frontend: Vitest + Playwright.
+--- После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
+++- README: desktop-only full-page capture при viewport 1920x1080, по одному
+++  представителю применимого layout mode, default theme и безопасные данные.
+++- Responsive QA отдельно: 375 / 1440 / 1920 / 2560 и границы общего shell;
+++  route/state/focus/URL evidence не заменяется README-галереей.
+  - Все новые endpoint — curl-проверка.
+  
+  ### 5. Документация
+@@@ -55,9 -55,9 +62,14 @@@
+  
+  ### 7. Docker
+  
+--- Сборка: `docker compose build`.
+--- Пересоздание контейнера: `docker compose up -d` (не `docker compose restart`).
+--- Проверка: `docker compose ps` и health endpoint.
+++- Из корня workspace, PowerShell 7: `./start-local.ps1 -Workspace sdlc1`;
+++  проверка: `./start-local.ps1 -Workspace sdlc1 -Status`.
+++- Постоянные группы только `sdlc1`, `sdlc2`, `sdlc-common`; правила принадлежат
+++  [Base LOCAL_GROUPS](../services-base/deploy/LOCAL_GROUPS.md).
+++- QA/build: явный уникальный `sdlc-qa-*`/`sdlc-build-*` Compose project,
+++  `sdlc.task`/`sdlc.purpose`, finally cleanup только собственных ресурсов.
+++  Прямой запуск контейнеров, общий prune, удаление shared volumes и пустая
+++  замена runtime snapshots/secrets/keys запрещены.
+  
+  ### 8. Проверка перед завершением
+  
+diff --cc CHANGELOG.md
+index 0618af3,a7ed5ec..3068e59
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@@ -6,68 -6,7 +6,72 @@@
+  
+  ## [Unreleased]
+  
+++- README и инструкции разработки используют штатный workspace launcher,
+++  общий UI-kit Base и desktop-only галерею; responsive QA остаётся обязательной.
+++
+ +- Base notification ownership gate закреплён единым snapshot. OpenAPI alias
+ +  передаёт явные параметры в Base; без параметров сравнивает с origin/main.
+ +
+ +- Notification host теперь принадлежит Base: общий placement, themes, semantic
+ +  colors и keyboard targets вместо локального AppToaster. Sonner2.0.8 используется
+ +  как единый peer; продуктовые callbacks и подтверждение записей не меняются.
+ +
+ +- Доска проекта использует Base ListPage/Tabs/FormField/Select и targets40/44.
+ +  Создание задачи принадлежит одному action header; колонки больше не создают
+ +  карточки-контейнеры вокруг карточек задач. Плотность ограничивает summary до
+ +  4/2 строк, не уменьшает controls; полный текст остаётся в ссылке и tooltip.
+ +  Density/status сохраняют внешний query/hash и Back/Forward. Ошибки доски
+ +  и transition rules различаются; cached403/404 и неповторяемые ошибки скрывают
+ +  недоступные данные, временный сбой оставляет partial view без writes.
+ +  Keyboard и native drag/drop используют общую same-tick защиту; pending/refresh
+ +  блокируют перенос. После сбоя нужна явная сверка доски и правил без auto-retry
+ +  записи и без ложного success; фокус получает стабильный именованный region.
+ +  Доменные API, backend, auth, DB и dependency locks не меняются.
+ +
+ +- Корзина проекта использует Base ListPage, общие состояния и controls40/44.
+ +  HTTP403/404 и неповторяемые ошибки скрывают cached строки; временный сбой
+ +  сохраняет данные с partial-error и блокирует запись. Pagination/history/reload
+ +  сохраняют внешний URL context/hash. Restore/purge защищены от двойной отправки;
+ +  неизвестный результат требует отдельной read-only сверки и явного повтора.
+ +  Исчезновение строки при сверке не объявляется успешным удалением. Escape/Cancel
+ +  возвращают фокус инициатору, после удаления используется безопасная область.
+ +  HTTP statuses и документированный204 acknowledgement проверяются без изменения
+ +  публичных API, схемы БД, auth или dependency locks.
+ +
+ +- Поиск задач использует Base ListPage/FormField/Select/Tabs и общие resource
+ +  states без локальных карточек фильтров и размеров controls. URL сохраняет
+ +  фильтры, сортировку, pagination, историю и внешний context/hash; reset удаляет
+ +  только параметры поиска. 403/404 скрывают cached данные, временная ошибка
+ +  refresh оставляет строки с partial-error. Ошибки справочников не подменяют
+ +  успешные результаты поиска; JQL validation связана с полем без retry-loop.
+ +  Пустая последующая страница сохраняет переход назад. API/auth/schema неизменны.
+ +
+ +- Создание задачи использует Base FormPage/FormField и защиту несохранённых
+ +  изменений. Значения custom fields и назначение сохраняются отдельно по проектам
+ +  при переключении и Back/Forward; refetch не снимает исполнителя автоматически.
+ +  Запись блокируется до подтверждения обязательных данных, 403/404 скрывают форму,
+ +  повтор доступен только для повторяемых сбоев. Ошибка сохранения сохраняет ввод;
+ +  pending исключает двойную отправку. Предел заголовка соответствует серверным
+ +  500 Unicode-символам. Доменные API, схема БД и auth-контракт не меняются.
+ +
+ +- Swagger UI assets come from the locked vendored Cargo package instead of a
+ +  separate build-time GitHub ZIP download. Domain API, database schema,
+ +  application UI and authentication are unchanged.
+ +
+ +- Umbrella frontend recipe синхронизирован с обычным Dockerfile: общий Base
+ +  recorder, revision labels и digest pins действуют также для workspace-сборки.
+ +  Проверка candidate не заменяет authenticated runtime/SSO/README приёмку.
+ +
+ +- Frontend image использует общий Base recorder происхождения сборки:
+ +  product/Base SHA, fingerprints и asset digests в `/ui-build.json`, OCI labels
+ +  и закреплённые Node/nginx digests. Route manifest объявляет каталог React assets.
+ +  Упаковка не означает завершённую runtime/SSO/README приёмку.
+ +
+ +- Base закреплён на `193ad1e8fd6260f001640943a5ec07ff04f527d1`: общий
+ +  cross-platform fingerprint и согласованная локальная UI/UX-поставка.
+ +  Checklist завершения ссылается на Base DoD вместо сохранённых отметок прошлой
+ +  задачи. Source/dependency checkpoint не заменяет приёмку фактических images и SSO.
++ - Документирована принятая поставка трёх CLI на sdlc1: backup/restore/rollback, live-проверки, Linux/WSL установка и сохранённые ограничения.
+  
+  - CLI сохраняет прежние текстовые подтверждения удаления и отметки уведомлений в table/compact; JSON успешных пустых ответов остаётся `{"status":"ok"}`.
+  
+diff --cc README.md
+index eb5205b,eb5205b..5920b07
+--- a/README.md
++++ b/README.md
+@@@ -80,32 -80,32 +80,44 @@@
+  
+  ## Быстрый старт
+  
+--```bash
+--cp .env.example .env
+--# Задать POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET в .env
+--docker compose up --build -d
+--curl -fsS http://127.0.0.1:3456/api/v1/health
+++Из корня установленного workspace, PowerShell 7:
+++
+++```powershell
+++./start-local.ps1 -Workspace sdlc1
+++./start-local.ps1 -Workspace sdlc1 -Status
+  ```
+  
+++Группы, адреса и сохранность runtime описаны в
+++[Base LOCAL_GROUPS](../services-base/deploy/LOCAL_GROUPS.md).
+++Локальный Compose-файл продукта описывает build topology, но не разрешает
+++дополнительный постоянный стенд. QA запускается только собственным временным
+++Compose project с owner/purpose и обязательной очисткой; shared данные сохраняются.
+++Вход использует существующий Central Auth, второй локальный login не создаётся.
+++
+  Frontend dev:
+  
+  ```bash
+  cd frontend
+--pnpm install
+++pnpm install --frozen-lockfile
+  pnpm generate:api
+  pnpm dev
+  ```
+  
+  Vite открывает `http://localhost:5173` и проксирует API-вызовы на backend.
+++Перед запуском сверить соседний Base с [BASE_INTEGRATION](docs/BASE_INTEGRATION.md)
+++и указать действующий backend установленного workspace, не создавать новый стенд.
+  
+--Port override:
+++Переменные host-портов продуктового build topology:
+  
+  ```env
+  BACKEND_PORT=3456
+  FRONTEND_PORT=19877
+  ```
+  
+--После смены host-портов пересоздайте сервисы через `docker compose up -d`. Внутри compose-сети backend слушает `3456`; настройки backend используют формат `TASKTRACKER_SECTION__KEY`, например `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`.
+++Порты установленного workspace и принятие candidate images управляются launcher
+++по правилам Base; эти defaults не переопределяют принятый runtime.
+++Внутри compose-сети backend слушает `3456`; настройки backend используют формат
+++`TASKTRACKER_SECTION__KEY`, например `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`.
+  
+  Развернутые материалы: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/CLI.md](docs/CLI.md).
+  

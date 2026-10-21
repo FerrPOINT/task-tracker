@@ -1,0 +1,246 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 819bd13..b8a23cd 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,12 @@
+ 
+ ## [Unreleased]
+ 
++- Переключение create/edit и разных комментариев открывает форму с правильным
++  исходным текстом. Подтверждение сохранения закрывает только тот сеанс editor,
++  который отправил запрос; поздний ACK не закрывает более новый editor даже
++  при повторном открытии того же комментария. После успешного редактирования
++  новая create-форма пустая. Общая navigation/SSO draft safety остаётся отдельной.
++
+ - Форма комментария использует Base PendingForm/FormField: во время сохранения
+   блокируются поле и отмена, повторная отправка защищена общим handler lock.
+   Required/error связаны с уникальным control ID, ввод из одних пробелов не
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 832e43a..e115ce1 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -2191,6 +2191,77 @@ test.describe('Base worklog resource states', () => {
+ })
+ 
+ for (const theme of ['dark', 'gray', 'light']) {
++  test(`comment editor identity survives a late ACK in ${theme}`, async ({ page }, testInfo) => {
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
++    await installTrackerMocks(page)
++    const comments = ['first', 'second'].map((id) => ({
++      id: `identity-${id}`,
++      issue_id: mockUser.issueId,
++      author_id: mockUser.id,
++      author_name: 'Demo User',
++      body: `Safe ${id} comment`,
++      created_at: '2026-09-01T10:00:00Z',
++      updated_at: '2026-09-01T10:00:00Z',
++    }))
++    const errors: string[] = []
++    page.on('pageerror', (error) => errors.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') errors.push(message.text())
++    })
++    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
++      routeJson(route, { comments }),
++    )
++    let writes = 0
++    let release!: () => void
++    const barrier = new Promise<void>((resolve) => {
++      release = resolve
++    })
++    await page.route('**/api/v1/comments/identity-first', async (route) => {
++      expect(route.request().method()).toBe('PATCH')
++      writes++
++      await barrier
++      comments[0] = { ...comments[0]!, body: 'Submitted first edit' }
++      return routeJson(route, comments[0])
++    })
++    try {
++      await page.goto(`/issues/${mockUser.issueId}?tab=comments`)
++      const panel = page.getByRole('tabpanel')
++      const field = panel.getByRole('textbox', { name: 'Комментарий', exact: true })
++      const edit = panel.getByRole('button', { name: 'Изменить', exact: true })
++      await field.fill('Safe create draft')
++      await edit.nth(0).click()
++      await expect(field).toHaveValue('Safe first comment')
++      await field.fill('Submitted first edit')
++      await panel.getByRole('button', { name: 'Сохранить', exact: true }).click()
++      await expect.poll(() => writes).toBe(1)
++      await edit.nth(1).click()
++      await expect(field).toHaveValue('Safe second comment')
++      await edit.nth(0).click()
++      await field.fill('Safe newer unsaved edit')
++      const ack = page.waitForResponse(
++        (response) =>
++          response.url().endsWith('/api/v1/comments/identity-first') &&
++          response.request().method() === 'PATCH',
++      )
++      release()
++      await ack
++      await expect(panel.getByText('Submitted first edit', { exact: true })).toBeVisible()
++      await expect(field).toHaveValue('Safe newer unsaved edit')
++      await expect(panel.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
++      await page.screenshot({
++        path: testInfo.outputPath(`comment-editor-identity-${theme}-1920.png`),
++        fullPage: true,
++        animations: 'disabled',
++      })
++      await panel.getByRole('button', { name: 'Отмена', exact: true }).click()
++      await expect(field).toHaveValue('')
++      expect(errors).toEqual([])
++    } finally {
++      release()
++    }
++  })
++
+   test(`comment form uses Base pending and field semantics in ${theme}`, async ({
+     page,
+   }, testInfo) => {
+diff --git a/frontend/src/features/comments/ui/CommentList.tsx b/frontend/src/features/comments/ui/CommentList.tsx
+index c9748f7..cc3fc50 100644
+--- a/frontend/src/features/comments/ui/CommentList.tsx
++++ b/frontend/src/features/comments/ui/CommentList.tsx
+@@ -184,7 +184,7 @@ interface CommentsPanelProps {
+ 
+ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
+   const { t } = useTranslation()
+-  const [editing, setEditing] = useState<Comment | null>(null)
++  const [editing, setEditing] = useState<{ comment: Comment } | null>(null)
+   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+   const [deleteError, setDeleteError] = useState<string | null>(null)
+@@ -214,12 +214,12 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
+ 
+   const handleUpdate = async (input: UpdateCommentInput) => {
+     if (!editing) return
+-    await update.mutateAsync({ id: editing.id, input })
+-    setEditing(null)
++    await update.mutateAsync({ id: editing.comment.id, input })
++    setEditing((current) => (current === editing ? null : current))
+   }
+ 
+   const handleEdit = (comment: Comment) => {
+-    setEditing(comment)
++    setEditing({ comment })
+   }
+ 
+   const handleDelete = (commentId: string) => {
+@@ -233,13 +233,14 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
+       {errorState && <ResourceStateView state={errorState} />}
+       {editing ? (
+         <CommentForm
+-          initialBody={editing.body}
++          key={`edit:${editing.comment.id}`}
++          initialBody={editing.comment.body}
+           onSubmit={handleUpdate}
+           onCancel={() => setEditing(null)}
+           submitLabel={t('common.save')}
+         />
+       ) : (
+-        <CommentForm onSubmit={handleCreate} submitLabel={t('comments.add')} />
++        <CommentForm key="create" onSubmit={handleCreate} submitLabel={t('comments.add')} />
+       )}
+       <CommentList
+         comments={comments}
+diff --git a/frontend/src/features/comments/ui/CommentsPanel.test.tsx b/frontend/src/features/comments/ui/CommentsPanel.test.tsx
+index 4f49681..69ccc24 100644
+--- a/frontend/src/features/comments/ui/CommentsPanel.test.tsx
++++ b/frontend/src/features/comments/ui/CommentsPanel.test.tsx
+@@ -1,14 +1,14 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import { fireEvent, render, screen } from '@testing-library/react'
++import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import { I18nextProvider } from 'react-i18next'
+ import i18n from '@/shared/i18n/test-config'
+ import { CommentsPanel } from './CommentList'
+ 
+-const mocks = vi.hoisted(() => ({ query: vi.fn(), refetch: vi.fn() }))
++const mocks = vi.hoisted(() => ({ query: vi.fn(), refetch: vi.fn(), update: vi.fn() }))
+ vi.mock('../model/use-comments', () => ({
+   useComments: mocks.query,
+   useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+-  useUpdateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
++  useUpdateComment: () => ({ mutateAsync: mocks.update, isPending: false }),
+   useDeleteComment: () => ({ mutate: vi.fn(), isPending: false }),
+ }))
+ 
+@@ -31,9 +31,78 @@ function show(data: (typeof comment)[] | undefined, error: unknown = null, isLoa
+ }
+ beforeEach(() => {
+   vi.clearAllMocks()
++  mocks.update.mockReset()
+   i18n.addResource('ru', 'translation', 'common.retry', 'Повторить')
+ })
+ 
++describe('CommentsPanel editor identity', () => {
++  const second = { ...comment, id: 'c2', body: 'Second comment' }
++  const field = () => screen.getByRole('textbox', { name: /комментарий/i })
++  const edit = (index: number) => {
++    const button = screen.getAllByRole('button', { name: /изменить/i })[index]
++    if (!button) throw new Error('Comment edit action is missing')
++    fireEvent.click(button)
++  }
++
++  it('loads the selected comment instead of reusing the create draft', () => {
++    show([comment, second])
++    fireEvent.change(field(), { target: { value: 'Unsubmitted create draft' } })
++    edit(0)
++    expect(field()).toHaveValue(comment.body)
++  })
++
++  it('loads the newly selected comment instead of the previous editor values', () => {
++    show([comment, second])
++    edit(0)
++    edit(1)
++    expect(field()).toHaveValue(second.body)
++    fireEvent.click(screen.getByRole('button', { name: /отмен/i }))
++    expect(field()).toHaveValue('')
++  })
++
++  it.each([false, true])(
++    'a late ACK cannot close a newer editor (same comment: %s)',
++    async (same) => {
++      let resolve!: () => void
++      mocks.update.mockImplementation(
++        () =>
++          new Promise<void>((done) => {
++            resolve = done
++          }),
++      )
++      show([comment, second])
++      edit(0)
++      fireEvent.change(field(), { target: { value: 'First submitted edit' } })
++      fireEvent.submit(field().closest('form')!)
++      await waitFor(() =>
++        expect(mocks.update).toHaveBeenCalledWith({
++          id: comment.id,
++          input: { body: 'First submitted edit' },
++        }),
++      )
++      edit(1)
++      if (same) edit(0)
++      fireEvent.change(field(), { target: { value: 'Newer unsaved edit' } })
++      await act(async () => resolve())
++      expect(field()).toHaveValue('Newer unsaved edit')
++      expect(screen.getByRole('button', { name: /отмен/i })).toBeVisible()
++    },
++  )
++
++  it('closes the same editor after a successful ACK', async () => {
++    mocks.update.mockResolvedValue(undefined)
++    show([comment])
++    edit(0)
++    fireEvent.change(field(), { target: { value: 'Saved edit' } })
++    fireEvent.submit(field().closest('form')!)
++    await waitFor(() => expect(mocks.update).toHaveBeenCalledOnce())
++    await waitFor(() =>
++      expect(screen.queryByRole('button', { name: /отмен/i })).not.toBeInTheDocument(),
++    )
++    expect(field()).toHaveValue('')
++  })
++})
++
+ describe('CommentsPanel Base freshness states', () => {
+   for (const cached of [false, true]) {
+     for (const status of [403, 404, 422, 503]) {

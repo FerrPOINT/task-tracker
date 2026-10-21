@@ -1,0 +1,130 @@
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index cb7e7ce..4e59bd1 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -2,6 +2,75 @@
+ 
+ ## Latest Source Checkpoint
+ 
++The notification page now uses the Base detail composition. Earlier source
++checkpoints below are historical, not runtime release evidence.
++
++- Task source: `29c405f084058965a6f8894cacd2362b2d8fa791`.
++- Base source: `26a9523bf739c2fb4aafa343fdbc194d02a78e6a`.
++- Base installed/source fingerprint:
++  `3af92a8c2fba948b7967ebc8338fb0c27c8a08e702af0351b8c390910bb93d11`.
++- Product fingerprint:
++  `8b977864dcf3ac63334791bc9eaca641aeb76f7e5f269cc7fc46f4eb90de3500`.
++- Frozen offline force install reused all 503 packages without lockfile or
++  generated API schema drift. Public APIs and database schemas did not change.
++
++| Command | Exit | Evidence |
++|---|---|---|
++| `pnpm install --offline --frozen-lockfile --force` | 0 | `task-notification-page-install.log` |
++| `pnpm test` | 0 | `task-notification-page-units.log`; 371 tests, 47 files |
++| `pnpm lint` | 0 | `task-notification-page-lint.log`; ESLint and semantic classes |
++| `pnpm build` | 0 | `task-notification-page-build.log`; typecheck and Vite |
++| `pnpm ui:check -- --fingerprint` | 0 | `task-notification-page-ui-gate.log`; 16 route patterns |
++| Chromium smoke, one worker, `--max-failures=1` | 0 | `task-notification-page-final-browser.log`; 10 tests, 5.1 minutes |
++| README validator and Python script tests | 0 | README validation and 4 script tests |
++| Scoped Prettier and `git diff --check` | 0 | reviewed source delta |
++
++- `/notifications` declares `detail-with-aside` in the shell and route manifest.
++  DetailPage owns the sole page heading and the 320 px aside/1024 breakpoint.
++  Local Card wrappers, the 304 px grid and bespoke filter buttons were removed.
++- List and preferences use independent Base resource states. Unknown unread
++  counts are not zero. Cached 403/404 hide the affected source and unsafe actions;
++  retryable refresh preserves readonly content/drafts, without disabling an
++  unrelated healthy source. Feedback is localized and does not expose envelopes.
++- Base Tabs/codecs preserve unrelated query/hash, direct/reload and Back/Forward.
++  Filters reset pagination; empty pages reset only on successful reads. Page bounds
++  protect integer offset precision without imposing a new backend limit.
++- PendingForm/FormField/Select, draft guard and ConfirmDialog own common behavior.
++  Refetch and query navigation preserve edited preferences and unknown event types.
++  Failed saves retain input. Pending prevents double submissions; discard requires
++  confirmation and restores focus. Revoked settings hide, but do not discard, drafts.
++- One/all marking is synchronously locked; failed mark-all retains pagination,
++  success resets it, and completion cannot navigate back from an unmounted page.
++  Only repeatable write failures offer retry after the list source is healthy.
++  Removed rows restore safe focus without stealing an intentional focus move.
++  A link blocked by an unsaved-preferences guard does not prematurely mark read.
++- Browser testing exposed duplicate history entries from pointer selection plus
++  default focus on controlled Tabs. Base now suppresses the duplicate callback
++  through the gesture, retaining keyboard/uncontrolled behavior and later retries.
++  `base-tabs-history-units.log`: 99 UI tests (23 files), 18 script tests and contrast;
++  Base lint/typecheck and README/hub validators passed. The microtask-only
++  intermediate fix was insufficient and is superseded by the final snapshot.
++- Final output contains 222 PNG: the earlier 188 captures on current source,
++  30 notification page captures (three themes, ten widths) and four controlled
++  page states. Actual geometry, 40/44 targets, local/document overflow, URL history,
++  pending/draft/focus scenarios passed. Axe found no main-scope violations for
++  this page at 375/1920 in three themes; normal page console/network checks passed.
++  Representative desktop/mobile/breakpoint and controlled-state images were viewed.
++
++Artifacts: [final captures](../../../../audit-artifacts/base-standard-2026-10-01/task-notification-page-final-browser/),
++[browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-notification-page-final-browser.log).
++Earlier focused/history diagnostic runs are superseded, including the reproduced
++duplicate-history failure; they are not green acceptance evidence.
++
++HTTP/OIDC is mocked. The owned preview terminated and port 18865 has no listener.
++No runtime pins/images, secrets/volumes, foreign checkouts, default refs or mirror
++were changed. All original findings remain open pending full release evidence.
++Legacy header-counter typography/theme CSS, remaining route compositions and
++states, full backend gates, no-mock actual images/live SSO/roles, real README
++provenance, synchronized consumers, local integration and mirror remain required.
++
++## Notification Menu Checkpoint (Historical)
++
+ Notification API states and the header menu supersede the project catalog snapshot
+ below. This is source QA, not runtime release acceptance.
+ 
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 54d8729..e232630 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -51,6 +51,14 @@ Route patterns, роли, fixtures и обязательные acceptance states
+   Возврат фокуса после удаления пункта не перехватывает намеренный переход или Escape.
+   Base владеет viewport inset/height; bounded preview прокручивается локально,
+   сохраняет header/footer и именованный доступный focus target.
++- Notifications page использует DetailPage с независимыми list/preferences states
++  и Base aside. FormField/Select/PendingForm/UnsavedChangesGuard/ConfirmDialog владеют
++  общим поведением настроек: draft сохраняется при refetch и URL-навигации, pending
++  блокирует повторный submit, discard подтверждается. Терминальные ошибки скрывают
++  только затронутый source, partial сохраняет readonly draft. Tabs/codecs сохраняют
++  query/hash и историю; mark-all сбрасывает page только после успешной команды.
++  Base Tabs устраняет duplicate history callbacks pointer/focus; blocked navigation
++  с несохранёнными настройками не отмечает уведомление прочитанным преждевременно.
+ 
+ ## Exceptions
+ 
+@@ -90,22 +98,22 @@ Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+ 
+ ## Remaining Acceptance
+ 
+-Текущий source checkpoint: `8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1`, Base
+-`4de2cd69894320815deeac4c5e981b1ce38270e6`. 346 unit tests (47 files), lint,
+-build/typecheck, installed gate и 8 Chromium tests (188 PNG) прошли. Menu проверен
+-в трёх темах на десяти ширинах, включая keyboard scrolling и axe на 1920.
++Текущий source checkpoint: `29c405f084058965a6f8894cacd2362b2d8fa791`, Base
++`26a9523bf739c2fb4aafa343fdbc194d02a78e6a`. 371 unit tests (47 files), lint,
++build/typecheck, installed gate и 10 Chromium tests (222 PNG) прошли. Menu и
++notifications page проверены в трёх темах на десяти ширинах; page main scope
++прошёл axe на 375/1920, URL history, pending/draft/focus и независимые states.
+ Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+ 
+ 1. Мигрировать остальные list/form/audit/log compositions: board,
+-   backlog, trash, settings, search, notifications, reports, admin и create.
++   backlog, trash, settings, search, reports, admin и create.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+    pending, validation и focus сценарии всех форм/диалогов. Локализовать generic
+    технические API errors каталога/форм projects; не считать source QA доказательством
+    всех effective-role и server validation сценариев.
+-   Notifications page ещё требует Base composition, независимых settings states,
+-   draft guard и сохранения hash/URL. Typography/theme CSS header counter остаются
+-   legacy; меню не означает завершение всей страницы или визуального стандарта.
++   Source migration notifications page проверена; actual-image/role acceptance
++   остаётся обязательной. Typography/theme CSS header counter пока legacy.
+ 3. Проверить URL filters/sort/pagination и Back/Forward во всех списках. Проверить
+    все manifest patterns с long/big fixtures и loading/empty/403/404/5xx/partial.
+ 4. Выполнить полный backend gate и no-mock QA immutable images через штатный

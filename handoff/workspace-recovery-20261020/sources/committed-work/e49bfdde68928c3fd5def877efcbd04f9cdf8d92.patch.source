@@ -1,0 +1,64 @@
+diff --cc .base-revision
+index 0000000,ce5a2ed..bdec66c
+mode 000000,100644..100644
+--- a/.base-revision
++++ b/.base-revision
+@@@ -1,0 -1,1 +1,1 @@@
+ -c083783a37791e277db796361203884b87828a7d
+++6f63595a891f78b96b665889f80e6eb5cf34381a
+diff --cc frontend/src/pages/login/login.test.tsx
+index 8457a79,f6ab8ef..d205c43
+--- a/frontend/src/pages/login/login.test.tsx
++++ b/frontend/src/pages/login/login.test.tsx
+@@@ -6,18 -6,15 +6,22 @@@ import { ThemeProvider } from '@sdlc/ui
+  import { LoginPage } from './'
+  import { useAuthStore } from '@/shared/auth/store'
+  import i18n from '@/shared/i18n/config'
++ import { SsoLogoutPendingError } from '@sdlc/ui/sso'
+  
+- const beginSso = vi.hoisted(() => vi.fn(async () => {}))
+- vi.mock('@sdlc/ui/sso', () => ({ beginSso }))
++ const beginSso = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
++ vi.mock('@sdlc/ui/sso', async (importOriginal) => ({
++   ...(await importOriginal<typeof import('@sdlc/ui/sso')>()),
++   beginSso,
++ }))
+  
+ -function renderLogin(path = '/login') {
+ +function renderLogin(
+ +  path:
+ +    | string
+ +    | {
+ +        pathname: string
+ +        state: { from: { pathname: string; search: string; hash: string } }
+ +      } = '/login',
+ +) {
+    return render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={[path]}>
+@@@ -56,20 -53,13 +60,25 @@@ describe('LoginPage', () => 
+      expect(beginSso).not.toHaveBeenCalled()
+      await userEvent.click(screen.getByRole('button', { name: 'Войти через SDLC' }))
+      expect(beginSso).toHaveBeenCalledTimes(1)
++     expect(beginSso).toHaveBeenCalledWith(
++       expect.objectContaining({ clientId: 'task-tracker' }),
++       '/',
++       { interactive: true },
++     )
+      expect(screen.getByRole('button', { name: 'Войти через SDLC' })).toBeDisabled()
+    })
+ +  it('passes the complete protected address including query and hash to Base SSO', async () => {
+ +    renderLogin({
+ +      pathname: '/login',
+ +      state: { from: { pathname: '/projects', search: '?q=DEMO', hash: '#context' } },
+ +    })
+ +    await waitFor(() =>
+ +      expect(beginSso).toHaveBeenCalledExactlyOnceWith(
+ +        expect.objectContaining({ clientId: 'task-tracker' }),
+ +        '/projects?q=DEMO#context',
+ +      ),
+ +    )
+ +  })
+  
+    it('clears an error while retrying and disables repeat clicks', async () => {
+      beginSso.mockRejectedValueOnce(new Error('private auth details'))

@@ -1,0 +1,17 @@
+diff --git a/.base-revision b/.base-revision
+index 3620eda..a7ce7f06 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-bff9bfa8b7669ef23bd64dba36e78eb750eb43d4
++0466f36afb28a29dd245c9ff82cbbb2942f5a898
+diff --git a/.gitattributes b/.gitattributes
+index 63f65fd..c201fe3 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -14,3 +14,5 @@ NOTICE text eol=lf
+ *.yaml text eol=lf
+ # Portable executable maintenance scripts.
+ scripts/*.sh text eol=lf
++# UI/source evidence must have identical bytes on Windows and Linux.
++frontend/** text=auto eol=lf

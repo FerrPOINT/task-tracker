@@ -1,0 +1,2741 @@
+diff --cc .base-revision
+index 0293b79,5da0c04..efc48e2
+--- a/.base-revision
++++ b/.base-revision
+@@@ -1,1 -1,1 +1,1 @@@
+- 44e48f3a88a0985f97d5c0bd137572f52c7737ac
+ -cbb4e99230420dc2659431b1c9fb5090e5c940f0
+++6e6d653c128df8091f6016f7966bef694faf4e82
+diff --cc CHANGELOG.md
+index f0170e9,e3f2d86..819bd13
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@@ -6,114 -6,15 +6,144 @@@
+  
+  ## [Unreleased]
+  
+ -- Дашборд не дублирует кнопку создания задачи из общей шапки; мобильная
+ -  иконка создания доступна без открытия навигации. Маршрут создания сохранён.
+++- Форма комментария использует Base PendingForm/FormField: во время сохранения
+++  блокируются поле и отмена, повторная отправка защищена общим handler lock.
+++  Required/error связаны с уникальным control ID, ввод из одних пробелов не
+++  отправляется, дата комментария следует выбранному языку интерфейса.
+++  Navigation/SSO draft safety и unknown-write reconciliation остаются отдельными.
+++
+++- Журнал работ и активность используют общую Base policy для cold/cached ошибок:
+++  HTTP status сохраняется, запрещённые cached записи скрываются, partial failure
+++  сохраняет данные с retry, независимо загруженные комментарии остаются доступны.
+++
+++- Комментарии используют Base states: после 403/404 скрываются cached content
+++  и CRUD, неповторяемые ошибки не предлагают retry, recoverable partial failure
+++  сохраняет загруженные комментарии. Отсутствующий ответ не считается пустым списком.
+++  API-адаптер сохраняет HTTP status для общей политики; та же защита применяется
+++  к комментариям в активности, не скрывая независимо загруженный журнал работ.
+++
+++- Source histories are reconciled on Base snapshot 6e6d653: verified central
+++  profiles and safe Markdown comments retain the shared shell, page states,
+++  URL context and page-owned issue creation. Markdown headings stay below the
+++  page heading; code blocks remain keyboard-scrollable.
+++
+ +- Архитектурная документация согласована с действующими Rust toolchain/MSRV
+ +  и frontend manifests. Объявленные версии отделены от locked resolutions;
+ +  код, зависимости и runtime не меняются.
+ +
+ +- Общий Base snapshot обновлён до 44e48f3: SSR drawer учитывает summary
+ +  и фактическую видимость controls при Tab/Shift+Tab. React shell, API,
+ +  данные и принятый runtime не меняются.
+ +
+ +- Общий Base snapshot обновлён до a434ee2 с исправлением SSR states.
+ +  Геометрия shell, доменные API и принятый runtime не меняются.
+ +
+ +
+ +- Browser QA records event-stream cancellation only during explicit navigation
+ +  and keeps all other transport failures; regression tests cover the distinction.
+ +  Toast geometry checks retain strict CSS targets with 0.001 px rendering tolerance.
+ +  Notification captures use the normal hover pause before keyboard dismissal.
+ +
+ +- Sprint and issue metadata captions use Base labels; sprint goal uses Base Textarea.
+ +  Mutation lifecycle and draft safety remain a separate audited follow-up.
+ +- Base 7e27713 унифицирует подписи полей (12 px) и SSR-значения (14 px).
+ +  Геометрия shell, API и принятый runtime не меняются.
+ +- Кандидат Sprint lifecycle: Base FormDialog/FormField/PendingForm, сохранение
+ +  draft при refetch/ошибке, блокировка повторов/pending и GET-сверка unknown.
+ +  Потерянное создание без ID не подтверждается названием; повтор остаётся
+ +  заблокированным при reopen текущей страницы. Полная приёмка ещё требуется.
+ +
+ +- API 401 delegates sign-in navigation to the existing Base route guard,
+ +  retaining pathname/query/hash without replaying a failed write.
+ +  Draft recovery through reauthentication remains a separate acceptance item.
+ +  Browser evidence distinguishes reload bootstrap SSO from the subsequent 401 challenge.
+ +
+ +- Действующие документы закрепляют Base как владельца общего UI; прежние
+ +  UI/UX specification и ADR-0008 явно помечены историческими/superseded.
+ +  Исходные решения и доменная FSD-композиция сохранены; runtime не меняется.
+ +
+ +- HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
+ +  дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
+ +
+ +- Общий Base snapshot обновлён до 0ffb99e: verified profile/directory contracts
+ +  и UI dependency graph без замены shell. Принятый runtime не переключается.
+ +
+ +- Исправлена ссылка AGENTS на действующий UI/UX Standard в Base docs/platform.
+ +
+ +- README и инструкции разработки используют штатный workspace launcher,
+ +  общий UI-kit Base и desktop-only галерею; responsive QA остаётся обязательной.
+ +
+ +- Base notification ownership gate закреплён единым snapshot. OpenAPI alias
+ +  передаёт явные параметры в Base; без параметров сравнивает с origin/main.
+ +
+ +- Notification host теперь принадлежит Base: общий placement, themes, semantic
+ +  colors и keyboard targets вместо локального AppToaster. Sonner2.0.8 используется
+ +  как единый peer; продуктовые callbacks и подтверждение записей не меняются.
+ +
+ +- Доска проекта использует Base ListPage/Tabs/FormField/Select и targets40/44.
+ +  Создание задачи принадлежит одному action header; колонки больше не создают
+ +  карточки-контейнеры вокруг карточек задач. Плотность ограничивает summary до
+ +  4/2 строк, не уменьшает controls; полный текст остаётся в ссылке и tooltip.
+ +  Density/status сохраняют внешний query/hash и Back/Forward. Ошибки доски
+ +  и transition rules различаются; cached403/404 и неповторяемые ошибки скрывают
+ +  недоступные данные, временный сбой оставляет partial view без writes.
+ +  Keyboard и native drag/drop используют общую same-tick защиту; pending/refresh
+ +  блокируют перенос. После сбоя нужна явная сверка доски и правил без auto-retry
+ +  записи и без ложного success; фокус получает стабильный именованный region.
+ +  Доменные API, backend, auth, DB и dependency locks не меняются.
+ +
+ +- Корзина проекта использует Base ListPage, общие состояния и controls40/44.
+ +  HTTP403/404 и неповторяемые ошибки скрывают cached строки; временный сбой
+ +  сохраняет данные с partial-error и блокирует запись. Pagination/history/reload
+ +  сохраняют внешний URL context/hash. Restore/purge защищены от двойной отправки;
+ +  неизвестный результат требует отдельной read-only сверки и явного повтора.
+ +  Исчезновение строки при сверке не объявляется успешным удалением. Escape/Cancel
+ +  возвращают фокус инициатору, после удаления используется безопасная область.
+ +  HTTP statuses и документированный204 acknowledgement проверяются без изменения
+ +  публичных API, схемы БД, auth или dependency locks.
+ +
+ +- Поиск задач использует Base ListPage/FormField/Select/Tabs и общие resource
+ +  states без локальных карточек фильтров и размеров controls. URL сохраняет
+ +  фильтры, сортировку, pagination, историю и внешний context/hash; reset удаляет
+ +  только параметры поиска. 403/404 скрывают cached данные, временная ошибка
+ +  refresh оставляет строки с partial-error. Ошибки справочников не подменяют
+ +  успешные результаты поиска; JQL validation связана с полем без retry-loop.
+ +  Пустая последующая страница сохраняет переход назад. API/auth/schema неизменны.
+ +
+ +- Создание задачи использует Base FormPage/FormField и защиту несохранённых
+ +  изменений. Значения custom fields и назначение сохраняются отдельно по проектам
+ +  при переключении и Back/Forward; refetch не снимает исполнителя автоматически.
+ +  Запись блокируется до подтверждения обязательных данных, 403/404 скрывают форму,
+ +  повтор доступен только для повторяемых сбоев. Ошибка сохранения сохраняет ввод;
+ +  pending исключает двойную отправку. Предел заголовка соответствует серверным
+ +  500 Unicode-символам. Доменные API, схема БД и auth-контракт не меняются.
+ +
+ +- Swagger UI assets come from the locked vendored Cargo package instead of a
+ +  separate build-time GitHub ZIP download. Domain API, database schema,
+ +  application UI and authentication are unchanged.
+ +
+ +- Umbrella frontend recipe синхронизирован с обычным Dockerfile: общий Base
+ +  recorder, revision labels и digest pins действуют также для workspace-сборки.
+ +  Проверка candidate не заменяет authenticated runtime/SSO/README приёмку.
+ +
+ +- Frontend image использует общий Base recorder происхождения сборки:
+ +  product/Base SHA, fingerprints и asset digests в `/ui-build.json`, OCI labels
+ +  и закреплённые Node/nginx digests. Route manifest объявляет каталог React assets.
+ +  Упаковка не означает завершённую runtime/SSO/README приёмку.
+ +
+ +- Base закреплён на `193ad1e8fd6260f001640943a5ec07ff04f527d1`: общий
+ +  cross-platform fingerprint и согласованная локальная UI/UX-поставка.
+ +  Checklist завершения ссылается на Base DoD вместо сохранённых отметок прошлой
+ +  задачи. Source/dependency checkpoint не заменяет приёмку фактических images и SSO.
+++
+++- Создание задачи не дублируется: действие принадлежит странице дашборда,
+++  общая шапка Base не содержит продуктового CRUD. Маршрут создания сохранён.
++ 
++ - Центральные JWT/PAT-профили используют проверенное имя Central Auth вместо
++   части email. Переименование сохраняет локальную identity и исторические ссылки;
++   неизменённый профиль не блокирует строку на запись. Отключённый локальный профиль
++   не обновляется и не активируется при отказе во входе. Ошибка центральной проверки
++   не разрешает fallback к историческому локальному паролю.
+ -
+  - Документирована принятая поставка трёх CLI на sdlc1: backup/restore/rollback, live-проверки, Linux/WSL установка и сохранённые ограничения.
+  
+  - CLI сохраняет прежние текстовые подтверждения удаления и отметки уведомлений в table/compact; JSON успешных пустых ответов остаётся `{"status":"ok"}`.
+diff --cc frontend/e2e/smoke.spec.ts
+index 656119f,4b24a38..832e43a
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@@ -866,972 -10,14 +866,1478 @@@ const mockUser = 
+    issueId: 'issue-1',
+  }
+  
+ +const searchIssue = (index: number) => ({
+ +  id: `search-issue-${index}`,
+ +  key: `DEMO-${index}`,
+ +  summary: `Safe result ${index}: ${'UnbrokenSafeSummary'.repeat(16)}`,
+ +  description: '',
+ +  issue_type: 'Task',
+ +  status: 'In Progress',
+ +  status_id: 'inprogress',
+ +  priority: 'High',
+ +  labels: [],
+ +  project_key: 'DEMO',
+ +  project_name: mockUser.name,
+ +  reporter_id: mockUser.id,
+ +  assignee_id: mockUser.id,
+ +  assignee_name: 'UnbrokenAssignee'.repeat(20),
+ +  time_spent_seconds: 0,
+ +  created_at: '2026-10-01T10:00:00Z',
+ +  updated_at: '2026-10-01T10:00:00Z',
+ +})
+ +
+ +async function installSearchFixtures(page: Page) {
+ +  await installTrackerMocks(page)
+ +  await page.route('**/api/v1/search**', (route) =>
+ +    routeJson(route, {
+ +      issues: Array.from({ length: 26 }, (_, index) => searchIssue(index + 1)),
+ +    }),
+ +  )
+ +  await page.route('**/api/v1/projects', (route) =>
+ +    routeJson(route, {
+ +      projects: [
+ +        {
+ +          id: 'search-project',
+ +          key: 'DEMO',
+ +          name: 'UnbrokenProjectName'.repeat(20),
+ +          owner_id: mockUser.id,
+ +          todo_count: 26,
+ +          in_progress_count: 0,
+ +          done_count: 0,
+ +        },
+ +      ],
+ +    }),
+ +  )
+ +  await page.route('**/api/v1/users', (route) =>
+ +    routeJson(route, {
+ +      users: [{ id: mockUser.id, username: 'demo', display_name: 'UnbrokenAssignee'.repeat(20) }],
+ +    }),
+ +  )
+ +}
+ +
+ +test.describe('Base search page', () => {
+ +  test('wide list and both modes fit all themes and shell boundaries', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    test.setTimeout(240_000)
+ +    await installSearchFixtures(page)
+ +    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +    const failures: string[] = []
+ +    const network = observeNavigationRequests(page, app, failures)
+ +    page.on('pageerror', (error) => failures.push(error.message))
+ +    page.on('console', (message) => {
+ +      if (message.type() === 'error') failures.push(message.text())
+ +    })
+ +    page.on('response', (response) => {
+ +      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+ +    })
+ +    for (const theme of ['dark', 'gray', 'light']) {
+ +      await network.navigate(`${app}/search?project_key=DEMO`)
+ +      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+ +      for (const mode of ['simple', 'jql'])
+ +        for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+ +          await page.setViewportSize({ width, height: 1080 })
+ +          await network.navigate(
+ +            `${app}/search?${mode === 'simple' ? `project_key=DEMO&assignee_id=${mockUser.id}` : 'mode=jql&jql=project%20%3D%20DEMO'}&view=compact#results`,
+ +          )
+ +          await expect(page.locator('main h1')).toHaveText('Поиск задач')
+ +          await expect(page.locator('main h1')).toHaveCount(1)
+ +          await expect(page.locator('main li')).toHaveCount(25)
+ +          await network.navigate()
+ +          await expect(page.locator('main li')).toHaveCount(25)
+ +          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+ +          if (mode === 'simple' && width < 640)
+ +            await page.getByRole('button', { name: /^Фильтры/ }).click()
+ +          await expect(page.locator('[data-page-layout]')).toHaveAttribute(
+ +            'data-page-layout',
+ +            'wide',
+ +          )
+ +          const geometry = await page.locator('[data-page-layout]').evaluate((element) => {
+ +            const rect = element.getBoundingClientRect()
+ +            const parent = element.parentElement!
+ +            return {
+ +              width: rect.width,
+ +              expectedWidth:
+ +                parent.clientWidth -
+ +                Number.parseFloat(getComputedStyle(parent).paddingLeft) -
+ +                Number.parseFloat(getComputedStyle(parent).paddingRight),
+ +              gap: Number.parseFloat(
+ +                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
+ +              ),
+ +              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+ +              localOverflow: element.scrollWidth > element.clientWidth,
+ +            }
+ +          })
+ +          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
+ +          expect(geometry.gap).toBe(20)
+ +          expect(geometry.overflow).toBe(false)
+ +          expect(geometry.localOverflow).toBe(false)
+ +          const titles = page.locator('main li a > span')
+ +          await expect(titles).toHaveCount(25)
+ +          const clippedTitles = await titles.evaluateAll(
+ +            (elements, { lines, singleLine }) =>
+ +              elements.flatMap((element) => {
+ +                const rect = element.getBoundingClientRect()
+ +                const style = getComputedStyle(element)
+ +                const lineHeight = Number.parseFloat(style.lineHeight)
+ +                const targetWidth = element.parentElement!.clientWidth
+ +                return rect.height > lineHeight * lines + 0.5 ||
+ +                  Math.abs(rect.width - targetWidth) > 0.5 ||
+ +                  (singleLine && style.whiteSpace !== 'nowrap')
+ +                  ? [{ height: rect.height, width: rect.width, lineHeight, targetWidth }]
+ +                  : []
+ +              }),
+ +            { lines: width < 640 ? 2 : 1, singleLine: width >= 640 },
+ +          )
+ +          expect(clippedTitles).toEqual([])
+ +          await expect(
+ +            page.getByRole('link', { name: searchIssue(1).summary, exact: true }),
+ +          ).toHaveAttribute('title', searchIssue(1).summary)
+ +          const undersized = await page
+ +            .locator('main button, main input, main select, main a')
+ +            .evaluateAll(
+ +              (elements, minimum) =>
+ +                elements.flatMap((element) => {
+ +                  const rect = element.getBoundingClientRect()
+ +                  return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
+ +                    ? [{ html: element.outerHTML, height: rect.height }]
+ +                    : []
+ +                }),
+ +              width < 768 ? 44 : 40,
+ +            )
+ +          expect(undersized).toEqual([])
+ +          if (width === 375 || width === 1920)
+ +            expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual(
+ +              [],
+ +            )
+ +          await page.screenshot({
+ +            path: testInfo.outputPath(`search-${mode}-${theme}-${width}.png`),
+ +            fullPage: true,
+ +          })
+ +        }
+ +    }
+ +    await testInfo.attach('search-navigation-stream-aborts', {
+ +      body: JSON.stringify(network.streamAborts),
+ +      contentType: 'application/json',
+ +    })
+ +    expect(failures).toEqual([])
+ +  })
+ +
+ +  test('preserves context, reload and history through filters, reset and keyboard mode changes', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    await installSearchFixtures(page)
+ +    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +    await page.goto(`${app}/search?project_key=DEMO&page=3&view=compact&source=board#results`)
+ +    await page.getByRole('combobox', { name: 'Приоритет', exact: true }).selectOption('High')
+ +    await expect(page).toHaveURL(
+ +      `${app}/search?project_key=DEMO&view=compact&source=board&priority=High#results`,
+ +    )
+ +    await page.goBack()
+ +    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('')
+ +    await expect(page).toHaveURL(/page=3.*#results$/)
+ +    await page.goForward()
+ +    await page.reload()
+ +    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('High')
+ +    const simple = page.getByRole('tab', { name: 'Простой', exact: true })
+ +    await simple.focus()
+ +    await page.keyboard.press('ArrowRight')
+ +    const jql = page.getByRole('tab', { name: 'JQL', exact: true })
+ +    await expect(jql).toBeFocused()
+ +    await expect(jql).toHaveAttribute('aria-selected', 'true')
+ +    const input = page.getByRole('textbox', { name: 'JQL-запрос', exact: true })
+ +    await input.fill('project = DEMO')
+ +    await page.getByRole('button', { name: 'Выполнить', exact: true }).click()
+ +    await expect(page).toHaveURL(/jql=project\+%3D\+DEMO#results$/)
+ +    await page.reload()
+ +    await expect(input).toHaveValue('project = DEMO')
+ +    await jql.focus()
+ +    await page.keyboard.press('ArrowLeft')
+ +    await expect(simple).toBeFocused()
+ +    await page.getByRole('textbox', { name: 'Поиск задач', exact: true }).fill('Safe query')
+ +    await page.getByRole('button', { name: 'Сбросить', exact: true }).click()
+ +    await expect(page).toHaveURL(`${app}/search?view=compact&source=board#results`)
+ +    await page.screenshot({ path: testInfo.outputPath('search-url-history.png'), fullPage: true })
+ +  })
+ +
+ +  test('keeps cached rows for partial failure but hides them after denied refresh', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    test.setTimeout(60_000)
+ +    await installSearchFixtures(page)
+ +    let status = 200
+ +    let reads = 0
+ +    await page.route('**/api/v1/search**', (route) => {
+ +      reads++
+ +      return routeJson(
+ +        route,
+ +        status === 200
+ +          ? { issues: [searchIssue(1)] }
+ +          : { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+ +        status,
+ +      )
+ +    })
+ +    await page.goto(`${baseURL}/search?project_key=DEMO`)
+ +    await expect(page.locator('main li')).toHaveCount(1)
+ +    status = 503
+ +    const before = reads
+ +    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+ +    await expect.poll(() => reads, { timeout: 30_000 }).toBe(before + 3)
+ +    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible()
+ +    await expect(page.locator('main li')).toHaveCount(1)
+ +    await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+ +    status = 200
+ +    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
+ +    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
+ +    status = 403
+ +    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+ +    await expect(page.locator('main [data-page-state="permission-denied"]')).toBeVisible()
+ +    await expect(page.locator('main li')).toHaveCount(0)
+ +    await expect(
+ +      page.locator('main').getByRole('button', { name: 'Повторить', exact: true }),
+ +    ).toHaveCount(0)
+ +    await page.screenshot({ path: testInfo.outputPath('search-cached-denied.png'), fullPage: true })
+ +  })
+ +
+ +  for (const status of [400, 403, 404, 422, 503])
+ +    test(`HTTP ${status} is not empty and respects retry policy`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      test.setTimeout(60_000)
+ +      await installSearchFixtures(page)
+ +      let reads = 0
+ +      await page.route('**/api/v1/search**', (route) => {
+ +        reads++
+ +        return routeJson(
+ +          route,
+ +          { error: { code: 'CONTROLLED', message: 'Private diagnostic' } },
+ +          status,
+ +        )
+ +      })
+ +      await page.goto(
+ +        `${baseURL}/search?${status === 400 ? 'mode=jql&jql=invalid' : 'project_key=DEMO'}`,
+ +      )
+ +      await expect.poll(() => reads, { timeout: 30_000 }).toBe(status === 503 ? 3 : 1)
+ +      const main = page.locator('main')
+ +      await expect(main.getByText('Ничего не найдено', { exact: true })).toHaveCount(0)
+ +      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+ +      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+ +        status === 503 ? 1 : 0,
+ +      )
+ +      if (status === 400) {
+ +        const input = main.getByRole('textbox', { name: 'JQL-запрос', exact: true })
+ +        await expect(input).toHaveAttribute('aria-invalid', 'true')
+ +        await expect(input).toHaveAttribute('aria-describedby', 'search-jql-hint search-jql-error')
+ +        await expect(main.getByRole('alert')).toHaveCount(1)
+ +        await expect(input).toHaveValue('invalid')
+ +      } else if (status === 403 || status === 404) {
+ +        await expect(
+ +          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
+ +        ).toBeVisible()
+ +        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
+ +      } else
+ +        await expect(
+ +          main.getByText('Не удалось загрузить результаты поиска', { exact: true }),
+ +        ).toBeVisible()
+ +      await page.screenshot({
+ +        path: testInfo.outputPath(`search-error-${status}.png`),
+ +        fullPage: true,
+ +      })
+ +    })
+ +})
+ +
+ +async function installTrashFixtures(page: Page, count = 53) {
+ +  await installTrackerMocks(page)
+ +  const fixture = {
+ +    issues: Array.from({ length: count }, (_, index) => searchIssue(index + 1)),
+ +    readStatus: 200,
+ +    reads: 0,
+ +    restores: 0,
+ +    purges: 0,
+ +    writeStatus: 0,
+ +    applyWrite: false,
+ +    readBarrier: undefined as Promise<void> | undefined,
+ +    writeBarrier: undefined as Promise<void> | undefined,
+ +  }
+ +  await page.route('**/api/v1/projects/*/trash**', async (route) => {
+ +    fixture.reads++
+ +    await fixture.readBarrier
+ +    if (fixture.readStatus !== 200)
+ +      return routeJson(
+ +        route,
+ +        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+ +        fixture.readStatus,
+ +      )
+ +    const query = new URL(route.request().url()).searchParams
+ +    const offset = Number(query.get('offset') ?? '0')
+ +    const limit = Number(query.get('limit') ?? '50')
+ +    return routeJson(route, { issues: fixture.issues.slice(offset, offset + limit) })
+ +  })
+ +  async function write(route: Route, kind: 'restore' | 'purge') {
+ +    if (route.request().method() !== (kind === 'restore' ? 'POST' : 'DELETE'))
+ +      return route.fallback()
+ +    if (kind === 'restore') fixture.restores++
+ +    else fixture.purges++
+ +    const id = new URL(route.request().url()).pathname.split('/').at(-2)
+ +    const issue = fixture.issues.find((item) => item.id === id)
+ +    await fixture.writeBarrier
+ +    const status = fixture.writeStatus || (kind === 'restore' ? 200 : 204)
+ +    if (fixture.applyWrite || status < 400)
+ +      fixture.issues = fixture.issues.filter((item) => item.id !== id)
+ +    if (status >= 400)
+ +      return routeJson(
+ +        route,
+ +        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+ +        status,
+ +      )
+ +    if (status === 204) return route.fulfill({ status })
+ +    return routeJson(route, issue, status)
+ +  }
+ +  await page.route('**/api/v1/issues/*/restore', (route) => write(route, 'restore'))
+ +  await page.route('**/api/v1/issues/*/trash', (route) => write(route, 'purge'))
+ +  return fixture
+ +}
+ +
+ +test.describe('Base project trash', () => {
+ +  test('wide list fits long values in all themes and boundaries on direct open and reload', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    test.setTimeout(240_000)
+ +    await installTrashFixtures(page)
+ +    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +    const failures: string[] = []
+ +    const observations: unknown[] = []
+ +    const network = observeNavigationRequests(page, app, failures)
+ +    page.on('pageerror', (error) => failures.push(error.message))
+ +    page.on('console', (message) => {
+ +      if (message.type() === 'error') failures.push(message.text())
+ +    })
+ +    page.on('response', (response) => {
+ +      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+ +    })
+ +    for (const theme of ['dark', 'gray', 'light']) {
+ +      await network.navigate(`${app}/projects/DEMO/trash`)
+ +      await expect(page.locator('main article')).toHaveCount(50)
+ +      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+ +      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+ +        await page.setViewportSize({ width, height: 1080 })
+ +        for (const entry of ['direct', 'reload']) {
+ +          if (entry === 'direct')
+ +            await network.navigate(`${app}/projects/DEMO/trash?source=qa#context`)
+ +          else await network.navigate()
+ +          await expect(page.locator('main article')).toHaveCount(50)
+ +          await expect(page.locator('main h1')).toHaveText('Корзина · DEMO')
+ +          await expect(page.locator('main h1')).toHaveCount(1)
+ +          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+ +          const layout = page.locator('[data-page-layout]')
+ +          await expect(layout).toHaveAttribute('data-page-layout', 'wide')
+ +          const geometry = await layout.evaluate((element) => {
+ +            const parent = element.parentElement!
+ +            const style = getComputedStyle(parent)
+ +            const header = element.querySelector('.base-page-header')!.getBoundingClientRect()
+ +            const list = element.querySelector('article')!.parentElement!.getBoundingClientRect()
+ +            const sidebar = document.querySelector('.base-shell-sidebar')!.getBoundingClientRect()
+ +            const headerSlots = Array.from(document.querySelectorAll('[data-platform-header-slot]'))
+ +              .map((slot) => slot.getBoundingClientRect())
+ +              .filter((rect) => rect.width > 0)
+ +            return {
+ +              viewportWidth: window.innerWidth,
+ +              viewportHeight: window.innerHeight,
+ +              width: element.getBoundingClientRect().width,
+ +              expectedWidth:
+ +                parent.clientWidth -
+ +                Number.parseFloat(style.paddingLeft) -
+ +                Number.parseFloat(style.paddingRight),
+ +              gutter: Number.parseFloat(style.paddingLeft),
+ +              gap: Number.parseFloat(
+ +                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
+ +              ),
+ +              titleSize: Number.parseFloat(getComputedStyle(element.querySelector('h1')!).fontSize),
+ +              documentFits:
+ +                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+ +              localFits: element.scrollWidth <= element.clientWidth,
+ +              listAfterHeader: list.top >= header.bottom,
+ +              headerFits: headerSlots.every(
+ +                (rect, index) => index === 0 || rect.left >= headerSlots[index - 1].right,
+ +              ),
+ +              headerHeight: document
+ +                .querySelector('[data-platform-header]')!
+ +                .getBoundingClientRect().height,
+ +              sidebarWidth: sidebar.width,
+ +            }
+ +          })
+ +          expect(geometry.viewportWidth).toBe(width)
+ +          expect(geometry.viewportHeight).toBe(1080)
+ +          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
+ +          expect(Math.abs(geometry.gutter - Math.min(32, Math.max(16, width * 0.02)))).toBeLessThan(
+ +            1,
+ +          )
+ +          expect(geometry.gap).toBe(20)
+ +          expect(geometry.titleSize).toBe(24)
+ +          expect(
+ +            geometry.documentFits &&
+ +              geometry.localFits &&
+ +              geometry.listAfterHeader &&
+ +              geometry.headerFits,
+ +          ).toBe(true)
+ +          expect(geometry.headerHeight).toBe(60)
+ +          expect(geometry.sidebarWidth).toBe(width < 768 ? 0 : width < 1280 ? 72 : 264)
+ +          const undersized = await page.locator('main button, main a').evaluateAll(
+ +            (elements, minimum) =>
+ +              elements.flatMap((element) => {
+ +                const rect = element.getBoundingClientRect()
+ +                return rect.width > 0 &&
+ +                  rect.height > 0 &&
+ +                  (rect.height + 0.5 < minimum || rect.width + 0.5 < minimum)
+ +                  ? [{ html: element.outerHTML, width: rect.width, height: rect.height }]
+ +                  : []
+ +              }),
+ +            width < 768 ? 44 : 40,
+ +          )
+ +          expect(undersized).toEqual([])
+ +          observations.push({
+ +            theme,
+ +            viewport: { width, height: 1080 },
+ +            entry,
+ +            mode: 'wide',
+ +            ...geometry,
+ +          })
+ +        }
+ +        if (width === 375 || width === 1920)
+ +          expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([])
+ +        if ([375, 1920, 2560].includes(width)) {
+ +          await page.screenshot({
+ +            path: testInfo.outputPath(`trash-${theme}-${width}.png`),
+ +            fullPage: true,
+ +          })
+ +          await page.evaluate(() => window.scrollTo(0, 0))
+ +          await page.screenshot({
+ +            path: testInfo.outputPath(`trash-${theme}-${width}-viewport.png`),
+ +          })
+ +        }
+ +      }
+ +    }
+ +    expect(failures).toEqual([])
+ +    await testInfo.attach('trash-geometry', {
+ +      body: JSON.stringify({
+ +        mockedApi: true,
+ +        actualImage: false,
+ +        observations,
+ +        streamAborts: network.streamAborts,
+ +      }),
+ +      contentType: 'application/json',
+ +    })
+ +  })
+ +
+ +  test('preserves pagination context through history, reload, canonicalization and board return', async ({
+ +    page,
+ +    baseURL,
+ +  }) => {
+ +    await installTrashFixtures(page)
+ +    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +    await page.goto(`${app}/projects/DEMO/trash?source=qa&page=-3#context`)
+ +    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa#context`)
+ +    await expect(page.locator('main article')).toHaveCount(50)
+ +    await page.getByRole('button', { name: 'Вперёд', exact: true }).click()
+ +    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa&page=2#context`)
+ +    await expect(page.locator('main article')).toHaveCount(3)
+ +    await page.reload()
+ +    await expect(page.locator('main article')).toHaveCount(3)
+ +    await page.goBack()
+ +    await expect(page.locator('main article')).toHaveCount(50)
+ +    await page.goForward()
+ +    await expect(page.locator('main article')).toHaveCount(3)
+ +    const back = page.getByRole('link', { name: 'Вернуться на доску проекта' })
+ +    await expect(back).toHaveAttribute('href', '/projects/DEMO/board?source=qa#context')
+ +    await back.click()
+ +    await expect(page).toHaveURL(`${app}/projects/DEMO/board?source=qa#context`)
+ +  })
+ +
+ +  test('shows loading and then genuine empty without mutation controls', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    const fixture = await installTrashFixtures(page, 0)
+ +    let release!: () => void
+ +    fixture.readBarrier = new Promise<void>((resolve) => {
+ +      release = resolve
+ +    })
+ +    await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +    await expect(
+ +      page.locator('main').getByRole('status', { name: 'Загрузка…', exact: true }),
+ +    ).toBeVisible()
+ +    await expect(page.locator('main article')).toHaveCount(0)
+ +    release()
+ +    await expect(page.locator('main').getByRole('status')).toHaveText('Корзина пуста.')
+ +    await expect(page.getByText('Корзина пуста.', { exact: true })).toBeVisible()
+ +    expect(fixture.purges + fixture.restores).toBe(0)
+ +    await page.screenshot({ path: testInfo.outputPath('trash-empty.png'), fullPage: true })
+ +  })
+ +
+ +  for (const status of [403, 404, 422, 503]) {
+ +    test(`cold HTTP ${status} is not empty or a write surface`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      test.setTimeout(60_000)
+ +      const fixture = await installTrashFixtures(page, 1)
+ +      fixture.readStatus = status
+ +      await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
+ +      const main = page.locator('main')
+ +      if (status === 403 || status === 404)
+ +        await expect(main.locator('[data-page-state]')).toHaveAttribute(
+ +          'data-page-state',
+ +          status === 403 ? 'permission-denied' : 'not-found',
+ +        )
+ +      else await expect(main.getByRole('alert')).toHaveText(/Не удалось загрузить корзину\./)
+ +      await expect(main.locator('article')).toHaveCount(0)
+ +      await expect(main.getByText('Корзина пуста.', { exact: true })).toHaveCount(0)
+ +      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+ +      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+ +        status === 503 ? 1 : 0,
+ +      )
+ +      if (status === 403 || status === 404)
+ +        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
+ +      expect(fixture.purges + fixture.restores).toBe(0)
+ +      await page.screenshot({
+ +        path: testInfo.outputPath(`trash-cold-${status}.png`),
+ +        fullPage: true,
+ +      })
+ +    })
+ +  }
+ +
+ +  for (const status of [403, 404, 422, 503]) {
+ +    test(`cached HTTP ${status} preserves only retryable data and invalidates stale confirmation`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      test.setTimeout(60_000)
+ +      const fixture = await installTrashFixtures(page, 1)
+ +      await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +      const trigger = page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' })
+ +      await trigger.click()
+ +      fixture.readStatus = status
+ +      let release!: () => void
+ +      fixture.readBarrier = new Promise<void>((resolve) => {
+ +        release = resolve
+ +      })
+ +      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+ +      await expect(page.getByRole('button', { name: 'Подтвердить', exact: true })).toBeDisabled()
+ +      release()
+ +      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 6 : 2)
+ +      const main = page.locator('main')
+ +      if (status === 422)
+ +        await expect(main.getByRole('alert')).toHaveText('Не удалось загрузить корзину.')
+ +      else
+ +        await expect(main.locator('[data-page-state]')).toHaveAttribute(
+ +          'data-page-state',
+ +          status === 503 ? 'partial-error' : status === 403 ? 'permission-denied' : 'not-found',
+ +        )
+ +      await expect(main.locator('article')).toHaveCount(status === 503 ? 1 : 0)
+ +      if (status === 503) {
+ +        await expect(page.getByRole('alertdialog')).toBeVisible()
+ +        await expect(page.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
+ +        await page.keyboard.press('Escape')
+ +      } else await expect(page.getByRole('alertdialog')).toHaveCount(0)
+ +      await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
+ +      fixture.readStatus = 200
+ +      if (status === 503) await main.getByRole('button', { name: 'Повторить', exact: true }).click()
+ +      else await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+ +      await expect(main.locator('article')).toHaveCount(1)
+ +      await expect(trigger).toBeEnabled()
+ +      await expect(page.getByRole('alertdialog')).toHaveCount(0)
+ +      expect(fixture.purges).toBe(0)
+ +      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+ +      await page.screenshot({
+ +        path: testInfo.outputPath(`trash-cached-recovered-${status}.png`),
+ +        fullPage: true,
+ +      })
+ +    })
+ +  }
+ +
+ +  test('restores and purges with same-tick locks, pending close protection and safe focus', async ({
+ +    page,
+ +    baseURL,
+ +  }, testInfo) => {
+ +    const fixture = await installTrashFixtures(page, 2)
+ +    await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +    let release!: () => void
+ +    fixture.writeBarrier = new Promise<void>((resolve) => {
+ +      release = resolve
+ +    })
+ +    await page
+ +      .getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
+ +      .evaluate((element) => {
+ +        ;(element as HTMLButtonElement).click()
+ +        ;(element as HTMLButtonElement).click()
+ +      })
+ +    await expect.poll(() => fixture.restores).toBe(1)
+ +    await expect(page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })).toBeDisabled()
+ +    release()
+ +    await expect(page.locator('main article')).toHaveCount(1)
+ +    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
+ +    const region = page.getByRole('region', { name: 'Корзина', exact: true })
+ +    await expect(region).toBeFocused()
+ +    const trigger = page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })
+ +    await expect(trigger).toBeEnabled()
+ +    await trigger.click()
+ +    const dialog = page.getByRole('alertdialog')
+ +    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
+ +    await page.keyboard.press('Shift+Tab')
+ +    await expect(dialog.getByRole('button', { name: 'Подтвердить', exact: true })).toBeFocused()
+ +    await page.keyboard.press('Tab')
+ +    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
+ +    await page.keyboard.press('Escape')
+ +    await expect(trigger).toBeFocused()
+ +    await trigger.click()
+ +    fixture.writeBarrier = new Promise<void>((resolve) => {
+ +      release = resolve
+ +    })
+ +    await dialog.getByRole('button', { name: 'Подтвердить', exact: true }).evaluate((element) => {
+ +      ;(element as HTMLButtonElement).click()
+ +      ;(element as HTMLButtonElement).click()
+ +    })
+ +    await expect.poll(() => fixture.purges).toBe(1)
+ +    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
+ +    await page.keyboard.press('Escape')
+ +    await expect(dialog).toBeVisible()
+ +    release()
+ +    await expect(dialog).toHaveCount(0)
+ +    await expect(page.locator('main article')).toHaveCount(0)
+ +    await expect(region).toBeFocused()
+ +    await expect(page.getByText('Задача DEMO-2 удалена навсегда.', { exact: true })).toBeVisible()
+ +    expect(fixture.restores + fixture.purges).toBe(2)
+ +    await page.screenshot({ path: testInfo.outputPath('trash-write-focus.png'), fullPage: true })
+ +  })
+ +
+ +  for (const applied of [false, true]) {
+ +    test(`unknown purge applied=${applied} requires readback and never invents success`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      const fixture = await installTrashFixtures(page, 1)
+ +      fixture.writeStatus = 503
+ +      fixture.applyWrite = applied
+ +      await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +      await page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' }).click()
+ +      const dialog = page.getByRole('alertdialog')
+ +      const confirm = dialog.getByRole('button', { name: 'Подтвердить', exact: true })
+ +      await confirm.click()
+ +      await expect(
+ +        page.getByText(
+ +          'Результат действия с DEMO-1 неизвестен. Проверьте состояние корзины перед повтором.',
+ +          { exact: true },
+ +        ),
+ +      ).toBeVisible()
+ +      await expect(confirm).toBeDisabled()
+ +      expect(fixture.purges).toBe(1)
+ +      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+ +      await expect(page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true })).toHaveCount(
+ +        0,
+ +      )
+ +      await dialog.getByRole('button', { name: 'Проверить состояние', exact: true }).click()
+ +      if (applied) {
+ +        await expect(dialog).toHaveCount(0)
+ +        await expect(
+ +          page.getByText(
+ +            'DEMO-1 больше не отображается в корзине. Результат предыдущего действия не подтверждён.',
+ +            { exact: true },
+ +          ),
+ +        ).toBeVisible()
+ +        await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
+ +        await expect(
+ +          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
+ +        ).toHaveCount(0)
+ +        expect(fixture.purges).toBe(1)
+ +      } else {
+ +        await expect(confirm).toBeEnabled()
+ +        expect(fixture.purges).toBe(1)
+ +        fixture.writeStatus = 0
+ +        await confirm.click()
+ +        await expect(dialog).toHaveCount(0)
+ +        await expect(
+ +          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
+ +        ).toBeVisible()
+ +        expect(fixture.purges).toBe(2)
+ +      }
+ +      await page.screenshot({
+ +        path: testInfo.outputPath(`trash-unknown-applied-${applied}.png`),
+ +        fullPage: true,
+ +      })
+ +    })
+ +  }
+ +
+ +  test('failed restore readback stays locked even after a background recovery until explicit reconciliation', async ({
+ +    page,
+ +    baseURL,
+ +  }) => {
+ +    test.setTimeout(60_000)
+ +    const fixture = await installTrashFixtures(page, 1)
+ +    fixture.writeStatus = 503
+ +    await page.goto(`${baseURL}/projects/DEMO/trash`)
+ +    const restore = page.getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
+ +    await restore.click()
+ +    const recheck = page.getByRole('button', { name: 'Проверить состояние', exact: true })
+ +    await expect(recheck).toBeVisible()
+ +    fixture.readStatus = 503
+ +    await recheck.click()
+ +    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible({
+ +      timeout: 30_000,
+ +    })
+ +    await expect(restore).toBeDisabled()
+ +    fixture.readStatus = 200
+ +    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
+ +    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
+ +    await expect(restore).toBeDisabled()
+ +    fixture.writeStatus = 0
+ +    await recheck.click()
+ +    await expect(restore).toBeEnabled()
+ +    expect(fixture.restores).toBe(1)
+ +    await restore.click()
+ +    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
+ +    expect(fixture.restores).toBe(2)
+ +  })
+ +})
+ +
+ +test.describe('Base sprint lifecycle', () => {
+ +  for (const theme of ['light', 'gray', 'dark'] as const) {
+ +    test(`keeps a rejected draft and pending controls in ${theme}`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      test.setTimeout(180_000)
+ +      await installTrackerMocks(page)
+ +      await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+ +      let release!: () => void
+ +      let barrier = new Promise<void>((resolve) => {
+ +        release = resolve
+ +      })
+ +      let writes = 0
+ +      await page.route('**/api/v1/projects/DEMO/sprints', async (route) => {
+ +        if (route.request().method() !== 'POST') return route.fallback()
+ +        writes++
+ +        await barrier
+ +        return routeJson(route, { error: { message: 'Private validation fixture' } }, 422)
+ +      })
+ +      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +      const target = `${app}/projects/DEMO/backlog?source=sprint#context`
+ +      await page.goto(target)
+ +      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
+ +      await expect(create).toBeVisible()
+ +      for (const width of [375, 1920]) {
+ +        await page.setViewportSize({ width, height: 1080 })
+ +        await create.click()
+ +        const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
+ +        const name = dialog.getByLabel('Название', { exact: false })
+ +        await name.fill(`Safe draft ${width}`)
+ +        await dialog.getByLabel('Цель', { exact: true }).fill('Retained safe goal')
+ +        const before = writes
+ +        await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+ +        await expect.poll(() => writes).toBe(before + 1)
+ +        await expect(name).toBeDisabled()
+ +        await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
+ +        await dialog
+ +          .locator('form')
+ +          .evaluate((form) =>
+ +            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+ +          )
+ +        await page.keyboard.press('Escape')
+ +        await expect(dialog).toBeVisible()
+ +        expect(writes).toBe(before + 1)
+ +        release()
+ +        await expect(name).toBeEnabled()
+ +        await expect(name).toHaveValue(`Safe draft ${width}`)
+ +        await expect(dialog.getByLabel('Цель', { exact: true })).toHaveValue('Retained safe goal')
+ +        await expect(dialog.getByRole('alert')).toContainText('Введённые значения сохранены')
+ +        await expect(dialog.getByRole('alert')).not.toContainText('Private validation fixture')
+ +        expect(
+ +          await page.evaluate(
+ +            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+ +          ),
+ +        ).toBe(true)
+ +        expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+ +        await page.screenshot({
+ +          path: testInfo.outputPath(`sprint-known-error-${theme}-${width}.png`),
+ +          fullPage: true,
+ +        })
+ +        await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+ +        const confirm = page.getByRole('alertdialog')
+ +        await expect(confirm).toBeVisible()
+ +        await confirm.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+ +        await expect(dialog).toBeHidden()
+ +        await expect(page).toHaveURL(target)
+ +        barrier = new Promise<void>((resolve) => {
+ +          release = resolve
+ +        })
+ +      }
+ +    })
+ +
+ +    test(`does not acknowledge an unknown create from a matching name in ${theme}`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      test.setTimeout(180_000)
+ +      await installTrackerMocks(page)
+ +      await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+ +      let writes = 0
+ +      let reads = 0
+ +      await page.route('**/api/v1/projects/DEMO/sprints', (route) => {
+ +        if (route.request().method() === 'POST') {
+ +          writes++
+ +          return routeJson(route, { error: { message: 'Isolated lost acknowledgement' } }, 503)
+ +        }
+ +        reads++
+ +        return routeJson(route, {
+ +          sprints: [
+ +            {
+ +              id: 'ambiguous-existing',
+ +              name: 'Same safe name',
+ +              goal: '',
+ +              state: 'future',
+ +              issue_ids: [],
+ +              velocity: 0,
+ +              start_date: null,
+ +              end_date: null,
+ +            },
+ +          ],
+ +        })
+ +      })
+ +      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +      await page.goto(`${app}/projects/DEMO/backlog?source=unknown#context`)
+ +      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
+ +      await expect(create).toBeVisible()
+ +      await create.click()
+ +      const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
+ +      const name = dialog.getByLabel('Название', { exact: false })
+ +      await name.fill('Same safe name')
+ +      await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+ +      await expect(dialog.getByRole('alert')).toContainText('Результат сохранения неизвестен')
+ +      const before = reads
+ +      await dialog.getByRole('button', { name: 'Проверить на сервере', exact: true }).click()
+ +      await expect.poll(() => reads).toBeGreaterThan(before)
+ +      await expect(
+ +        dialog.getByRole('button', { name: 'Проверить на сервере', exact: true }),
+ +      ).toBeEnabled()
+ +      await expect(
+ +        dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
+ +      ).toBeDisabled()
+ +      expect(writes).toBe(1)
+ +      for (const width of [375, 1920]) {
+ +        await page.setViewportSize({ width, height: 1080 })
+ +        await expect(name).toHaveValue('Same safe name')
+ +        await expect(name).toBeDisabled()
+ +        await page.screenshot({
+ +          path: testInfo.outputPath(`sprint-unknown-${theme}-${width}.png`),
+ +          fullPage: true,
+ +        })
+ +      }
+ +      await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+ +      await page
+ +        .getByRole('alertdialog')
+ +        .getByRole('button', { name: 'Подтвердить', exact: true })
+ +        .click()
+ +      await expect(dialog).toBeHidden()
+ +      await create.click()
+ +      await expect(name).toHaveValue('Same safe name')
+ +      await expect(
+ +        dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
+ +      ).toBeDisabled()
+ +      expect(writes).toBe(1)
+ +      await testInfo.attach('unknown-create-proof', {
+ +        body: JSON.stringify({ writes, reads, authoritativeId: null, nameMatchAccepted: false }),
+ +        contentType: 'application/json',
+ +      })
+ +    })
+ +  }
+ +})
+ +
+ +test.describe('Expired central session', () => {
+ +  for (const method of ['GET', 'POST'] as const) {
+ +    test(`preserves project URL after ${method} 401 without replaying the write`, async ({
+ +      page,
+ +      baseURL,
+ +    }, testInfo) => {
+ +      await installTrackerMocks(page)
+ +      const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+ +      const target = `${app}/projects/DEMO/backlog?offset=100&source=board#sprint-context`
+ +      await page.goto(target)
+ +      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
+ +      await expect(create).toBeVisible()
+ +      await expect(page).toHaveURL(target)
+ +      let rejected = 0
+ +      const authorizations: Array<{ clientId: string | null; redirect: string | null }> = []
+ +      page.on('request', (request) => {
+ +        const url = new URL(request.url())
+ +        if (url.pathname === '/oidc/authorize')
+ +          authorizations.push({
+ +            clientId: url.searchParams.get('client_id'),
+ +            redirect: url.searchParams.get('redirect_uri'),
+ +          })
+ +      })
+ +      const path =
+ +        method === 'GET' ? '**/api/v1/projects/DEMO/backlog**' : '**/api/v1/projects/DEMO/sprints'
+ +      await page.route(path, (route) => {
+ +        if (route.request().method() !== method || rejected > 0) return route.fallback()
+ +        rejected++
+ +        return routeJson(route, { error: { message: 'Isolated expired session fixture' } }, 401)
+ +      })
+ +      let writes = 0
+ +      page.on('request', (request) => {
+ +        if (
+ +          request.method() === 'POST' &&
+ +          new URL(request.url()).pathname === '/api/v1/projects/DEMO/sprints'
+ +        )
+ +          writes++
+ +      })
+ +      if (method === 'GET') await page.reload()
+ +      else {
+ +        await create.click()
+ +        const dialog = page.getByRole('dialog', { name: 'Новый спринт', exact: true })
+ +        await dialog.getByLabel('Название', { exact: false }).fill('Safe expired-session fixture')
+ +        await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+ +      }
+ +      await expect.poll(() => rejected).toBe(1)
+ +      // Reload loses the in-memory token: one bootstrap SSO precedes the rejected GET.
+ +      const expectedAuthorizations = method === 'GET' ? 2 : 1
+ +      await expect.poll(() => authorizations.length).toBe(expectedAuthorizations)
+ +      await expect(page).toHaveURL(target)
+ +      await expect(create).toBeVisible()
+ +      expect(authorizations).toEqual(
+ +        Array.from({ length: expectedAuthorizations }, () => ({
+ +          clientId: 'task-tracker',
+ +          redirect: `${app}/sso/callback`,
+ +        })),
+ +      )
+ +      expect(writes).toBe(method === 'POST' ? 1 : 0)
+ +      await expect(page.getByRole('dialog', { name: 'Новый спринт', exact: true })).toHaveCount(0)
+ +      await testInfo.attach('expired-session-context', {
+ +        body: JSON.stringify({
+ +          method,
+ +          target,
+ +          rejected,
+ +          writes,
+ +          authorizations,
+ +          bootstrapSsoAfterReload: method === 'GET',
+ +          draftSafetyVerified: false,
+ +        }),
+ +        contentType: 'application/json',
+ +      })
+ +    })
+ +  }
+ +})
+ +
++ const markdownComment =
++   '# Итоги\n\n**Результат**\n\nПервая строка\nВторая строка\n\n- Первый\n- Второй\n\n' +
++   'ДлинныйИдентификатор'.repeat(24) +
++   '\n\n```text\n  ' +
++   'code_block_'.repeat(40) +
++   '\n```\n\n' +
++   '<script>alert(1)</script>\n\n[Опасно](javascript:alert%281%29)'
++ 
+++test.describe('Base comment resource states', () => {
+++  for (const theme of ['dark', 'gray', 'light']) {
+++    for (const cached of [false, true]) {
+++      for (const failureStatus of [403, 404, 422, 503]) {
+++        test(`${cached ? 'cached' : 'cold'} comments respect HTTP ${failureStatus} in ${theme}`, async ({
+++          page,
+++        }, testInfo) => {
+++          // Each case includes both viewports and the production transient retry backoff.
+++          test.setTimeout(120_000)
+++          await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+++          await installTrackerMocks(page)
+++          let status = 200
+++          let writes = 0
+++          const errors: string[] = []
+++          page.on('pageerror', (error) => errors.push(error.message))
+++          page.on('console', (message) => {
+++            if (
+++              message.type() === 'error' &&
+++              !message.text().includes(`the server responded with a status of ${failureStatus}`)
+++            )
+++              errors.push(message.text())
+++          })
+++          await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) => {
+++            if (route.request().method() !== 'GET') {
+++              writes++
+++              return routeJson(route, { error: 'Read-only fixture' }, 405)
+++            }
+++            return routeJson(
+++              route,
+++              status === 200
+++                ? {
+++                    comments: [
+++                      {
+++                        id: 'safe-comment-state',
+++                        issue_id: mockUser.issueId,
+++                        author_id: mockUser.id,
+++                        author_name: 'Demo User',
+++                        body: 'Safe cached comment',
+++                        created_at: '2026-09-01T10:00:00Z',
+++                        updated_at: '2026-09-01T10:00:00Z',
+++                      },
+++                    ],
+++                  }
+++                : { error: { message: 'Private comment diagnostic' } },
+++              status,
+++            )
+++          })
+++          await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
+++            routeJson(route, {
+++              worklogs: [
+++                {
+++                  id: 'safe-worklog-state',
+++                  issue_id: mockUser.issueId,
+++                  author_id: mockUser.id,
+++                  author_name: 'Demo User',
+++                  duration_seconds: 60,
+++                  started_at: '2026-09-01T10:00:00Z',
+++                  description: 'Independent safe worklog',
+++                  created_at: '2026-09-01T10:00:00Z',
+++                  updated_at: '2026-09-01T10:00:00Z',
+++                },
+++              ],
+++            }),
+++          )
+++          for (const width of [375, 1920]) {
+++            await page.setViewportSize({ width, height: 1080 })
+++            status = cached ? 200 : failureStatus
+++            await page.goto(`/issues/${mockUser.issueId}?tab=comments&source=state#context`)
+++            const panel = page.getByRole('tabpanel')
+++            if (cached) {
+++              await expect(panel.getByText('Safe cached comment', { exact: true })).toBeVisible()
+++              status = failureStatus
+++              await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+++            }
+++            const kind =
+++              failureStatus === 403
+++                ? 'permission-denied'
+++                : failureStatus === 404
+++                  ? 'not-found'
+++                  : cached && failureStatus === 503
+++                    ? 'partial-error'
+++                    : 'error'
+++            const state =
+++              kind === 'error'
+++                ? panel.getByRole('alert')
+++                : panel.locator(`[data-page-state="${kind}"]`)
+++            await expect(state).toBeVisible({
+++              timeout: 45_000,
+++            })
+++            await expect(panel.getByText('Пока нет комментариев.', { exact: true })).toHaveCount(0)
+++            await expect(
+++              panel.getByText('Private comment diagnostic', { exact: true }),
+++            ).toHaveCount(0)
+++            const retained = cached && failureStatus === 503
+++            await expect(panel.getByText('Safe cached comment', { exact: true })).toHaveCount(
+++              retained ? 1 : 0,
+++            )
+++            await expect(
+++              panel.getByRole('textbox', { name: 'Комментарий', exact: true }),
+++            ).toHaveCount(retained ? 1 : 0)
+++            await expect(panel.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+++              failureStatus === 503 ? 1 : 0,
+++            )
+++            await expect(panel.getByRole('button', { name: 'Изменить', exact: true })).toHaveCount(
+++              retained ? 1 : 0,
+++            )
+++            await expect(panel.getByRole('button', { name: 'Удалить', exact: true })).toHaveCount(
+++              retained ? 1 : 0,
+++            )
+++            await page.getByRole('tab', { name: 'Активность', exact: true }).click()
+++            await expect(state).toBeVisible({
+++              timeout: 45_000,
+++            })
+++            await expect(panel.getByText('Safe cached comment', { exact: true })).toHaveCount(
+++              retained ? 1 : 0,
+++            )
+++            await expect(panel.getByText('Independent safe worklog', { exact: true })).toBeVisible()
+++            const activityTab = page.getByRole('tab', { name: 'Активность', exact: true })
+++            await expect(activityTab).toHaveAttribute('aria-selected', 'true')
+++            await expect(
+++              page.getByRole('tab', { name: 'Комментарии', exact: true }),
+++            ).toHaveAttribute('aria-selected', 'false')
+++            await expect(panel).toHaveAttribute(
+++              'aria-labelledby',
+++              (await activityTab.getAttribute('id'))!,
+++            )
+++            await expect(panel.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+++              failureStatus === 503 ? 1 : 0,
+++            )
+++            expect(
+++              await page.evaluate(
+++                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+++              ),
+++            ).toBeLessThanOrEqual(1)
+++            await expect(page.locator('main h1')).toHaveCount(1)
+++            if (cached && (failureStatus === 403 || failureStatus === 503)) {
+++              await testInfo.attach(`activity-tab-dom-${width}`, {
+++                body: JSON.stringify(
+++                  await page.getByRole('tab').evaluateAll((tabs) =>
+++                    tabs.map((tab) => ({
+++                      name: tab.textContent,
+++                      id: tab.id,
+++                      selected: tab.getAttribute('aria-selected'),
+++                      state: tab.getAttribute('data-state'),
+++                      background: getComputedStyle(tab).backgroundColor,
+++                      color: getComputedStyle(tab).color,
+++                      focused: tab === document.activeElement,
+++                    })),
+++                  ),
+++                ),
+++                contentType: 'application/json',
+++              })
+++              await page.screenshot({
+++                path: testInfo.outputPath(
+++                  `comment-activity-${theme}-${failureStatus}-${width}.png`,
+++                ),
+++                fullPage: true,
+++              })
+++            }
+++            status = 200
+++            if (failureStatus === 503) {
+++              await panel.getByRole('button', { name: 'Повторить', exact: true }).click()
+++            } else {
+++              await page.reload()
+++            }
+++            await expect(panel.getByText('Safe cached comment', { exact: true })).toBeVisible({
+++              timeout: 15_000,
+++            })
+++            await expect(panel.locator('[data-page-state]')).toHaveCount(0)
+++            await expect(panel.getByRole('alert')).toHaveCount(0)
+++            await page.getByRole('tab', { name: 'Комментарии', exact: true }).click()
+++            await expect(
+++              panel.getByRole('textbox', { name: 'Комментарий', exact: true }),
+++            ).toBeVisible()
+++          }
+++          expect(writes).toBe(0)
+++          expect(errors).toEqual([])
+++          await testInfo.attach('comment-resource-state-matrix', {
+++            body: JSON.stringify({
+++              theme,
+++              cached,
+++              failureStatus,
+++              widths: [375, 1920],
+++              surfaces: ['comments', 'activity'],
+++              readOnlyWrites: writes,
+++              mockedApiOidc: true,
+++            }),
+++            contentType: 'application/json',
+++          })
+++        })
+++      }
+++    }
+++  }
+++})
+++
+++test.describe('Base worklog resource states', () => {
+++  for (const theme of ['dark', 'gray', 'light'] as const) {
+++    for (const cached of [false, true]) {
+++      for (const failureStatus of [403, 404, 422, 503]) {
+++        test(`${cached ? 'cached' : 'cold'} worklog respects HTTP ${failureStatus} in ${theme}`, async ({
+++          page,
+++        }, testInfo) => {
+++          test.setTimeout(120_000)
+++          await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+++          await installTrackerMocks(page)
+++          let status = cached ? 200 : failureStatus
+++          let writes = 0
+++          const errors: string[] = []
+++          page.on('pageerror', (error) => errors.push(error.message))
+++          page.on('console', (message) => {
+++            if (
+++              message.type() === 'error' &&
+++              !/^Failed to load resource: the server responded with a status of (403|404|422|503)/.test(
+++                message.text(),
+++              )
+++            )
+++              errors.push(message.text())
+++          })
+++          await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) => {
+++            if (route.request().method() !== 'GET') {
+++              writes += 1
+++              return routeJson(route, { error: 'Read-only fixture' }, 405)
+++            }
+++            return routeJson(
+++              route,
+++              status === 200
+++                ? {
+++                    worklogs: [
+++                      {
+++                        id: 'safe-worklog-state',
+++                        issue_id: mockUser.issueId,
+++                        author_id: mockUser.id,
+++                        author_name: 'Demo User',
+++                        duration_seconds: 60,
+++                        started_at: '2026-09-01T10:00:00Z',
+++                        description: 'Safe cached worklog',
+++                        created_at: '2026-09-01T10:00:00Z',
+++                        updated_at: '2026-09-01T10:00:00Z',
+++                      },
+++                    ],
+++                  }
+++                : { error: { message: 'Private worklog diagnostic' } },
+++              status,
+++            )
+++          })
+++          await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
+++            routeJson(route, {
+++              comments: [
+++                {
+++                  id: 'independent-comment',
+++                  issue_id: mockUser.issueId,
+++                  author_id: mockUser.id,
+++                  author_name: 'Demo User',
+++                  body: 'Independent safe comment',
+++                  created_at: '2026-09-01T10:00:00Z',
+++                  updated_at: '2026-09-01T10:00:00Z',
+++                },
+++              ],
+++            }),
+++          )
+++          for (const width of [375, 1920]) {
+++            await page.setViewportSize({ width, height: 1080 })
+++            status = cached ? 200 : failureStatus
+++            await page.goto(`/issues/${mockUser.issueId}?tab=worklog&source=worklog-state#context`)
+++            const panel = page.getByRole('tabpanel')
+++            if (cached) {
+++              await expect
+++                .poll(() => panel.getByText('Safe cached worklog', { exact: true }).count())
+++                .toBeGreaterThan(0)
+++              status = failureStatus
+++              await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+++            }
+++            const retained = cached && failureStatus === 503
+++            const kind =
+++              failureStatus === 403
+++                ? 'permission-denied'
+++                : failureStatus === 404
+++                  ? 'not-found'
+++                  : retained
+++                    ? 'partial-error'
+++                    : 'error'
+++            const state =
+++              kind === 'error'
+++                ? panel.getByRole('alert')
+++                : panel.locator(`[data-page-state="${kind}"]`)
+++            for (const surface of ['worklog', 'activity'] as const) {
+++              if (surface === 'activity')
+++                await page.getByRole('tab', { name: 'Активность', exact: true }).click()
+++              await expect(state).toBeVisible({ timeout: 45_000 })
+++              expect(
+++                (await panel.getByText('Safe cached worklog', { exact: true }).count()) > 0,
+++              ).toBe(retained)
+++              await expect(
+++                panel.getByText('Private worklog diagnostic', { exact: true }),
+++              ).toHaveCount(0)
+++              await expect(
+++                panel.getByRole('button', { name: 'Повторить', exact: true }),
+++              ).toHaveCount(failureStatus === 503 ? 1 : 0)
+++              await expect(panel.getByText(/Активности пока нет|Пока нет записей\./)).toHaveCount(0)
+++              const tab = page.getByRole('tab', {
+++                name: surface === 'activity' ? 'Активность' : 'Журнал работ',
+++                exact: true,
+++              })
+++              await expect(tab).toHaveAttribute('aria-selected', 'true')
+++              await expect(panel).toHaveAttribute(
+++                'aria-labelledby',
+++                (await tab.getAttribute('id'))!,
+++              )
+++              if (surface === 'activity')
+++                await expect(
+++                  panel.getByText('Independent safe comment', { exact: true }),
+++                ).toBeVisible()
+++              if (!retained) {
+++                await expect(
+++                  panel.getByRole('button', { name: /Изменить запись|Удалить запись/ }),
+++                ).toHaveCount(0)
+++              }
+++              expect(
+++                await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+++              ).toBeLessThanOrEqual(1)
+++              await expect(page.locator('main h1')).toHaveCount(1)
+++              if (cached && (failureStatus === 403 || failureStatus === 503))
+++                await page.screenshot({
+++                  path: testInfo.outputPath(
+++                    `worklog-${surface}-${theme}-${failureStatus}-${width}.png`,
+++                  ),
+++                  fullPage: true,
+++                })
+++            }
+++            status = 200
+++            if (failureStatus === 503)
+++              await panel.getByRole('button', { name: 'Повторить', exact: true }).click()
+++            else await page.reload()
+++            await expect(panel.getByText('Safe cached worklog', { exact: true })).toBeVisible({
+++              timeout: 15_000,
+++            })
+++            await expect(panel.getByRole('alert')).toHaveCount(0)
+++            await page.getByRole('tab', { name: 'Журнал работ', exact: true }).click()
+++            await expect(
+++              panel.getByRole('button', { name: 'Изменить запись', exact: true }).first(),
+++            ).toBeEnabled()
+++          }
+++          expect(writes).toBe(0)
+++          expect(errors).toEqual([])
+++        })
+++      }
+++    }
+++  }
+++})
+++
+++for (const theme of ['dark', 'gray', 'light']) {
+++  test(`comment form uses Base pending and field semantics in ${theme}`, async ({
+++    page,
+++  }, testInfo) => {
+++    await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+++    await installTrackerMocks(page)
+++    let writes = 0
+++    let release: (() => void) | undefined
+++    let barrier: Promise<void> | undefined
+++    const errors: string[] = []
+++    page.on('pageerror', (error) => errors.push(error.message))
+++    page.on('console', (message) => {
+++      if (
+++        message.type() === 'error' &&
+++        !message.text().includes('server responded with a status of 400')
+++      )
+++        errors.push(message.text())
+++    })
+++    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
+++      routeJson(route, {
+++        comments: [
+++          {
+++            id: 'comment-form-owned',
+++            issue_id: mockUser.issueId,
+++            author_id: mockUser.id,
+++            author_name: 'Demo User',
+++            body: 'Safe original comment',
+++            created_at: '2026-09-01T10:00:00Z',
+++            updated_at: '2026-09-01T10:00:00Z',
+++          },
+++        ],
+++      }),
+++    )
+++    await page.route('**/api/v1/comments/comment-form-owned', async (route) => {
+++      expect(route.request().method()).toBe('PATCH')
+++      writes++
+++      if (barrier) await barrier
+++      return routeJson(route, { error: { message: 'Controlled rejected update' } }, 400)
+++    })
+++    await page.goto(`/issues/${mockUser.issueId}?tab=comments`)
+++    const panel = page.getByRole('tabpanel')
+++    await panel.getByRole('button', { name: 'Изменить', exact: true }).click()
+++    const field = panel.getByRole('textbox', { name: 'Комментарий', exact: true })
+++    const form = field.locator('xpath=ancestor::form')
+++    const save = form.getByRole('button', { name: 'Сохранить', exact: true })
+++    const cancel = form.getByRole('button', { name: 'Отмена', exact: true })
+++    await field.fill(' \n\t ')
+++    await save.click()
+++    await expect(field).toHaveAttribute('aria-invalid', 'true')
+++    await expect(form.getByRole('alert')).toHaveText('Введите текст комментария')
+++    expect(writes).toBe(0)
+++    for (const width of [375, 1920]) {
+++      await page.setViewportSize({ width, height: 1080 })
+++      const draft = `Safe retained Markdown **${width}**\n` + 'long-value-'.repeat(30)
+++      await field.fill(draft)
+++      barrier = new Promise<void>((resolve) => {
+++        release = resolve
+++      })
+++      try {
+++        await save.click()
+++        await expect.poll(() => writes).toBe(width === 375 ? 1 : 2)
+++        await expect(form).toHaveAttribute('aria-busy', 'true')
+++        await expect(field).toBeDisabled()
+++        await expect(cancel).toBeDisabled()
+++        await expect(save).toBeDisabled()
+++        await form.evaluate((element) =>
+++          element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+++        )
+++        await page.screenshot({
+++          path: testInfo.outputPath(`comment-form-${theme}-pending-${width}.png`),
+++          fullPage: true,
+++          animations: 'disabled',
+++        })
+++        expect(writes).toBe(width === 375 ? 1 : 2)
+++        expect(
+++          await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+++        ).toBeLessThanOrEqual(1)
+++      } finally {
+++        release?.()
+++      }
+++      await expect(field).toBeEnabled()
+++      await expect(cancel).toBeEnabled()
+++      await expect(field).toHaveValue(draft)
+++      await expect(form.getByRole('alert')).toBeVisible()
+++      await expect(form).not.toHaveAttribute('aria-busy', 'true')
+++    }
+++    expect(errors).toEqual([])
+++  })
+++
+++  test(`safe Markdown comments retain Base geometry in ${theme}`, async ({ page }, testInfo) => {
+++    await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
+++    await installTrackerMocks(page)
+++    const writes: string[] = []
+++    const errors: string[] = []
+++    page.on('pageerror', (error) => errors.push(error.message))
+++    page.on('console', (message) => {
+++      if (message.type() === 'error') errors.push(message.text())
+++    })
+++    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) => {
+++      if (route.request().method() !== 'GET') {
+++        writes.push(route.request().method())
+++        return routeJson(route, { error: 'Read-only fixture' }, 405)
+++      }
+++      return routeJson(route, {
+++        comments: [
+++          {
+++            id: 'comment-markdown',
+++            issue_id: mockUser.issueId,
+++            author_id: mockUser.id,
+++            author_name: 'Demo User',
+++            body: markdownComment,
+++            created_at: '2026-09-01T10:00:00Z',
+++            updated_at: '2026-09-01T10:00:00Z',
+++          },
+++        ],
+++      })
+++    })
+++    await page.goto(`/issues/${mockUser.issueId}`)
+++    await page.getByRole('tab', { name: 'Комментарии', exact: true }).click()
+++    const panel = page.getByRole('tabpanel')
+++    for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+++      await page.setViewportSize({ width, height: 1080 })
+++      await expect(panel.getByRole('heading', { name: 'Итоги', level: 3 })).toBeVisible()
+++      await expect(page.locator('main h1')).toHaveCount(1)
+++      await expect(panel.locator('strong')).toHaveText('Результат')
+++      await expect(panel.getByRole('listitem')).toHaveCount(2)
+++      await expect(panel.locator('pre code')).toHaveText('  ' + 'code_block_'.repeat(40) + '\n')
+++      await expect(panel.locator('pre')).toHaveAttribute('tabindex', '0')
+++      await expect(panel.locator('script, [href^="javascript:"]')).toHaveCount(0)
+++      expect(
+++        await page.evaluate(
+++          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+++        ),
+++      ).toBeLessThanOrEqual(1)
+++      if (width === 375 || width === 1920) {
+++        await page.screenshot({
+++          path: testInfo.outputPath(`markdown-comments-${theme}-${width}.png`),
+++          fullPage: true,
+++        })
+++      }
+++    }
+++    await panel.locator('pre').focus()
+++    await expect(panel.locator('pre')).toBeFocused()
+++    expect(writes).toEqual([])
+++    expect(errors).toEqual([])
+++  })
+++}
+++
+  function routeJson(route: Route, body: unknown, status = 200) {
+    return route.fulfill({
+      status,
+@@@ -2936,6 -358,6 +3442,7 @@@ test.describe('smoke', () => 
+  
+      await page.goto(`${appBaseURL}/`)
+      await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
+++    await expect(page.getByRole('link', { name: 'Создать', exact: true })).toHaveCount(1)
+      await expect(
+        page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
+      ).toBeVisible()
+diff --cc frontend/src/api/comment.test.ts
+index 7897356,7897356..94db778
+--- a/frontend/src/api/comment.test.ts
++++ b/frontend/src/api/comment.test.ts
+@@@ -1,4 -1,4 +1,5 @@@
+  import { beforeEach, describe, expect, it, vi } from 'vitest'
+++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+  import { listComments } from './comment'
+  
+  const GET = vi.hoisted(() => vi.fn())
+@@@ -25,6 -25,6 +26,27 @@@ describe('comment API wrapper', () => 
+      GET.mockReset()
+    })
+  
+++  it.each([403, 404, 422, 408, 429, 503])(
+++    'preserves HTTP %s for the Base state policy',
+++    async (status) => {
+++      GET.mockResolvedValue({
+++        response: new Response(null, { status }),
+++        error: { error: { message: 'Private diagnostic' } },
+++      })
+++
+++      const error = await listComments('issue-1').catch((failure: unknown) => failure)
+++      expect(error).toBeInstanceOf(ApiError)
+++      expect(error).toMatchObject({ status, message: 'Failed to load comments' })
+++      expect(GET).toHaveBeenCalledTimes(1)
+++    },
+++  )
+++
+++  it('rejects a malformed successful response instead of treating it as an empty list', async () => {
+++    GET.mockResolvedValue({ response: new Response(null, { status: 200 }), data: {} })
+++    await expect(listComments('issue-1')).rejects.toBeInstanceOf(InvalidResponseError)
+++    expect(GET).toHaveBeenCalledTimes(1)
+++  })
+++
+    it('loads every comment page instead of stopping at the first API page', async () => {
+      const firstPage = Array.from({ length: 500 }, (_, index) => commentDto(index))
+      const lastPageNewestFirst = commentDto(500, '2026-09-02T00:00:00.000Z')
+diff --cc frontend/src/api/comment.ts
+index 62b145e,62b145e..d15d6b1
+--- a/frontend/src/api/comment.ts
++++ b/frontend/src/api/comment.ts
+@@@ -1,4 -1,4 +1,5 @@@
+  import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
+++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+  import { api } from './client'
+  
+  const COMMENT_PAGE_SIZE = 500
+@@@ -41,13 -41,13 +42,14 @@@ export async function listComments(issu
+  }
+  
+  async function listCommentPage(issueId: string, offset: number): Promise<Comment[]> {
+--  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/comments', {
+++  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/comments', {
+      params: {
+        path: { issue_id: issueId },
+        query: { limit: COMMENT_PAGE_SIZE, offset },
+      },
+    })
+--  if (error || !data) throw new Error('Failed to load comments')
+++  if (error) throw new ApiError(response?.status ?? 0, 'Failed to load comments', error)
+++  if (!data || !Array.isArray(data.comments)) throw new InvalidResponseError(response?.status ?? 0)
+    return data.comments.map(mapDto)
+  }
+  
+diff --cc frontend/src/api/worklog.test.ts
+index 9ca2fd5,9ca2fd5..da77e4d
+--- a/frontend/src/api/worklog.test.ts
++++ b/frontend/src/api/worklog.test.ts
+@@@ -1,4 -1,4 +1,5 @@@
+  import { beforeEach, describe, expect, it, vi } from 'vitest'
+++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+  import { listWorklogs, updateWorklog } from './worklog'
+  
+  const GET = vi.hoisted(() => vi.fn())
+@@@ -29,6 -29,6 +30,26 @@@ describe('worklog API wrapper', () => 
+      PATCH.mockReset()
+    })
+  
+++  it.each([403, 404, 422, 408, 429, 503])(
+++    'preserves HTTP %s for the Base state policy',
+++    async (status) => {
+++      GET.mockResolvedValue({
+++        response: new Response(null, { status }),
+++        error: { error: { message: 'Private worklog diagnostic' } },
+++      })
+++      const error = await listWorklogs('issue-1').catch((failure: unknown) => failure)
+++      expect(error).toBeInstanceOf(ApiError)
+++      expect(error).toMatchObject({ status, message: 'Failed to load worklogs' })
+++      expect(GET).toHaveBeenCalledTimes(1)
+++    },
+++  )
+++
+++  it('rejects a malformed successful worklog response instead of an empty list', async () => {
+++    GET.mockResolvedValue({ response: new Response(null, { status: 200 }), data: {} })
+++    await expect(listWorklogs('issue-1')).rejects.toBeInstanceOf(InvalidResponseError)
+++    expect(GET).toHaveBeenCalledTimes(1)
+++  })
+++
+    it('loads every worklog page instead of stopping at the first API page', async () => {
+      const firstPage = Array.from({ length: 500 }, (_, index) => worklogDto(index))
+      const lastPageNewestFirst = worklogDto(500, '2026-09-02T00:00:00.000Z')
+diff --cc frontend/src/api/worklog.ts
+index 3b3ed43,3b3ed43..06a229d
+--- a/frontend/src/api/worklog.ts
++++ b/frontend/src/api/worklog.ts
+@@@ -1,4 -1,4 +1,5 @@@
+  import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
+++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+  import { parseDuration } from '@/shared/lib/time'
+  import { api } from './client'
+  
+@@@ -46,13 -46,13 +47,14 @@@ export async function listWorklogs(issu
+  }
+  
+  async function listWorklogPage(issueId: string, offset: number): Promise<Worklog[]> {
+--  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/worklogs', {
+++  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/worklogs', {
+      params: {
+        path: { issue_id: issueId },
+        query: { limit: WORKLOG_PAGE_SIZE, offset },
+      },
+    })
+--  if (error || !data) throw new Error('Failed to load worklogs')
+++  if (error) throw new ApiError(response?.status ?? 0, 'Failed to load worklogs', error)
+++  if (!data || !Array.isArray(data.worklogs)) throw new InvalidResponseError(response?.status ?? 0)
+    return data.worklogs.map(mapDto)
+  }
+  
+diff --cc frontend/src/entities/comment/ui/CommentBody.tsx
+index 0000000,2f99d76..b189963
+mode 000000,100644..100644
+--- a/frontend/src/entities/comment/ui/CommentBody.tsx
++++ b/frontend/src/entities/comment/ui/CommentBody.tsx
+@@@ -1,0 -1,9 +1,22 @@@
++ import Markdown from 'react-markdown'
++ 
++ export function CommentBody({ body }: { body: string }) {
++   return (
++     <div className="min-w-0 break-words text-sm leading-6 text-text-secondary [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h4]:font-semibold [&_h5]:font-semibold [&_h6]:font-semibold [&_p]:my-2 [&_p]:whitespace-pre-line [&_li]:whitespace-pre-line [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-surface-raised [&_pre]:p-3 [&_code]:font-mono [&_img]:max-w-full">
+ -      <Markdown skipHtml>{body}</Markdown>
+++      <Markdown
+++        skipHtml
+++        components={{
+++          h1: ({ children }) => <h3>{children}</h3>,
+++          h2: ({ children }) => <h4>{children}</h4>,
+++          h3: ({ children }) => <h5>{children}</h5>,
+++          h4: ({ children }) => <h6>{children}</h6>,
+++          h5: ({ children }) => <h6>{children}</h6>,
+++          h6: ({ children }) => <h6>{children}</h6>,
+++          pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
+++        }}
+++      >
+++        {body}
+++      </Markdown>
++     </div>
++   )
++ }
+diff --cc frontend/src/features/comments/ui/CommentList.test.tsx
+index 254713c,ee1a06d..782b772
+--- a/frontend/src/features/comments/ui/CommentList.test.tsx
++++ b/frontend/src/features/comments/ui/CommentList.test.tsx
+@@@ -47,6 -47,68 +47,83 @@@ describe('CommentList', () => 
+  })
+  
+  describe('CommentItem', () => {
+++  it.each(['ru', 'en'])('formats the timestamp in the selected %s locale', async (language) => {
+++    const localized = i18n.cloneInstance({ lng: language })
+++    await localized.changeLanguage(language)
+++    render(
+++      <I18nextProvider i18n={localized}>
+++        <CommentItem comment={sampleComment} onEdit={() => {}} onDelete={() => {}} />
+++      </I18nextProvider>,
+++    )
+++    expect(
+++      screen.getByText(new Date(sampleComment.createdAt).toLocaleString(language)),
+++    ).toBeVisible()
+++  })
+++
++   it('preserves soft line breaks in paragraphs and list items without changing code blocks', async () => {
++     const body =
++       'Первая строка\nВторая строка\n\n- Первый пункт\n  Продолжение пункта\n\n```text\nfirst line\n  indented line\n```'
++     const { container } = render(
++       <Wrapper>
++         <CommentItem comment={{ ...sampleComment, body }} onEdit={() => {}} onDelete={() => {}} />
++       </Wrapper>,
++     )
++     const paragraph = screen.getByText('Первая строка Вторая строка')
++     expect(paragraph.textContent).toBe('Первая строка\nВторая строка')
++     expect(paragraph.parentElement).toHaveClass('[&_p]:whitespace-pre-line')
++     const listItem = screen.getByRole('listitem')
++     expect(listItem.textContent).toBe('Первый пункт\nПродолжение пункта')
++     expect(paragraph.parentElement).toHaveClass('[&_li]:whitespace-pre-line')
++     expect(container.querySelector('pre code')?.textContent).toBe('first line\n  indented line\n')
++     const { compile } = await import('tailwindcss')
++     const compiler = await compile('@tailwind utilities;')
++     const style = document.createElement('style')
++     style.textContent = compiler.build(Array.from(paragraph.parentElement!.classList))
++     document.head.append(style)
++     try {
++       expect(paragraph).toHaveStyle({ whiteSpace: 'pre-line' })
++       expect(listItem).toHaveStyle({ whiteSpace: 'pre-line' })
++       expect(container.querySelector('pre')).toHaveStyle({ whiteSpace: 'pre' })
++     } finally {
++       style.remove()
++     }
++   })
++ 
++   it('renders Markdown, not raw syntax, without executing HTML or unsafe links', () => {
++     const body =
++       '# Итоги\n\n**Результат** и *курсив*\n\n- Первый\n- Второй\n\n[Evidence](https://example.test/report)\n\n```text\ncode <tag>\n```\n\n<script>alert(1)</script>\n\n[Опасно](javascript:alert%281%29)'
++     const { container } = render(
++       <Wrapper>
++         <CommentItem comment={{ ...sampleComment, body }} onEdit={() => {}} onDelete={() => {}} />
++       </Wrapper>,
++     )
++     expect(screen.getByRole('heading', { name: 'Итоги' })).toBeVisible()
++     expect(screen.getByText('Результат').tagName).toBe('STRONG')
++     expect(screen.getByText('курсив').tagName).toBe('EM')
++     expect(screen.getAllByRole('listitem')).toHaveLength(2)
++     expect(screen.getByRole('link', { name: 'Evidence' })).toHaveAttribute(
++       'href',
++       'https://example.test/report',
++     )
++     expect(container.querySelector('pre code')).toHaveTextContent('code <tag>')
+++    expect(container.querySelector('pre')).toHaveAttribute('tabindex', '0')
+++    expect(container.querySelector('h1, h2')).toBeNull()
++     expect(container.querySelector('script')).toBeNull()
++     expect(container.querySelector('[href^="javascript:"]')).toBeNull()
++   })
++ 
++   it('passes the unchanged Markdown source to edit', () => {
++     const comment = { ...sampleComment, body: '**Исходник**\n\n- пункт' }
++     const onEdit = vi.fn()
++     render(
++       <Wrapper>
++         <CommentItem comment={comment} currentUserId="u1" onEdit={onEdit} onDelete={() => {}} />
++       </Wrapper>,
++     )
++     fireEvent.click(screen.getByText(/изменить/i))
++     expect(onEdit).toHaveBeenCalledWith(comment)
++   })
++ 
+    it('does not show actions for non-author', () => {
+      render(
+        <Wrapper>
+@@@ -58,6 -120,6 +135,70 @@@
+  })
+  
+  describe('CommentForm', () => {
+++  it('locks the field and cancel action and rejects synthetic duplicate submits while pending', async () => {
+++    let resolveSubmit: (() => void) | undefined
+++    const onSubmit = vi.fn(
+++      () =>
+++        new Promise<void>((resolve) => {
+++          resolveSubmit = resolve
+++        }),
+++    )
+++    const onCancel = vi.fn()
+++    const { container } = render(
+++      <Wrapper>
+++        <CommentForm initialBody="Original" onSubmit={onSubmit} onCancel={onCancel} />
+++      </Wrapper>,
+++    )
+++    const textarea = screen.getByRole('textbox')
+++    fireEvent.change(textarea, { target: { value: 'Retained draft' } })
+++    const form = container.querySelector('form')!
+++    fireEvent.submit(form)
+++    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+++    expect(form).toHaveAttribute('aria-busy', 'true')
+++    expect(textarea).toBeDisabled()
+++    expect(screen.getByRole('button', { name: /отмена/i })).toBeDisabled()
+++    fireEvent.submit(form)
+++    await new Promise((resolve) => setTimeout(resolve, 0))
+++    expect(onSubmit).toHaveBeenCalledOnce()
+++    expect(onCancel).not.toHaveBeenCalled()
+++    resolveSubmit?.()
+++    await waitFor(() => expect(textarea).toBeEnabled())
+++    expect(textarea).toHaveValue('Retained draft')
+++    expect(form).not.toHaveAttribute('aria-busy')
+++  })
+++
+++  it('rejects whitespace-only content and associates the required error with its field', async () => {
+++    const onSubmit = vi.fn()
+++    const { container } = render(
+++      <Wrapper>
+++        <CommentForm onSubmit={onSubmit} />
+++      </Wrapper>,
+++    )
+++    const textarea = screen.getByRole('textbox')
+++    fireEvent.change(textarea, { target: { value: ' \n\t ' } })
+++    fireEvent.submit(container.querySelector('form')!)
+++    const error = await screen.findByRole('alert')
+++    expect(onSubmit).not.toHaveBeenCalled()
+++    expect(textarea).toBeRequired()
+++    expect(textarea).toHaveAttribute('aria-invalid', 'true')
+++    expect(textarea).toHaveAttribute('aria-describedby', error.id)
+++    expect(textarea).toHaveAccessibleName()
+++    expect(textarea).toHaveValue(' \n\t ')
+++  })
+++
+++  it('gives simultaneously mounted fields distinct accessible IDs', () => {
+++    render(
+++      <Wrapper>
+++        <CommentForm onSubmit={() => {}} />
+++        <CommentForm onSubmit={() => {}} initialBody="Edit" />
+++      </Wrapper>,
+++    )
+++    const fields = screen.getAllByRole('textbox')
+++    expect(fields).toHaveLength(2)
+++    expect(new Set(fields.map((field) => field.id)).size).toBe(2)
+++    for (const field of fields) expect(field).toHaveAccessibleName()
+++  })
+++
+    it('does not submit the same comment twice while the mutation is pending', async () => {
+      let resolveSubmit: (() => void) | undefined
+      const onSubmit = vi.fn(
+diff --cc frontend/src/features/comments/ui/CommentList.tsx
+index 338af12,f05413e..c9748f7
+--- a/frontend/src/features/comments/ui/CommentList.tsx
++++ b/frontend/src/features/comments/ui/CommentList.tsx
+@@@ -1,4 -1,5 +1,5 @@@
+--import { memo, useState } from 'react'
+++import { memo, useId, useState } from 'react'
++ import { CommentBody } from '@/entities/comment/ui/CommentBody'
+  import { useTranslation } from 'react-i18next'
+  import { useForm } from 'react-hook-form'
+  import { zodResolver } from '@hookform/resolvers/zod'
+@@@ -12,10 -13,10 +13,12 @@@ import 
+    AlertDialogHeader,
+    AlertDialogTitle,
+    Button,
+--  ErrorState,
+++  FormField,
+++  PendingForm,
+++  ResourceStateView,
+++  resourceErrorState,
+  } from '@sdlc/ui/ui'
+  import { Textarea } from '@sdlc/ui/ui'
+--import { Label } from '@sdlc/ui/ui'
+  import {
+    useComments,
+    useCreateComment,
+@@@ -38,8 -39,8 +41,9 @@@ export function CommentForm(
+    submitLabel,
+  }: CommentFormProps) {
+    const { t } = useTranslation()
+++  const bodyId = useId()
+    const schema = z.object({
+--    body: z.string().min(1, t('comments.validation.required')),
+++    body: z.string().trim().min(1, t('comments.validation.required')),
+    })
+  
+    const form = useForm<{ body: string }>({
+@@@ -59,24 -60,24 +63,27 @@@
+    })
+  
+    return (
+--    <form onSubmit={handleSubmit} className="space-y-3">
+--      <div className="space-y-1">
+--        <Label htmlFor="comment-body">{t('comments.body')}</Label>
+--        <Textarea
+--          id="comment-body"
+--          {...form.register('body')}
+--          placeholder={t('comments.placeholder')}
+--          rows={4}
+--        />
+--        {form.formState.errors.body && (
+--          <p className="text-xs text-danger">{form.formState.errors.body.message}</p>
+--        )}
+--        {submitError && (
+--          <p role="alert" className="text-xs text-danger">
+--            {submitError}
+--          </p>
+++    <PendingForm onSubmit={handleSubmit} pending={form.formState.isSubmitting}>
+++      <FormField
+++        id={bodyId}
+++        label={t('comments.body')}
+++        required
+++        error={form.formState.errors.body?.message}
+++      >
+++        {(attrs) => (
+++          <Textarea
+++            {...attrs}
+++            {...form.register('body')}
+++            placeholder={t('comments.placeholder')}
+++            rows={4}
+++          />
+          )}
+--      </div>
+++      </FormField>
+++      {submitError && (
+++        <p role="alert" className="text-xs text-danger">
+++          {submitError}
+++        </p>
+++      )}
+        <div className="flex justify-end gap-2">
+          {onCancel && (
+            <Button type="button" variant="secondary" onClick={onCancel}>
+@@@ -87,7 -88,7 +94,7 @@@
+            {submitLabel ?? t('common.save')}
+          </Button>
+        </div>
+--    </form>
+++    </PendingForm>
+    )
+  }
+  
+@@@ -104,9 -105,9 +111,9 @@@ export const CommentItem = memo(functio
+    onEdit,
+    onDelete,
+  }: CommentItemProps) {
+--  const { t } = useTranslation()
+++  const { t, i18n } = useTranslation()
+    const isAuthor = currentUserId ? comment.authorId === currentUserId : false
+--  const date = new Date(comment.createdAt).toLocaleString()
+++  const date = new Date(comment.createdAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)
+  
+    return (
+      <div className="rounded-lg border border-border bg-surface p-4">
+@@@ -187,14 -188,14 +194,20 @@@ export function CommentsPanel({ issueId
+    const update = useUpdateComment(issueId)
+    const remove = useDeleteComment(issueId)
+  
+++  const errorState = commentsQuery.error
+++    ? resourceErrorState(commentsQuery.error, () => void commentsQuery.refetch(), {
+++        hasData: comments !== undefined,
+++        message: t('comments.loadError'),
+++      })
+++    : undefined
+++  if (errorState && errorState.kind !== 'partial-error') {
+++    return <ResourceStateView state={errorState} />
+++  }
+    if (isLoading) {
+--    return <p className="text-sm text-text-muted">{t('common.loading')}</p>
+++    return <ResourceStateView state={{ kind: 'loading', message: t('common.loading') }} />
+    }
+--
+--  if (commentsQuery.error && !comments) {
+--    return (
+--      <ErrorState message={t('comments.loadError')} onRetry={() => void commentsQuery.refetch()} />
+--    )
+++  if (comments === undefined) {
+++    return <ResourceStateView state={{ kind: 'error', message: t('common.noData') }} />
+    }
+  
+    const handleCreate = (input: CreateCommentInput) => create.mutateAsync(input)
+@@@ -217,12 -218,12 +230,7 @@@
+  
+    return (
+      <div className="space-y-6">
+--      {commentsQuery.error && (
+--        <ErrorState
+--          message={t('comments.loadError')}
+--          onRetry={() => void commentsQuery.refetch()}
+--        />
+--      )}
+++      {errorState && <ResourceStateView state={errorState} />}
+        {editing ? (
+          <CommentForm
+            initialBody={editing.body}
+@@@ -234,7 -235,7 +242,7 @@@
+          <CommentForm onSubmit={handleCreate} submitLabel={t('comments.add')} />
+        )}
+        <CommentList
+--        comments={comments ?? []}
+++        comments={comments}
+          currentUserId={currentUserId}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+diff --cc frontend/src/features/comments/ui/CommentsPanel.test.tsx
+index 0000000,0000000..4f49681
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/features/comments/ui/CommentsPanel.test.tsx
+@@@ -1,0 -1,0 +1,100 @@@
+++import { beforeEach, describe, expect, it, vi } from 'vitest'
+++import { fireEvent, render, screen } from '@testing-library/react'
+++import { I18nextProvider } from 'react-i18next'
+++import i18n from '@/shared/i18n/test-config'
+++import { CommentsPanel } from './CommentList'
+++
+++const mocks = vi.hoisted(() => ({ query: vi.fn(), refetch: vi.fn() }))
+++vi.mock('../model/use-comments', () => ({
+++  useComments: mocks.query,
+++  useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+++  useUpdateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+++  useDeleteComment: () => ({ mutate: vi.fn(), isPending: false }),
+++}))
+++
+++const comment = {
+++  id: 'c1',
+++  issueId: 'i1',
+++  authorId: 'u1',
+++  authorName: 'Fixture User',
+++  body: 'Private comment',
+++  createdAt: '2026-07-30T10:00:00Z',
+++  updatedAt: '2026-07-30T10:00:00Z',
+++}
+++function show(data: (typeof comment)[] | undefined, error: unknown = null, isLoading = false) {
+++  mocks.query.mockReturnValue({ data, error, isLoading, refetch: mocks.refetch })
+++  return render(
+++    <I18nextProvider i18n={i18n}>
+++      <CommentsPanel issueId="i1" currentUserId="u1" />
+++    </I18nextProvider>,
+++  )
+++}
+++beforeEach(() => {
+++  vi.clearAllMocks()
+++  i18n.addResource('ru', 'translation', 'common.retry', 'Повторить')
+++})
+++
+++describe('CommentsPanel Base freshness states', () => {
+++  for (const cached of [false, true]) {
+++    for (const status of [403, 404, 422, 503]) {
+++      it(`${cached ? 'cached' : 'cold'} HTTP ${status} respects privacy and retry policy`, () => {
+++        const { container } = show(cached ? [comment] : undefined, { status })
+++        const retained = cached && status === 503
+++        const retry = screen.queryByRole('button', { name: /повторить/i })
+++        if (status === 403 || status === 404) {
+++          expect(
+++            container.querySelector(
+++              `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
+++            ),
+++          ).toBeVisible()
+++        } else if (retained) {
+++          expect(container.querySelector('[data-page-state="partial-error"]')).toBeVisible()
+++        } else {
+++          expect(screen.getByRole('alert')).toBeVisible()
+++        }
+++        if (retained) {
+++          expect(screen.getByText(comment.body)).toBeVisible()
+++          expect(screen.getByRole('textbox', { name: /комментарий/i })).toBeVisible()
+++        } else {
+++          expect(screen.queryByText(comment.body)).not.toBeInTheDocument()
+++          expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+++          expect(
+++            screen.queryByRole('button', { name: /изменить|удалить/i }),
+++          ).not.toBeInTheDocument()
+++        }
+++        if (status === 503) {
+++          expect(retry).toBeVisible()
+++          fireEvent.click(retry!)
+++          expect(mocks.refetch).toHaveBeenCalledOnce()
+++        } else {
+++          expect(retry).not.toBeInTheDocument()
+++        }
+++      })
+++    }
+++  }
+++  it.each([0, 408, 429])('cached HTTP %s retains comments as partial failure', (status) => {
+++    const { container } = show([comment], { status })
+++    expect(container.querySelector('[data-page-state="partial-error"]')).toBeVisible()
+++    expect(screen.getByText(comment.body)).toBeVisible()
+++    expect(screen.getByRole('button', { name: /повторить/i })).toBeVisible()
+++  })
+++  it('cancelled refresh does not expose cached comments or offer retry', () => {
+++    show([comment], { name: 'AbortError' })
+++    expect(screen.getByRole('alert')).toBeVisible()
+++    expect(screen.queryByText(comment.body)).not.toBeInTheDocument()
+++    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+++    expect(screen.queryByRole('button', { name: /повторить/i })).not.toBeInTheDocument()
+++  })
+++  it('distinguishes unavailable data from a confirmed empty comment list', () => {
+++    show(undefined)
+++    expect(screen.getByRole('alert')).toBeVisible()
+++    expect(screen.queryByText(/пока нет комментариев/i)).not.toBeInTheDocument()
+++    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+++  })
+++  it('keeps comment creation available for a successfully loaded empty list', () => {
+++    show([])
+++    expect(screen.getByText(/пока нет комментариев/i)).toBeVisible()
+++    expect(screen.getByRole('textbox', { name: /комментарий/i })).toBeVisible()
+++    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+++  })
+++})
+diff --cc frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
+index e0fd35e,30ff77d..84b63a7
+--- a/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
++++ b/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
+@@@ -42,6 -42,25 +42,25 @@@ const worklog: Worklog = 
+  }
+  
+  describe('ActivityFeed', () => {
++   it('renders safe Markdown comments in activity', () => {
++     const markdownComment = {
++       ...comment,
++       body: '# Итоги\n\n**Результат**\n\nПервая строка\nВторая строка\n\n- Первый\n- Второй\n\n```text\nfirst line\n  indented line\n```\n\n<script>alert(1)</script>\n\n[Опасно](javascript:alert%281%29)',
++     }
++     const { container } = render(
++       wrapper(<ActivityFeed comments={[markdownComment]} worklogs={[]} />),
++     )
+ -    expect(screen.getByRole('heading', { name: 'Итоги', level: 1 })).toBeVisible()
+++    expect(screen.getByRole('heading', { name: 'Итоги', level: 3 })).toBeVisible()
++     expect(screen.getByText('Результат').tagName).toBe('STRONG')
++     expect(screen.getByText('Первая строка Вторая строка').textContent).toBe(
++       'Первая строка\nВторая строка',
++     )
++     expect(screen.getAllByRole('listitem')).toHaveLength(2)
++     expect(container.querySelector('pre code')?.textContent).toBe('first line\n  indented line\n')
++     expect(container.querySelector('script')).toBeNull()
++     expect(container.querySelector('[href^="javascript:"]')).toBeNull()
++   })
++ 
+    it('renders comment and worklog activity items', () => {
+      render(wrapper(<ActivityFeed comments={[comment]} worklogs={[worklog]} />))
+      expect(screen.getByText('Alice')).toBeInTheDocument()
+diff --cc frontend/src/pages/dashboard/dashboard.test.tsx
+index 11103ab,ffdfbdd..882bf2f
+--- a/frontend/src/pages/dashboard/dashboard.test.tsx
++++ b/frontend/src/pages/dashboard/dashboard.test.tsx
+@@@ -112,6 -75,13 +112,14 @@@ describe('DashboardPage', () => 
+      expect(screen.getByText('Готово: 3')).toBeInTheDocument()
+    })
+  
+ -  it('leaves issue creation to the shell instead of duplicating its primary action', async () => {
+++  it('offers exactly one page-owned issue creation action', async () => {
++     render(wrapper(<DashboardPage />))
++     await screen.findByText('Fix tests')
+ -    expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
+++    expect(screen.getAllByRole('link', { name: 'Создать' })).toHaveLength(1)
+++    expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute('href', '/issues/create')
++     expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()
++   })
++ 
+    it('keeps the project list available when assigned issues fail to load', async () => {
+      getDashboard.mockRejectedValueOnce(new Error('Failed to load dashboard'))
+      const user = userEvent.setup()
+diff --cc frontend/src/pages/issue-detail/index.tsx
+index 098e23f,9e6f437..41fe1d6
+--- a/frontend/src/pages/issue-detail/index.tsx
++++ b/frontend/src/pages/issue-detail/index.tsx
+@@@ -12,12 -13,7 +12,11 @@@ import 
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+    LoadingState,
+--  ErrorState,
+ +  ResourceStateView,
+ +  resourceErrorState,
+ +  DetailPage,
+ +  type PageHeaderProps,
+ +  type ResourceState,
+  } from '@sdlc/ui/ui'
+  import {
+    useWorklogs,
+@@@ -111,10 -99,10 +110,27 @@@ export function IssueDetailPage() 
+    }
+  
+    const issue = issueQuery.data
+--  const worklogs = worklogsQuery.data ?? []
+++  const worklogsErrorState = worklogsQuery.error
+++    ? resourceErrorState(worklogsQuery.error, () => void worklogsQuery.refetch(), {
+++        hasData: worklogsQuery.data !== undefined,
+++        message: t('timeTracking.worklog.loadError'),
+++      })
+++    : undefined
+++  const canReadWorklogs = !worklogsErrorState || worklogsErrorState.kind === 'partial-error'
+++  const worklogs = canReadWorklogs ? (worklogsQuery.data ?? []) : []
+++  const commentsErrorState = commentsQuery.error
+++    ? resourceErrorState(commentsQuery.error, () => void commentsQuery.refetch(), {
+++        hasData: commentsQuery.data !== undefined,
+++        message: t('comments.loadError'),
+++      })
+++    : undefined
+++  const activityComments =
+++    !commentsErrorState || commentsErrorState.kind === 'partial-error'
+++      ? (commentsQuery.data ?? [])
+++      : []
+    const activityLoading = commentsQuery.isLoading || worklogsQuery.isLoading
+    const activityError = commentsQuery.error || worklogsQuery.error
+--  const hasActivityData = Boolean(commentsQuery.data?.length || worklogs.length)
+++  const hasActivityData = Boolean(activityComments.length || worklogs.length)
+  
+    const handleLogWork = () => {
+      setEditingWorklog(undefined)
+@@@ -237,137 -224,156 +253,123 @@@
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+ -          </div>
+ -        </div>
+ -
+ -        <IssueDetailLayout
+ -          description={
+ -            <section className="min-w-0 border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
+ -              <IssueDescriptionEditor
+ +          </>
+ +        }
+ +        description={
+ +          <section className="min-w-0">
+ +            <IssueDescriptionEditor
+ +              key={issue.id}
+ +              issue={issue}
+ +              showTitle={false}
+ +              disabled={updateIssue.isPending}
+ +              onSubmit={async (patch) => {
+ +                await updateIssue.mutateAsync(patch)
+ +                toast.success(t('common.saved'))
+ +              }}
+ +            />
+ +          </section>
+ +        }
+ +        details={
+ +          <section className="base-page-stack">
+ +            <h2 className="text-sm font-semibold">{t('issue.details')}</h2>
+ +            <div className="text-sm">
+ +              <IssueMetaEditor
+                  issue={issue}
+ +                columns={boardQuery.data?.columns ?? []}
+ +                sprints={sprintsQuery.data ?? []}
+                  disabled={updateIssue.isPending}
+ -                onSubmit={async (patch) => {
+ -                  await updateIssue.mutateAsync(patch)
+ -                  toast.success(t('common.saved'))
+ -                }}
+ +                onChange={(patch) =>
+ +                  updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
+ +                }
+                />
+ -            </section>
+ -          }
+ -          details={
+ -            <Card>
+ -              <CardHeader>
+ -                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
+ -              </CardHeader>
+ -              <CardContent className="text-sm">
+ -                <IssueMetaEditor
+ -                  issue={issue}
+ -                  columns={boardQuery.data?.columns ?? []}
+ -                  sprints={sprintsQuery.data ?? []}
+ -                  disabled={updateIssue.isPending}
+ -                  onChange={(patch) =>
+ -                    updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
+ -                  }
+ -                />
+ -              </CardContent>
+ -            </Card>
+ -          }
+ -          activity={
+ -            <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
+ -              <Tabs value={activeTab} onValueChange={updateActiveTab}>
+ -                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+ -                  <TabsTrigger className="min-h-10" value="activity">
+ -                    {t('issue.activity')}
+ -                  </TabsTrigger>
+ -                  <TabsTrigger className="min-h-10" value="comments">
+ -                    {t('issue.comments')}
+ -                  </TabsTrigger>
+ -                  <TabsTrigger className="min-h-10" value="worklog">
+ -                    {t('timeTracking.worklog.title')}
+ -                  </TabsTrigger>
+ -                  <TabsTrigger className="min-h-10" value="attachments">
+ -                    {t('attachments.title')}
+ -                  </TabsTrigger>
+ -                </TabsList>
+ -                <TabsContent value="activity">
+ -                  {commentsQuery.error && (
+ -                    <ErrorState
+ -                      message={t('comments.loadError')}
+ -                      onRetry={() => void commentsQuery.refetch()}
+ -                    />
+ -                  )}
+ -                  {worklogsQuery.error && (
+ -                    <ErrorState
+ -                      message={t('timeTracking.worklog.loadError')}
+ -                      onRetry={() => void worklogsQuery.refetch()}
+ -                    />
+ -                  )}
+ -                  {activityLoading ? (
+ -                    <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+ -                  ) : hasActivityData || !activityError ? (
+ -                    <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
+ -                  ) : null}
+ -                </TabsContent>
+ -                <TabsContent value="comments">
+ -                  <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+ -                </TabsContent>
+ -                <TabsContent value="worklog">
+ -                  {worklogsQuery.error ? (
+ -                    <ErrorState
+ -                      message={t('timeTracking.worklog.loadError')}
+ -                      onRetry={() => void worklogsQuery.refetch()}
+ -                    />
+ -                  ) : worklogsQuery.isLoading ? (
+ -                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+ -                  ) : (
+ -                    <WorklogTab
+ -                      worklogs={worklogs}
+ -                      onEdit={handleEdit}
+ -                      onDelete={handleDelete}
+ -                      currentUserId={currentUserId ?? ''}
+ -                    />
+ -                  )}
+ -                </TabsContent>
+ -                <TabsContent value="attachments">
+ -                  <AttachmentPanel issueId={id} />
+ -                </TabsContent>
+ -              </Tabs>
+ -
+ -              <div className="grid gap-4 md:grid-cols-2">
+ -                <Card>
+ -                  <CardContent className="pt-5">
+ -                    <LabelEditor issueId={id} projectKey={issue.project_key} />
+ -                  </CardContent>
+ -                </Card>
+ -                <Card>
+ -                  <CardHeader>
+ -                    <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
+ -                  </CardHeader>
+ -                  <CardContent>
+ -                    <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+ -                  </CardContent>
+ -                </Card>
+ -                <Card className="md:col-span-2">
+ -                  <CardContent className="pt-5">
+ -                    <LinkEditor issueId={id} currentKey={issue.key} />
+ -                  </CardContent>
+ -                </Card>
+ -              </div>
+              </div>
+ -          }
+ -          supplemental={
+ -            <>
+ -              <Card>
+ -                <CardHeader>
+ -                  <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
+ -                </CardHeader>
+ -                <CardContent>
+ -                  <TimeTrackingPanel
+ -                    timeSpentSeconds={issue.time_spent_seconds}
+ -                    originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+ -                    remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+ -                    onLogWork={handleLogWork}
+ +          </section>
+ +        }
+ +        activity={
+ +          <div className="base-page-stack">
+ +            <Tabs value={activeTab} onValueChange={updateActiveTab}>
+ +              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+ +                <TabsTrigger className="min-h-10" value="activity">
+ +                  {t('issue.activity')}
+ +                </TabsTrigger>
+ +                <TabsTrigger className="min-h-10" value="comments">
+ +                  {t('issue.comments')}
+ +                </TabsTrigger>
+ +                <TabsTrigger className="min-h-10" value="worklog">
+ +                  {t('timeTracking.worklog.title')}
+ +                </TabsTrigger>
+ +                <TabsTrigger className="min-h-10" value="attachments">
+ +                  {t('attachments.title')}
+ +                </TabsTrigger>
+ +              </TabsList>
+ +              <TabsContent value="activity">
+-                 {commentsQuery.error && (
+-                   <ErrorState
+-                     message={t('comments.loadError')}
+-                     onRetry={() => void commentsQuery.refetch()}
+-                   />
+-                 )}
+-                 {worklogsQuery.error && (
+-                   <ErrorState
+-                     message={t('timeTracking.worklog.loadError')}
+-                     onRetry={() => void worklogsQuery.refetch()}
+-                   />
+-                 )}
+++                {commentsErrorState && <ResourceStateView state={commentsErrorState} />}
+++                {worklogsErrorState && <ResourceStateView state={worklogsErrorState} />}
+ +                {activityLoading ? (
+ +                  <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+ +                ) : hasActivityData || !activityError ? (
+-                   <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
+++                  <ActivityFeed comments={activityComments} worklogs={worklogs} />
+ +                ) : null}
+ +              </TabsContent>
+ +              <TabsContent value="comments">
+ +                <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+ +              </TabsContent>
+ +              <TabsContent value="worklog">
+-                 {worklogsQuery.error ? (
+-                   <ErrorState
+-                     message={t('timeTracking.worklog.loadError')}
+-                     onRetry={() => void worklogsQuery.refetch()}
+-                   />
+-                 ) : worklogsQuery.isLoading ? (
+++                {worklogsErrorState && <ResourceStateView state={worklogsErrorState} />}
+++                {!canReadWorklogs ? null : worklogsQuery.isLoading ? (
+ +                  <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+ +                ) : (
+ +                  <WorklogTab
+ +                    worklogs={worklogs}
+ +                    onEdit={handleEdit}
+ +                    onDelete={handleDelete}
+ +                    currentUserId={currentUserId ?? ''}
+                    />
+ -                </CardContent>
+ -              </Card>
+ +                )}
+ +              </TabsContent>
+ +              <TabsContent value="attachments">
+ +                <AttachmentPanel issueId={id} />
+ +              </TabsContent>
+ +            </Tabs>
+  
+ -              <Card>
+ -                <CardHeader>
+ -                  <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
+ -                </CardHeader>
+ -                <CardContent>
+ -                  <IssueEngagementPanel
+ -                    issueId={id}
+ -                    projectKey={issue.project_key}
+ -                    currentUserId={currentUserId}
+ -                    reporterId={issue.reporter_id}
+ -                  />
+ -                </CardContent>
+ -              </Card>
+ -            </>
+ -          }
+ -        />
+ -      </div>
+ +            <div className="grid gap-5 md:grid-cols-2">
+ +              <section className="min-w-0">
+ +                <LabelEditor issueId={id} projectKey={issue.project_key} />
+ +              </section>
+ +              <section className="base-page-stack">
+ +                <h2 className="text-sm font-semibold">{t('customFields.title')}</h2>
+ +                <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+ +              </section>
+ +              <section className="min-w-0 md:col-span-2">
+ +                <LinkEditor issueId={id} currentKey={issue.key} />
+ +              </section>
+ +            </div>
+ +          </div>
+ +        }
+ +        supplemental={
+ +          <>
+ +            <section className="base-page-stack">
+ +              <h2 className="text-sm font-semibold">{t('timeTracking.title')}</h2>
+ +              <TimeTrackingPanel
+ +                timeSpentSeconds={issue.time_spent_seconds}
+ +                originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+ +                remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+ +                onLogWork={handleLogWork}
+ +              />
+ +            </section>
+ +
+ +            <section className="base-page-stack">
+ +              <h2 className="text-sm font-semibold">{t('engagement.title')}</h2>
+ +              <IssueEngagementPanel
+ +                issueId={id}
+ +                projectKey={issue.project_key}
+ +                currentUserId={currentUserId}
+ +                reporterId={issue.reporter_id}
+ +              />
+ +            </section>
+ +          </>
+ +        }
+ +      />
+  
+        <LogWorkDialog
+          open={dialogOpen}
+diff --cc frontend/src/pages/issue-detail/issue-detail.test.tsx
+index 28185bd,52a7bd3..d064890
+--- a/frontend/src/pages/issue-detail/issue-detail.test.tsx
++++ b/frontend/src/pages/issue-detail/issue-detail.test.tsx
+@@@ -515,6 -468,6 +515,123 @@@ describe('IssueDetailPage', () => 
+      expect(screen.getAllByText('This is a comment').length).toBeGreaterThanOrEqual(1)
+    })
+  
+++  it.each([403, 404, 422, 503])(
+++    'uses the same comment privacy policy in activity after HTTP %s',
+++    (status) => {
+++      mockComments.mockReturnValue({
+++        data: commentData,
+++        error: { status },
+++        isLoading: false,
+++        refetch: vi.fn(),
+++      })
+++      mockWorklogs.mockReturnValue({
+++        data: [
+++          {
+++            id: 'safe-worklog',
+++            issueId: 'i1',
+++            userId: 'u1',
+++            userDisplayName: 'Alice',
+++            timeSpentSeconds: 60,
+++            startedAt: '2026-09-01T10:00:00Z',
+++            comment: 'Independent safe worklog',
+++            createdAt: '2026-09-01T10:00:00Z',
+++            updatedAt: '2026-09-01T10:00:00Z',
+++          },
+++        ],
+++        error: null,
+++        isLoading: false,
+++      })
+++      render(wrapper(<IssueDetailPage />))
+++      const panel = screen.getByRole('tabpanel')
+++      expect(within(panel).queryByText('This is a comment') !== null).toBe(status === 503)
+++      expect(within(panel).getByText('Independent safe worklog')).toBeInTheDocument()
+++      expect(within(panel).queryByRole('button', { name: /повторить|retry/i }) !== null).toBe(
+++        status === 503,
+++      )
+++      if (status !== 422) {
+++        expect(
+++          panel.querySelector(
+++            `[data-page-state="${status === 503 ? 'partial-error' : status === 403 ? 'permission-denied' : 'not-found'}"]`,
+++          ),
+++        ).toBeInTheDocument()
+++      }
+++    },
+++  )
+++
+++  for (const cached of [false, true]) {
+++    it.each([403, 404, 422, 503])(
+++      `${cached ? 'cached' : 'cold'} worklog respects HTTP %s in activity and its own tab`,
+++      async (status) => {
+++        const refetch = vi.fn()
+++        mockWorklogs.mockReturnValue({
+++          data: cached
+++            ? [
+++                {
+++                  id: 'cached-worklog',
+++                  issueId: 'i1',
+++                  userId: 'u1',
+++                  userDisplayName: 'Alice',
+++                  timeSpentSeconds: 60,
+++                  startedAt: '2026-09-01T10:00:00Z',
+++                  comment: 'Cached worklog content',
+++                  createdAt: '2026-09-01T10:00:00Z',
+++                  updatedAt: '2026-09-01T10:00:00Z',
+++                },
+++              ]
+++            : undefined,
+++          error: { status },
+++          isLoading: false,
+++          refetch,
+++        })
+++        render(wrapper(<IssueDetailPage />))
+++        const retained = cached && status === 503
+++        for (const surface of ['activity', 'worklog'] as const) {
+++          if (surface === 'worklog')
+++            await userEvent
+++              .setup()
+++              .click(screen.getByRole('tab', { name: /журнал работ|worklog/i }))
+++          const panel = screen.getByRole('tabpanel')
+++          expect(within(panel).queryAllByText(/cached worklog content/i).length > 0).toBe(retained)
+++          if (surface === 'activity')
+++            expect(within(panel).getByText('This is a comment')).toBeInTheDocument()
+++          expect(
+++            within(panel).queryByText(
+++              /активности пока нет|no activity yet|пока нет записей|no work logged/i,
+++            ),
+++          ).not.toBeInTheDocument()
+++          expect(within(panel).queryByRole('button', { name: /повторить|retry/i }) !== null).toBe(
+++            status === 503,
+++          )
+++          const state =
+++            status === 403
+++              ? 'permission-denied'
+++              : status === 404
+++                ? 'not-found'
+++                : retained
+++                  ? 'partial-error'
+++                  : 'error'
+++          expect(
+++            state === 'error'
+++              ? within(panel).getByRole('alert')
+++              : panel.querySelector(`[data-page-state="${state}"]`),
+++          ).toBeInTheDocument()
+++          if (!retained) {
+++            expect(
+++              within(panel).queryByRole('button', { name: /изменить запись|edit worklog/i }),
+++            ).not.toBeInTheDocument()
+++            expect(
+++              within(panel).queryByRole('button', { name: /удалить запись|delete worklog/i }),
+++            ).not.toBeInTheDocument()
+++          }
+++        }
+++        if (status === 503) {
+++          await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+++          expect(refetch).toHaveBeenCalledOnce()
+++        }
+++      },
+++    )
+++  }
+++
+    it('uses issue time tracking totals instead of deriving the sidebar summary from the worklog page', async () => {
+      mockWorklogs.mockReturnValue({
+        data: [

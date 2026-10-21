@@ -1,0 +1,820 @@
+//! Uses the parent's opt-in BEFORE connect and externally disposable DB/volume.
+use super::*;
+use app::{bug_search_intake::BugIntakeRepository, bug_work::BugWorkRepository};
+use domain::{bug_search_cancel::*, bug_search_intake::*, bug_work::*};
+
+pub(super) fn claim(fleet: Uuid, w: Uuid, key: &str, revision: i64) -> ClaimBugWork {
+    ClaimBugWork {
+        contract_version: 1,
+        idempotency_key: key.into(),
+        owner_subject: "owner".into(),
+        expected_preference_revision: revision,
+        fleet_journal_ref: format!("fleet:bug-work:{key}"),
+        worker_runtime: BugIntakeWorkerRuntime {
+            fleet_instance_id: fleet,
+            agent_id: w,
+            agent_config_revision: 3,
+        },
+    }
+}
+pub(super) fn picked(r: &BugWorkReceipt) -> Option<BugWorkState> {
+    r.outcome.assignment().cloned()
+}
+pub(super) async fn consent(
+    repo: &PostgresBugSearchRepository,
+    p: Uuid,
+    a: &Principal,
+    c: &ClaimBugWork,
+    expected: i64,
+    enabled: bool,
+) {
+    repo.apply_intake(
+        p,
+        "owner",
+        c.worker_runtime.agent_id,
+        a,
+        ApplyBugIntake {
+            contract_version: 1,
+            idempotency_key: format!(
+                "pref:{}:{}",
+                c.worker_runtime.agent_id, c.expected_preference_revision
+            ),
+            expected_revision: expected,
+            desired_revision: c.expected_preference_revision,
+            enabled,
+            worker_runtime: c.worker_runtime.clone(),
+        },
+    )
+    .await
+    .unwrap();
+}
+async fn bug(f: &Fixture, key: &str) -> Uuid {
+    let e = f.execution(1, true, false).await;
+    f.repo
+        .register(
+            f.project,
+            &machine(&f.config.fleet_subject),
+            command(e, key),
+        )
+        .await
+        .unwrap()
+        .0
+        .issue_id
+}
+fn not_started(s: &BugWorkState, key: &str) -> CloseBugWork {
+    CloseBugWork {
+        idempotency_key: key.into(),
+        expected_fence: s.assignment.fence,
+        proof: BugWorkCloseProof::NeverSubmitted(BugNotStartedObservation {
+            contract_version: 1,
+            execution_id: s.assignment.assignment_id,
+            agent_id: s.assignment.worker_runtime.agent_id,
+            snapshot_sha256: s.assignment_sha256.clone(),
+            journal_ref: s.assignment.fleet_journal_ref.clone(),
+            disposition: BugNativeDispatchDisposition::NeverSubmitted,
+            observed_at: chrono::Utc::now(),
+            runtime_custody: BugPreRunRuntimeCustody {
+                contract_version: 1,
+                disposition: BugPreRunCustodyDisposition::NeverProvisioned,
+                context_id: None,
+                stop_proof: None,
+                stop_proof_sha256: None,
+            },
+        }),
+    }
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn atomic_bug_work_claim_original_replay_cas_no_repick_and_transaction_rollback() {
+    let f = Fixture::new().await;
+    let ticket = bug(&f, "work-source").await;
+    let fleet = Uuid::new_v4();
+    let a = machine(&f.config.fleet_subject);
+    let r1 = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let r2 = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let c1 = claim(fleet, Uuid::new_v4(), "work:claim:first", 7);
+    let c2 = claim(fleet, Uuid::new_v4(), "work:claim:second", 7);
+    consent(&r1, f.project, &a, &c1, 0, true).await;
+    consent(&r2, f.project, &a, &c2, 0, true).await;
+    let before = f.count("sdlc_bug_search_commands").await;
+    f.db.execute_unprepared("CREATE FUNCTION reject_work_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='bug_work' THEN RAISE EXCEPTION 'owned transaction failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_work_receipt BEFORE INSERT ON sdlc_bug_search_commands FOR EACH ROW EXECUTE FUNCTION reject_work_receipt()").await.unwrap();
+    assert!(
+        r1.claim_work(f.project, c1.worker_runtime.agent_id, &a, c1.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(f.count("sdlc_bug_work_assignments").await, 0);
+    assert_eq!(f.count("sdlc_bug_search_commands").await, before);
+    f.db.execute_unprepared("DROP TRIGGER reject_work_receipt ON sdlc_bug_search_commands; DROP FUNCTION reject_work_receipt()").await.unwrap();
+    let (x, y) = tokio::join!(
+        r1.claim_work(f.project, c1.worker_runtime.agent_id, &a, c1.clone()),
+        r2.claim_work(f.project, c2.worker_runtime.agent_id, &a, c2.clone())
+    );
+    let x = x.unwrap().0;
+    let y = y.unwrap().0;
+    assert_eq!(
+        usize::from(picked(&x).is_some()) + usize::from(picked(&y).is_some()),
+        1
+    );
+    let (original, c) = if picked(&x).is_some() {
+        (&x, &c1)
+    } else {
+        (&y, &c2)
+    };
+    let s = picked(original).unwrap();
+    assert_eq!(s.assignment.bug_id, ticket);
+    assert!(!s.can_take_bugs);
+    assert_eq!(
+        s.assignment.verification_basis,
+        command(Uuid::new_v4(), "unused").report
+    );
+    assert_eq!(f.count("sdlc_tasks").await, 0, "no fictitious PM lifecycle");
+    assert_eq!(f.count("sdlc_outbox").await, 0, "no new work queue");
+    let issue =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT assignee_id FROM issues WHERE id=$1",
+            [ticket.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        issue.try_get::<Option<Uuid>>("", "assignee_id").unwrap(),
+        None
+    );
+    let restarted = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    assert_eq!(
+        restarted
+            .work_operation(f.project, &c.idempotency_key, &a)
+            .await
+            .unwrap(),
+        *original
+    );
+    assert_eq!(
+        restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+            .await
+            .unwrap(),
+        (original.clone(), true)
+    );
+    let mut changed = c.clone();
+    changed.fleet_journal_ref = "another-journal".into();
+    assert!(matches!(
+        restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, changed)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        restarted
+            .work_operation(f.foreign, &c.idempotency_key, &a)
+            .await,
+        Err(AppError::NotFound(_))
+    ));
+    let mut read = machine(&f.config.workflow_reader_subject);
+    read.scopes = ["task-tracker:read".into()].into();
+    assert_eq!(
+        restarted
+            .work_assignment(f.project, s.assignment.assignment_id, &read)
+            .await
+            .unwrap(),
+        s
+    );
+    restarted
+        .close_work(
+            f.project,
+            s.assignment.assignment_id,
+            &a,
+            not_started(&s, "work:close:never"),
+        )
+        .await
+        .unwrap();
+    let mut retry = c.clone();
+    retry.idempotency_key = "work:do-not-repeat".into();
+    assert!(
+        picked(
+            &restarted
+                .claim_work(f.project, c.worker_runtime.agent_id, &a, retry)
+                .await
+                .unwrap()
+                .0
+        )
+        .is_none(),
+        "same consent never spins on failed/cancelled Bug"
+    );
+    let mut next = c.clone();
+    next.idempotency_key = "work:explicit-next-consent".into();
+    next.expected_preference_revision = 9;
+    consent(&restarted, f.project, &a, &next, 7, true).await;
+    let second = picked(
+        &restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, next.clone())
+            .await
+            .unwrap()
+            .0,
+    )
+    .unwrap();
+    assert_eq!(second.assignment.bug_id, ticket);
+    assert_ne!(second.assignment.assignment_id, s.assignment.assignment_id);
+    assert_eq!(
+        restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+            .await
+            .unwrap()
+            .0,
+        *original,
+        "old original receipt survives newer consent and assignment"
+    );
+    let mut wrong = next;
+    wrong.idempotency_key = "work:stale-cas".into();
+    wrong.expected_preference_revision = 7;
+    assert!(matches!(
+        restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, wrong)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    drop(restarted);
+    drop(r1);
+    drop(r2);
+    f.close().await;
+}
+
+fn runtime_binding() -> BugWorkRuntimeBinding {
+    BugWorkRuntimeBinding {
+        runtime_context_id: Uuid::new_v4(),
+        runtime_generation: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        session_run_id: Uuid::new_v4(),
+        hermes_run_ref: "hermes:actual-owned-run".into(),
+        workflow_task_id: 11,
+        workflow_assignment_revision: 1,
+        workflow_operation_key: "workflow:work:assign".into(),
+        workflow_binding_ref: "workflow:work:actual-binding".into(),
+    }
+}
+fn actual_terminal(s: &BugWorkState, b: &BugWorkRuntimeBinding, key: &str) -> CloseBugWork {
+    let proof = json!({"contract_version":4,"operation_id":Uuid::new_v4(),"container_id":"a".repeat(64),"generation":b.runtime_generation,"resource_id":s.assignment.worker_runtime.agent_id,"snapshot_sha256":"b".repeat(64),"state":"observed","observation":"namespace_exited"});
+    CloseBugWork {
+        idempotency_key: key.into(),
+        expected_fence: s.assignment.fence,
+        proof: BugWorkCloseProof::ActualTerminal(BugWorkTerminalObservation {
+            runtime: BugRuntimeObservation {
+                contract_version: 1,
+                execution_id: s.assignment.assignment_id,
+                agent_id: s.assignment.worker_runtime.agent_id,
+                session_id: b.session_id,
+                session_run_id: b.session_run_id,
+                hermes_run_ref: b.hermes_run_ref.clone(),
+                terminal_status: BugRuntimeTerminalStatus::Stopped,
+                observed_at: chrono::Utc::now(),
+                observation_source: None,
+            },
+            journal_ref: s.assignment.fleet_journal_ref.clone(),
+            runtime_custody: BugPreRunRuntimeCustody {
+                contract_version: 1,
+                disposition: BugPreRunCustodyDisposition::NamespaceExited,
+                context_id: Some(b.runtime_context_id),
+                stop_proof_sha256: Some(app::bug_search::canonical_hash(&proof).unwrap()),
+                stop_proof: Some(proof),
+            },
+        }),
+    }
+}
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn bug_work_protective_exit_after_revocation_exact_refs_and_failed_workflow_bind() {
+    let f = Fixture::new().await;
+    bug(&f, "work-protective-source").await;
+    let fleet = Uuid::new_v4();
+    let a = machine(&f.config.fleet_subject);
+    let repo = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let c = claim(fleet, Uuid::new_v4(), "work:protective", 3);
+    consent(&repo, f.project, &a, &c, 0, true).await;
+    let s = picked(
+        &repo
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+            .await
+            .unwrap()
+            .0,
+    )
+    .unwrap();
+    let b = runtime_binding();
+    let bound = repo
+        .bind_work(
+            f.project,
+            s.assignment.assignment_id,
+            &a,
+            BindBugWork {
+                idempotency_key: "work:bind".into(),
+                expected_fence: s.assignment.fence,
+                binding: b.clone(),
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    assert!(matches!(
+        repo.close_work(
+            f.project,
+            s.assignment.assignment_id,
+            &a,
+            not_started(&s, "work:contradiction")
+        )
+        .await,
+        Err(AppError::Conflict(_))
+    ));
+    let other = machine("unrelated-service");
+    assert!(matches!(
+        repo.work_assignment(f.project, s.assignment.assignment_id, &other)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut wrong = actual_terminal(&s, &b, "work:bad-run");
+    if let BugWorkCloseProof::ActualTerminal(v) = &mut wrong.proof {
+        v.runtime.session_run_id = Uuid::new_v4();
+    }
+    assert!(matches!(
+        repo.close_work(f.project, s.assignment.assignment_id, &a, wrong)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(matches!(
+        repo.work_assignment(f.project, s.assignment.assignment_id, &a)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let recovered = repo
+        .work_operation(f.project, &c.idempotency_key, &a)
+        .await
+        .unwrap();
+    assert_eq!(picked(&recovered).unwrap(), s);
+    // A committed bind with a lost ACK remains exactly recoverable after
+    // revocation, without granting another bind or current-work authority.
+    assert_eq!(
+        repo.work_operation(f.project, "work:bind", &a)
+            .await
+            .unwrap(),
+        bound
+    );
+    assert_eq!(
+        serde_json::to_value(repo.command(f.project, &a, "work:bind").await.unwrap()).unwrap(),
+        serde_json::to_value(BugSearchCommandReceipt::BugWork(bound.clone())).unwrap()
+    );
+    let mut read_only = a.clone();
+    read_only.scopes = ["task-tracker:read".into()].into();
+    for denied in [
+        read_only,
+        machine("unrelated-service"),
+        machine(&f.config.workflow_reader_subject),
+    ] {
+        assert!(matches!(
+            repo.work_operation(f.project, "work:bind", &denied).await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    let remapped = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(Uuid::new_v4())
+        .unwrap();
+    assert!(matches!(
+        remapped.work_operation(f.project, "work:bind", &a).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        repo.bind_work(
+            f.project,
+            s.assignment.assignment_id,
+            &a,
+            BindBugWork {
+                idempotency_key: "work:bind-new-after-revoke".into(),
+                expected_fence: s.assignment.fence,
+                binding: b.clone()
+            }
+        )
+        .await,
+        Err(AppError::Forbidden)
+    ));
+    drop(remapped);
+    let close = actual_terminal(&s, &b, "work:actual-exit");
+    let (r, replayed) = repo
+        .close_work(f.project, s.assignment.assignment_id, &a, close.clone())
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert!(!r.outcome.assignment().unwrap().capacity_held);
+    assert_eq!(
+        repo.close_work(f.project, s.assignment.assignment_id, &a, close.clone())
+            .await
+            .unwrap(),
+        (r.clone(), true)
+    );
+    assert_eq!(
+        repo.work_operation(f.project, &close.idempotency_key, &a)
+            .await
+            .unwrap(),
+        r
+    );
+    assert!(matches!(
+        repo.command(f.project, &a, &close.idempotency_key)
+            .await
+            .unwrap(),
+        BugSearchCommandReceipt::BugWork(_)
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let mut next = c;
+    next.expected_preference_revision = 5;
+    next.idempotency_key = "work:failed-bind-next".into();
+    consent(&repo, f.project, &a, &next, 3, true).await;
+    let unbound = picked(
+        &repo
+            .claim_work(f.project, next.worker_runtime.agent_id, &a, next.clone())
+            .await
+            .unwrap()
+            .0,
+    )
+    .unwrap();
+    assert!(unbound.binding.is_none());
+    let actual = actual_terminal(
+        &unbound,
+        &runtime_binding(),
+        "work:known-run-failed-bind-exit",
+    );
+    let closed = repo
+        .close_work(f.project, unbound.assignment.assignment_id, &a, actual)
+        .await
+        .unwrap()
+        .0;
+    assert!(
+        !closed.outcome.assignment().unwrap().capacity_held,
+        "known actual native exit does not invent a successful Workflow bind"
+    );
+    assert!(closed.outcome.assignment().unwrap().binding.is_none());
+    drop(repo);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; TT_BUG_SEARCH_DISPOSABLE_DB=1"]
+async fn lost_claim_ack_original_recovery_is_machine_and_fleet_bound_not_fresh_work_authority() {
+    let f = Fixture::new().await;
+    bug(&f, "work-lost-ack-source").await;
+    let fleet = Uuid::new_v4();
+    let a = machine(&f.config.fleet_subject);
+    let repo = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let c = claim(fleet, Uuid::new_v4(), "work:lost-ack", 4);
+    consent(&repo, f.project, &a, &c, 0, true).await;
+    let original = repo
+        .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+        .await
+        .unwrap()
+        .0;
+    let s = picked(&original).unwrap();
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let restarted = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    assert_eq!(
+        restarted
+            .work_operation(f.project, &c.idempotency_key, &a)
+            .await
+            .unwrap(),
+        original
+    );
+    assert_eq!(
+        serde_json::to_value(
+            restarted
+                .command(f.project, &a, &c.idempotency_key)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(BugSearchCommandReceipt::BugWork(original.clone())).unwrap()
+    );
+    let mut read_only = a.clone();
+    read_only.scopes = ["task-tracker:read".into()].into();
+    for denied in [
+        read_only,
+        machine("foreign-fleet"),
+        machine(&f.config.workflow_reader_subject),
+    ] {
+        assert!(matches!(
+            restarted
+                .work_operation(f.project, &c.idempotency_key, &denied)
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    let remapped = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(Uuid::new_v4())
+        .unwrap();
+    assert!(matches!(
+        remapped
+            .work_operation(f.project, &c.idempotency_key, &a)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    for (project, key) in [
+        (f.foreign, c.idempotency_key.as_str()),
+        (f.project, "missing-original-key"),
+    ] {
+        assert!(matches!(
+            restarted.work_operation(project, key, &a).await,
+            Err(AppError::NotFound(_))
+        ));
+    }
+    assert!(matches!(
+        restarted
+            .work_assignment(f.project, s.assignment.assignment_id, &a)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        restarted
+            .current_work(f.project, "owner", c.worker_runtime.agent_id, &a)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        restarted
+            .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    // Protective close changes custody; original immutable claim still replays
+    // exactly, and cannot be mistaken for a current dispatch grant.
+    restarted
+        .close_work(
+            f.project,
+            s.assignment.assignment_id,
+            &a,
+            not_started(&s, "work:lost-ack-close"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        restarted
+            .work_operation(f.project, &c.idempotency_key, &a)
+            .await
+            .unwrap(),
+        original
+    );
+    assert_eq!(f.count("sdlc_bug_work_assignments").await, 1);
+    drop(remapped);
+    drop(restarted);
+    drop(repo);
+    f.close().await;
+}
+
+/// Real reservation shape; no fake PM/Analysis task or invalid foreign-key row.
+async fn search_reservation(
+    f: &Fixture,
+    template: Uuid,
+    worker: Uuid,
+    fence: i64,
+) -> Result<Uuid, sea_orm::DbErr> {
+    let row =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT snapshot FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            [template.into()],
+        ))
+        .await?
+        .unwrap();
+    let mut snapshot: BugSearchSnapshot =
+        serde_json::from_value(row.try_get("", "snapshot")?).unwrap();
+    snapshot.agent_id = worker;
+    snapshot.validate().unwrap();
+    let hash = app::bug_search::canonical_hash(&snapshot).unwrap();
+    let id = Uuid::new_v4();
+    f.db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,expires_at,capacity_held) SELECT $1,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,$2,purpose,$3,$4,policy_revision,$5,machine_subject,$6,'reserved',clock_timestamp()+interval '35 minutes',true FROM sdlc_bug_search_executions WHERE execution_id=$7",
+        [id.into(),worker.into(),hash.into(),serde_json::to_value(snapshot).unwrap().into(),fence.into(),Uuid::new_v4().into(),template.into()]
+    )).await?;
+    Ok(id)
+}
+
+#[tokio::test]
+#[ignore = "Base ComposeHelper v2 disposable PostgreSQL only; marker1 and synthetic Namespace IDs required"]
+async fn bug_work_reciprocal_search_capacity_and_both_namespace_drain_projections() {
+    use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+    let instance: Uuid = std::env::var("TT_NAMESPACE__INSTANCE_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let registry: Uuid = std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let f = Fixture::new().await;
+    assert_eq!(f.config.tracker_instance_uuid, instance);
+    bug(&f, "work-capacity-source").await;
+    let template = f.execution(200, false, false).await;
+    let ns = NamespaceRef {
+        registry_instance_id: registry,
+        namespace_id: Uuid::new_v4(),
+    };
+    let command = OwnerCommand {
+        schema_version: 1,
+        namespace: ns.clone(),
+        resource: ResourceRef {
+            kind: ResourceKind::TrackerProject,
+            instance_id: instance,
+            resource_id: f.project,
+        },
+        operation_id: Uuid::new_v4(),
+        generation: 1,
+        state: "active".into(),
+        create_spec: None,
+    };
+    sql(&f.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",vec![f.project.into(),registry.into(),ns.namespace_id.into(),serde_json::to_value(&command).unwrap().into()]).await;
+    sql(
+        &f.db,
+        "UPDATE projects SET namespace_managed=true WHERE id=$1",
+        vec![f.project.into()],
+    )
+    .await;
+    let projections = infra::SeaOrmRepositories::new(pool(&f.url, &f.schema).await);
+    let project = shared::ProjectId::from_uuid(f.project);
+    let fleet = Uuid::new_v4();
+    let a = machine(&f.config.fleet_subject);
+    let repo = f
+        .reopened()
+        .await
+        .with_intake_fleet_instance(fleet)
+        .unwrap();
+    let c = claim(fleet, Uuid::new_v4(), "work:capacity:search-held", 3);
+    consent(&repo, f.project, &a, &c, 0, true).await;
+    let search = search_reservation(&f, template, c.worker_runtime.agent_id, 201)
+        .await
+        .unwrap();
+    let grant = f.repo.execution_grant(f.project, search, &a).await.unwrap();
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![search.into()]).await;
+    let blocked = repo
+        .claim_work(f.project, c.worker_runtime.agent_id, &a, c.clone())
+        .await
+        .unwrap()
+        .0;
+    assert!(
+        matches!(blocked.outcome,BugWorkOutcome::Claimed{assignment:None,ref blocked_reasons} if blocked_reasons==&["worker_capacity_busy"])
+    );
+    assert_eq!(
+        f.count("sdlc_bug_work_assignments").await,
+        0,
+        "expiry never frees unknown Search custody"
+    );
+    f.repo
+        .cancel(
+            f.project,
+            search,
+            &a,
+            CancelBugSearchBeforeStart {
+                idempotency_key: "work:capacity:search-cancel".into(),
+                expected_fence: grant.binding.fence,
+                not_started_observation: BugNotStartedObservation {
+                    contract_version: 1,
+                    execution_id: search,
+                    agent_id: c.worker_runtime.agent_id,
+                    snapshot_sha256: grant.binding.snapshot_sha256,
+                    journal_ref: "fleet:owned-search-cancel".into(),
+                    disposition: BugNativeDispatchDisposition::NeverSubmitted,
+                    observed_at: chrono::Utc::now(),
+                    runtime_custody: BugPreRunRuntimeCustody {
+                        contract_version: 1,
+                        disposition: BugPreRunCustodyDisposition::NeverProvisioned,
+                        context_id: None,
+                        stop_proof: None,
+                        stop_proof_sha256: None,
+                    },
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let mut next = c;
+    next.idempotency_key = "work:capacity:claim-after-positive-cancel".into();
+    let s = picked(
+        &repo
+            .claim_work(f.project, next.worker_runtime.agent_id, &a, next.clone())
+            .await
+            .unwrap()
+            .0,
+    )
+    .unwrap();
+    assert!(
+        search_reservation(&f, template, next.worker_runtime.agent_id, 202)
+            .await
+            .is_err(),
+        "Search reciprocal guard preserves Work custody"
+    );
+    assert_eq!(
+        f.count("sdlc_bug_search_executions").await,
+        3,
+        "denied reservation leaves no row"
+    );
+    assert!(
+        !projections
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained
+    );
+    assert!(
+        !projections
+            .projects
+            .namespace_contexts(Some(&ns), 1, 0)
+            .await
+            .unwrap()[0]
+            .binding
+            .drained
+    );
+    let mut archived = command;
+    archived.state = "archived".into();
+    archived.generation = 2;
+    archived.operation_id = Uuid::new_v4();
+    sql(&f.db,"UPDATE tracker_namespace_bindings SET generation=2,state='archived',command=$2 WHERE resource_id=$1",vec![f.project.into(),serde_json::to_value(archived).unwrap().into()]).await;
+    assert!(
+        repo.work_assignment(f.project, s.assignment.assignment_id, &a)
+            .await
+            .is_err()
+    );
+    repo.close_work(
+        f.project,
+        s.assignment.assignment_id,
+        &a,
+        not_started(&s, "work:capacity:protective-close"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        projections
+            .projects
+            .namespace_binding(project)
+            .await
+            .unwrap()
+            .unwrap()
+            .drained
+    );
+    assert!(
+        projections
+            .projects
+            .namespace_contexts(Some(&ns), 1, 0)
+            .await
+            .unwrap()[0]
+            .binding
+            .drained
+    );
+    assert_eq!(
+        f.count("sdlc_bug_work_assignments").await,
+        1,
+        "protective release preserves work history"
+    );
+    drop(repo);
+    drop(projections);
+    f.close().await;
+}

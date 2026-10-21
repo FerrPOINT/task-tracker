@@ -1,0 +1,16 @@
+//! Canonical Bug scenario for fresh delegated verification discovery.
+use crate::bug_search_terminal::BugProducedFindingReport;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugVerificationBasis {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub tracker_instance_uuid: Uuid,
+    pub project_id: Uuid,
+    pub bug_id: Uuid,
+    pub report: BugProducedFindingReport,
+    pub report_sha256: String,
+}

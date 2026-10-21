@@ -1,0 +1,1700 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createBrowserRouter,
+  createMemoryRouter,
+  RouterProvider,
+  useLocation,
+  useNavigate,
+} from 'react-router'
+
+import { IssueDetailPage } from './'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import { useAuthStore } from '@/shared/auth/store'
+import { toast } from 'sonner'
+import { AttachmentUploadError } from '@/api/attachment'
+import { IssueDeleteError } from '@/api/issue'
+
+const mockGetIssue = vi.hoisted(() => vi.fn())
+const mockUseIssue = vi.hoisted(() => vi.fn())
+const mockComments = vi.hoisted(() => vi.fn())
+const mockWorklogs = vi.hoisted(() => vi.fn())
+const mockIssueLinks = vi.hoisted(() => vi.fn())
+const mockLinkCreate = vi.hoisted(() => vi.fn())
+const mockLabelCreate = vi.hoisted(() => vi.fn())
+const mockLabelAttach = vi.hoisted(() => vi.fn())
+const mockProjectLabels = vi.hoisted(() => vi.fn())
+const mockCustomFields = vi.hoisted(() => vi.fn())
+const mockCustomFieldSave = vi.hoisted(() => vi.fn())
+const mockAttachments = vi.hoisted(() => vi.fn())
+const mockAttachmentUpload = vi.hoisted(() => vi.fn())
+const mockAttachmentRefetch = vi.hoisted(() => vi.fn())
+const mockAttachmentDownload = vi.hoisted(() => vi.fn())
+const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
+const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
+const mockIssueDeleteApi = vi.hoisted(() => vi.fn())
+const mockWorklogCreate = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  mutateAsync: vi.fn(),
+  reset: vi.fn(),
+  isPending: false,
+  error: null as Error | null,
+}))
+const mockWorklogUpdate = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  mutateAsync: vi.fn(),
+  reset: vi.fn(),
+  isPending: false,
+  error: null as Error | null,
+}))
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
+const issueData = {
+  id: 'i1',
+  key: 'TT-1',
+  summary: 'Test issue summary',
+  description: 'Test issue description',
+  status: 'In Progress',
+  status_id: 'in-progress',
+  priority: 'High',
+  issue_type: 'Task',
+  project_key: 'TT',
+  project_name: 'Task Tracker',
+  reporter_id: 'u1',
+  reporter_name: 'Reporter',
+  assignee_id: null,
+  assignee_name: null,
+  labels: [],
+  sprint_id: null,
+  original_estimate_seconds: 7200,
+  remaining_estimate_seconds: 1800,
+  time_spent_seconds: 5400,
+}
+
+vi.mock('@/api/issue', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/issue')>()),
+  getIssue: (...args: unknown[]) => mockGetIssue(...args),
+  updateIssue: vi.fn(),
+  deleteIssue: (...args: unknown[]) => mockIssueDeleteApi(...args),
+  restoreIssue: vi.fn(),
+  purgeIssue: vi.fn(),
+  listTrash: vi.fn(),
+}))
+
+vi.mock('@/shared/api/hooks', () => ({
+  useIssue: (...args: unknown[]) => mockUseIssue(...args),
+  useBoard: () => ({
+    data: {
+      columns: [
+        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [] },
+        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
+      ],
+      issues: [],
+      project_id: 'p1',
+      project_key: 'TT',
+      sprint: {
+        id: 's1',
+        name: 'Sprint 1',
+        goal: '',
+        state: 'active',
+        issue_ids: [],
+        velocity: 0,
+        remaining_days: null,
+        start_date: null,
+        end_date: null,
+      },
+    },
+    isLoading: false,
+    error: null,
+  }),
+  useSprints: () => ({
+    data: [
+      {
+        id: 's1',
+        name: 'Sprint 1',
+        goal: '',
+        state: 'active',
+        issue_ids: [],
+        velocity: 0,
+        remaining_days: null,
+        start_date: null,
+        end_date: null,
+      },
+    ],
+    isLoading: false,
+    error: null,
+  }),
+  useUpdateIssue: (...args: unknown[]) => mockUseUpdateIssue(...args),
+  useDeleteIssue: (...args: unknown[]) => mockUseDeleteIssue(...args),
+  useCurrentUser: () => ({ data: undefined, isLoading: false }),
+  useProjects: () => ({
+    data: [{ id: 'p1', key: 'TT', name: 'Task Tracker', owner_id: 'u1' }],
+    isLoading: false,
+  }),
+  useUsers: () => ({ data: [], isLoading: false }),
+  useStatuses: () => ({ data: [], isLoading: false }),
+  useTransitions: () => ({ data: [], isLoading: false }),
+  useProjectLabels: (...args: unknown[]) => mockProjectLabels(...args),
+  useIssueLabels: () => ({ data: [], isLoading: false }),
+  useAttachLabel: () => ({ mutate: vi.fn(), mutateAsync: mockLabelAttach, isPending: false }),
+  useDetachLabel: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useCreateLabel: () => ({ mutate: vi.fn(), mutateAsync: mockLabelCreate, isPending: false }),
+  invalidateIssueCaches: vi.fn(),
+  useIssueLinks: (...args: unknown[]) => mockIssueLinks(...args),
+  useCreateIssueLink: () => ({ mutate: vi.fn(), mutateAsync: mockLinkCreate, isPending: false }),
+  useDeleteIssueLink: () => ({ mutate: vi.fn(), isPending: false }),
+  useIssueVotes: () => ({ data: { count: 0, votes: [] }, isLoading: false }),
+  useIssueWatchers: () => ({ data: [], isLoading: false }),
+  useVoteIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnvoteIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useWatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnwatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useAttachments: (...args: unknown[]) => mockAttachments(...args),
+  useUploadAttachment: () => ({
+    mutateAsync: mockAttachmentUpload,
+    isPending: false,
+    isError: false,
+  }),
+  useDeleteAttachment: () => ({ mutate: vi.fn(), isPending: false }),
+  useProjectCustomFields: (...args: unknown[]) => mockCustomFields(...args),
+  useIssueCustomFieldValues: () => ({ data: [], isLoading: false, refetch: vi.fn() }),
+  useSetIssueCustomFieldValue: () => ({ mutateAsync: mockCustomFieldSave, isPending: false }),
+}))
+
+vi.mock('@/features/comments/model/use-comments', () => ({
+  useComments: (...args: unknown[]) => mockComments(...args),
+  useCreateComment: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateComment: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteComment: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
+vi.mock('@/features/time-tracking/model/use-worklogs', () => ({
+  useWorklogs: (...args: unknown[]) => mockWorklogs(...args),
+  useCreateWorklog: () => mockWorklogCreate,
+  useUpdateWorklog: () => mockWorklogUpdate,
+  useDeleteWorklog: () => ({ mutate: vi.fn(), isPending: false }),
+  totalTimeSpent: () => 0,
+  latestRemainingEstimate: () => null,
+}))
+
+vi.mock('@/api/attachment', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/attachment')>()),
+  downloadAttachment: mockAttachmentDownload,
+}))
+
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+      <button type="button" onClick={() => navigate('/projects')}>
+        Go to projects
+      </button>
+      <button type="button" onClick={() => navigate('/issues/i1?tab=comments')}>
+        Go to issue comments
+      </button>
+    </>
+  )
+}
+
+function wrapper(children: React.ReactNode, initialEntry = '/issues/i1') {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={qc}>
+        <RouterProvider
+          router={createMemoryRouter(
+            [
+              { path: '/', element: <h1>Dashboard destination</h1> },
+              { path: '/projects', element: <h1>Projects destination</h1> },
+              {
+                path: '/issues/:id',
+                element: (
+                  <>
+                    {children}
+                    <LocationProbe />
+                  </>
+                ),
+              },
+            ],
+            { initialEntries: [initialEntry] },
+          )}
+        />
+      </QueryClientProvider>
+    </ThemeProvider>
+  )
+}
+
+const commentData = [
+  {
+    id: 'c1',
+    issueId: 'i1',
+    authorId: 'u1',
+    authorName: 'Alice',
+    body: 'This is a comment',
+    createdAt: '2024-01-01T10:00:00Z',
+    updatedAt: '2024-01-01T10:00:00Z',
+  },
+]
+
+describe('IssueDetailPage', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockLabelCreate
+      .mockReset()
+      .mockResolvedValue({ id: 'l1', project_id: 'p1', name: 'QA label', color: '#6b7280' })
+    mockLabelAttach.mockReset().mockResolvedValue(undefined)
+    mockProjectLabels.mockReset().mockReturnValue({ data: [], isLoading: false })
+    mockCustomFields.mockReset().mockReturnValue({ data: [], isLoading: false, refetch: vi.fn() })
+    mockCustomFieldSave.mockReset().mockResolvedValue(undefined)
+    mockAttachments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: mockAttachmentRefetch,
+    })
+    mockAttachmentRefetch.mockReset().mockResolvedValue({ data: [], isError: false })
+    mockAttachmentUpload.mockReset().mockResolvedValue({ id: 'a1' })
+    mockAttachmentDownload.mockReset().mockResolvedValue(undefined)
+    for (const mutation of [mockWorklogCreate, mockWorklogUpdate]) {
+      mutation.isPending = false
+      mutation.error = null
+      mutation.mutate.mockReset()
+      mutation.mutateAsync.mockReset().mockResolvedValue({})
+      mutation.reset.mockReset().mockImplementation(() => {
+        mutation.error = null
+      })
+    }
+    useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+    mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
+    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseDeleteIssue.mockReturnValue({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      error: null,
+    })
+    mockIssueDeleteApi.mockReset().mockResolvedValue(undefined)
+    mockComments.mockReturnValue({
+      data: commentData,
+      isLoading: false,
+      error: null,
+    })
+    mockWorklogs.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    })
+    mockIssueLinks.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    })
+  })
+
+  it('renders loading state while the issue itself loads', () => {
+    mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
+    render(wrapper(<IssueDetailPage />))
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('keeps issue details available while worklogs load', () => {
+    mockWorklogs.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    })
+    render(wrapper(<IssueDetailPage />))
+    expect(screen.getByText('Test issue summary')).toBeInTheDocument()
+    expect(screen.getByText(/загрузка активности|loading activity/i)).toBeInTheDocument()
+  })
+
+  it('shows a retryable issue error separately from a genuine 404', async () => {
+    const retry = vi.fn()
+    mockUseIssue.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    const page = render(wrapper(<IssueDetailPage />))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить задачу|could not load issue/i,
+    )
+    expect(screen.queryByText(/задача не найдена|issue not found/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+
+    mockUseIssue.mockReturnValue({ data: null, isLoading: false, error: null })
+    page.rerender(wrapper(<IssueDetailPage />))
+    expect(screen.getByText(/задача не найдена|issue not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
+  })
+
+  it('does not disguise failed worklogs as an empty activity feed', async () => {
+    const retry = vi.fn()
+    mockWorklogs.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    render(wrapper(<IssueDetailPage />))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить журнал работ|could not load worklogs/i,
+    )
+    expect(screen.getByText('This is a comment')).toBeInTheDocument()
+    expect(screen.queryByText(/активности пока нет|no activity yet/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('tab', { name: /журнал работ|worklog/i }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить журнал работ|could not load worklogs/i,
+    )
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('shows a retryable comments error in the comments tab', async () => {
+    const retry = vi.fn()
+    mockComments.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent.setup().click(screen.getByRole('tab', { name: /комментарии|comments/i }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить комментарии|could not load comments/i,
+    )
+    expect(screen.queryByText(/пока нет комментариев|no comments yet/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('places editable details between the heading and activity in document order', () => {
+    render(wrapper(<IssueDetailPage />))
+    const heading = screen.getByText('Test issue summary')
+    const details = screen.getByText(/^(детали|details)$/i)
+    const activity = screen.getByRole('tab', { name: /активность|activity/i })
+    expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('links the issue back to its project board', () => {
+    render(wrapper(<IssueDetailPage />))
+    expect(screen.getByRole('link', { name: 'Task Tracker' })).toHaveAttribute(
+      'href',
+      '/projects/TT/board',
+    )
+  })
+
+  it('reports clipboard success only after the key is copied', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const navigatorWithClipboard = Object.create(navigator)
+    Object.defineProperty(navigatorWithClipboard, 'clipboard', { value: { writeText } })
+    vi.stubGlobal('navigator', navigatorWithClipboard)
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /скопировать ключ|copy key/i }))
+    expect(writeText).toHaveBeenCalledWith('TT-1')
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Ключ скопирован.'))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed clipboard write without claiming success', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    const navigatorWithClipboard = Object.create(navigator)
+    Object.defineProperty(navigatorWithClipboard, 'clipboard', { value: { writeText } })
+    vi.stubGlobal('navigator', navigatorWithClipboard)
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /скопировать ключ|copy key/i }))
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Не удалось скопировать ключ. Повторите попытку.'),
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('reports an assignment failure', async () => {
+    const mutate = vi.fn()
+    mockUseUpdateIssue.mockReturnValue({ mutate, isPending: false })
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /назначить на себя|assign to me/i }))
+    expect(mutate).toHaveBeenCalledWith(
+      { assignee_id: 'u1' },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
+    mutate.mock.calls[0]?.[1].onError(new Error('Failed to update issue'))
+    expect(toast.error).toHaveBeenCalledWith(
+      'Не удалось назначить задачу на вас. Повторите попытку.',
+    )
+  })
+
+  it('resets deletion errors when opening and closing confirmation', async () => {
+    const reset = vi.fn()
+    mockUseDeleteIssue.mockReturnValue({
+      mutate: vi.fn(),
+      reset,
+      isPending: false,
+      error: new Error('Failed to delete issue'),
+    })
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /удалить|delete/i }))
+    expect(reset).toHaveBeenCalledOnce()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Не удалось переместить задачу в корзину. Повторите попытку.',
+    )
+    await user.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+    expect(reset).toHaveBeenCalledTimes(2)
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      expect(document.body.style.pointerEvents).not.toBe('none')
+    })
+  })
+
+  it('keeps desktop details and supplemental actions in one independent sidebar', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(min-width: 1024px)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    render(wrapper(<IssueDetailPage />))
+
+    const sidebar = screen.getByRole('complementary')
+    expect(sidebar).toHaveClass('sticky')
+    expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
+    expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()
+  })
+
+  it('preserves an unsaved issue draft when crossing the desktop breakpoint', async () => {
+    const listeners = new Set<() => void>()
+    const media = {
+      matches: false,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }
+    vi.stubGlobal('matchMedia', () => media)
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /изменить|edit/i }))
+    fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
+      target: { value: 'Unsaved draft' },
+    })
+    act(() => {
+      media.matches = true
+      listeners.forEach((listener) => listener())
+    })
+
+    expect(screen.getByDisplayValue('Unsaved draft')).toBeInTheDocument()
+    expect(screen.getByRole('complementary')).toHaveClass('sticky')
+  })
+
+  it('describes deletion as recoverable from the trash', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /удалить|delete/i }))
+    expect(
+      screen.getByText(/переместить задачу в корзину|move this issue to the trash/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/без возможности восстановления|permanently/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders issue details (summary, description, status)', async () => {
+    render(wrapper(<IssueDetailPage />))
+    await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
+    expect(screen.getByText('Test issue description')).toBeInTheDocument()
+  })
+
+  it('renders comments', async () => {
+    render(wrapper(<IssueDetailPage />))
+    await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
+    // Comments are in the Activity tab (default) and Comments tab
+    expect(screen.getAllByText('This is a comment').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('uses issue time tracking totals instead of deriving the sidebar summary from the worklog page', async () => {
+    mockWorklogs.mockReturnValue({
+      data: [
+        {
+          id: 'wl1',
+          issueId: 'i1',
+          userId: 'u1',
+          userDisplayName: 'Alice',
+          timeSpentSeconds: 900,
+          startedAt: '2024-01-01T10:00:00Z',
+          comment: null,
+          createdAt: '2024-01-01T10:00:00Z',
+          updatedAt: '2024-01-01T10:00:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    })
+
+    render(wrapper(<IssueDetailPage />))
+
+    await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
+    const summary = screen.getByTestId('time-tracking-summary')
+    expect(summary.textContent).toContain('1h 30m')
+    expect(summary.textContent).toContain('2h')
+    expect(summary.textContent).toContain('30m')
+    expect(summary.textContent).not.toContain('15m')
+  })
+
+  it('stores the active tab in URL history and preserves unrelated parameters', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />, '/issues/i1?view=full'))
+
+    await user.click(screen.getByRole('tab', { name: /вложения|attachments/i }))
+    expect(screen.getByRole('tab', { name: /вложения|attachments/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?view=full&tab=attachments',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
+        'data-state',
+        'active',
+      ),
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?view=full',
+    )
+  })
+
+  it('opens a valid tab directly from the URL', () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments&view=full'))
+
+    expect(screen.getByRole('tab', { name: /комментарии|comments/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+  })
+
+  it('clears stale create and edit errors when starting a new time entry', async () => {
+    mockWorklogCreate.error = new Error('stale create failure')
+    mockWorklogUpdate.error = new Error('stale update failure')
+    render(wrapper(<IssueDetailPage />))
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    expect(mockWorklogCreate.reset).toHaveBeenCalledTimes(1)
+    expect(mockWorklogUpdate.reset).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('does not reset or reopen the form during an existing time mutation', () => {
+    mockWorklogCreate.isPending = true
+    render(wrapper(<IssueDetailPage />))
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    expect(mockWorklogCreate.reset).not.toHaveBeenCalled()
+    expect(mockWorklogUpdate.reset).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps the time dialog on failure and closes it only after mutation success', async () => {
+    mockWorklogCreate.mutateAsync.mockRejectedValueOnce(new Error('technical API error'))
+    render(wrapper(<IssueDetailPage />))
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    fireEvent.change(screen.getByLabelText(/Затрачено времени|Time spent/i), {
+      target: { value: '1m 31s' },
+    })
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /^Сохранить$|^Save$/i }),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/Не удалось сохранить|Could not save/),
+    )
+    expect(mockWorklogCreate.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('1m 31s')
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/Не удалось сохранить запись времени|Could not save the time entry/),
+    )
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /^Сохранить$|^Save$/i }),
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mockWorklogCreate.mutateAsync).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves loaded worklogs on refetch failure with retry, without a false empty list', () => {
+    const refetch = vi.fn()
+    mockWorklogs.mockReturnValue({
+      data: [
+        {
+          id: 'wl1',
+          issueId: 'i1',
+          userId: 'u1',
+          userDisplayName: 'Alice',
+          timeSpentSeconds: 91,
+          startedAt: '2026-10-04T00:00:00Z',
+          createdAt: '2026-10-04T00:00:00Z',
+          updatedAt: '2026-10-04T00:00:00Z',
+          comment: 'Retained worklog',
+        },
+      ],
+      isLoading: false,
+      error: new Error('500'),
+      refetch,
+    })
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=worklog'))
+    expect(screen.getByRole('alert')).toHaveTextContent(/ранее загруженные|Previously loaded/)
+    expect(screen.getByTestId('worklog-tab')).toHaveTextContent('Retained worklog')
+    expect(screen.queryByText(/No entries yet|Нет записей/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Повторить|Retry/i }))
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('does not render an empty worklog after an initial failure', () => {
+    mockWorklogs.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('500'),
+      refetch: vi.fn(),
+    })
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=worklog'))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Не удалось загрузить журнал|Could not load worklogs/,
+    )
+    expect(screen.queryByTestId('worklog-tab')).not.toBeInTheDocument()
+  })
+
+  it('uses a single blocker for comments and a time draft and retains both on cancelled navigation', async () => {
+    const warning = vi.spyOn(console, 'warn')
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Comment draft' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    fireEvent.change(screen.getByLabelText(/Затрачено времени|Time spent/i), {
+      target: { value: '1m 31s' },
+    })
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects', hidden: true }))
+    const confirm = await screen.findByRole('alertdialog')
+    fireEvent.click(within(confirm).getByRole('button', { name: /Отмена|Cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('1m 31s')
+    expect(screen.getByDisplayValue('Comment draft')).toBeInTheDocument()
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('can retry the same tab transition after rejecting discard', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Comment draft' },
+    })
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText(/^Комментарий$|^Comment$/i)).toHaveFocus())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Журнал работ|Worklog/i })).toHaveAttribute(
+        'data-state',
+        'active',
+      ),
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?tab=worklog',
+    )
+  })
+
+  it.each([false, true])(
+    'discards the persistent %s worklog owner only after accepted same-issue navigation',
+    async (editing) => {
+      const entry = {
+        id: 'wl1',
+        issueId: 'i1',
+        userId: 'u1',
+        userDisplayName: 'Alice',
+        timeSpentSeconds: 90,
+        startedAt: '2026-10-04T00:00:00Z',
+        comment: 'Existing entry',
+        createdAt: '2026-10-04T00:00:00Z',
+        updatedAt: '2026-10-04T00:00:00Z',
+      }
+      mockWorklogs.mockReturnValue({ data: [entry], isLoading: false, error: null })
+      render(wrapper(<IssueDetailPage />, '/issues/i1?tab=worklog'))
+      fireEvent.click(
+        screen.getAllByRole('button', {
+          name: editing ? /Изменить запись|Edit time entry/i : /Записать время|Log work/i,
+        })[0]!,
+      )
+      fireEvent.change(screen.getByLabelText(/Затрачено времени|Time spent/i), {
+        target: { value: '1m 31s' },
+      })
+      fireEvent.change(
+        within(screen.getByRole('dialog')).getByLabelText(/^Комментарий$|^Comment$/i),
+        { target: { value: 'Retained worklog draft' } },
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Go to issue comments', hidden: true }))
+      fireEvent.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: /Отмена|Cancel/i,
+        }),
+      )
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+      expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('1m 31s')
+      expect(screen.getByDisplayValue('Retained worklog draft')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Go to issue comments', hidden: true }))
+      fireEvent.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: /Подтвердить|Confirm/i,
+        }),
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/issues/i1?tab=comments',
+      )
+      const unload = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(unload)
+      expect(unload.defaultPrevented).toBe(false)
+      fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+      expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('')
+      expect(
+        within(screen.getByRole('dialog')).getByLabelText(/^Комментарий$|^Comment$/i),
+      ).toHaveValue('')
+      expect(mockWorklogCreate.mutateAsync).not.toHaveBeenCalled()
+      expect(mockWorklogUpdate.mutateAsync).not.toHaveBeenCalled()
+    },
+  )
+
+  it('stops the timer on accepted same-issue navigation without saving and does not restart it on reopen', async () => {
+    const intervals = vi.spyOn(globalThis, 'setInterval')
+    const clear = vi.spyOn(globalThis, 'clearInterval')
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=worklog'))
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Запустить таймер|Start timer/i }))
+    const timer = intervals.mock.results.at(-1)!.value
+    fireEvent.click(screen.getByRole('button', { name: 'Go to issue comments', hidden: true }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('timer')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Go to issue comments', hidden: true }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(clear).toHaveBeenCalledWith(timer)
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('')
+    expect(mockWorklogCreate.mutateAsync).not.toHaveBeenCalled()
+    intervals.mockRestore()
+    clear.mockRestore()
+  })
+
+  it('keeps an accepted browser POP on comments after the focused timer dialog closes', async () => {
+    const previousUrl = window.location.href
+    const previousState = window.history.state
+    window.history.replaceState({ idx: 0 }, '', '/issues/i1?tab=comments')
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const router = createBrowserRouter([{ path: '/issues/:id', element: <IssueDetailPage /> }])
+    const view = render(
+      <ThemeProvider>
+        <QueryClientProvider client={qc}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    try {
+      const user = userEvent.setup()
+      const historyLength = window.history.length
+      const worklogTab = screen.getByRole('tab', { name: /Журнал работ|Worklog/i })
+      act(() => {
+        fireEvent.mouseDown(worklogTab, { button: 0, ctrlKey: false })
+        fireEvent.focus(worklogTab)
+      })
+      await waitFor(() => expect(window.location.search).toBe('?tab=worklog'))
+      expect(window.history.length).toBe(historyLength + 1)
+      await user.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+      await user.type(screen.getByLabelText(/Затрачено времени|Time spent/i), '1m 31s')
+      await user.type(
+        within(screen.getByRole('dialog')).getByLabelText(/^Комментарий$|^Comment$/i),
+        'Browser POP draft',
+      )
+      await user.click(screen.getByRole('button', { name: /Запустить таймер|Start timer/i }))
+      await act(async () => {
+        await router.navigate(-1)
+      })
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: /Отмена|Cancel/i,
+        }),
+      )
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+      expect(window.location.search).toBe('?tab=worklog')
+      expect(screen.getByRole('timer')).toBeInTheDocument()
+      await act(async () => {
+        await router.navigate(-1)
+      })
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: /Подтвердить|Confirm/i,
+        }),
+      )
+      await waitFor(() => {
+        expect(window.location.search).toBe('?tab=comments')
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+        expect(screen.getByRole('tab', { name: /Комментарии|Comments/i })).toHaveAttribute(
+          'data-state',
+          'active',
+        )
+      })
+      expect(mockWorklogCreate.mutateAsync).not.toHaveBeenCalled()
+      const commentsTab = screen.getByRole('tab', { name: /Комментарии|Comments/i })
+      commentsTab.focus()
+      await user.keyboard('{ArrowRight}')
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('tab', { name: /Журнал работ|Worklog/i }),
+        ),
+      )
+      expect(window.location.search).toBe('?tab=comments')
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(window.location.search).toBe('?tab=worklog'))
+      await user.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+      expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('')
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    } finally {
+      view.unmount()
+      router.dispose()
+      qc.clear()
+      window.history.replaceState(previousState, '', previousUrl)
+    }
+  })
+
+  it('blocks native and SPA navigation during issue deletion but follows only the confirmed success destination', async () => {
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    let finish!: () => void
+    mockIssueDeleteApi.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /Подтвердить|Confirm/i }),
+    )
+    await waitFor(() => expect(mockIssueDeleteApi).toHaveBeenCalledOnce())
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects', hidden: true }))
+    const guard = await screen.findByRole('alertdialog', {
+      name: /Покинуть страницу|Leave this page/i,
+    })
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+    await act(async () => finish())
+    await screen.findByRole('heading', { name: 'Dashboard destination' })
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+  })
+
+  it('blocks a browser POP while the delete modal is pending and discards it after confirmed deletion', async () => {
+    const previousUrl = window.location.href
+    const previousState = window.history.state
+    window.history.replaceState({ idx: 0 }, '', '/issues/i1')
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    let finish!: () => void
+    mockIssueDeleteApi.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const router = createBrowserRouter([
+      { path: '/', element: <h1>Dashboard destination</h1> },
+      { path: '/issues/:id', element: <IssueDetailPage /> },
+    ])
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const view = render(
+      <ThemeProvider>
+        <QueryClientProvider client={qc}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    try {
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('tab', { name: /Комментарии|Comments/i }))
+      await waitFor(() => expect(window.location.search).toBe('?tab=comments'))
+      expect(window.history.state.idx).toBe(1)
+      await user.type(screen.getByLabelText(/^Комментарий$|^Comment$/i), 'Retained delete draft')
+      await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+      await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+      await user.click(screen.getByRole('button', { name: /Подтвердить|Confirm/i }))
+      await waitFor(() => expect(mockIssueDeleteApi).toHaveBeenCalledOnce())
+      const unload = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(unload)
+      expect(unload.defaultPrevented).toBe(true)
+      await act(async () => {
+        window.history.back()
+      })
+      const guard = await screen.findByRole('alertdialog', {
+        name: /Покинуть страницу|Leave this page/i,
+      })
+      expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+      expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+      expect(window.location.search).toBe('?tab=comments')
+      await act(async () => finish())
+      await screen.findByRole('heading', { name: 'Dashboard destination' })
+      expect(window.location.pathname).toBe('/')
+      expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    } finally {
+      view.unmount()
+      router.dispose()
+      qc.clear()
+      window.history.replaceState(previousState, '', previousUrl)
+    }
+  })
+
+  it('retains an unknown deletion across dismissal, performs GET-only checks and requires a fresh explicit DELETE after presence is confirmed', async () => {
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    mockIssueDeleteApi.mockRejectedValueOnce(new IssueDeleteError(500))
+    mockGetIssue
+      .mockRejectedValueOnce(new Error('GET unavailable'))
+      .mockResolvedValueOnce({ ...issueData, id: 'different-issue' })
+      .mockResolvedValueOnce(issueData)
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    const user = userEvent.setup()
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Keep my draft' },
+    })
+    await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /Подтвердить|Confirm/i }),
+    )
+    await screen.findByRole('button', { name: /Проверить результат|Check result/i })
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /Отмена|Cancel/i }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /Действия|Actions/i })).toBeDisabled()
+    expect(screen.getByDisplayValue('Keep my draft')).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /Проверить результат|Check result/i }))
+    await user.click(screen.getByRole('button', { name: /Проверить результат|Check result/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/Не удалось проверить|Could not verify/),
+    )
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: /Проверить результат|Check result/i }))
+    await waitFor(() => expect(mockGetIssue).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('alert')).toHaveTextContent(/Не удалось проверить|Could not verify/)
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: /Проверить результат|Check result/i }))
+    await screen.findByRole('button', { name: /Подтвердить|Confirm/i })
+    expect(mockGetIssue).toHaveBeenCalledTimes(3)
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+    expect(screen.getByDisplayValue('Keep my draft')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Подтвердить|Confirm/i }))
+    await screen.findByRole('heading', { name: 'Dashboard destination' })
+    expect(mockIssueDeleteApi).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps confirmed absence while destination navigation waits for its loader', async () => {
+    const { useIssue, useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseIssue.mockImplementation(useIssue)
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    mockGetIssue.mockResolvedValueOnce(issueData).mockRejectedValue(new Error('Deleted issue GET'))
+    let finish!: () => void
+    const router = createMemoryRouter(
+      [
+        { path: '/issues/:id', element: <IssueDetailPage /> },
+        {
+          path: '/',
+          element: <h1>Dashboard destination</h1>,
+          loader: () =>
+            new Promise<void>((resolve) => {
+              finish = resolve
+            }),
+        },
+      ],
+      { initialEntries: ['/issues/i1'] },
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const view = render(
+      <ThemeProvider>
+        <QueryClientProvider client={client}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    try {
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: issueData.summary })
+      await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+      await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+      await user.click(screen.getByRole('button', { name: /Подтвердить|Confirm/i }))
+      await waitFor(() => expect(router.state.navigation.state).toBe('loading'))
+      expect(client.getQueryData(['issue', 'i1'])).toBeNull()
+      expect(mockGetIssue).toHaveBeenCalledOnce()
+      await act(async () => finish())
+      await screen.findByRole('heading', { name: 'Dashboard destination' })
+      expect(mockGetIssue).toHaveBeenCalledOnce()
+    } finally {
+      finish?.()
+      view.unmount()
+      router.dispose()
+      client.clear()
+    }
+  })
+
+  it('retains the deletion owner if an SSE refetch reports absence before the mutation settles', async () => {
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    let finish!: () => void
+    mockIssueDeleteApi.mockImplementationOnce(() => {
+      mockUseIssue.mockReturnValue({ data: null, isLoading: false, error: null })
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+    const confirm = screen.getByRole('alertdialog')
+    fireEvent.click(within(confirm).getByRole('button', { name: /Подтвердить|Confirm/i }))
+    fireEvent.click(within(confirm).getByRole('button', { name: /Подтвердить|Confirm/i }))
+    await waitFor(() => expect(mockIssueDeleteApi).toHaveBeenCalledOnce())
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.queryByText(/Задача не найдена|Issue not found/i)).not.toBeInTheDocument()
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await act(async () => finish())
+    await screen.findByRole('heading', { name: 'Dashboard destination' })
+  })
+
+  it('accepts absence only after checking an unknown deletion without sending a second DELETE', async () => {
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    mockIssueDeleteApi.mockRejectedValueOnce(new IssueDeleteError())
+    mockGetIssue.mockResolvedValueOnce(null)
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+    await user.click(screen.getByRole('button', { name: /Подтвердить|Confirm/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /Проверить результат|Check result/i }),
+    )
+    await screen.findByRole('heading', { name: 'Dashboard destination' })
+    expect(mockGetIssue).toHaveBeenCalledWith('i1')
+    expect(mockIssueDeleteApi).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a rejected delete dialog and cancels the blocked route after pending ends', async () => {
+    const { useDeleteIssue } =
+      await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
+    mockUseDeleteIssue.mockImplementation(useDeleteIssue)
+    let fail!: (error: Error) => void
+    mockIssueDeleteApi.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Действия|Actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /Удалить|Delete/i }))
+    await user.click(screen.getByRole('button', { name: /Подтвердить|Confirm/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects', hidden: true }))
+    await screen.findByRole('alertdialog', { name: /Покинуть страницу|Leave this page/i })
+    await act(async () => fail(new IssueDeleteError(400)))
+    const confirm = await screen.findByRole('alertdialog', { name: /^Удалить$|^Delete$/i })
+    expect(within(confirm).getByRole('alert')).toHaveTextContent(
+      /Не удалось переместить|Could not move/,
+    )
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(screen.queryByText('Dashboard destination')).not.toBeInTheDocument()
+    expect(within(confirm).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeEnabled()
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(false)
+  })
+
+  it('protects retained File and time drafts through a single blocker and returns cancelled tab focus to attachments', async () => {
+    const user = userEvent.setup()
+    const warning = vi.spyOn(console, 'warn')
+    mockAttachmentUpload.mockRejectedValueOnce(new AttachmentUploadError(400))
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=attachments'))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['x'], 'draft.txt')] },
+    })
+    await screen.findByTestId('attachment-error')
+    fireEvent.click(screen.getByRole('button', { name: /Записать время|Log work/i }))
+    fireEvent.change(screen.getByLabelText(/Затрачено времени|Time spent/i), {
+      target: { value: '1m' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects', hidden: true }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/Затрачено времени|Time spent/i)).toHaveValue('1m')
+    expect(screen.getByTestId('upload-item')).toBeInTheDocument()
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Отмена|Cancel/i }),
+    )
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('attachment-panel')).toHaveFocus())
+    expect(screen.getByTestId('upload-item')).toBeInTheDocument()
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByTestId('upload-item')).not.toBeInTheDocument())
+    expect(mockAttachmentUpload).toHaveBeenCalledTimes(1)
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('keeps pending upload navigation blocked and resets the deferred transition after success', async () => {
+    let finish!: (value: { id: string }) => void
+    mockAttachmentUpload.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=attachments'))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['x'], 'pending.txt')] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+    await act(async () => finish({ id: 'a1' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?tab=attachments',
+    )
+  })
+
+  it('protects a pending download and does not follow the deferred route when it finishes', async () => {
+    let finish!: () => void
+    mockAttachments.mockReturnValue({
+      data: [
+        {
+          id: 'a1',
+          issue_id: 'i1',
+          author_id: 'u1',
+          file_name: 'pending.txt',
+          content_type: 'text/plain',
+          size_bytes: 1,
+          created_at: '2026-10-04T00:00:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: mockAttachmentRefetch,
+    })
+    mockAttachmentDownload.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=attachments'))
+    fireEvent.click(
+      screen.getByRole('button', { name: /Скачать pending.txt|Download pending.txt/i }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(mockAttachmentDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes an invalid tab from the URL', async () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=unknown&view=full'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/issues/i1?view=full',
+      ),
+    )
+    expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+  })
+
+  it('protects custom field and comment drafts through one guard and discards both on accepted same-issue navigation', async () => {
+    mockCustomFields.mockReturnValue({
+      data: [
+        {
+          id: 'f1',
+          project_id: 'p1',
+          name: 'Customer',
+          field_type: 'text',
+          options: [],
+          is_required: false,
+          created_at: '2026-10-04T00:00:00Z',
+        },
+      ],
+      isLoading: false,
+      refetch: vi.fn(),
+    })
+    const warning = vi.spyOn(console, 'warn')
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    await user.click(
+      screen.getByRole('button', {
+        name: /Edit value of Customer|Изменить значение поля Customer/i,
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'field draft' } })
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'comment draft' },
+    })
+    const before = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(before)
+    expect(before.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /Отмена|Cancel/i }),
+    )
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveFocus())
+    expect(screen.getByLabelText('Customer')).toHaveValue('field draft')
+    expect(screen.getByDisplayValue('comment draft')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /Подтвердить|Confirm/i }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByDisplayValue('comment draft')).not.toBeInTheDocument()
+    const clean = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(clean)
+    expect(clean.defaultPrevented).toBe(false)
+    expect(mockCustomFieldSave).not.toHaveBeenCalled()
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('blocks navigation during custom field save, cancels deferred route and restores a connected focus target', async () => {
+    mockCustomFields.mockReturnValue({
+      data: [
+        {
+          id: 'f1',
+          project_id: 'p1',
+          name: 'Customer',
+          field_type: 'number',
+          options: [],
+          is_required: false,
+          created_at: '2026-10-04T00:00:00Z',
+        },
+      ],
+      isLoading: false,
+      refetch: vi.fn(),
+    })
+    let finish!: () => void
+    mockCustomFieldSave.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: /Edit value of Customer|Изменить значение поля Customer/i,
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: '0' } })
+    fireEvent.submit(screen.getByTestId('custom-field-value-form'))
+    await waitFor(() => expect(mockCustomFieldSave).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'TT-1' })).toHaveFocus())
+  })
+
+  it('protects description and comment drafts through one guard and discards description on confirmed tab navigation', async () => {
+    const warning = vi.spyOn(console, 'warn')
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    fireEvent.click(screen.getByRole('button', { name: /^изменить$|^edit$/i }))
+    const summary = screen.getByLabelText(/^Заголовок$|^Summary$/i)
+    fireEvent.change(summary, { target: { value: 'Description title draft' } })
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Comment draft' },
+    })
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(summary).toHaveValue('Description title draft')
+    expect(screen.getByDisplayValue('Comment draft')).toBeInTheDocument()
+    await waitFor(() => expect(summary).toHaveFocus())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('textbox', { name: /^Заголовок$|^Summary$/i }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText(issueData.summary)).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Comment draft')).not.toBeInTheDocument()
+    const cleanUnload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(cleanUnload)
+    expect(cleanUnload.defaultPrevented).toBe(false)
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('blocks navigation during description save and cancels the deferred route after success', async () => {
+    let finish!: () => void
+    const mutateAsync = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), mutateAsync, isPending: false })
+    render(wrapper(<IssueDetailPage />))
+    fireEvent.click(screen.getByRole('button', { name: /^изменить$|^edit$/i }))
+    fireEvent.change(screen.getByLabelText(/^Заголовок$|^Summary$/i), {
+      target: { value: 'Pending description' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Сохранить$|^Save$/i }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Go to projects' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.queryByText('Projects destination')).not.toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/Сохранено|Saved/i))
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(false)
+  })
+
+  it('does not reactivate a blocked tab when the saved description input disappears', async () => {
+    let finish!: () => void
+    const mutateAsync = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), mutateAsync, isPending: false })
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^изменить$|^edit$/i }))
+    fireEvent.change(screen.getByLabelText(/^Заголовок$|^Summary$/i), {
+      target: { value: 'Pending title' },
+    })
+    await user.click(screen.getByRole('button', { name: /^Сохранить$|^Save$/i }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('region', { name: 'TT-1' })).toHaveFocus())
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent('/issues/i1')
+    expect(screen.getByRole('status', { name: 'current location' })).not.toHaveTextContent('tab=')
+    expect(screen.getByRole('tab', { name: /Активность|Activity/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    expect(mutateAsync).toHaveBeenCalledOnce()
+  })
+
+  it('protects the link draft together with a comment and resets it only on accepted tab navigation', async () => {
+    const user = userEvent.setup()
+    const warning = vi.spyOn(console, 'warn')
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    await user.click(screen.getByRole('button', { name: /^Добавить связь$|^Add link$/i }))
+    fireEvent.change(screen.getByLabelText(/^Ключ задачи$|^Issue key$/i), {
+      target: { value: 'TT-3' },
+    })
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Compound link comment' },
+    })
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/^Ключ задачи$|^Issue key$/i)).toHaveValue('TT-3')
+    expect(screen.getByDisplayValue('Compound link comment')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText(/^Ключ задачи$|^Issue key$/i)).toHaveFocus())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/^Ключ задачи$|^Issue key$/i)).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByDisplayValue('Compound link comment')).not.toBeInTheDocument()
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('cancels a blocked tab after successful link save without reactivating its focus trigger', async () => {
+    let finish!: () => void
+    mockLinkCreate.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^Добавить связь$|^Add link$/i }))
+    fireEvent.change(screen.getByLabelText(/^Ключ задачи$|^Issue key$/i), {
+      target: { value: 'TT-3' },
+    })
+    await user.click(screen.getByTestId('link-submit'))
+    await waitFor(() => expect(mockLinkCreate).toHaveBeenCalledOnce())
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    expect(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    ).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('region', { name: 'TT-1' })).toHaveFocus())
+    expect(screen.getByRole('status', { name: 'current location' })).not.toHaveTextContent('tab=')
+    expect(mockLinkCreate).toHaveBeenCalledOnce()
+  })
+
+  it('protects label and comment drafts with one blocker and resets only on accepted tab navigation', async () => {
+    const user = userEvent.setup()
+    const warning = vi.spyOn(console, 'warn')
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments'))
+    await user.click(screen.getByRole('button', { name: /^Новая метка$|^New label$/i }))
+    fireEvent.change(screen.getByLabelText(/^Название метки$|^Label name$/i), {
+      target: { value: 'Label draft' },
+    })
+    fireEvent.change(screen.getByLabelText(/^Комментарий$|^Comment$/i), {
+      target: { value: 'Compound label comment' },
+    })
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Отмена|Cancel/i,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/^Название метки$|^Label name$/i)).toHaveValue('Label draft')
+    expect(screen.getByDisplayValue('Compound label comment')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Название метки$|^Label name$/i)).toHaveFocus(),
+    )
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/^Название метки$|^Label name$/i)).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByDisplayValue('Compound label comment')).not.toBeInTheDocument()
+    expect(mockLabelCreate).not.toHaveBeenCalled()
+    expect(mockLabelAttach).not.toHaveBeenCalled()
+    expect(warning.mock.calls.flat().join(' ')).not.toMatch(/only supports one blocker/)
+    warning.mockRestore()
+  })
+
+  it('blocks tabs across create and attach and cancels deferred navigation after confirmed attachment', async () => {
+    let finish!: () => void
+    mockLabelAttach.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^Новая метка$|^New label$/i }))
+    fireEvent.change(screen.getByLabelText(/^Название метки$|^Label name$/i), {
+      target: { value: 'QA label' },
+    })
+    await user.click(screen.getByTestId('label-submit'))
+    await waitFor(() => expect(mockLabelAttach).toHaveBeenCalledOnce())
+    expect(screen.getByLabelText(/^Название метки$|^Label name$/i)).toBeDisabled()
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: /Подтвердить|Confirm/i })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: /Отмена|Cancel/i })).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('region', { name: 'TT-1' })).toHaveFocus())
+    expect(screen.getByRole('status', { name: 'current location' })).not.toHaveTextContent('tab=')
+    expect(mockLabelCreate).toHaveBeenCalledOnce()
+    expect(mockLabelAttach).toHaveBeenCalledOnce()
+  })
+
+  it('protects direct attachment pending even without a form draft or connected input', async () => {
+    let finish!: () => void
+    mockProjectLabels.mockReturnValue({
+      data: [{ id: 'l1', project_id: 'p1', name: 'QA label', color: '#6b7280' }],
+      isLoading: false,
+    })
+    mockLabelAttach.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+    await user.click(
+      screen.getByRole('button', { name: /^Прикрепить метку QA label$|^Attach label QA label$/i }),
+    )
+    await waitFor(() => expect(mockLabelAttach).toHaveBeenCalledOnce())
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    await user.click(screen.getByRole('tab', { name: /Журнал работ|Worklog/i }))
+    expect(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: /Подтвердить|Confirm/i,
+      }),
+    ).toBeDisabled()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('region', { name: 'TT-1' })).toHaveFocus())
+    expect(screen.getByRole('status', { name: 'current location' })).not.toHaveTextContent('tab=')
+  })
+})

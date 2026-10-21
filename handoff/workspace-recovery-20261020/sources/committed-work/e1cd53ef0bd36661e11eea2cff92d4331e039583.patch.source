@@ -1,0 +1,1367 @@
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+index 5a3f46d..4c519b5 100644
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -7,6 +7,7 @@ pub mod oidc;
+ pub mod sdlc;
+ pub mod sdlc_configuration;
+ pub mod sdlc_confirmation;
++pub mod sdlc_draft_flow;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;
+ pub mod sdlc_pm_resume;
+diff --git a/backend/app/src/sdlc_draft_flow.rs b/backend/app/src/sdlc_draft_flow.rs
+new file mode 100644
+index 0000000..debe33e
+--- /dev/null
++++ b/backend/app/src/sdlc_draft_flow.rs
+@@ -0,0 +1,88 @@
++use domain::sdlc_routing::RoutingPolicy;
++use shared::AppError;
++use uuid::Uuid;
++
++/// Declared routing prerequisites only; actual PM runtime readiness stays in Fleet.
++pub fn validate_policy(
++    policy: &RoutingPolicy,
++    project: Uuid,
++    instance: &str,
++) -> Result<(), AppError> {
++    crate::sdlc_routing::validate_routes(&policy.routes)?;
++    crate::sdlc_routing::validate_project_pm_default(
++        policy,
++        project,
++        instance,
++        policy.routes.project_manager.agent_id,
++    )?;
++    if policy.contract_version != 2 || policy.native_ready || policy.dispatch_allowed {
++        return Err(AppError::conflict("single_task_v2_routing_policy_required"));
++    }
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use serde_json::json;
++
++    fn policy() -> RoutingPolicy {
++        let mut routes = json!({});
++        for (n, role) in [
++            "project_manager",
++            "analyst",
++            "architect",
++            "developer",
++            "reviewer",
++            "tester",
++            "devops",
++        ]
++        .iter()
++        .enumerate()
++        {
++            let suffix = role.replace('_', "-");
++            routes[*role] = json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":1,
++                "instruction_profile":"single-task-v1","instruction_manifest_sha256":"a".repeat(64),
++                "namespace_id":(n+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
++                "workflow_id":(n+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),
++                "profile":format!("single-task-v1-{suffix}"),"workflow_catalog_version":1,"workflow_catalog_sha256":"b".repeat(64)});
++        }
++        let routes = serde_json::from_value(routes).unwrap();
++        RoutingPolicy {
++            contract_version: 2,
++            tracker_instance_id: "test".into(),
++            project_id: Uuid::new_v4(),
++            version: 1,
++            routing_hash: crate::sdlc::canonical_hash(&routes).unwrap(),
++            routes,
++            verification: domain::sdlc_routing::RoutingVerification::Declared,
++            native_ready: false,
++            dispatch_allowed: false,
++            author_subject: "owner".into(),
++            created_at: chrono::Utc::now(),
++        }
++    }
++
++    #[test]
++    fn marked_draft_requires_bound_seven_role_v2_policy_not_runtime_claims() {
++        let valid = policy();
++        validate_policy(&valid, valid.project_id, "test").unwrap();
++        assert!(validate_policy(&valid, Uuid::new_v4(), "test").is_err());
++        assert!(validate_policy(&valid, valid.project_id, "foreign").is_err());
++        let mut wrong = valid.clone();
++        wrong.contract_version = 1;
++        assert!(validate_policy(&wrong, valid.project_id, "test").is_err());
++        let mut wrong = valid.clone();
++        wrong.routing_hash = "f".repeat(64);
++        assert!(validate_policy(&wrong, valid.project_id, "test").is_err());
++        let mut wrong = valid.clone();
++        wrong.routes.developer.instruction_profile = None;
++        assert!(validate_policy(&wrong, valid.project_id, "test").is_err());
++        let mut wrong = valid.clone();
++        wrong.native_ready = true;
++        assert!(validate_policy(&wrong, valid.project_id, "test").is_err());
++        let mut wrong = valid.clone();
++        wrong.dispatch_allowed = true;
++        assert!(validate_policy(&wrong, valid.project_id, "test").is_err());
++    }
++}
+diff --git a/backend/app/src/sdlc_tests.rs b/backend/app/src/sdlc_tests.rs
+index eef9de1..dcb8013 100644
+--- a/backend/app/src/sdlc_tests.rs
++++ b/backend/app/src/sdlc_tests.rs
+@@ -49,6 +49,7 @@ fn non_root_cannot_use_pm_lifecycle_or_issue_confirmation_permission() {
+ fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
+     let human = actor("central-human", true, vec![]);
+     let mut command = CreateDraftCommand {
++        flow: None,
+         title: "\u{43f}".repeat(500),
+         description: "x".repeat(100_000),
+         idempotency_key: "\u{43a}".repeat(64),
+@@ -72,6 +73,76 @@ fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
+     assert!(validate_draft(&human, &command).is_err());
+ }
+ 
++#[test]
++fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
++    let legacy = json!({"title":"Draft","description":"Input","idempotency_key":"create"});
++    let command: CreateDraftCommand = serde_json::from_value(legacy.clone()).unwrap();
++    assert_eq!(command.flow, None);
++    assert_eq!(serde_json::to_value(&command).unwrap(), legacy);
++    let hash = canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap();
++    assert_eq!(
++        hash,
++        canonical_hash(&json!({"operation":"create_draft","payload":legacy})).unwrap()
++    );
++    for value in [
++        json!(null),
++        json!(false),
++        json!(true),
++        json!("single-task-v2"),
++        json!({}),
++    ] {
++        let mut bad = legacy.clone();
++        bad["flow"] = value;
++        assert!(serde_json::from_value::<CreateDraftCommand>(bad).is_err());
++    }
++    let mut opted = legacy;
++    opted["flow"] = json!("single-task-v1");
++    let command: CreateDraftCommand = serde_json::from_value(opted.clone()).unwrap();
++    assert_eq!(command.flow, Some(DraftFlow::SingleTaskV1));
++    assert_eq!(serde_json::to_value(&command).unwrap(), opted);
++    assert_ne!(
++        hash,
++        canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap()
++    );
++    let (mut state, config, owner, pm, verifier, fence) = fixture();
++    state
++        .retained_fields
++        .insert("flow".into(), json!("single-task-v1"));
++    publish(&mut state, &config, &pm, &fence);
++    for check in ["review", "contract"] {
++        record_evidence(&mut state, &config, &verifier, &fence, check, check);
++    }
++    let hash = state.revisions.last().unwrap().content_hash.clone();
++    apply(
++        &mut state,
++        &owner,
++        &config,
++        &SdlcCommand::Confirm {
++            revision: 1,
++            command: ConfirmCommand {
++                content_hash: hash,
++                idempotency_key: "confirm-flow".into(),
++                expected_routing_policy_version: None,
++            },
++        },
++    )
++    .unwrap();
++    let state: TaskState = serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
++    assert_eq!(state.stage, Stage::Analysis);
++    assert_eq!(state.draft_flow().unwrap(), Some(DraftFlow::SingleTaskV1));
++    assert!(
++        serde_json::to_value(state.context(&owner))
++            .unwrap()
++            .get("flow")
++            .is_none()
++    );
++    let mut invalid = state.clone();
++    invalid.retained_fields.insert("flow".into(), json!(null));
++    assert!(invalid.draft_flow().is_err());
++    invalid.retained_fields.remove("flow");
++    assert_eq!(invalid.draft_flow().unwrap(), None);
++}
++
+ fn fixture() -> (
+     TaskState,
+     SdlcConfig,
+diff --git a/backend/domain/src/sdlc.rs b/backend/domain/src/sdlc.rs
+index c1eda82..8cdee60 100644
+--- a/backend/domain/src/sdlc.rs
++++ b/backend/domain/src/sdlc.rs
+@@ -339,6 +339,23 @@ pub struct CreateDraftCommand {
+     pub description: String,
+     #[schema(min_length = 1, max_length = 128)]
+     pub idempotency_key: String,
++    #[serde(
++        default,
++        skip_serializing_if = "Option::is_none",
++        deserialize_with = "draft_flow"
++    )]
++    #[schema(nullable = false)]
++    pub flow: Option<DraftFlow>,
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
++pub enum DraftFlow {
++    #[serde(rename = "single-task-v1")]
++    SingleTaskV1,
++}
++
++fn draft_flow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<DraftFlow>, D::Error> {
++    DraftFlow::deserialize(d).map(Some)
+ }
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+@@ -521,6 +538,15 @@ pub struct TaskState {
+ }
+ 
+ impl TaskState {
++    pub fn draft_flow(&self) -> Result<Option<DraftFlow>, AppError> {
++        self.retained_fields
++            .get("flow")
++            .map(|value| {
++                serde_json::from_value(value.clone())
++                    .map_err(|_| AppError::conflict("invalid immutable Draft flow marker"))
++            })
++            .transpose()
++    }
+     pub fn clarifying(&self) -> bool {
+         self.stage == Stage::Clarification
+             || (self.stage == Stage::Draft
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+index 78bacad..87ac334 100644
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -480,10 +480,17 @@ impl PostgresSdlcRepository {
+                 let confirmation: Confirmation =
+                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
+                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
+-                let routing_snapshot = if let Some(version) = c.expected_routing_policy_version {
++                let routing_snapshot = if state.draft_flow()?.is_some()
++                    || c.expected_routing_policy_version.is_some()
++                {
+                     Some(
+-                        self.freeze_routing(tx, state, &confirmation, version)
+-                            .await?,
++                        self.freeze_routing(
++                            tx,
++                            state,
++                            &confirmation,
++                            c.expected_routing_policy_version,
++                        )
++                        .await?,
+                     )
+                 } else {
+                     None
+@@ -902,6 +909,24 @@ impl SdlcRepository for PostgresSdlcRepository {
+         }
+         // A configured project default is authoritative for new reservations.
+         // Replay above keeps its original agent even after the default changes.
++        if state.draft_flow()?.is_some() {
++            if !self
++                .config
++                .single_task_project_ids
++                .contains(&state.project_id)
++            {
++                return Err(AppError::Unavailable(
++                    "single_task_draft_project_not_enabled".into(),
++                ));
++            }
++            let policy = self.single_task_policy(&tx, state.project_id).await?;
++            app::sdlc_routing::validate_project_pm_default(
++                &policy,
++                state.project_id,
++                &state.tracker_instance_id,
++                command.requested_agent_id,
++            )?;
++        }
+         let default = tx
+             .query_one(statement(
+                 "SELECT r.payload FROM sdlc_project_routing_heads h
+@@ -1183,6 +1208,7 @@ impl SdlcRepository for PostgresSdlcRepository {
+                     || state.root_task_id != task
+                     || state.task_id != task
+                     || state.project_id != project
++                    || state.draft_flow()? != command.flow
+                     || result.task_id != task
+                     || result.root_task_id != task
+                     || result.project_id != project
+@@ -1196,6 +1222,15 @@ impl SdlcRepository for PostgresSdlcRepository {
+                 tx.commit().await.map_err(map_db)?;
+                 return Ok((result, true));
+             }
++            let single_task = command.flow.is_some();
++            if single_task {
++                if !self.config.single_task_project_ids.contains(&project) {
++                    return Err(AppError::Unavailable(
++                        "single_task_draft_project_not_enabled".into(),
++                    ));
++                }
++                self.single_task_policy(&tx, project).await?;
++            }
+             let row = tx
+                 .query_one(statement(
+                     "SELECT allocate_project_issue_number($1) AS number",
+@@ -1212,7 +1247,6 @@ impl SdlcRepository for PostgresSdlcRepository {
+                 .ok_or_else(|| AppError::validation("issue number overflow"))?;
+             let task = Uuid::now_v7();
+             let key = format!("{project_key}-{number}");
+-            let single_task = self.config.single_task_project_ids.contains(&project);
+             let status = single_task.then_some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+             let initial_status: Uuid = match status {
+                 Some(status) => lifecycle::mapped_issue_status(&tx, Stage::Draft, status).await?,
+@@ -1258,9 +1292,16 @@ impl SdlcRepository for PostgresSdlcRepository {
+                 }
+                 return Err(map_db(error));
+             }
++            let mut retained_fields = serde_json::Map::new();
++            if let Some(flow) = command.flow {
++                retained_fields.insert(
++                    "flow".into(),
++                    serde_json::to_value(flow).map_err(AppError::internal)?,
++                );
++            }
+             let state = TaskState {
+                 status,
+-                retained_fields: Default::default(),
++                retained_fields,
+                 draft_submode: single_task.then_some(DraftSubmode::Brainstorming),
+                 tracker_instance_id: self.config.instance_id.clone(),
+                 project_id: project,
+@@ -1377,6 +1418,7 @@ impl SdlcRepository for PostgresSdlcRepository {
+             title: input.title,
+             description: input.description,
+             idempotency_key: key.into(),
++            flow: state.draft_flow()?,
+         };
+         let hash =
+             app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
+diff --git a/backend/infra/src/sdlc_draft_flow_pg_tests.rs b/backend/infra/src/sdlc_draft_flow_pg_tests.rs
+new file mode 100644
+index 0000000..fd055ee
+--- /dev/null
++++ b/backend/infra/src/sdlc_draft_flow_pg_tests.rs
+@@ -0,0 +1,661 @@
++//! Synthetic policy/owner ledger tests, not live Fleet runtime readiness evidence.
++use super::*;
++
++pub(super) fn single_task_routes() -> RoleRoutes {
++    let legacy = routes();
++    let mut value = serde_json::to_value(&legacy).unwrap();
++    for (role, _) in legacy.entries() {
++        let suffix = role.replace('_', "-");
++        let route = value[role].as_object_mut().unwrap();
++        route.remove("package_commit");
++        route.remove("package_manifest_sha256");
++        route.insert("instruction_profile".into(), json!("single-task-v1"));
++        route.insert("instruction_manifest_sha256".into(), json!("c".repeat(64)));
++        route.insert(
++            "namespace_name".into(),
++            json!(format!("single-task-{suffix}")),
++        );
++        route.insert(
++            "workflow_key".into(),
++            json!(format!("single-task-v1:{role}")),
++        );
++        route.insert("profile".into(), json!(format!("single-task-v1-{suffix}")));
++        route.insert("workflow_catalog_version".into(), json!(1));
++    }
++    parse(value)
++}
++
++fn config(project: Uuid, enabled: bool) -> SdlcConfig {
++    SdlcConfig {
++        instance_id: "draft-flow-test".into(),
++        orchestrator_subject: "pm".into(),
++        verifier_subject: "verifier".into(),
++        reservation_scheduler_subject: "scheduler".into(),
++        single_task_project_ids: if enabled {
++            [project].into_iter().collect()
++        } else {
++            Default::default()
++        },
++    }
++}
++
++fn create(key: &str, flow: Option<DraftFlow>) -> CreateDraftCommand {
++    CreateDraftCommand {
++        title: "Draft flow fixture".into(),
++        description: "Real saved synthetic input".into(),
++        idempotency_key: key.into(),
++        flow,
++    }
++}
++
++async fn checkpoint_counts(db: &DatabaseConnection) -> Vec<i64> {
++    let mut counts = vec![];
++    for table in [
++        "issues",
++        "sdlc_tasks",
++        "sdlc_draft_creations",
++        "sdlc_confirmations",
++        "sdlc_task_routing_snapshots",
++        "sdlc_analysis_intents",
++        "sdlc_idempotency",
++        "sdlc_outbox",
++        "issue_status_history",
++    ] {
++        counts.push(count(db, table).await);
++    }
++    counts
++}
++
++#[tokio::test]
++#[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
++async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay() {
++    let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
++        .expect("isolated Draft flow database required");
++    let db = Database::connect(&url).await.unwrap();
++    let row=db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
++    assert!(
++        row.try_get::<String>("", "name")
++            .unwrap()
++            .ends_with("_draft_flow_test")
++    );
++    assert!(row.try_get::<bool>("", "fresh").unwrap());
++    migration::Migrator::up(&db, None).await.unwrap();
++    let project = Uuid::new_v4();
++    let owner_id = Uuid::new_v4();
++    for (subject, id) in [
++        ("owner", owner_id),
++        ("pm", Uuid::new_v4()),
++        ("verifier", Uuid::new_v4()),
++        ("member", Uuid::new_v4()),
++    ] {
++        exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
++            vec![id.into(),format!("{subject}@example.test").into(),subject.into()]).await.unwrap();
++    }
++    exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'DFT','Draft flow',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
++    exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Draft','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
++    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub IN ('pm','verifier','member')",vec![project.into()]).await.unwrap();
++    let repo = PostgresSdlcRepository::connect(&url, config(project, true))
++        .await
++        .unwrap();
++    let disabled = PostgresSdlcRepository::connect(&url, config(project, false))
++        .await
++        .unwrap();
++    let owner = actor("owner", true, vec![]);
++    let member = actor("member", true, vec![]);
++    let marked = create("marked", Some(DraftFlow::SingleTaskV1));
++    let before = checkpoint_counts(&db).await;
++    assert!(matches!(
++        disabled.create_draft(project, &owner, marked.clone()).await,
++        Err(AppError::Unavailable(_))
++    ));
++    assert!(
++        repo.create_draft(project, &owner, marked.clone())
++            .await
++            .is_err()
++    );
++    assert_eq!(checkpoint_counts(&db).await, before);
++    let legacy_command = create("legacy", None);
++    let (legacy, _) = repo
++        .create_draft(project, &owner, legacy_command.clone())
++        .await
++        .unwrap();
++    let legacy_state = repo.read(legacy.task_id, &owner).await.unwrap();
++    assert_eq!(legacy_state.draft_flow().unwrap(), None);
++    assert_eq!(legacy_state.status, None);
++    assert_eq!(legacy_state.draft_submode, None);
++    let original: String = db
++        .query_one(statement(
++            "SELECT payload_hash FROM sdlc_draft_creations WHERE task_id=$1",
++            vec![legacy.task_id.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get::<String>("", "payload_hash")
++        .unwrap();
++    assert_eq!(original,app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":{
++        "title":legacy_command.title,"description":legacy_command.description,"idempotency_key":legacy_command.idempotency_key}})).unwrap());
++    repo.set_routing_policy(
++        project,
++        &owner,
++        SetRoutingPolicy {
++            expected_version: None,
++            routes: routes(),
++            idempotency_key: "v1".into(),
++        },
++    )
++    .await
++    .unwrap();
++    let before = checkpoint_counts(&db).await;
++    assert!(matches!(
++        repo.create_draft(project, &owner, marked.clone()).await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(checkpoint_counts(&db).await, before);
++    let roles = single_task_routes();
++    repo.set_routing_policy(
++        project,
++        &owner,
++        SetRoutingPolicy {
++            expected_version: Some(1),
++            routes: roles.clone(),
++            idempotency_key: "v2".into(),
++        },
++    )
++    .await
++    .unwrap();
++    let (draft, replayed) = repo
++        .create_draft(project, &owner, marked.clone())
++        .await
++        .unwrap();
++    assert!(!replayed);
++    let task = draft.task_id;
++    let state = repo.read(task, &owner).await.unwrap();
++    assert_eq!(state.draft_flow().unwrap(), Some(DraftFlow::SingleTaskV1));
++    assert_eq!(state.root_task_id, task);
++    assert_eq!(state.status, Some(LifecycleStatus::Ready));
++    assert_eq!(state.draft_submode, Some(DraftSubmode::Brainstorming));
++    let before = checkpoint_counts(&db).await;
++    assert!(
++        repo.create_draft(project, &owner, marked.clone())
++            .await
++            .unwrap()
++            .1
++    );
++    assert_eq!(
++        repo.draft_creation_operation(project, &owner, "marked")
++            .await
++            .unwrap()
++            .task_id,
++        task
++    );
++    let mut changed = marked.clone();
++    changed.flow = None;
++    assert!(matches!(
++        repo.create_draft(project, &owner, changed).await,
++        Err(AppError::Conflict(_))
++    ));
++    let mut retrofit = legacy_command.clone();
++    retrofit.flow = Some(DraftFlow::SingleTaskV1);
++    assert!(matches!(
++        repo.create_draft(project, &owner, retrofit).await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(checkpoint_counts(&db).await, before);
++    for (target, sql) in [
++        (
++            task,
++            "UPDATE sdlc_tasks SET state=state-'flow' WHERE task_id=$1",
++        ),
++        (
++            task,
++            "UPDATE sdlc_tasks SET state=jsonb_set(state,'{flow}','null'::jsonb) WHERE task_id=$1",
++        ),
++        (
++            legacy.task_id,
++            "UPDATE sdlc_tasks SET state=jsonb_set(state,'{flow}','\"single-task-v1\"'::jsonb) WHERE task_id=$1",
++        ),
++    ] {
++        assert!(
++            db.execute(statement(sql, vec![target.into()]))
++                .await
++                .is_err()
++        );
++    }
++    assert_eq!(
++        serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap(),
++        serde_json::to_value(&state).unwrap()
++    );
++    // A raw/bind-like marked insertion without immutable creation provenance cannot commit.
++    let tx = db.begin().await.unwrap();
++    let fake = Uuid::new_v4();
++    exec(&tx,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds)
++        SELECT $1,$2,'DFT-9999','task',id,'Invalid origin','',$3,'medium','[]',0,0 FROM statuses WHERE name='SDLC Ready' LIMIT 1",
++        vec![fake.into(),project.into(),owner_id.into()]).await.unwrap();
++    let mut fake_state = state.clone();
++    fake_state.task_id = fake;
++    fake_state.root_task_id = fake;
++    exec(&tx,"INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state) VALUES($1,'draft-flow-test',$2,$1,'owner',$3)",
++        vec![fake.into(),project.into(),json_value(&fake_state).unwrap()]).await.unwrap();
++    assert!(tx.commit().await.is_err());
++    assert_eq!(checkpoint_counts(&db).await, before);
++    let reserve = parse::<domain::sdlc_pm_draft::ReservePmDraft>(
++        json!({"requested_agent_id":roles.project_manager.agent_id,
++        "expected_owner_version":0,"expected_assignment_version":null,"idempotency_key":"reserve"}),
++    );
++    assert!(matches!(
++        disabled
++            .reserve_pm_draft(task, &owner, reserve.clone())
++            .await,
++        Err(AppError::Unavailable(_))
++    ));
++    let mut wrong = reserve.clone();
++    wrong.requested_agent_id = Uuid::new_v4();
++    wrong.idempotency_key = "wrong-default".into();
++    assert!(matches!(
++        repo.reserve_pm_draft(task, &owner, wrong).await,
++        Err(AppError::Conflict(_))
++    ));
++    let (reservation, _) = repo
++        .reserve_pm_draft(task, &owner, reserve.clone())
++        .await
++        .unwrap();
++    let pm = actor(
++        "pm",
++        false,
++        vec![
++            "task-tracker:read".into(),
++            reservation.assignment.scope(task),
++        ],
++    );
++    let fence = MachineFence {
++        assignment_id: reservation.assignment.assignment_id,
++        execution_id: reservation.assignment.execution_id,
++        agent_id: reservation.assignment.agent_id,
++        assignment_version: reservation.assignment.version,
++    };
++    repo.claim_execution_lease(
++        task,
++        &pm,
++        ClaimExecutionLease {
++            expected_owner_version: 1,
++            fence: fence.clone(),
++            idempotency_key: "claim".into(),
++        },
++    )
++    .await
++    .unwrap();
++    let document: RequirementsDocument = parse(
++        json!({"goal":"Atomic flow","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],
++        "acceptance_criteria":["Accept"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
++    );
++    let hash = app::sdlc::canonical_hash(&document).unwrap();
++    repo.execute_verified(
++        task,
++        &pm,
++        SdlcCommand::PublishRevision(PublishRevision {
++            fence: fence.clone(),
++            expected_requirement_revision: None,
++            document: document.clone(),
++            idempotency_key: "publish".into(),
++        }),
++        reservation.clone(),
++        None,
++    )
++    .await
++    .unwrap();
++    let confirm = SdlcCommand::Confirm {
++        revision: 1,
++        command: ConfirmCommand {
++            content_hash: hash.clone(),
++            idempotency_key: "confirm".into(),
++            expected_routing_policy_version: None,
++        },
++    };
++    assert!(matches!(
++        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    let verifier = actor(
++        "verifier",
++        false,
++        vec![format!(
++            "task-tracker:sdlc:evidence:{task}:{}",
++            fence.assignment_version
++        )],
++    );
++    for check in ["check", "prerequisite"] {
++        repo.execute_verified(
++            task,
++            &verifier,
++            SdlcCommand::Evidence(EvidenceCommand {
++                fence: fence.clone(),
++                requirement_revision: 1,
++                content_hash: hash.clone(),
++                check_id: check.into(),
++                evidence_reference: format!("fixture://{check}"),
++                idempotency_key: check.into(),
++            }),
++            reservation.clone(),
++            None,
++        )
++        .await
++        .unwrap();
++    }
++    let before = checkpoint_counts(&db).await;
++    let before_state = serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap();
++    assert!(matches!(
++        repo.execute_verified(task, &member, confirm.clone(), reservation.clone(), None)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    for (revision, content_hash, version) in [
++        (2, hash.clone(), None),
++        (1, "f".repeat(64), None),
++        (1, hash.clone(), Some(1)),
++    ] {
++        let wrong = SdlcCommand::Confirm {
++            revision,
++            command: ConfirmCommand {
++                content_hash,
++                idempotency_key: "wrong-confirm".into(),
++                expected_routing_policy_version: version,
++            },
++        };
++        assert!(matches!(
++            repo.execute_verified(task, &owner, wrong, reservation.clone(), None)
++                .await,
++            Err(AppError::Conflict(_))
++        ));
++    }
++    assert_eq!(checkpoint_counts(&db).await, before);
++    repo.set_routing_policy(
++        project,
++        &owner,
++        SetRoutingPolicy {
++            expected_version: Some(2),
++            routes: routes(),
++            idempotency_key: "v1-again".into(),
++        },
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(checkpoint_counts(&db).await, before);
++    let new_roles = single_task_routes();
++    let (policy4, _) = repo
++        .set_routing_policy(
++            project,
++            &owner,
++            SetRoutingPolicy {
++                expected_version: Some(3),
++                routes: new_roles,
++                idempotency_key: "v2-again".into(),
++            },
++        )
++        .await
++        .unwrap();
++    db.execute_unprepared("CREATE FUNCTION fixture_flow_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
++        IF NEW.event_type='requirements.confirmed' THEN RAISE EXCEPTION 'fixture outbox failure'; END IF; RETURN NEW; END $$;
++        CREATE TRIGGER fixture_flow_fail_outbox BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION fixture_flow_fail_outbox();").await.unwrap();
++    assert!(
++        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
++            .await
++            .is_err()
++    );
++    assert_eq!(checkpoint_counts(&db).await, before);
++    assert_eq!(
++        serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap(),
++        before_state
++    );
++    db.execute_unprepared("DROP TRIGGER fixture_flow_fail_outbox ON sdlc_outbox; DROP FUNCTION fixture_flow_fail_outbox();").await.unwrap();
++    let next_policy = SetRoutingPolicy {
++        expected_version: Some(4),
++        routes: single_task_routes(),
++        idempotency_key: "concurrent-policy".into(),
++    };
++    let (accepted, policy5) = tokio::join!(
++        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None),
++        repo.set_routing_policy(project, &owner, next_policy)
++    );
++    let confirmation: Confirmation = parse(accepted.unwrap());
++    let policy5 = policy5.unwrap().0;
++    let snapshot = repo.task_routing_snapshot(task, &owner).await.unwrap();
++    assert_eq!(snapshot.contract_version, 2);
++    assert_eq!(snapshot.confirmation_id, confirmation.id);
++    assert_eq!(snapshot.requirement_revision, 1);
++    assert_eq!(snapshot.content_hash, hash);
++    assert!(snapshot.policy == policy4 || snapshot.policy == policy5);
++    let intent = repo.analysis_intent(task, &owner).await.unwrap();
++    assert_eq!(intent.workflow, "single-task-v1:analyst");
++    let state = repo.read(task, &owner).await.unwrap();
++    assert_eq!(state.stage, Stage::Analysis);
++    assert_eq!(state.status, Some(LifecycleStatus::Ready));
++    assert_eq!(state.assignment.as_ref().unwrap(), &reservation.assignment);
++    assert_eq!(state.draft_flow().unwrap(), Some(DraftFlow::SingleTaskV1));
++    let before = checkpoint_counts(&db).await;
++    repo.set_routing_policy(
++        project,
++        &owner,
++        SetRoutingPolicy {
++            expected_version: Some(5),
++            routes: routes(),
++            idempotency_key: "legacy-after-confirm".into(),
++        },
++    )
++    .await
++    .unwrap();
++    let replay = disabled
++        .execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
++        .await
++        .unwrap();
++    assert_eq!(replay, serde_json::to_value(&confirmation).unwrap());
++    assert_eq!(
++        disabled.task_routing_snapshot(task, &owner).await.unwrap(),
++        snapshot
++    );
++    assert_eq!(
++        disabled.confirmation_read(task, &owner, 1).await.unwrap(),
++        confirmation
++    );
++    assert!(
++        disabled
++            .create_draft(project, &owner, marked.clone())
++            .await
++            .unwrap()
++            .1
++    );
++    assert_eq!(
++        disabled
++            .draft_creation_operation(project, &owner, "marked")
++            .await
++            .unwrap()
++            .task_id,
++        task
++    );
++    assert!(
++        disabled
++            .reserve_pm_draft(task, &owner, reserve)
++            .await
++            .unwrap()
++            .1
++    );
++    assert_eq!(checkpoint_counts(&db).await, before);
++    let mut changed = confirm;
++    if let SdlcCommand::Confirm { command, .. } = &mut changed {
++        command.expected_routing_policy_version = Some(4);
++    }
++    assert!(matches!(
++        disabled
++            .execute_verified(task, &owner, changed, reservation, None)
++            .await,
++        Err(AppError::Conflict(_))
++    ));
++    assert!(
++        disabled
++            .create_draft(project, &owner, legacy_command)
++            .await
++            .unwrap()
++            .1
++    );
++    assert_eq!(
++        disabled
++            .draft_creation_operation(project, &owner, "legacy")
++            .await
++            .unwrap()
++            .task_id,
++        legacy.task_id
++    );
++    assert_eq!(
++        repo.read(legacy.task_id, &owner)
++            .await
++            .unwrap()
++            .draft_flow()
++            .unwrap(),
++        None
++    );
++    // Existing legacy Draft/PM reservation still confirms without automatic snapshot.
++    let legacy_task = legacy.task_id;
++    let policy = repo.routing_policy(project, &owner, None).await.unwrap();
++    let (old_pm, _) = disabled
++        .reserve_pm_draft(
++            legacy_task,
++            &owner,
++            parse(json!({
++        "requested_agent_id":policy.routes.project_manager.agent_id,"expected_owner_version":0,
++        "expected_assignment_version":null,"idempotency_key":"legacy-reserve"})),
++        )
++        .await
++        .unwrap();
++    let old_fence = MachineFence {
++        assignment_id: old_pm.assignment.assignment_id,
++        execution_id: old_pm.assignment.execution_id,
++        agent_id: old_pm.assignment.agent_id,
++        assignment_version: old_pm.assignment.version,
++    };
++    let old_actor = actor(
++        "pm",
++        false,
++        vec![
++            "task-tracker:read".into(),
++            old_pm.assignment.scope(legacy_task),
++        ],
++    );
++    disabled
++        .claim_execution_lease(
++            legacy_task,
++            &old_actor,
++            ClaimExecutionLease {
++                expected_owner_version: 1,
++                fence: old_fence.clone(),
++                idempotency_key: "legacy-claim".into(),
++            },
++        )
++        .await
++        .unwrap();
++    disabled
++        .execute_verified(
++            legacy_task,
++            &old_actor,
++            SdlcCommand::PublishRevision(PublishRevision {
++                fence: old_fence.clone(),
++                expected_requirement_revision: None,
++                document,
++                idempotency_key: "legacy-publish".into(),
++            }),
++            old_pm.clone(),
++            None,
++        )
++        .await
++        .unwrap();
++    let old_verifier = actor(
++        "verifier",
++        false,
++        vec![format!(
++            "task-tracker:sdlc:evidence:{legacy_task}:{}",
++            old_fence.assignment_version
++        )],
++    );
++    for check in ["check", "prerequisite"] {
++        disabled
++            .execute_verified(
++                legacy_task,
++                &old_verifier,
++                SdlcCommand::Evidence(EvidenceCommand {
++                    fence: old_fence.clone(),
++                    requirement_revision: 1,
++                    content_hash: hash.clone(),
++                    check_id: check.into(),
++                    evidence_reference: format!("fixture://legacy-{check}"),
++                    idempotency_key: check.into(),
++                }),
++                old_pm.clone(),
++                None,
++            )
++            .await
++            .unwrap();
++    }
++    let snapshot_count = count(&db, "sdlc_task_routing_snapshots").await;
++    disabled
++        .execute_verified(
++            legacy_task,
++            &owner,
++            SdlcCommand::Confirm {
++                revision: 1,
++                command: ConfirmCommand {
++                    content_hash: hash,
++                    idempotency_key: "legacy-confirm".into(),
++                    expected_routing_policy_version: None,
++                },
++            },
++            old_pm,
++            None,
++        )
++        .await
++        .unwrap();
++    assert_eq!(
++        count(&db, "sdlc_task_routing_snapshots").await,
++        snapshot_count
++    );
++    assert_eq!(
++        disabled
++            .analysis_intent(legacy_task, &owner)
++            .await
++            .unwrap()
++            .workflow,
++        "hermes-sdlc:analyst"
++    );
++    let old_state = disabled.read(legacy_task, &owner).await.unwrap();
++    assert_eq!(old_state.draft_flow().unwrap(), None);
++    assert_eq!(old_state.status, None);
++    assert_eq!(
++        disabled
++            .draft_creation_operation(project, &owner, "legacy")
++            .await
++            .unwrap()
++            .task_id,
++        legacy_task
++    );
++    exec(
++        &db,
++        "UPDATE users SET is_active=false WHERE central_sub='owner'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        disabled.create_draft(project, &owner, marked).await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        disabled
++            .draft_creation_operation(project, &owner, "marked")
++            .await,
++        Err(AppError::Forbidden)
++    ));
++}
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+index f6a1f49..ab32f43 100644
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -6,6 +6,8 @@ use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
+ use sea_orm_migration::MigratorTrait;
+ use serde::de::DeserializeOwned;
+ 
++#[path = "sdlc_draft_flow_pg_tests.rs"]
++mod draft_flow_tests;
+ #[path = "sdlc_pm_resume_pg_tests.rs"]
+ mod pm_resume_tests;
+ 
+@@ -147,7 +149,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+     let scheduler = actor("scheduler", false, vec![]);
+     let mut reader = scheduler.clone();
+     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
+-    let routes = routes();
++    let routes = draft_flow_tests::single_task_routes();
+     repo.set_routing_policy(
+         project,
+         &owner,
+@@ -164,6 +166,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+             project,
+             &owner,
+             CreateDraftCommand {
++                flow: Some(DraftFlow::SingleTaskV1),
+                 title: "Lifecycle fixture".into(),
+                 description: "Synthetic acceptance fixture".into(),
+                 idempotency_key: "draft".into(),
+diff --git a/backend/infra/src/sdlc_pm_resume_pg_tests.rs b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+index 4771879..2d65ccd 100644
+--- a/backend/infra/src/sdlc_pm_resume_pg_tests.rs
++++ b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+@@ -106,7 +106,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     let scheduler = actor("scheduler", false, vec![]);
+     let mut reader = scheduler.clone();
+     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
+-    let routes = routes();
++    let routes = super::draft_flow_tests::single_task_routes();
+     repo.set_routing_policy(
+         project,
+         &owner,
+@@ -123,6 +123,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+             project,
+             &owner,
+             CreateDraftCommand {
++                flow: Some(DraftFlow::SingleTaskV1),
+                 title: "PM resume fixture".into(),
+                 description: "Not live runtime evidence".into(),
+                 idempotency_key: "draft".into(),
+diff --git a/backend/infra/src/sdlc_routing.rs b/backend/infra/src/sdlc_routing.rs
+index 24fc459..c87ebe7 100644
+--- a/backend/infra/src/sdlc_routing.rs
++++ b/backend/infra/src/sdlc_routing.rs
+@@ -192,19 +192,40 @@ impl PostgresSdlcRepository {
+         Ok(result)
+     }
+ 
++    pub(super) async fn single_task_policy(
++        &self,
++        tx: &DatabaseTransaction,
++        project: Uuid,
++    ) -> Result<RoutingPolicy, AppError> {
++        // Caller holds the project ACL share lock; policy writers lock it exclusively.
++        let policy = Self::policy(tx, project, None).await?;
++        app::sdlc_draft_flow::validate_policy(&policy, project, &self.config.instance_id)?;
++        Ok(policy)
++    }
++
+     pub(super) async fn freeze_routing(
+         &self,
+         tx: &DatabaseTransaction,
+         state: &TaskState,
+         confirmation: &Confirmation,
+-        expected: i64,
++        expected: Option<i64>,
+     ) -> Result<TaskRoutingSnapshot, AppError> {
+         let policy = Self::policy(tx, state.project_id, None).await?;
+-        if policy.version != expected || policy.tracker_instance_id != state.tracker_instance_id {
++        if state.draft_flow()?.is_some() {
++            app::sdlc_draft_flow::validate_policy(
++                &policy,
++                state.project_id,
++                &state.tracker_instance_id,
++            )?;
++        }
++        if expected.is_some_and(|version| policy.version != version)
++            || policy.tracker_instance_id != state.tracker_instance_id
++        {
+             return Err(AppError::conflict(
+                 "stale publication routing policy version",
+             ));
+         }
++        let policy_version = policy.version;
+         let snapshot = TaskRoutingSnapshot {
+             contract_version: policy.contract_version,
+             snapshot_id: Uuid::new_v4(),
+@@ -219,7 +240,7 @@ impl PostgresSdlcRepository {
+             created_at: confirmation.created_at,
+         };
+         exec(tx, "INSERT INTO sdlc_task_routing_snapshots(snapshot_id,task_id,project_id,policy_version,confirmation_id,requirement_revision,content_hash,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+-            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), expected.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
++            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), policy_version.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
+         Ok(snapshot)
+     }
+ 
+diff --git a/backend/migration/src/single_task_lifecycle.sql b/backend/migration/src/single_task_lifecycle.sql
+index 8ac5b0b..994962d 100644
+--- a/backend/migration/src/single_task_lifecycle.sql
++++ b/backend/migration/src/single_task_lifecycle.sql
+@@ -1,4 +1,48 @@
+ -- Parent owns migration version/order/registration and legacy stage projection.
++ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_draft_flow_shape CHECK (
++    NOT state ? 'flow' OR (state->'flow'='"single-task-v1"'::jsonb
++        AND root_task_id=task_id AND state->>'root_task_id'=task_id::text) IS TRUE
++);
++
++CREATE FUNCTION sdlc_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF OLD.state->'flow' IS DISTINCT FROM NEW.state->'flow' THEN
++        RAISE EXCEPTION 'SDLC Draft flow marker is immutable; no legacy retrofit' USING ERRCODE='23514';
++    END IF;
++    IF NOT OLD.state ? 'lifecycle' AND NEW.state ? 'lifecycle' AND NOT NEW.state ? 'flow' THEN
++        RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';
++    END IF;
++    IF NEW.state ? 'flow' AND NEW.state->>'stage' NOT IN ('Draft','Clarification')
++        AND NOT EXISTS(SELECT 1 FROM sdlc_task_routing_snapshots s JOIN sdlc_confirmations c
++            ON c.task_id=s.task_id AND c.id=s.confirmation_id
++            WHERE s.task_id=NEW.task_id AND s.project_id=NEW.project_id
++                AND s.requirement_revision=(NEW.state->'revisions'->-1->>'revision')::bigint
++                AND s.content_hash=NEW.state->'revisions'->-1->>'content_hash'
++                AND c.payload->>'owner_subject'=NEW.owner_subject
++                AND s.payload->'contract_version'='2'::jsonb
++                AND s.payload->'policy'->'contract_version'='2'::jsonb) THEN
++        RAISE EXCEPTION 'marked Draft confirmation requires exact v2 routing snapshot' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE TRIGGER sdlc_draft_flow_gate BEFORE UPDATE ON sdlc_tasks
++FOR EACH ROW EXECUTE FUNCTION sdlc_draft_flow_gate();
++
++-- Deferred because the immutable creation ledger is inserted after its task row.
++CREATE FUNCTION sdlc_draft_flow_origin_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF NEW.state ? 'flow' AND ((NEW.state->>'stage'='Draft' AND NEW.state->>'status'='Ready'
++        AND NEW.state->>'draft_submode'='brainstorming') IS NOT TRUE OR NOT EXISTS(
++            SELECT 1 FROM sdlc_draft_creations c WHERE c.task_id=NEW.task_id
++                AND c.project_id=NEW.project_id AND c.actor_subject=NEW.owner_subject
++                AND c.input_snapshot_ref IS NOT NULL)) THEN
++        RAISE EXCEPTION 'SDLC marked Draft requires original creation ledger' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE CONSTRAINT TRIGGER sdlc_draft_flow_origin_gate AFTER INSERT ON sdlc_tasks
++DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sdlc_draft_flow_origin_gate();
++
+ CREATE OR REPLACE FUNCTION sdlc_routing_snapshot_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN
+     IF NOT EXISTS (SELECT 1 FROM sdlc_tasks t JOIN sdlc_confirmations c ON c.task_id=t.task_id
+@@ -96,6 +140,17 @@ CREATE TABLE sdlc_delivery_assignments (
+ );
+ CREATE INDEX sdlc_delivery_assignment_task ON sdlc_delivery_assignments(task_id);
+ 
++CREATE FUNCTION sdlc_delivery_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
++        AND t.state->'flow'='"single-task-v1"'::jsonb) THEN
++        RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE TRIGGER sdlc_delivery_draft_flow_gate BEFORE INSERT ON sdlc_delivery_assignments
++FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_draft_flow_gate();
++
+ CREATE TABLE sdlc_delivery_holds (
+     assignment_id uuid PRIMARY KEY,
+     task_id uuid NOT NULL UNIQUE,
+diff --git a/docs/API.md b/docs/API.md
+index 04f04b0..e7e44c1 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -1,5 +1,31 @@
+ # API v1 Specification — Task Tracker
+ 
++## Explicit New Draft Flow
++
++The existing Draft creation request adds optional `flow:"single-task-v1"`.
++Omission keeps legacy JSON/hash and creation behavior, even in an enabled project.
++Explicit null, booleans and other values are invalid; no default flow is inferred.
++`CreatedDraft` and Context wire are unchanged. Only new marked creations receive
++Ready/brainstorming; legacy bindings/reservations are never retrofitted.
++
++For new marked effects, Tracker requires project opt-in and a present, valid,
++authoritative seven-role policy v2. Missing policy is 404, incompatible policy is
++409, disabled project is 503. Fleet's existing Draft saga must check actual PM
++readiness through its existing SDK before mutation; declared routing is not runtime
++proof, and no caller-ready flag or force-config is introduced. Fresh ACL precedes
++original creation replay; current policy/rollout checks follow replay. Changed
++payload/flow with the same key is 409. Existing operation GET reconstructs the
++original command/hash using immutable input plus the retained flow marker.
++
++Exact owner confirmation of a marked task always freezes the current v2 policy in
++the existing transaction, even if `expected_routing_policy_version` is omitted.
++When supplied, that version remains an additional CAS. No command field is added
++or mutated server-side for hashing. Confirmation, frozen seven-role snapshot,
++route-derived Analysis intent, canonical issue projection, operation and outbox
++commit together or roll back. Replay keeps its original consent/snapshot after
++policy changes or disable. Existing PM assignment is not rebound. Unmarked legacy
++confirmation retains its original explicit-version snapshot semantics.
++
+ Новый opt-in single-task пакет добавляет lifecycle/readback, agent proposals
+ и PM feedback в существующий strict SDLC router. Registered paths, DTO,
+ статус квалификации и открытые gates:
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index ab0ce2a..1d82b6e 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -1,5 +1,22 @@
+ # Архитектура Task Tracker
+ 
++New single-task enrollment is explicit at Draft creation, not inferred from a
++project flag or an existing PM reservation. The immutable `flow:"single-task-v1"`
++marker stays in canonical TaskState's retained JSON; Context/CreatedDraft do not
++grow new fields. Creation checks current declared v2 policy under the existing
++project lock only after original replay. Actual PM readiness belongs to Fleet's
++existing Draft SDK path, outside Tracker's transaction; Tracker never forces
++configuration or treats policy declarations as actual readiness.
++
++Owner confirmation freezes current project routing under the same project lock
++as consent/persistence. Optional caller version is an extra CAS, not the opt-in
++switch. The original confirmation command hash is unchanged when it is omitted;
++the selected policy is retained in the immutable snapshot, never retroactively
++substituted on replay. SQL protects marker shape/origin/immutability and requires
++the exact v2 snapshot before a marked task leaves Draft. Existing initial delivery
++projection and new assignment inserts reject absent marker without rewriting
++historical executions or interfering with their terminal/readback paths.
++
+ Новая opt-in вертикаль одной задачи сохраняет цепочку controller/service/repository.
+ Agent proposal не равен stage completion: Fleet после actual terminal передаёт
+ guarded Complete, а Tracker владеет переходом и capacity. Второй планировщик
+diff --git a/docs/DATA_MODEL.md b/docs/DATA_MODEL.md
+index 2ea5f9b..7038732 100644
+--- a/docs/DATA_MODEL.md
++++ b/docs/DATA_MODEL.md
+@@ -1,5 +1,17 @@
+ # Дата-модель Task Tracker
+ 
++Canonical `sdlc_tasks.state.flow` is absent for legacy tasks and exactly the string
++`single-task-v1` for explicitly opted-in new Drafts. It is retained through legacy
++serde round trips, not duplicated in another mutable table. The existing additive
++SQL fragment adds shape/root and immutable/no-retrofit guards; a deferred insertion
++guard requires the original immutable Draft creation/input ledger at commit.
++Creation operation readback reconstructs its hash from that immutable marker and
++input, so opted-in and legacy requests cannot share a key as the same payload.
++No backfill, old status/history rewrite or second migration is introduced.
++Marked confirmation requires the exact current v2 routing snapshot in the same
++transaction. Initial canonical delivery enrollment and new delivery assignments
++require marker; existing operation/assignment history remains untouched.
++
+ Текущая additive `000096` и single-task delivery/feedback history находятся
+ в интеграции; legacy история сохраняется. Это не подтверждение проверки
+ миграций на заполненной БД. [Модель и gates](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index ffd172a..ff60409 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -352,7 +352,7 @@ Context adds two optional, omitted-if-None fields (not emitted as null):
+ Canonical TaskState has the same optional fields and retains other canonical JSON
+ through serde round trips. Rows without fields remain without fields. Legacy
+ Clarification history stays serialized as Clarification; Context normalizes stage to Draft.
+-Enabled projects' new PM Draft starts Ready/brainstorming, lease claim is InProgress,
++Only explicitly marked new PM Draft in an enabled project starts Ready/brainstorming; lease claim is InProgress,
+ published questions/requirements wait in Ready, owner answer returns PM to InProgress,
+ and confirmation queues Analysis/Ready. Waiting reason is not a status or runtime proof.
+ 
+@@ -360,7 +360,56 @@ Rollout depends on parent's `SdlcConfig.single_task_project_ids` HashSet, empty
+ from canonical CSV `TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS`. New EnsureQueued/Reserve
+ checks it AFTER original replay and BEFORE effects, returning explicit Unavailable when
+ disabled. Replay, reads/history, heartbeat/proposal/Complete of existing execution remain
+-available after disable. New canonical PM Draft fields are enabled only for listed projects.
++available after disable. New canonical PM Draft fields additionally require explicit
++creation `flow:"single-task-v1"`; omission never auto-enrolls a legacy task.
++
++### Explicit Draft marker and automatic confirmation snapshot
++
++`CreateDraftCommand.flow:Option<DraftFlow>` accepts only omitted or the exact
++`single-task-v1` string. Omission is skipped on serialization, preserving original
++create command hashes; explicit null/booleans/unknown strings fail. Marker persists
++in `TaskState.retained_fields` / canonical `sdlc_tasks.state`, with immutable/root/
++creation-ledger SQL guards in the same existing fragment. It cannot be added later
++to an existing Draft, bound task or PM reservation. CreatedDraft/Context are unchanged.
++
++Creation rechecks active ACL, then original key/hash before any new rollout or policy
++prerequisite. A new marked effect requires enabled project and real stored seven-role
++policy v2 validated by main's existing routing functions. It neither allocates PM
++assignment nor freezes policy yet. Initial PM reservation rechecks the current
++authoritative v2 PM default for a marked task, without changing old reservations.
++Existing Fleet Draft saga owns actual runtime readiness checks via existing SDK
++credentials before mutation; no new proof flag/client/force-config is added here.
++
++On marked owner confirmation, existing `freeze_routing` takes current policy in the
++same consent transaction regardless of omitted `expected_routing_policy_version`.
++Provided version remains an additional CAS. Frozen snapshot/intent/canonical issue
++projection/operation/outbox all commit or roll back together under existing project
++locking. Replay does not reselect policy. Legacy explicit-version behavior is unchanged;
++historical PM assignment is never silently rebound to the snapshot's newer PM route.
++SQL additionally denies first delivery enrollment or fresh delivery assignments
++without marker; existing historical terminal/readback paths stay available.
++
++Parent integrates the creation DTO schema and Fleet mutation/readiness gate. No API
++registration/OpenAPI generated output/CLI changes are included here. Missing policy
++returns NotFound, incompatible policy Conflict, disabled new creation Unavailable.
++Separate delivery `SDLC-<ordinal>` allocator remains the next package: no consumer
++may invent an execution key from task/chat UUID while that source gap is open.
++
++Focused checks requested after integration (Cargo/PG not run by this worker):
++
++```text
++cargo test --locked -p app draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions
++cargo test --locked -p app marked_draft_requires_bound_seven_role_v2_policy_not_runtime_claims
++cargo test --locked -p infra draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay -- --ignored --nocapture
++```
++
++The new ignored PG source test requires fresh disposable
++`TT_DRAFT_FLOW_TEST_DATABASE_URL` ending `_draft_flow_test`. It covers legacy hashes,
++explicit flow conflicts, missing/v1/disabled prerequisites, origin/no-retrofit guards,
++PM-default binding, exact owner/revision/hash/CAS failures, outbox-failure atomic
++rollback, concurrent policy update, snapshot-derived intent and original readbacks
++after policy change/disable/ACL revocation. Existing lifecycle/resume PG fixtures now
++explicitly opt in with v2 routes; parent's `4e3a527` evidence-scope fix is retained.
+ 
+ Scoped SDLC project authorization always requires an active local user and project owner
+ or explicit membership. Verified human/global-admin hints do not expand access or directory.
+diff --git a/docs/TZ.md b/docs/TZ.md
+index ae9acb8..c44b293 100644
+--- a/docs/TZ.md
++++ b/docs/TZ.md
+@@ -1,5 +1,14 @@
+ # Полное техническое задание Task Tracker (Jira-like)
+ 
++New single-task Draft opts in with `flow:"single-task-v1"`; project enablement
++alone never converts legacy tasks. Tracker requires authoritative v2 routing for
++new marked creation and automatically freezes current seven-role routing during
++exact owner confirmation, even when UI omits routing version. Optional provided
++version remains CAS; legacy omission hashes and replay histories are preserved.
++Fleet's existing SDK saga supplies actual PM readiness before mutation, without
++force-config or fabricated proof. Delivery execution-key allocation is a separate
++bounded package and is not implemented by this Draft marker change.
++
+ Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
+ карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;
+ PM feedback не подтверждает требования за владельца. Старые режимы/история

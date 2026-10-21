@@ -1,0 +1,105 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6b2d1e8..487619e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,11 @@
+ 
+ ## [Unreleased]
+ 
++- Frontend image использует общий Base recorder происхождения сборки:
++  product/Base SHA, fingerprints и asset digests в `/ui-build.json`, OCI labels
++  и закреплённые Node/nginx digests. Route manifest объявляет каталог React assets.
++  Упаковка не означает завершённую runtime/SSO/README приёмку.
++
+ - Base закреплён на `193ad1e8fd6260f001640943a5ec07ff04f527d1`: общий
+   cross-platform fingerprint и согласованная локальная UI/UX-поставка.
+   Checklist завершения ссылается на Base DoD вместо сохранённых отметок прошлой
+diff --git a/docs/BASE_INTEGRATION.md b/docs/BASE_INTEGRATION.md
+index 851f5c2..16fe7ad 100644
+--- a/docs/BASE_INTEGRATION.md
++++ b/docs/BASE_INTEGRATION.md
+@@ -32,3 +32,18 @@ guard сохраняет неинтерактивный вызов. `isSsoNaviga
+ снимает блокировку кнопки при завершении или отмене promise. Identity, PKCE,
+ state, nonce, API и машинная авторизация не меняются. Source-регрессии покрыты
+ login-тестами; локальные fixture-проверки не заменяют живую SSO-приёмку.
++
++## Происхождение Web Image
++
++Frontend Dockerfile устанавливает Base и продукт из frozen lockfiles в соседние
++каталоги. После сборки существующий Base `write-ui-build.mjs` формирует
++`/ui-build.json`: product/Base SHA, source/installed fingerprints и SHA256 всех
++упакованных frontend assets. `VCS_REF` и `BASE_VCS_REF` передаются из проверенного
++clean delivery candidate и повторяются в OCI labels. Родительские Node/nginx
++images закреплены digest. Маршрутный manifest объявляет `reactAssets=frontend/dist`.
++
++Перед приёмкой сверить record, labels и фактические файлы image с delivery
++manifest; несовпадение останавливает приёмку. Успешная упаковка или публичный
++login smoke не заменяют authenticated route/state/SSO gate через штатный launcher.
++README evidence формируется только после этой проверки. Runtime pins и данные
++этим build-контрактом не меняются.
+diff --git a/docs/ui-routes.json b/docs/ui-routes.json
+index 4971665..fe41abc 100644
+--- a/docs/ui-routes.json
++++ b/docs/ui-routes.json
+@@ -3,6 +3,7 @@
+   "product": "task-tracker",
+   "routeSource": "frontend/src/app/router.tsx",
+   "shellSource": "frontend/src/widgets/app-shell.tsx",
++  "reactAssets": "frontend/dist",
+   "runtimeSources": ["frontend/src", "frontend/nginx.conf", "backend"],
+   "acceptanceStatus": "pending",
+   "routes": [
+diff --git a/frontend/Dockerfile b/frontend/Dockerfile
+index de25a39..7fe6bfc 100644
+--- a/frontend/Dockerfile
++++ b/frontend/Dockerfile
+@@ -1,17 +1,24 @@
+ # Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
+ # Stages the sibling services-base frontend so the `@sdlc/ui` file dependency
+ # (../../services-base/frontend) resolves.
+-FROM node:22.20.0-bookworm-slim AS builder
++FROM node:22.20.0-bookworm-slim@sha256:b21fe589dfbe5cc39365d0544b9be3f1f33f55f3c86c87a76ff65a02f8f5848e AS builder
+ 
+ RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
+ 
+-WORKDIR /app
++ENV CI=true COREPACK_ENABLE_DOWNLOAD_PROMPT=0
++COPY services-base/frontend /workspace/services-base/frontend
++WORKDIR /workspace/services-base/frontend
++RUN pnpm install --frozen-lockfile
++
++WORKDIR /workspace/task-tracker/frontend
+ COPY task-tracker/frontend/package.json task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
+-COPY services-base/frontend /services-base/frontend
+-COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
++COPY task-tracker/openapi/openapi.json /workspace/task-tracker/openapi/openapi.json
+ RUN pnpm install --frozen-lockfile
+ 
+ COPY task-tracker/frontend/ ./
++COPY task-tracker/.base-revision /workspace/task-tracker/.base-revision
++COPY task-tracker/docs/ui-routes.json /workspace/task-tracker/docs/ui-routes.json
++COPY task-tracker/backend /workspace/task-tracker/backend
+ ARG VITE_PLATFORM_BRANDING_URL=""
+ ENV VITE_PLATFORM_BRANDING_URL=${VITE_PLATFORM_BRANDING_URL}
+ ARG VITE_PLATFORM_SERVICES_URL=""
+@@ -19,9 +26,18 @@ ENV VITE_PLATFORM_SERVICES_URL=${VITE_PLATFORM_SERVICES_URL}
+ ARG VITE_AUTH_ISSUER="http://localhost:7701"
+ ENV VITE_AUTH_ISSUER=${VITE_AUTH_ISSUER}
+ RUN pnpm build
++ARG VCS_REF=unknown
++ARG BASE_VCS_REF=unknown
++RUN node ../../services-base/frontend/scripts/write-ui-build.mjs --repo .. \
++    --out /workspace/ui-build.json --product-sha "$VCS_REF" --base-sha "$BASE_VCS_REF"
+ 
+-FROM nginx:alpine
+-COPY --from=builder /app/dist /usr/share/nginx/html
++FROM nginx:1.31-alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
++ARG VCS_REF=unknown
++ARG BASE_VCS_REF=unknown
++LABEL org.opencontainers.image.revision=$VCS_REF \
++      org.sdlc.ui.base.revision=$BASE_VCS_REF
++COPY --from=builder /workspace/task-tracker/frontend/dist /usr/share/nginx/html
++COPY --from=builder /workspace/ui-build.json /usr/share/nginx/html/ui-build.json
+ COPY task-tracker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+ EXPOSE 80
+ CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,162 @@
+//! Immutable identity derived from the configured CI source reader, never a caller URL.
+use crate::bug_search::{bounded_text, sha256};
+use crate::bug_search_control::BugSearchMode;
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugTargetSourceProject {
+    pub tracker_instance_id: Uuid,
+    pub project_id: Uuid,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugTargetSourceIdentity {
+    pub contract_version: u8,
+    pub schema: String,
+    pub producer_version: String,
+    pub project: BugTargetSourceProject,
+    pub configuration_id: Uuid,
+    pub repository_id: Uuid,
+    pub branch_ref: String,
+    /// Original observed HEAD; QA checked commit can be an older delivered version.
+    pub observed_head_sha: String,
+    /// SHA-256 of the exact credential-free CI clone URL, not a fetch instruction.
+    pub clone_url_sha256: String,
+}
+pub fn canonical_source_branch(value: &str) -> Option<String> {
+    if value.starts_with("refs/") && !value.starts_with("refs/heads/") {
+        return None;
+    }
+    let name = value.strip_prefix("refs/heads/").unwrap_or(value);
+    if name.is_empty()
+        || name.len() > 256
+        || name.contains("..")
+        || !name
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'/' | b'.'))
+        || name
+            .split('/')
+            .any(|p| p.is_empty() || p.starts_with('.') || p.ends_with('.') || p.ends_with(".lock"))
+    {
+        return None;
+    }
+    Some(format!("refs/heads/{name}"))
+}
+impl BugTargetSourceIdentity {
+    pub fn validate(&self, checked_commit: &str, mode: BugSearchMode) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || self.schema != "forge/source-snapshot/v1"
+            || !bounded_text(&self.producer_version, 128)
+            || self.producer_version.chars().any(char::is_control)
+            || self.project.tracker_instance_id.is_nil()
+            || self.project.project_id.is_nil()
+            || self.configuration_id.is_nil()
+            || self.repository_id.is_nil()
+            || canonical_source_branch(&self.branch_ref).as_deref()
+                != Some(self.branch_ref.as_str())
+            || !matches!(self.observed_head_sha.len(), 40 | 64)
+            || !self
+                .observed_head_sha
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || !sha256(&self.clone_url_sha256)
+            || (mode == BugSearchMode::SourceOnly && self.observed_head_sha != checked_commit)
+        {
+            return Err(AppError::validation(
+                "invalid original bug source provenance",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bug_search_control::{BugPolicyTarget, BugSearchPolicy, BugSearchSnapshot};
+    fn snapshot() -> BugSearchSnapshot {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json"))
+                .unwrap();
+        serde_json::from_value(fixture["vectors"][1]["value"].clone()).unwrap()
+    }
+    fn identity(snapshot: &BugSearchSnapshot) -> BugTargetSourceIdentity {
+        BugTargetSourceIdentity {
+            contract_version: 1,
+            schema: "forge/source-snapshot/v1".into(),
+            producer_version: "test-owner-v1".into(),
+            project: BugTargetSourceProject {
+                tracker_instance_id: Uuid::new_v4(),
+                project_id: snapshot.project.project_id,
+            },
+            configuration_id: Uuid::new_v4(),
+            repository_id: Uuid::new_v4(),
+            branch_ref: "refs/heads/main".into(),
+            observed_head_sha: snapshot.targets[0].commit_sha.clone(),
+            clone_url_sha256: "d".repeat(64),
+        }
+    }
+    #[test]
+    fn original_source_pins_branch_registry_and_qa_version_without_changing_legacy_wire() {
+        let mut snapshot = snapshot();
+        let old = serde_json::to_value(&snapshot).unwrap();
+        assert!(old["targets"][0].get("source").is_none());
+        let source = identity(&snapshot);
+        snapshot.targets[0].source = Some(source.clone());
+        snapshot.validate().unwrap();
+        snapshot
+            .require_source_registry(source.project.tracker_instance_id)
+            .unwrap();
+        assert!(snapshot.require_source_registry(Uuid::new_v4()).is_err());
+        let policy = BugSearchPolicy {
+            enabled: false,
+            mode: snapshot.mode,
+            targets: snapshot
+                .targets
+                .iter()
+                .map(|t| BugPolicyTarget {
+                    repository_ref: t.repository_ref.clone(),
+                    branch_ref: "main".into(),
+                    target_ref: t.target_ref.clone(),
+                })
+                .collect(),
+            scope: snapshot.scope.clone(),
+            excluded_paths: snapshot.excluded_paths.clone(),
+            interval_minutes: 60,
+        };
+        snapshot.require_policy(&policy).unwrap();
+        for field in 0..7 {
+            let mut bad = snapshot.clone();
+            let p = bad.targets[0].source.as_mut().unwrap();
+            match field {
+                0 => p.project.project_id = Uuid::new_v4(),
+                1 => p.branch_ref = "refs/heads/remapped".into(),
+                2 => p.configuration_id = Uuid::nil(),
+                3 => p.clone_url_sha256 = "not-a-hash".into(),
+                4 => p.observed_head_sha = "b".repeat(40),
+                5 => p.schema = "untrusted/source/v1".into(),
+                _ => p.branch_ref = "main^{commit}".into(),
+            }
+            assert!(bad.require_policy(&policy).is_err());
+        }
+        let mut qa = snapshot.clone();
+        qa.mode = BugSearchMode::Qa;
+        qa.targets[0].target_ref = Some("configured-qa".into());
+        qa.targets[0].deployment_ref = Some("forge:delivered:version-a".into());
+        qa.targets[0].source.as_mut().unwrap().observed_head_sha = "b".repeat(40);
+        qa.validate().unwrap();
+        // This is original observation validation, never a fresh HEAD-equality check.
+        assert_ne!(
+            qa.targets[0].commit_sha,
+            qa.targets[0].source.as_ref().unwrap().observed_head_sha
+        );
+        snapshot.targets[0].source = None;
+        assert_eq!(serde_json::to_value(snapshot).unwrap(), old);
+        let mut unknown = serde_json::to_value(source).unwrap();
+        unknown["clone_url"] = serde_json::json!("https://caller.invalid/repo");
+        assert!(serde_json::from_value::<BugTargetSourceIdentity>(unknown).is_err());
+    }
+}

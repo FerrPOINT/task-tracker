@@ -1,0 +1,291 @@
+//! Narrow project-only Bug Search owner operations; no legacy issue-create fallback.
+use app::bug_search::BugSearchService;
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    routing::{get, post},
+};
+use domain::{
+    bug_search::*, bug_search_cancel::*, bug_search_control::*, bug_search_terminal::*,
+    bug_search_unbound::*, sdlc::Principal,
+};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+pub(super) fn router() -> Router<Arc<app::AppContext>> {
+    Router::new()
+        .merge(super::bug_search_due::router())
+        .route(
+            "/projects/{project_id}/sdlc/bugs/{bug_id}/verification-basis",
+            get(verification_basis),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/abort-unbound",
+            post(abort_unbound),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/cancel",
+            post(cancel),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/terminal",
+            post(terminal).layer(axum::extract::DefaultBodyLimit::max(278528)),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/policy",
+            get(policy).put(apply_policy),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/operations/{idempotency_key}",
+            get(command),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions",
+            post(reserve),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/admit",
+            post(admit),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/capabilities",
+            get(capabilities),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/grant",
+            get(execution_grant),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bugs/register-or-link",
+            post(register),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bugs/registration-operations/{idempotency_key}",
+            get(registration_operation),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(
+            MAX_REPORT_BYTES + 8192,
+        ))
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+pub struct VerificationBasisQuery {
+    pub owner_subject: String,
+}
+
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bugs/{bug_id}/verification-basis",tag="bug-search",params(("project_id"=Uuid,Path),("bug_id"=Uuid,Path),VerificationBasisQuery),responses((status=200,body=domain::bug_search_verification::BugVerificationBasis),(status=401),(status=403),(status=404),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn verification_basis(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((project, bug)): Path<(Uuid, Uuid)>,
+    Query(query): Query<VerificationBasisQuery>,
+) -> Result<
+    (
+        HeaderMap,
+        Json<domain::bug_search_verification::BugVerificationBasis>,
+    ),
+    AppError,
+> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .verification_basis(project, bug, &actor, &query.owner_subject)
+                .await?,
+        ),
+    ))
+}
+fn service(ctx: &app::AppContext) -> Result<&BugSearchService, AppError> {
+    ctx.bug_search
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Tracker Bug Search is not configured".into()))
+}
+fn no_store() -> HeaderMap {
+    let mut h = HeaderMap::new();
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h
+}
+
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-search/capabilities",tag="bug-search",params(("project_id"=Uuid,Path)),responses((status=200,body=BugSearchProjectCapabilities),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn capabilities(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(p): Path<Uuid>,
+) -> Result<(HeaderMap, Json<BugSearchProjectCapabilities>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.capabilities(p, &actor).await?),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/grant",tag="bug-search",params(("project_id"=Uuid,Path),("execution_id"=Uuid,Path)),responses((status=200,body=BugSearchGrantReadback),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn execution_grant(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((p, e)): Path<(Uuid, Uuid)>,
+) -> Result<(HeaderMap, Json<BugSearchGrantReadback>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.execution_grant(p, e, &actor).await?),
+    ))
+}
+
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bugs/register-or-link",tag="bug-search",params(("project_id"=Uuid,Path)),request_body=RegisterBugFinding,responses((status=201,body=BugFindingReceipt),(status=200,body=BugFindingReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn register(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(p): Path<Uuid>,
+    Json(c): Json<RegisterBugFinding>,
+) -> Result<(StatusCode, HeaderMap, Json<BugFindingReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.register(p, &actor, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bugs/registration-operations/{idempotency_key}",tag="bug-search",params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=BugFindingReceipt),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn registration_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((p, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugFindingReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .registration_operation(p, &actor, &key)
+                .await?,
+        ),
+    ))
+}
+
+#[utoipa::path(put,path="/api/v1/projects/{project_id}/sdlc/bug-search/policy",tag="bug-search",params(("project_id"=Uuid,Path)),request_body=ApplyBugSearchPolicy,responses((status=200,body=BugSearchPolicyState),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn apply_policy(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path(p): Path<Uuid>,
+    Json(c): Json<ApplyBugSearchPolicy>,
+) -> Result<(HeaderMap, Json<BugSearchPolicyState>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.apply_policy(p, &a, c).await?.0),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-search/policy",tag="bug-search",params(("project_id"=Uuid,Path)),responses((status=200,body=BugSearchPolicyState),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn policy(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path(p): Path<Uuid>,
+) -> Result<(HeaderMap, Json<BugSearchPolicyState>), AppError> {
+    Ok((no_store(), Json(service(&ctx)?.policy(p, &a).await?)))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-search/operations/{idempotency_key}",tag="bug-search",params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=BugSearchCommandReceipt),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn command(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugSearchCommandReceipt>), AppError> {
+    Ok((no_store(), Json(service(&ctx)?.command(p, &a, &key).await?)))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions",tag="bug-search",params(("project_id"=Uuid,Path)),request_body=ReserveBugSearch,responses((status=201,body=BugSearchGrantReadback),(status=200,body=BugSearchGrantReadback),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn reserve(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path(p): Path<Uuid>,
+    Json(c): Json<ReserveBugSearch>,
+) -> Result<(StatusCode, HeaderMap, Json<BugSearchGrantReadback>), AppError> {
+    let (r, replay) = service(&ctx)?.reserve(p, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/admit",tag="bug-search",params(("project_id"=Uuid,Path),("execution_id"=Uuid,Path)),request_body=AdmitBugSearch,responses((status=201,body=BugSearchGrantReadback),(status=200,body=BugSearchGrantReadback),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn admit(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, e)): Path<(Uuid, Uuid)>,
+    Json(c): Json<AdmitBugSearch>,
+) -> Result<(StatusCode, HeaderMap, Json<BugSearchGrantReadback>), AppError> {
+    let (r, replay) = service(&ctx)?.admit(p, e, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/terminal",tag="bug-search",params(("project_id"=Uuid,Path),("execution_id"=Uuid,Path)),request_body=AcceptBugSearchTerminal,responses((status=201,body=BugSearchTerminalReceipt),(status=200,body=BugSearchTerminalReceipt),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn terminal(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, e)): Path<(Uuid, Uuid)>,
+    Json(c): Json<AcceptBugSearchTerminal>,
+) -> Result<(StatusCode, HeaderMap, Json<BugSearchTerminalReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.terminal(p, e, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/cancel",tag="bug-search",params(("project_id"=Uuid,Path),("execution_id"=Uuid,Path)),request_body=CancelBugSearchBeforeStart,responses((status=201,body=BugSearchCancellationReceipt),(status=200,body=BugSearchCancellationReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn cancel(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, e)): Path<(Uuid, Uuid)>,
+    Json(c): Json<CancelBugSearchBeforeStart>,
+) -> Result<(StatusCode, HeaderMap, Json<BugSearchCancellationReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.cancel(p, e, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/abort-unbound",tag="bug-search",params(("project_id"=Uuid,Path),("execution_id"=Uuid,Path)),request_body=AbortUnboundBugSearch,responses((status=201,body=BugUnboundCancellationReceipt),(status=200,body=BugUnboundCancellationReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn abort_unbound(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, e)): Path<(Uuid, Uuid)>,
+    Json(c): Json<AbortUnboundBugSearch>,
+) -> Result<(StatusCode, HeaderMap, Json<BugUnboundCancellationReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.abort_unbound(p, e, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}

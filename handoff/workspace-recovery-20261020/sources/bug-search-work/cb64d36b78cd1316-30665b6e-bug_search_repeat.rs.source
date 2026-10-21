@@ -1,0 +1,34 @@
+//! A repeat cannot lend another owner's execution identity or reopen custody.
+use crate::bug_search::{PostgresBugSearchRepository, field};
+use domain::bug_search_control::BugSearchSnapshot;
+use sea_orm::DatabaseTransaction;
+use shared::AppError;
+impl PostgresBugSearchRepository {
+    pub(super) async fn require_repeat_parent(
+        &self,
+        tx: &DatabaseTransaction,
+        s: &BugSearchSnapshot,
+    ) -> Result<(), AppError> {
+        let Some(g) = &s.user_guidance else {
+            return Ok(());
+        };
+        let old = self
+            .retained_execution(tx, s.project.project_id, g.parent_execution_id)
+            .await?;
+        let old_snapshot: BugSearchSnapshot = serde_json::from_value(field(&old, "snapshot")?)
+            .map_err(|_| AppError::conflict("original repeat snapshot differs"))?;
+        if field::<String>(&old, "owner_subject")? != s.owner_subject
+            || field::<bool>(&old, "capacity_held")?
+            || field::<Option<serde_json::Value>>(&old, "terminal_receipt")?.is_none()
+            || old_snapshot.kind != s.kind
+            || old_snapshot.bug_id != s.bug_id
+            || (s.kind == domain::bug_search::BugSearchPurpose::Verification
+                && old_snapshot.verification_basis != s.verification_basis)
+        {
+            return Err(AppError::conflict(
+                "original repeat is not own closed same-purpose execution",
+            ));
+        }
+        Ok(())
+    }
+}

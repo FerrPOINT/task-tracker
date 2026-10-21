@@ -1,0 +1,105 @@
+//! Actual reservation/owner100 retention; native no-creation is a synthetic Fleet attestation.
+use super::*;
+#[tokio::test]
+#[ignore = "TT_BUG_SEARCH_DISPOSABLE_DB=1; external Base ComposeHelper v2 finally teardown"]
+async fn repeat_parent_requires_own_released_owner_custody_and_original_key_replay() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let initial = accepted_snapshot(&f, 1);
+    f.repo
+        .apply_policy(
+            f.project,
+            &a,
+            ApplyBugSearchPolicy {
+                idempotency_key: "repeat:policy".into(),
+                owner_subject: "owner".into(),
+                expected_revision: 0,
+                desired_revision: 1,
+                policy: accepted_policy(&initial),
+            },
+        )
+        .await
+        .unwrap();
+    let command = |key: &str, s: BugSearchSnapshot| ReserveBugSearch {
+        idempotency_key: key.into(),
+        owner_subject: "owner".into(),
+        snapshot_sha256: app::bug_search::canonical_hash(&s).unwrap(),
+        expected_policy_revision: 1,
+        expected_due: None,
+        agent_id: s.agent_id,
+        snapshot: s,
+    };
+    let (parent, _) = f
+        .repo
+        .reserve(f.project, &a, command("repeat:parent", initial.clone()))
+        .await
+        .unwrap();
+    let mut snapshot = initial.clone();
+    snapshot.targets[0].commit_sha = "b".repeat(40);
+    snapshot.user_guidance = Some(domain::bug_search_guidance::BugSearchUserGuidance {
+        parent_execution_id: parent.binding.execution_id,
+        text: "Проверь второй клик".into(),
+    });
+    let next = command("repeat:new", snapshot.clone());
+    assert!(matches!(
+        f.repo.reserve(f.project, &a, next.clone()).await,
+        Err(AppError::Conflict(_))
+    ));
+    let cancel = cancellation::cancellation(&parent, "repeat:close-parent");
+    f.repo
+        .cancel(f.project, parent.binding.execution_id, &a, cancel)
+        .await
+        .unwrap();
+    let mut foreign = snapshot.clone();
+    foreign.user_guidance.as_mut().unwrap().parent_execution_id = Uuid::new_v4();
+    assert!(
+        f.repo
+            .reserve(f.project, &a, command("repeat:foreign", foreign))
+            .await
+            .is_err()
+    );
+    let mut competing = next.clone();
+    competing.idempotency_key = "repeat:competing".into();
+    let (left, right) = tokio::join!(
+        f.repo.reserve(f.project, &a, next.clone()),
+        f.repo.reserve(f.project, &a, competing.clone())
+    );
+    assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
+    let (accepted, winner) = if let Ok(v) = left {
+        (v.0, next)
+    } else {
+        (right.unwrap().0, competing)
+    };
+    assert_ne!(accepted.binding.execution_id, parent.binding.execution_id);
+    assert_eq!(
+        accepted.binding.snapshot_sha256,
+        app::bug_search::canonical_hash(&snapshot).unwrap()
+    );
+    let restarted = f.reopened().await;
+    assert_eq!(
+        serde_json::to_value(
+            restarted
+                .reserve(f.project, &a, winner.clone())
+                .await
+                .unwrap()
+                .0
+        )
+        .unwrap(),
+        serde_json::to_value(&accepted).unwrap()
+    );
+    let mut changed = winner;
+    changed
+        .snapshot
+        .user_guidance
+        .as_mut()
+        .unwrap()
+        .text
+        .push('!');
+    changed.snapshot_sha256 = app::bug_search::canonical_hash(&changed.snapshot).unwrap();
+    assert!(matches!(
+        restarted.reserve(f.project, &a, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    drop(restarted);
+    f.close().await;
+}

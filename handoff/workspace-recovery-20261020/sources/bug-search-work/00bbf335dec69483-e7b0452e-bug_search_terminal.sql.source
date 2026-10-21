@@ -1,0 +1,26 @@
+CREATE TABLE sdlc_bug_search_results (
+ execution_id uuid PRIMARY KEY,project_id uuid NOT NULL,
+ result_sha256 text NOT NULL CHECK(result_sha256 ~ '^[0-9a-f]{64}$'),
+ result jsonb NOT NULL CHECK(jsonb_typeof(result)='object' AND octet_length(result::text)<=65536),
+ workflow_receipt_sha256 text NOT NULL CHECK(workflow_receipt_sha256 ~ '^[0-9a-f]{64}$'),
+ workflow_receipt jsonb NOT NULL CHECK(jsonb_typeof(workflow_receipt)='object' AND octet_length(workflow_receipt::text)<=262144),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(execution_id,project_id) REFERENCES sdlc_bug_search_executions(execution_id,project_id) ON DELETE RESTRICT
+);
+CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_bug_search_results
+ FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
+ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check CHECK(kind IN ('policy','reserve','admit','register','terminal'));
+-- The only lifecycle exception is immutable protective evidence/custody release.
+-- It cannot modify a binding, grant, policy, admission or business issue.
+DROP TRIGGER namespace_write_guard ON sdlc_bug_search_executions;
+CREATE TRIGGER namespace_write_guard BEFORE INSERT OR DELETE ON sdlc_bug_search_executions
+ FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+CREATE TRIGGER namespace_write_guard_update BEFORE UPDATE ON sdlc_bug_search_executions
+ FOR EACH ROW WHEN (OLD.terminal_receipt IS NOT NULL OR NEW.terminal_receipt IS NULL OR NEW.capacity_held
+ OR (to_jsonb(NEW)-ARRAY['terminal_receipt','capacity_held']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['terminal_receipt','capacity_held']))
+ EXECUTE FUNCTION tracker_namespace_write_guard();
+DROP TRIGGER namespace_write_guard ON sdlc_bug_search_commands;
+-- Commands are append-only; their ordinary INSERT continues to obey lifecycle.
+CREATE TRIGGER namespace_write_guard BEFORE INSERT ON sdlc_bug_search_commands
+ FOR EACH ROW WHEN (NEW.kind<>'terminal') EXECUTE FUNCTION tracker_namespace_write_guard();

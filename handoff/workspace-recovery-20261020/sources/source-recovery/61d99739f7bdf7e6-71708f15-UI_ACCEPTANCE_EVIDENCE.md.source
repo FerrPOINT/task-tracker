@@ -1,0 +1,548 @@
+# Task Tracker UI Acceptance Evidence
+
+## Latest Source Checkpoint
+
+Current source reconciliation and remaining release scope:
+[2026-10-02 evidence](uiux-source-evidence-2026-10-02.md).
+The source checkpoints below are historical, not current image acceptance.
+
+## Historical Notification Page Checkpoint
+
+The notification page now uses the Base detail composition. Earlier source
+checkpoints below are historical, not runtime release evidence.
+
+- Task source: `29c405f084058965a6f8894cacd2362b2d8fa791`.
+- Base source: `26a9523bf739c2fb4aafa343fdbc194d02a78e6a`.
+- Base installed/source fingerprint:
+  `3af92a8c2fba948b7967ebc8338fb0c27c8a08e702af0351b8c390910bb93d11`.
+- Product fingerprint:
+  `8b977864dcf3ac63334791bc9eaca641aeb76f7e5f269cc7fc46f4eb90de3500`.
+- Frozen offline force install reused all 503 packages without lockfile or
+  generated API schema drift. Public APIs and database schemas did not change.
+
+| Command | Exit | Evidence |
+|---|---|---|
+| `pnpm install --offline --frozen-lockfile --force` | 0 | `task-notification-page-install.log` |
+| `pnpm test` | 0 | `task-notification-page-units.log`; 371 tests, 47 files |
+| `pnpm lint` | 0 | `task-notification-page-lint.log`; ESLint and semantic classes |
+| `pnpm build` | 0 | `task-notification-page-build.log`; typecheck and Vite |
+| `pnpm ui:check -- --fingerprint` | 0 | `task-notification-page-ui-gate.log`; 16 route patterns |
+| Chromium smoke, one worker, `--max-failures=1` | 0 | `task-notification-page-final-browser.log`; 10 tests, 5.1 minutes |
+| README validator and Python script tests | 0 | README validation and 4 script tests |
+| Scoped Prettier and `git diff --check` | 0 | reviewed source delta |
+
+- `/notifications` declares `detail-with-aside` in the shell and route manifest.
+  DetailPage owns the sole page heading and the 320 px aside/1024 breakpoint.
+  Local Card wrappers, the 304 px grid and bespoke filter buttons were removed.
+- List and preferences use independent Base resource states. Unknown unread
+  counts are not zero. Cached 403/404 hide the affected source and unsafe actions;
+  retryable refresh preserves readonly content/drafts, without disabling an
+  unrelated healthy source. Feedback is localized and does not expose envelopes.
+- Base Tabs/codecs preserve unrelated query/hash, direct/reload and Back/Forward.
+  Filters reset pagination; empty pages reset only on successful reads. Page bounds
+  protect integer offset precision without imposing a new backend limit.
+- PendingForm/FormField/Select, draft guard and ConfirmDialog own common behavior.
+  Refetch and query navigation preserve edited preferences and unknown event types.
+  Failed saves retain input. Pending prevents double submissions; discard requires
+  confirmation and restores focus. Revoked settings hide, but do not discard, drafts.
+- One/all marking is synchronously locked; failed mark-all retains pagination,
+  success resets it, and completion cannot navigate back from an unmounted page.
+  Only repeatable write failures offer retry after the list source is healthy.
+  Removed rows restore safe focus without stealing an intentional focus move.
+  A link blocked by an unsaved-preferences guard does not prematurely mark read.
+- Browser testing exposed duplicate history entries from pointer selection plus
+  default focus on controlled Tabs. Base now suppresses the duplicate callback
+  through the gesture, retaining keyboard/uncontrolled behavior and later retries.
+  `base-tabs-history-units.log`: 99 UI tests (23 files), 18 script tests and contrast;
+  Base lint/typecheck and README/hub validators passed. The microtask-only
+  intermediate fix was insufficient and is superseded by the final snapshot.
+- Final output contains 222 PNG: the earlier 188 captures on current source,
+  30 notification page captures (three themes, ten widths) and four controlled
+  page states. Actual geometry, 40/44 targets, local/document overflow, URL history,
+  pending/draft/focus scenarios passed. Axe found no main-scope violations for
+  this page at 375/1920 in three themes; normal page console/network checks passed.
+  Representative desktop/mobile/breakpoint and controlled-state images were viewed.
+
+Artifacts: [final captures](../../../../audit-artifacts/base-standard-2026-10-01/task-notification-page-final-browser/),
+[browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-notification-page-final-browser.log).
+Earlier focused/history diagnostic runs are superseded, including the reproduced
+duplicate-history failure; they are not green acceptance evidence.
+
+HTTP/OIDC is mocked. The owned preview terminated and port 18865 has no listener.
+No runtime pins/images, secrets/volumes, foreign checkouts, default refs or mirror
+were changed. All original findings remain open pending full release evidence.
+Legacy header-counter typography/theme CSS, remaining route compositions and
+states, full backend gates, no-mock actual images/live SSO/roles, real README
+provenance, synchronized consumers, local integration and mirror remain required.
+
+## Notification Menu Checkpoint (Historical)
+
+Notification API states and the header menu supersede the project catalog snapshot
+below. This is source QA, not runtime release acceptance.
+
+- Task source: `8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1`.
+- Base source: `4de2cd69894320815deeac4c5e981b1ce38270e6`.
+- Base installed/source fingerprint:
+  `5c067887d2ec9c6c400756afc27dbc31d0feefaaa8af6141480ece30c8e5daac`.
+- Product fingerprint:
+  `7236cd8438ffc358cca5c10f49dfb90c7cbe282038a8f958a85047d02fc106a1`.
+- Frozen offline installation with `--force` refreshed the file dependency;
+  lockfile and generated API schema did not change.
+
+| Command | Exit | Evidence |
+|---|---|---|
+| `pnpm install --offline --frozen-lockfile --force` | 0 | `task-notification-menu-install.log` |
+| `pnpm test --maxWorkers=2` | 0 | `task-notifications-release-source-units.log`; 346 tests, 47 files |
+| `pnpm lint` | 0 | `task-notifications-release-source-lint.log` |
+| `pnpm build` | 0 | `task-notifications-release-source-build.log`; typecheck and Vite |
+| Installed UI gate and `--fingerprint` | 0 | `task-notifications-release-source-ui-gate.log`; 16 route patterns |
+| Chromium smoke, one worker, `--max-failures=1` | 0 | `task-notifications-release-source-browser.log`; 8 tests, 4.8 minutes |
+| README validator and Python script tests | 0 | README validation and 4 script tests; gallery provenance remains pending |
+| Scoped Prettier and `git diff --check` | 0 | reviewed source delta |
+
+Base frontend: `base-dropdown-viewport-units.log`, 96 Vitest tests (22 files),
+18 script tests and semantic contrast check; lint/typecheck and README/hub
+validators passed. Full Rust/backend release gates were not run for this checkpoint.
+
+- Notification reads and mutations retain HTTP status/body in Base ApiError;
+  empty 204 mark-read responses remain valid, and network failures are not
+  substituted with empty data. UI feedback does not expose diagnostic envelopes.
+- Header menu distinguishes loading/empty/error/403/404/partial. Cached access
+  revocation hides items/count; retryable refresh preserves readonly content.
+  Only repeatable errors offer retry; a failed source must recover before retrying
+  its write command. A capped visual count retains its actual accessible value.
+- Synchronous command locking prevents duplicate one/all writes. The menu stays
+  open for feedback; invalidation that removes its initiator restores safe focus,
+  but does not overwrite a deliberate focus move or steal Escape focus.
+- Base DropdownMenu owns the 8 px viewport inset and available-height cap.
+  The bounded preview has a named keyboard-focusable local scroll region, with
+  a stationary header/footer. It does not become a desktop full-height panel.
+- Final browser output contains 188 PNG files: the earlier 155 page/form/state
+  captures plus 30 menu captures (3 themes x 10 widths) and 3 controlled menu states.
+  Menu geometry, targets 40/44, End/ArrowUp scrolling, Escape/focus and normal
+  console/network checks passed. Axe found no violations in the menu at 1920 px
+  in gray/dark/light; this is not a whole-application accessibility claim.
+
+Final mobile/desktop menu and controlled-state captures were inspected visually.
+Artifacts: [current captures](../../../../audit-artifacts/base-standard-2026-10-01/task-notifications-release-source-browser/),
+[current browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-notifications-release-source-browser.log).
+Earlier menu/compact/verified runs are superseded, including the intermediate
+scrollable-region-focusable failure fixed before this final run.
+
+All browser HTTP/OIDC is mocked. No accepted images, runtime pins, volumes,
+credentials, default refs or foreign checkouts were changed. The owned preview
+ended and port 18865 had no listener. Foreign candidate/validation containers seen
+in a read-only inventory were left untouched. All original findings remain open.
+The notifications page itself still needs Base composition, independent settings
+states, URL/hash preservation and draft protection; legacy counter typography/theme
+CSS, other routes, backend/actual-image/live SSO QA, real README provenance,
+consumer synchronization, local default integration and mirror remain required.
+
+## Project Catalog Checkpoint (Historical)
+
+Project catalog and guarded forms supersede the earlier shell/detail snapshot
+below. Earlier logs remain historical evidence, not proof for current runtime.
+
+- Task source: `5e6168151bc5dd950d41bbd2adbc0cc82f194ef1`.
+- Base source: `6bcde92c3901de395abe2f87d3b97b8a91731c59`.
+- Base installed/source fingerprint:
+  `a95d0d22a61cefba04eeaafa9d92341f65d319953514a6febeed74320f103e28`.
+- Product fingerprint:
+  `83a80929f9ab2c83df57a519f2599e92aeab32f0e26e3f0d2ae952fc73ea17d3`.
+- Branch/baseline/worktree remain unchanged. Lockfile and generated API schema
+  did not change during frozen offline installation.
+
+| Command | Exit | Current Evidence |
+|---|---|---|
+| `pnpm install --offline --frozen-lockfile` | 0 | `task-projects-release-source-install.log` |
+| `pnpm test --maxWorkers=2` | 0 | `task-projects-release-source-units.log`; 287 tests, 46 files |
+| `pnpm lint` | 0 | `task-projects-release-source-lint.log`; ESLint and semantic check |
+| `pnpm build` | 0 | `task-projects-release-source-build.log`; typecheck and Vite |
+| `pnpm ui:check` and `--fingerprint` | 0 | 16 patterns, installed/source Base bytes match |
+| Chromium smoke, one worker | 0 | `task-projects-verified-browser.log`; 6 tests, 4.3 minutes |
+| Focused Chromium catalog/history | 0 | `task-projects-final-focused-browser.log`; 2 tests |
+| `python -B scripts/verify_readme.py` | 0 | README validator, not gallery provenance acceptance |
+| `python -B -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks` | 0 | 4 script tests |
+| Scoped Prettier and `git diff --check` | 0 | final source review |
+
+Base frontend gate: `base-sso-history-units.log`, 18 script tests, semantic
+contrast check and 94 Vitest tests (21 files), plus lint/typecheck and README/hub
+validators. Rust/backend release gates were not rerun for this frontend checkpoint.
+
+Current browser run uses built source with mocked HTTP/OIDC, not deployed images:
+
+- 120 page captures across four routes, three themes and ten widths; shell,
+  reading/detail geometry and main control targets remain checked.
+- 30 project edit modal captures across gray/dark/light and
+  375/767/768/1023/1024/1279/1280/1440/1920/2560 px. Dialog fits the viewport,
+  draft survives resizing, visible targets meet 40/44 px and discard returns focus.
+- Five additional controlled captures: issue save failure, project create failure,
+  partial catalog refresh with retained readonly draft, cached access revocation
+  and cold not-found. Total: 155 PNG files.
+- Cached 503 retains rows/draft but blocks writes; cancellation remains usable.
+  Cached 403 hides rows/CRUD, and cold 404 has neither CRUD nor retry.
+- Search retains extra query/hash, resets page, survives direct SSO/reload/Back.
+  Dirty close cancellation returns focus to the field. Async POST allows one
+  submission, blocks Escape/close, retains failure values; confirmed success
+  closes the form and reaches board without a false dirty-navigation prompt.
+- Unit fixtures additionally verify dirty navigation/beforeunload, same-ID refetch,
+  new-session initialization and cancellation of unavailable delete confirmation.
+
+Final modal mobile and partial/denied desktop captures were inspected visually.
+Artifacts: [current captures](../../../../audit-artifacts/base-standard-2026-10-01/task-projects-verified-browser/),
+[current browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-projects-verified-browser.log).
+Earlier `task-projects-browser` and `task-projects-final-browser` runs contain
+superseded failures; they are not green acceptance evidence. Local worker/color
+warnings remain in logs; unit parallelism was bounded after a host-load timeout.
+
+Generic project API error messages still expose English technical text. Full
+route/role/state/console/network matrix, actual images, live SSO, backend gates,
+real README provenance, consumer snapshot synchronization, default integration
+and mirror remain required. All original findings remain open until release proof.
+Playwright-owned preview stopped after terminal completion; port 18865 had no listener.
+No GitHub/fetch/push, protected runtime changes or foreign checkout edits.
+
+## Source
+
+- Source commit: `7b4320718687825ec229c01853242f0c81050ad7`.
+- Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, branch
+  `feat/base-ui-standard`, isolated worktree `.local/uiux-standard-workspace/task-tracker`.
+- Base commit: `2a8de7ed2e4e7475bfcfb80e87222af4cc1fbc93`.
+- Installed/source Base fingerprint:
+  `44f46615a419570df8e12a7968a3aebd4124c3157c5da095b61e55dcbfa8a744`.
+- Product fingerprint:
+  `72a8069d5120d813a86f6c319005ca66cfcf19dc9e0de132a49d4da71866d4e9`.
+- Image digest, launcher acceptance, live SSO, full backend gate: `not-run`.
+  This is source QA, not release acceptance. Route manifest remains `pending`.
+
+## Gates
+
+Evidence root: `audit-artifacts/base-standard-2026-10-01/` in the SDLC workspace.
+
+| Command | Exit | Evidence |
+|---|---|---|
+| `pnpm install --offline --frozen-lockfile` | 0 | `task-base-final-install.log`; lockfile unchanged |
+| `pnpm test` | 0 | `task-base-final-units.log`; 46 files, 274 tests |
+| `pnpm lint` | 0 | `task-base-final-lint.log`; ESLint and semantic check |
+| `pnpm build` | 0 | `task-base-final-build.log`; typecheck and Vite build |
+| `pnpm ui:check` | 0 | 16 patterns, installed/source bytes match; runtime still required |
+| Base gate `--fingerprint` | 0 | fingerprints above |
+| Chromium `e2e/smoke.spec.ts`, one worker | 0 | `task-base-final-browser.log`; 3 tests, 3.5 minutes |
+| `git diff --check` | 0 | reviewed source delta before commit |
+
+## Browser Matrix
+
+Final build, mocked API/OIDC, `localhost:18865`. Playwright-owned preview was
+stopped after the terminal result; the port had no listener afterward.
+
+- 120 full-page captures: dashboard/projects/create/detail x gray/dark/light x
+  375/767/768/1023/1024/1279/1280/1440/1920/2560 px.
+- Checked layout modes, frame widths, 760 px reading limit, header height 60 px,
+  sidebar 264/72 px or hidden, one Base shell/header and nonoverlapping header
+  slots, no document overflow, detail aside 320 px above 1024.
+- Visible main buttons/selects/inputs/textareas measured at minimum 40 desktop /
+  44 mobile. Hidden fields, file inputs and checkbox/radio graphics excluded.
+- Unknown URL preserves query through mocked SSO and reload; not-found remains
+  inside protected wide shell. Drawer opens by keyboard, retains focus inside,
+  Escape closes and returns focus; destination links are not duplicated.
+- Dirty summary survives query tabs, Back, seven resize widths and cancelled
+  navigation. Failed PATCH preserves draft and shows an error; one submission
+  observed. Delete cancellation returns focus to its actions button.
+- Separate unit fixtures cover cached 403/404 hiding and dependent read disabling,
+  cached 503 partial/retry, independent dashboard errors and custom field refetch.
+- Final desktop dashboard/detail and mobile detail captures inspected visually.
+  An extra `draft-save-failure.png` records the controlled save failure.
+
+Artifacts: [final browser captures](../../../../audit-artifacts/base-standard-2026-10-01/task-base-final-browser/),
+[final browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-base-final-browser.log).
+The earlier `task-base-source-browser` run predates the final Base Select migration
+and is not evidence for the final controls.
+
+This matrix does not cover every manifest pattern, normal reload per pattern,
+all roles, complete loading/empty/error/403/404/partial fixtures, or all console
+and network assertions. Those remain required release work, not inferred passes.
+Local FORCE_COLOR/NO_COLOR warnings are retained in the log.
+
+## Gallery
+
+README gallery was not regenerated from mocks. Current gallery provenance and
+real desktop captures remain release backlog. Mocked smoke cannot write README
+images via the former `UPDATE_README_SCREENSHOTS` switch.
+
+## Release
+
+No GitHub/fetch/Actions, push, default integration, mirror sync or runtime pin
+changes in this checkpoint. The original dirty checkout was not edited.
+See [Remaining Acceptance](UI_UX_MAP.md#remaining-acceptance).
+
+## 2026-10-03: Create Form Source Checkpoint
+
+Parent: `4b82dd615479cfbc5674db70050747d9d4458256`; Base:
+`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`. Изолированный checkout сохраняется;
+backend, OpenAPI, dependency locks, auth и schema этим шагом не меняются.
+
+Create использует Base FormPage/FormField/PendingForm/UnsavedChangesGuard и
+ResourceStateView. Runtime API wrappers передают HTTP status для required fields,
+types, directory и members; URL project context не уничтожает проектные drafts.
+Unicode bound заголовка совпадает с серверным пределом 500 code points.
+
+Source browser evidence: `task-create-base-final-browser.json` и одноимённая
+директория в workspace evidence root. 17/17 Chromium tests, 0 skipped/flaky/
+unexpected; 258 PNG, включая 36 create captures. Новый create набор проверяет
+30 geometry cases (3 themes x 10 widths), reading alignment/width, target sizes,
+main axe на375/1920, long input values, drafts/history, Escape/focus return,
+pending double-submit, сохранение ввода после503 и required403/404/422/503.
+При503 проверяется штатная последовательность 5 GET attempts; limiter/retry
+policy не ослаблена. Исходные failed runs сохранены, не считаются приёмкой.
+Desktop1920 и375 captures просмотрены визуально.
+
+Unit regressions проверяют required refetch/write boundary, cached terminal
+errors с восстановлением draft, явное снятие недоступного assignee, unload,
+success navigation и required/help/error semantics всех5 custom control types.
+Финальный source gate записывается в `task-create-base-source-python-no-bytecode-verification.json`
+с commands/logs и digests changed files. Browser API/OIDC mocked; это не
+actual-image/SSO/role acceptance и не новая README gallery. Native backend gate
+не повторялся для frontend-only scope; выпускная приёмка полного продукта
+остаётся обязательной. Default integration/runtime pins/mirror не меняются.
+
+## 2026-10-03: Search Source Checkpoint
+
+Parent: `4785447d9b428803395e3a43bbda6b1d49cbb0c7`; Base:
+`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`. Search использует ListPage,
+FormField/Select/Tabs, Base URL helper/sort codec и ResourceStateView.
+Result entities/columns, requests, 350 ms debounce и 26-row sentinel при page25
+остаются продуктовым кодом. JQL draft выполняется только по submit.
+
+Unit regressions покрывают terminal cache hiding, partial/retry, JQL linked error,
+sort bounds, URL/hash/history/reset, independent directories и empty later page.
+Browser regression проверяет simple/JQL, три темы и десять shell widths,
+wide geometry/gap, targets40/44, long result titles/names, direct/reload и main axe.
+Дополнительные fixtures покрывают URL history, cached503/recovery/403 и cold
+400/403/404/422/503. Штатная search retry policy сохранена.
+
+Preflight browser завершился24/25: Search cases прошли, старый create theme case
+упал во время перехода127.0.0.1 на canonical localhost. Причина гонки inferred
+из auth normalization и момента localStorage write; fixture теперь ждёт ready
+form на canonical origin перед выбором theme, product auth не менялся.
+Визуальная проверка preflight выявила fragment второй строки result title:
+clamp перенесён с padded link на внутренний span, а link сохранил Base target.
+Результаты повторного browser/source gate фиксируются отдельными receipts.
+
+Corrected browser прошёл25/25, но визуальная проверка показала premature ellipsis
+после пробела перед длинным unbroken token. Desktop теперь использует nowrap
+ellipsis на всю ширину link, mobile сохраняет2 строки; browser assertion проверяет
+также25 title spans, их ширину и desktop white-space. Search labels приведены к
+обычному регистру; JQL hint содержит поддерживаемые domain fields вместо описания
+функции. Полный final browser после визуальной корректировки прошёл25/25:
+0 unexpected/skipped/flaky,325 PNG, из них67 Search (60 geometry и7 state/history).
+Final dark1920 simple/JQL и light375 simple просмотрены визуально; premature
+ellipsis и обрезанные фрагменты не наблюдаются на этих кадрах. Main axe на375/1920
+прошёл без violations. Это не browser проверка всего16-pattern route manifest.
+
+Final evidence: `task-search-base-final-browser.json` и одноимённая PNG directory,
+`task-search-base-source-final-verification.json` с12 source gates и hashes overlay;
+после commit отдельный `task-search-base-committed-source-verification.json`
+сверяет source delta, installed Base fingerprint и capture hashes/dimensions.
+Preflight/corrected browser и failed focused unit reports сохранены отдельно.
+
+API/OIDC mocked; это не actual-image/SSO/role acceptance и не README gallery.
+Backend/OpenAPI/locks/Base pin/schema не меняются; native gate не повторяется
+для frontend-only delta. Полная release приёмка, default и mirror остаются нужны.
+
+## 2026-10-03: Trash Source Checkpoint
+
+Parent: `ee83d2368ff510530bd8eac908048480e4201642`; Base:
+`c3cbb6bfcebfea021720cfe76f42631e1d9854f9`. Изолированный frontend/docs delta;
+backend, OpenAPI, auth, DB, locks и Base pin не изменяются.
+
+Trash использует ListPage/resourceErrorState/ConfirmDialog, Base controls и URL
+helper. Page50/offset семантика сохранена. External query/hash не теряются при
+canonicalization, pagination/history/reload и возврате на board. Повторяемые
+cached read failures остаются partial-error;403/404 и неповторяемые сбои скрывают
+строки и закрывают stale confirmation. Запись запрещена при refresh/error.
+
+Mutation wrappers сохраняют HTTP status. Purge требует документированный204;
+restore проверяет обязательные identifiers ответа, допускает UUID и key,
+включая canonicalization сервером. Буквальное равенство input/output не требуется:
+backend нормализует номер ключа и UUID. Два identifier unit preflight failures
+выявили излишнее frontend ограничение; новые регрессии сохраняют серверный контракт.
+Malformed success не вызывает success toast. Promise/same-tick locks защищают
+запись и закрытие pending dialog. Cancel/Escape возвращают фокус инициатору;
+удалённый или disabled инициатор заменяется именованным focusable region.
+Unknown write outcome требует отдельного GET и явного нового подтверждения.
+Отсутствие строки на одной странице не считается доказательством success;
+неуспешный readback и background recovery сами не разрешают повтор записи.
+
+Preflight unit report:14/21 passed,7 failed (утрата HTTP statuses и неверное
+поведение cached403/404/503). Initial browser:11/15 passed;4 failures из-за
+неверных fixture selectors loading/empty/error. Base использует accessibility
+roles для этих состояний, а не предполагаемый data-page-state. Test selectors
+исправлены по фактическому DOM, production components ради теста не менялись.
+Initial typecheck/build errors и failed reports сохранены, не считаются приёмкой.
+
+Full source smoke после исправления selectors прошёл40/40 без retries,
+0 unexpected/skipped/flaky. Матрица evidence дополнительно исправляет коллизию
+viewport width и content width; между full40 и первым fresh15 production code
+не менялся.
+Отдельный fresh Trash run проверяет корректную матрицу и дополнительные
+first-viewport captures рядом с обязательными full-page375/1920/2560.
+Fresh Trash run прошёл15/15 без retries,0 unexpected/skipped/flaky:60 observations,
+30 PNG (9full-page geometry,9first-viewport и12states/actions). Main axe375/1920
+прошёл во всех3themes. Dark1920, gray2560 и light375 first-viewport кадры открыты
+и просмотрены; весь376-frame объединённый набор не объявляется просмотренным.
+Focused unit regressions первого checkpoint прошли48/48; source gate456/47files
+прошёл12 checks до финальной identifier compatibility correction. Новый source
+gate после этой коррекции прошёл12 checks,458 tests в47files. Fresh Trash
+browser текущего bundle прошёл15/15 без retries,0 unexpected/skipped/flaky,
+60 observations и30 PNG. Остальные runtime функции этой коррекцией не менялись;
+restore wrapper используется только Trash. Current dark1920 и light375
+first-viewport кадры отдельно открыты и просмотрены после финальной сборки.
+
+Fresh commands/results/digests: `task-trash-base-source-commit-ready-verification.json`,
+`task-trash-base-final-browser.json`, `task-trash-base-evidence-browser.json`,
+`task-trash-base-api-final-browser.json`
+и соответствующие PNG directories в workspace
+`audit-artifacts/base-standard-2026-10-01/`. Committed recorder отдельно проверяет
+exact parent/delta, installed Base fingerprint и capture hashes/dimensions.
+Browser scope включает long/big list,3themes x10widths xdirect/reload, targets40/44,
+main axe375/1920, cold/cached403/404/422/503, loading/empty, history/hash, pending
+double-submit, keyboard focus и два возможных unknown-purge readback outcomes.
+
+API/OIDC mocked. Это не immutable-image, operational SSO/roles, README gallery
+или весь16-pattern manifest acceptance. Native backend gate для frontend-only
+delta не повторяется; полный продуктовый выпускной gate остаётся обязательным.
+Canonical runtime/pins, default refs и mirror этим checkpoint не изменяются.
+
+## 2026-10-03: Board Source Checkpoint
+
+Parent: `b4e00346efa952baab8507772b042a396f27382d`; Base:
+`c3cbb6bfcebfea021720cfe76f42631e1d9854f9`. Frontend/docs delta только;
+backend, OpenAPI, auth, DB, locks и Base pin не изменяются.
+
+Board использует ListPage, реальные Tabs panels для density, FormField/Select
+для мобильного status и Base controls40/44. Одна project-aware create action
+в header вместо повторения в каждой колонке. Колонки unframed; cards сохраняют
+metadata, ссылки, native drag/drop и keyboard menu. Summary4/2 lines задаёт
+плотность без уменьшения targets; полный текст сохраняется в доступном содержимом
+и title. URL density/status/history/reload/backlog сохраняет внешний query/hash.
+
+API wrappers сохраняют status, отличают malformed success от пустой доски/правил,
+не дублируют identifier normalization сервера. Rules loading/errors независимы
+от чтения доски. Cached403/404 и неповторяемые ошибки скрывают stale данные;
+retryable cached failure оставляет partial content с блокировкой writes.
+Pending/refetch/error запрещают moves. Перенос принимает только существующее
+issue и разрешённый переход; внешние и отменённые drags не запускают запись.
+Promise/imperative locks защищают same-tick requests. После сбоя требуется
+явный GET доски И rules перед новым действием; background recovery и failed
+readback не снимают lock. Changed/missing issue не считается success.
+Сверка доступна и после удаления всех колонок. Фокус возвращается стабильному
+именованному region после keyboard move или readback.
+
+API preflight:2/17 passed,15 failed. Первый component/API run:33/34 passed;
+failed test обнаружил, что disabled на anchor не запрещает navigation.
+Недоступная create action теперь native disabled Button, не disabled Link.
+Corrected focused run:34/34; полный source Vitest:496/496 в48files,0 pending.
+Первый browser run:17/18; keyboard fixture отправлял Enter до deferred focus
+после End и выбирал первый пункт вместо последнего. Test теперь ждёт фактический
+focus требуемого menu item. Reports сохранены отдельно, не перезаписаны.
+Первый browser запуск пересекался с завершением build и предшествовал финальной
+summary clamp correction; не используется как приёмка окончательного bundle.
+
+Полный Chromium run до финального own-property guard завершился0:58/58,0 unexpected/skipped/flaky,
+без retries. Board matrix:120 observations (2densities x3themes x10widths
+xdirect/reload), main axe375/1920 в каждой density/theme. Cold/cached403/404/422/
+503, independent rules403/422/503, loading/empty, URL/hash/history, pending,
+keyboard focus, unknown move applied/not-applied и native drag/drop прошли.
+Geometry captures:18full-page375/1920/2560 +18first-viewport, также15board state/
+action frames. Просмотрены окончательные dark1920 comfortable, gray2560 compact
+и light375 compact first-viewport; просмотр всего набора не заявляется.
+Финальная проверка нашла, что допустимые ProjectKey `toString`/`valueOf` могли
+ошибочно наследовать failure из Object.prototype. Component preflight18/20
+воспроизвёл2 failures; lookup теперь проверяет собственную запись, без изменения
+server key contract. Новый focused run прошёл43/43. Отдельный Board20 run
+завершился0:20/20,0 unexpected/skipped/flaky, без retries;120 observations,
+51 PNG (36geometry full-page/viewport +15states/actions). Проверен окончательный
+bundle, все прежние18 сценариев доски и2 новых ключа. Latest dark1920 comfortable,
+gray2560 compact и light375 compact first-viewport открыты и просмотрены.
+Full58 не объявляется повторённым после этого guard. Другие runtime
+paths не менялись. Full58 + fresh20 не являются78 уникальными сценариями.
+Статус12 штатных source gates и точные source/bundle digests фиксирует отдельный
+receipt; commit допустим только при success и неизменном проверенном delta.
+Evidence: `task-board-final-browser.json`, `task-board-alias-final-browser.json`,
+соответствующие PNG/matrix, `task-board-base-source-final-verification.json`,
+`task-board-base-source-alias-final-verification.json` и
+`task-board-base-{precommit,committed}-source-verification.json` в workspace
+`audit-artifacts/base-standard-2026-10-01/`. Replay scripts:
+`verify-task-board-source.ps1 -Checkpoint <fresh-name>` и
+`record-task-board-source.mjs`. Build snapshot сравнивается с bundle после gates.
+
+API/OIDC mocked: не immutable-image, operational SSO/roles, README или весь
+16-pattern route manifest acceptance. Backend gate для frontend-only delta
+не повторяется; полный продуктовый gate остаётся обязательным перед выпуском.
+Canonical runtime/pins, default refs и mirror не изменяются. Read-only штатный
+launcher `-Workspace sdlc2 -Status` завершился0: приложения healthy, но это не
+подтверждение публикации текущего source/Base snapshot.
+
+## 2026-10-03: Sprint Source Checkpoint
+
+Parent: `e25cc39d4fd3414f5ed7a5270982b4c4a003c419`; Base:
+`c3cbb6bfcebfea021720cfe76f42631e1d9854f9`. Exact frontend/docs delta12files;
+публичные API, backend, DB, auth, UTC/null semantics и dependency locks неизменны.
+
+Create/edit использует Base FormDialog/FormField/Textarea, common spacing/targets
+и UnsavedChangesGuard. Identity одного открытого сеанса сохраняет draft при
+same-sprint refetch. Форма остаётся тем же React sibling при error/loading бэклога,
+а не перемонтируется с потерей ввода. Ошибка inverted dates связана с end field
+через aria-describedby/aria-invalid и получает фокус до записи. Edit clearing
+оставляет goal/date null и пустое name как omitted; create optional fields omitted.
+Pending удерживается фактическим mutateAsync Promise; Escape/Cancel и fields
+заблокированы до settlement. После отказа значения остаются, private diagnostics
+не показываются.403/404 запрещают save; unknown transport/5xx/malformed success
+запоминается на странице и в сеансе формы. Background recovery не разрешает resend.
+Для нового явного действия нужен отдельный validated GET списка спринтов; readback
+не объявляет previous create success и не повторяет payload автоматически.
+Сверка каталога не является сверкой lifecycle/issue move, они остаются в backlog.
+Подтверждённый уход в другой project закрывает старый сеанс; Back не открывает
+форму с прежней сущностью. Owner проверяется и перед submit, без новых auth rules.
+
+API preflight2/28 passed,26 failed; form preflight3/14 passed,11 failed.
+Initial focused51/51; integration56/57 выявил remount draft loss, исправленный
+run57/57. Дополнительный navigation test сначала неверно обращался к inert link
+внешней страницы; router navigation probe вместо недоступного пользователю link
+подтверждён отдельным focused59/59. Typecheck выявил Promise<unknown> в submit и
+неподдерживаемый Testing Library exact option; оба исправлены до browser acceptance.
+
+Дополнительный context preflight6/7 воспроизвёл старую форму после project change;
+owner binding исправлен, последний focused run60/60. Initial browser0/10 выявил
+неверный exact label locator required name и неверный текст edit action.
+Следующий полный run66/70:3 edit-locator failures и отдельный Board URL failure
+(lost density после compact/status). Он не считается общей зелёной приёмкой;
+исправления fixture labels не закрывают URL regression. Следующий replay спринтов
+проводится отдельно на новой owner-aware сборке; прежние reports сохранены.
+
+Owner-aware replay спринтов завершился0:10/10,0 unexpected/skipped/flaky, без retries.
+Matrix60 observations:3themes x10widths xcreate/edit. Dialog geometry и targets40/44,
+axe375/1920, focus trap/return, pending double-submit/close protection, inverted
+dates/null edit payload,403/404/422, unknown503/malformed acknowledgement и draft
+при backlog refresh failure проверены.42 PNG:36geometry full-page/viewport на
+375/1920/2560 +6states. Current dark1920 edit, gray2560 create и light375 create
+viewport открыты и просмотрены; просмотр всех42 не заявляется. Full66/70 относится
+к прежнему bundle и не объявляется повторённым после owner fix.66/70 + fresh10
+не являются76 уникальными сценариями; общая приёмка остаётся незелёной из-за URL.
+
+Replay/evidence в workspace `audit-artifacts/base-standard-2026-10-01/`:
+`task-sprint-corrected-browser.json`, current PNG/matrix,
+`task-sprint-source-final-verification.json` и
+`task-sprint-candidate-source-verification.json`.
+Штатные12 source gates и exact raw hashes фиксирует verifier, а candidate recorder
+проверяет source/installed fingerprint, bundle identity, matrix и capture digests.
+Scripts: `verify-task-sprint-source.ps1 -Checkpoint <fresh-name>` и
+`record-task-sprint-source.mjs --candidate`. Candidate остаётся working-tree overlay;
+коммит, default integration и публикация не заявляются. URL regression требует
+отдельной проверки Base helper; browser test не замедляется для её маскировки.
+
+API/OIDC fixtures не подтверждают immutable images, live SSO/roles, весь16-pattern
+manifest или README gallery. Native backend gate не повторяется для этого
+frontend-only delta; полный выпускной gate остаётся обязательным. Все original
+findings остаются открытыми до полного release evidence. Runtime/pins/default refs
+и mirror этим source checkpoint не изменяются.

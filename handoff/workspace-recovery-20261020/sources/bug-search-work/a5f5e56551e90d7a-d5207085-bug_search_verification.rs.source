@@ -1,0 +1,123 @@
+//! Tracker owns the original Bug/report relation; no remote I/O or new queue.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, field, stmt};
+use domain::{
+    bug_search::*, bug_search_control::BugSearchSnapshot,
+    bug_search_terminal::BugProducedFindingReport, bug_search_verification::BugVerificationBasis,
+    sdlc::Principal,
+};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, TransactionTrait};
+use shared::AppError;
+use uuid::Uuid;
+
+impl PostgresBugSearchRepository {
+    pub(super) async fn read_verification_basis(
+        &self,
+        project: Uuid,
+        bug: Uuid,
+        actor: &Principal,
+        owner_subject: &str,
+    ) -> Result<BugVerificationBasis, AppError> {
+        // This is fresh discovery of a new effect, not protective history access.
+        self.fleet(actor, true)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        self.manage(&tx, project, owner_subject).await?;
+        let row = tx.query_one(stmt(
+            "SELECT s.source_identity,s.source_sha256,s.basis_sha256,r.payload->'report' AS report
+             FROM issues i JOIN sdlc_bug_sources s ON s.issue_id=i.id AND s.project_id=i.project_id
+             JOIN issue_creation_receipts r ON r.operation_id=s.creation_operation_id
+              AND r.issue_id=i.id AND r.project_id=i.project_id AND r.completed
+             WHERE i.id=$1 AND i.project_id=$2 AND i.issue_type='bug' AND i.deleted_at IS NULL
+              AND EXISTS(SELECT 1 FROM sdlc_bug_occurrences o WHERE o.project_id=s.project_id
+               AND o.source_sha256=s.source_sha256 AND o.receipt->>'outcome'='created')",
+            vec![bug.into(), project.into()],
+        )).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_verification_basis",bug))?;
+        let source: BugSourceIdentity = decode(&row, "source_identity")?;
+        let report: BugFindingReport = decode(&row, "report")?;
+        source.validate()?;
+        report.validate()?;
+        let source_hash = app::bug_search::canonical_hash(&source)?;
+        if source.repository_id.is_none() {
+            return Err(AppError::Unavailable(
+                "original Bug has no qualified repository".into(),
+            ));
+        }
+        if source_hash != field::<String>(&row, "source_sha256")?
+            || app::bug_search::basis_hash(&report)? != field::<String>(&row, "basis_sha256")?
+        {
+            return Err(AppError::conflict("original Bug scenario digest differs"));
+        }
+        let report = BugProducedFindingReport {
+            source_identity: source_hash,
+            source,
+            title: report.title,
+            basis: report.basis,
+            expected: report.expected,
+            actual: report.actual,
+            reproducer: report.reproducer,
+            checked_version: report.checked_version,
+            evidence_refs: report.evidence_refs,
+        };
+        report.validate()?;
+        let result = BugVerificationBasis {
+            contract_version: 1,
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            tracker_instance_uuid: self.config.tracker_instance_uuid,
+            project_id: project,
+            bug_id: bug,
+            report_sha256: app::bug_search::canonical_hash(&report)?,
+            report,
+        };
+        if serde_json::to_vec(&result)
+            .map_err(AppError::internal)?
+            .len()
+            > 65536
+        {
+            return Err(AppError::Unavailable(
+                "original Bug scenario exceeds discovery limit".into(),
+            ));
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
+}
+
+pub(crate) async fn available(
+    tx: &DatabaseTransaction,
+    snapshot: &BugSearchSnapshot,
+) -> Result<bool, AppError> {
+    if snapshot.kind == BugSearchPurpose::Search {
+        return Ok(true);
+    }
+    if snapshot.verification_basis.is_none() {
+        return Ok(false);
+    }
+    app::bug_search_verification::require_basis(snapshot)?;
+    let basis = snapshot
+        .verification_basis
+        .as_ref()
+        .ok_or_else(|| AppError::validation("verification requires original scenario"))?;
+    let source = serde_json::to_value(&basis.source).map_err(AppError::internal)?;
+    let report = serde_json::to_value(basis.report()).map_err(AppError::internal)?;
+    let row=tx.query_one(stmt(
+        "SELECT i.id FROM issues i JOIN sdlc_bug_sources s ON s.issue_id=i.id AND s.project_id=i.project_id
+         JOIN issue_creation_receipts r ON r.operation_id=s.creation_operation_id AND r.issue_id=i.id AND r.project_id=i.project_id AND r.completed
+         WHERE i.id=$1 AND i.project_id=$2 AND i.issue_type='bug' AND i.deleted_at IS NULL
+          AND s.source_identity=$3 AND r.payload->'report'=$4
+          AND EXISTS(SELECT 1 FROM sdlc_bug_occurrences o WHERE o.project_id=s.project_id AND o.source_sha256=s.source_sha256)
+         LIMIT 1",
+        vec![snapshot.bug_id.into(),snapshot.project.project_id.into(),source.into(),report.into()]
+    )).await.map_err(db_error)?;
+    Ok(row.is_some())
+}
+
+pub(crate) async fn require(
+    tx: &DatabaseTransaction,
+    snapshot: &BugSearchSnapshot,
+) -> Result<(), AppError> {
+    if !available(tx, snapshot).await? {
+        return Err(AppError::conflict(
+            "original Bug scenario is unavailable or differs from Tracker",
+        ));
+    }
+    Ok(())
+}

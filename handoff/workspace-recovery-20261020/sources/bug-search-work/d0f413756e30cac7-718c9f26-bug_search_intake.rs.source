@@ -1,0 +1,125 @@
+use async_trait::async_trait;
+use domain::{bug_search_control::validate_key, bug_search_intake::*, sdlc::Principal};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+#[async_trait]
+pub trait BugIntakeRepository: Send + Sync {
+    async fn apply_intake(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+        command: ApplyBugIntake,
+    ) -> Result<(BugIntakeApplied, bool), AppError>;
+    async fn intake(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError>;
+    async fn intake_operation(
+        &self,
+        project: Uuid,
+        key: &str,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError>;
+}
+
+#[derive(Clone)]
+pub struct BugIntakeService {
+    pub repository: Arc<dyn BugIntakeRepository>,
+}
+pub fn request_hash(
+    project: Uuid,
+    owner: &str,
+    worker: Uuid,
+    command: &ApplyBugIntake,
+) -> Result<String, AppError> {
+    let mut body = serde_json::to_value(command).map_err(AppError::internal)?;
+    body.as_object_mut()
+        .ok_or_else(|| AppError::validation("invalid intake command"))?
+        .remove("idempotency_key");
+    crate::bug_search::canonical_hash(
+        &serde_json::json!({"kind":"intake","project_id":project,"owner_subject":owner,"worker_id":worker,"command":body}),
+    )
+}
+impl BugIntakeService {
+    pub async fn apply(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+        command: ApplyBugIntake,
+    ) -> Result<(BugIntakeApplied, bool), AppError> {
+        validate_scope(project, owner, worker)?;
+        command.validate(worker)?;
+        self.repository
+            .apply_intake(project, owner, worker, actor, command)
+            .await
+    }
+    pub async fn read(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError> {
+        validate_scope(project, owner, worker)?;
+        self.repository.intake(project, owner, worker, actor).await
+    }
+    pub async fn operation(
+        &self,
+        project: Uuid,
+        key: &str,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError> {
+        if project.is_nil() {
+            return Err(AppError::validation("invalid intake project"));
+        }
+        validate_key(key)?;
+        self.repository.intake_operation(project, key, actor).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn intake_identity_excludes_transport_key_but_includes_owner_worker_and_runtime() {
+        let project = Uuid::new_v4();
+        let worker = Uuid::new_v4();
+        let command = ApplyBugIntake {
+            contract_version: 1,
+            idempotency_key: "first-key".into(),
+            expected_revision: 0,
+            desired_revision: 2,
+            enabled: true,
+            worker_runtime: BugIntakeWorkerRuntime {
+                fleet_instance_id: Uuid::new_v4(),
+                agent_id: worker,
+                agent_config_revision: 3,
+            },
+        };
+        let hash = request_hash(project, "own-human", worker, &command).unwrap();
+        let mut retry = command.clone();
+        retry.idempotency_key = "another-key".into();
+        assert_eq!(
+            request_hash(project, "own-human", worker, &retry).unwrap(),
+            hash
+        );
+        assert_ne!(
+            request_hash(project, "other-human", worker, &command).unwrap(),
+            hash
+        );
+        retry.worker_runtime.agent_config_revision += 1;
+        assert_ne!(
+            request_hash(project, "own-human", worker, &retry).unwrap(),
+            hash
+        );
+    }
+}

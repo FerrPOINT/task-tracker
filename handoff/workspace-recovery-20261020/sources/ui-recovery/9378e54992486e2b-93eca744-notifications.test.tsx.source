@@ -1,0 +1,733 @@
+import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createMemoryRouter, Link, RouterProvider, useLocation, useNavigate } from 'react-router'
+import i18n from '@/shared/i18n/config'
+
+import { NotificationsPage } from './'
+
+const useNotifications = vi.hoisted(() => vi.fn())
+const useNotificationSettings = vi.hoisted(() => vi.fn())
+const useMarkNotificationRead = vi.hoisted(() => vi.fn())
+const useMarkAllNotificationsRead = vi.hoisted(() => vi.fn())
+const useUpdateNotificationSettings = vi.hoisted(() => vi.fn())
+const useNotificationWritesPending = vi.hoisted(() => vi.fn())
+
+vi.mock('@/shared/api/hooks', () => ({
+  useNotificationWritesPending,
+  useNotifications,
+  useNotificationSettings,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+  useUpdateNotificationSettings,
+}))
+
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+      <Link to="/away">Leave notifications</Link>
+    </>
+  )
+}
+
+function wrapper(url = '/notifications') {
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/notifications',
+        element: (
+          <>
+            <NotificationsPage />
+            <LocationProbe />
+          </>
+        ),
+      },
+      { path: '/away', element: <h1>Destination</h1> },
+    ],
+    { initialEntries: [url] },
+  )
+  return <RouterProvider router={router} />
+}
+
+function renderPage(url = '/notifications') {
+  return render(wrapper(url))
+}
+
+function mockHooks() {
+  useNotificationWritesPending.mockReturnValue(false)
+  const notifications = [
+    {
+      id: 'notification-1',
+      title: 'Issue updated',
+      body: 'TT-12 has moved to done',
+      is_read: false,
+      action_url: '/issues/12',
+      created_at: '2026-08-24T10:00:00Z',
+    },
+    {
+      id: 'notification-2',
+      title: 'Mentioned in a comment',
+      body: null,
+      is_read: true,
+      action_url: null,
+      created_at: '2026-08-24T09:00:00Z',
+    },
+  ]
+  useNotifications.mockImplementation(({ includeRead }: { includeRead: boolean }) => ({
+    error: null,
+    refetch: vi.fn(),
+    data: {
+      notifications: includeRead ? notifications : notifications.filter((item) => !item.is_read),
+      unread_count: 1,
+    },
+    isLoading: false,
+  }))
+  useNotificationSettings.mockReturnValue({
+    data: { email_frequency: 'daily', disabled_event_types: [], notify_own_changes: false },
+    isLoading: false,
+  })
+  useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
+  useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
+  useUpdateNotificationSettings.mockReturnValue({ mutate: vi.fn(), reset: vi.fn() })
+}
+
+describe('NotificationsPage', () => {
+  it('localizes a server-generated title and accessible action without translating the user body', () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: {
+        unread_count: 1,
+        notifications: [
+          {
+            id: 'assigned',
+            title: 'You were assigned to qa-test-1',
+            body: 'Keep this user summary unchanged',
+            is_read: false,
+            entity_type: 'issue',
+            event_type: 'issue_assigned',
+            metadata: { issue_key: 'qa-test-1' },
+            created_at: '2026-10-05T07:00:00Z',
+          },
+        ],
+      },
+    })
+    renderPage()
+    expect(
+      screen.getByRole('heading', { name: 'Вам назначена задача qa-test-1' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: 'Отметить прочитанным: Вам назначена задача qa-test-1',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Keep this user summary unchanged')).toBeInTheDocument()
+  })
+  it('protects page controls and navigation while the shell owns a notification write', async () => {
+    mockHooks()
+    useNotificationWritesPending.mockReturnValue(true)
+    renderPage()
+    expect(screen.getByLabelText('Частота email')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Прочитать все' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: /отметить прочитанным: Issue updated/i }),
+    ).toBeDisabled()
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('link', { name: 'Leave notifications' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: 'Подтвердить' })).toBeDisabled()
+    expect(useMarkNotificationRead().mutate).not.toHaveBeenCalled()
+  })
+  it('filters the notification list and marks all notifications as read', async () => {
+    const markAll = vi.fn()
+    mockHooks()
+    useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
+
+    renderPage()
+
+    expect(useNotifications).toHaveBeenCalledWith({ includeRead: true, limit: 21, offset: 0 })
+    expect(screen.getByText('Issue updated')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /TT-12 has moved to done/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /unread|непрочитанные/i }))
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: false, limit: 21, offset: 0 })
+    expect(screen.queryByText('Mentioned in a comment')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /mark all as read|прочитать все/i }))
+    await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
+  })
+
+  it('shows later notifications and resets to the first page when changing filters', () => {
+    mockHooks()
+    const notifications = Array.from({ length: 25 }, (_, index) => ({
+      id: `notification-${index}`,
+      title: `Event ${index + 1}`,
+      body: null,
+      is_read: false,
+      action_url: null,
+      created_at: '2026-08-24T10:00:00Z',
+    }))
+    useNotifications.mockImplementation(
+      ({
+        includeRead,
+        limit,
+        offset,
+      }: {
+        includeRead: boolean
+        limit: number
+        offset: number
+      }) => ({
+        data: {
+          notifications: (includeRead ? notifications : notifications.slice(1)).slice(
+            offset,
+            offset + limit,
+          ),
+          unread_count: 24,
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      }),
+    )
+
+    renderPage()
+    expect(screen.getAllByRole('listitem')).toHaveLength(20)
+    expect(screen.queryByText('Event 21')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /next page|следующая страница/i }))
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 20 })
+    expect(screen.getByText('Event 21')).toBeInTheDocument()
+    expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?page=2',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /unread|непрочитанные/i }))
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: false, limit: 21, offset: 0 })
+    expect(screen.getByText('Event 2')).toBeInTheDocument()
+    expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?filter=unread',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back in history' }))
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 20 })
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?page=2',
+    )
+  })
+
+  it('opens a filtered page directly and preserves unrelated parameters', () => {
+    mockHooks()
+
+    renderPage('/notifications?filter=unread&page=2&source=qa')
+
+    expect(useNotifications).toHaveBeenLastCalledWith({
+      includeRead: false,
+      limit: 21,
+      offset: 20,
+    })
+    expect(screen.getByRole('button', { name: /unread|непрочитанные/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?filter=unread&page=2&source=qa',
+    )
+  })
+
+  it('canonicalizes invalid list parameters without losing unrelated parameters', async () => {
+    mockHooks()
+
+    renderPage('/notifications?filter=unknown&page=-3&source=qa')
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/notifications?source=qa',
+      ),
+    )
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 0 })
+  })
+
+  it('returns an empty out-of-range page to the first page without a navigation loop', async () => {
+    mockHooks()
+    useNotifications.mockImplementation(({ offset }: { offset: number }) => ({
+      data: {
+        notifications:
+          offset === 0
+            ? [
+                {
+                  id: 'notification-1',
+                  title: 'Issue updated',
+                  body: null,
+                  is_read: false,
+                  action_url: null,
+                  created_at: '2026-08-24T10:00:00Z',
+                },
+              ]
+            : [],
+        unread_count: 1,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    }))
+    useNotifications.mockClear()
+
+    renderPage('/notifications?page=999&source=qa')
+
+    expect(useNotifications).toHaveBeenCalledWith({ includeRead: true, limit: 21, offset: 19960 })
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/notifications?source=qa',
+      ),
+    )
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 0 })
+    const offsetTransitions = useNotifications.mock.calls
+      .map(([options]) => options.offset)
+      .filter((offset, index, offsets) => index === 0 || offset !== offsets[index - 1])
+    expect(offsetTransitions).toEqual([19960, 0])
+  })
+
+  it('saves multiple preference edits in one backend-compatible request', async () => {
+    const updateSettings = vi.fn()
+    mockHooks()
+    useNotificationSettings.mockReturnValue({
+      data: {
+        email_frequency: 'daily',
+        disabled_event_types: ['issue_updated'],
+        notify_own_changes: false,
+      },
+      isLoading: false,
+    })
+    useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings, reset: vi.fn() })
+
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
+      target: { value: 'hourly' },
+    })
+    fireEvent.click(
+      screen.getByLabelText(/notify about my own changes|уведомлять о моих изменениях/i),
+    )
+    fireEvent.click(screen.getByLabelText('Назначение задачи'))
+    expect(updateSettings).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    expect(updateSettings).toHaveBeenCalledOnce()
+    expect(updateSettings).toHaveBeenCalledWith(
+      {
+        email_frequency: 'hourly',
+        disabled_event_types: ['issue_updated', 'issue_assigned'],
+        notify_own_changes: true,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('keeps changed preferences after a failed save and retries the same document', () => {
+    const updateSettings = vi.fn()
+    let failed = false
+    mockHooks()
+    useUpdateNotificationSettings.mockImplementation(() => ({
+      mutate: updateSettings,
+      reset: vi.fn(),
+      isPending: false,
+      isSuccess: false,
+      isError: failed,
+    }))
+
+    const page = renderPage()
+    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
+      target: { value: 'hourly' },
+    })
+    fireEvent.click(screen.getByLabelText('Назначение задачи'))
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    failed = true
+    act(() => updateSettings.mock.calls[0]![1].onSettled())
+    page.rerender(wrapper())
+
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('hourly')
+    expect(screen.getByLabelText('Назначение задачи')).not.toBeChecked()
+    expect(
+      screen.getByText(/Could not save preferences|Не удалось сохранить настройки/i),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    expect(updateSettings).toHaveBeenCalledTimes(2)
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      {
+        email_frequency: 'hourly',
+        disabled_event_types: ['issue_assigned'],
+        notify_own_changes: false,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('cancels an unsaved preference draft without an API request', () => {
+    const updateSettings = vi.fn()
+    mockHooks()
+    useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings, reset: vi.fn() })
+
+    renderPage()
+    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
+      target: { value: 'hourly' },
+    })
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('hourly')
+    fireEvent.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('daily')
+    expect(screen.getByRole('button', { name: /сохранить|save/i })).toBeDisabled()
+    expect(updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('translates every notification event in English', async () => {
+    mockHooks()
+    await i18n.changeLanguage('en')
+    try {
+      renderPage()
+      const events = screen.getByRole('group', { name: 'Events' })
+      expect(events).toBeInTheDocument()
+      for (const label of [
+        'Issue assigned',
+        'Status changed',
+        'Issue updated',
+        'New comment',
+        'Comment edited',
+        'Comment deleted',
+        'Time logged',
+        'Attachment added',
+        'Issue linked',
+        'Issue unlinked',
+      ]) {
+        expect(screen.getByLabelText(label)).toBeInTheDocument()
+      }
+      expect(screen.queryByText('Назначение задачи')).not.toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage('ru')
+    }
+  })
+
+  it('shows a failed mark-read action and allows retry without hiding the notification', () => {
+    const markRead = vi.fn()
+    mockHooks()
+    useMarkNotificationRead.mockReturnValue({
+      mutate: markRead,
+      isPending: false,
+      isSuccess: false,
+      isError: true,
+      variables: 'notification-1',
+    })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Issue updated/i }))
+    act(() => markRead.mock.calls[0]![1].onSettled())
+
+    expect(screen.getByText('Issue updated')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Could not mark notification as read|Не удалось отметить уведомление прочитанным/i,
+      ),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /retry|повторить/i }))
+    expect(markRead).toHaveBeenCalledTimes(2)
+    expect(markRead).toHaveBeenLastCalledWith(
+      'notification-1',
+      expect.objectContaining({ onSettled: expect.any(Function) }),
+    )
+  })
+
+  it('shows pending and success feedback for mark-all', () => {
+    const markAll = vi.fn()
+    const status = { isPending: false, isSuccess: false, isError: false }
+    mockHooks()
+    useMarkAllNotificationsRead.mockImplementation(() => ({ mutate: markAll, ...status }))
+
+    const page = renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /mark all as read|прочитать все/i }))
+    status.isPending = true
+    page.rerender(wrapper())
+    expect(
+      screen.getByText(/Marking all notifications as read|Отмечаем все уведомления/i),
+    ).toBeInTheDocument()
+
+    status.isPending = false
+    status.isSuccess = true
+    act(() => markAll.mock.calls[0]![1].onSettled())
+    page.rerender(wrapper())
+    expect(
+      screen.getByText(/All notifications marked as read|Все уведомления прочитаны/i),
+    ).toBeInTheDocument()
+  })
+
+  it('renders an API error state with retry instead of an empty list', () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('500'),
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('Issue updated')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /повторить|retry/i })).toBeInTheDocument()
+  })
+
+  it('provides an explicit mark-read action for a notification without a link', () => {
+    const markRead = vi.fn()
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: {
+        notifications: [
+          {
+            id: 'notification-3',
+            title: 'Build completed',
+            body: null,
+            is_read: false,
+            action_url: null,
+            created_at: '2026-08-24T11:00:00Z',
+          },
+        ],
+        unread_count: 1,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useMarkNotificationRead.mockReturnValue({ mutate: markRead })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Build completed/i }))
+    expect(markRead).toHaveBeenCalledWith(
+      'notification-3',
+      expect.objectContaining({ onSettled: expect.any(Function) }),
+    )
+  })
+
+  it('does not expose default preferences when settings fail to load', () => {
+    mockHooks()
+    const retry = vi.fn()
+    useNotificationSettings.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('network error'),
+      refetch: retry,
+    })
+
+    renderPage()
+    expect(screen.queryByLabelText(/email frequency|частота email/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('protects a dirty settings draft on native and router navigation and returns focus', async () => {
+    mockHooks()
+    renderPage()
+    const frequency = screen.getByLabelText(/email frequency|частота email/i)
+    fireEvent.change(frequency, { target: { value: 'hourly' } })
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('link', { name: 'Leave notifications' }))
+    const guard = await screen.findByRole('alertdialog', { name: 'Покинуть страницу?' })
+    fireEvent.click(within(guard).getByRole('button', { name: 'Отмена' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(frequency).toHaveValue('hourly')
+    await waitFor(() => expect(document.activeElement).toBe(frequency))
+    fireEvent.click(screen.getByRole('link', { name: 'Leave notifications' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Подтвердить' }),
+    )
+    expect(await screen.findByRole('heading', { name: 'Destination' })).toBeInTheDocument()
+    expect(useUpdateNotificationSettings().mutate).not.toHaveBeenCalled()
+  })
+
+  it('serializes duplicate form submits and keeps the draft after failure', async () => {
+    mockHooks()
+    let failed = false
+    const save = vi.fn()
+    useUpdateNotificationSettings.mockImplementation(() => ({
+      mutate: save,
+      reset: vi.fn(),
+      isError: failed,
+    }))
+    renderPage()
+    const frequency = screen.getByLabelText(/email frequency|частота email/i)
+    fireEvent.change(frequency, { target: { value: 'hourly' } })
+    const form = frequency.closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(save).toHaveBeenCalledOnce()
+    expect(frequency).toBeDisabled()
+    expect(screen.getByRole('button', { name: /прочитать все/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('link', { name: 'Leave notifications' }))
+    const guard = await screen.findByRole('alertdialog')
+    expect(within(guard).getByRole('button', { name: 'Подтвердить' })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: 'Отмена' })).toBeDisabled()
+    failed = true
+    act(() => save.mock.calls[0]![1].onSettled())
+    fireEvent.click(within(guard).getByRole('button', { name: 'Отмена' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(frequency).toHaveValue('hourly')
+    expect(screen.getByText(/Не удалось сохранить настройки/i)).toBeInTheDocument()
+    fireEvent.submit(form)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save.mock.calls[1]![0]).toEqual(save.mock.calls[0]![0])
+  })
+
+  it('makes cached settings read-only after GET failure and preserves the dirty draft', () => {
+    mockHooks()
+    const page = renderPage()
+    const frequency = screen.getByLabelText(/email frequency|частота email/i)
+    fireEvent.change(frequency, { target: { value: 'hourly' } })
+    const retry = vi.fn()
+    useNotificationSettings.mockReturnValue({
+      data: { email_frequency: 'daily', disabled_event_types: [], notify_own_changes: false },
+      error: new Error('GET 500'),
+      isLoading: false,
+      refetch: retry,
+    })
+    page.rerender(wrapper())
+    expect(frequency).toHaveValue('hourly')
+    expect(frequency).toBeDisabled()
+    expect(screen.getByRole('button', { name: /сохранить|save/i })).toBeDisabled()
+    fireEvent.submit(frequency.closest('form')!)
+    expect(useUpdateNotificationSettings().mutate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('locks every read action while a single record is pending', () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: {
+        notifications: [1, 2].map((id) => ({
+          id: `n${id}`,
+          title: `Unread ${id}`,
+          is_read: false,
+          body: null,
+          action_url: null,
+          created_at: '2026-10-04T10:00:00Z',
+        })),
+        unread_count: 2,
+      },
+      isLoading: false,
+      error: null,
+    })
+    const mark = vi.fn(),
+      all = vi.fn()
+    useMarkNotificationRead.mockReturnValue({ mutate: mark })
+    useMarkAllNotificationsRead.mockReturnValue({ mutate: all })
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Unread 1/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Unread 2/ }))
+    fireEvent.click(screen.getByRole('button', { name: /прочитать все/i }))
+    expect(mark).toHaveBeenCalledOnce()
+    expect(all).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Unread 2/ })).toBeDisabled()
+  })
+
+  it('retains cached notifications read-only on GET failure', () => {
+    mockHooks()
+    const cached = useNotifications({ includeRead: true })
+    const mark = vi.fn(),
+      all = vi.fn()
+    useNotifications.mockReturnValue({ ...cached, error: new Error('GET 500') })
+    useMarkNotificationRead.mockReturnValue({ mutate: mark })
+    useMarkAllNotificationsRead.mockReturnValue({ mutate: all })
+    renderPage('/notifications?page=2&source=qa')
+    expect(screen.getByText('Issue updated')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Issue updated/ }))
+    fireEvent.click(screen.getByRole('button', { name: /прочитать все/i }))
+    expect(mark).not.toHaveBeenCalled()
+    expect(all).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /предыдущая страница/i })).toBeDisabled()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent('page=2')
+  })
+
+  it('does not reset an empty cached page while GET has failed', () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: { notifications: [], unread_count: 0 },
+      error: new Error('500'),
+      isLoading: false,
+    })
+    renderPage('/notifications?page=2&source=qa')
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?page=2&source=qa',
+    )
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText(/Уведомлений пока нет/i)).not.toBeInTheDocument()
+  })
+
+  it('canonicalizes pages whose offset cannot be represented safely', async () => {
+    mockHooks()
+    renderPage('/notifications?page=9007199254740991&source=qa')
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 0 })
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/notifications?source=qa',
+      ),
+    )
+  })
+
+  it('stays on notifications after a confirmed save instead of replaying the blocked route', async () => {
+    mockHooks()
+    const save = vi.fn()
+    useUpdateNotificationSettings.mockReturnValue({ mutate: save, reset: vi.fn() })
+    renderPage()
+    fireEvent.change(screen.getByLabelText(/частота email/i), { target: { value: 'hourly' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Leave notifications' }))
+    await screen.findByRole('alertdialog')
+    const data = save.mock.calls[0]![0]
+    useNotificationSettings.mockReturnValue({ data, isLoading: false, error: null })
+    act(() => {
+      save.mock.calls[0]![1].onSuccess(data)
+      save.mock.calls[0]![1].onSettled()
+    })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications',
+    )
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(screen.getByLabelText(/частота email/i)).toHaveValue('hourly')
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+  })
+
+  it('opens the target without an unobserved mark-read write during navigation', async () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: {
+        notifications: [
+          {
+            id: 'n1',
+            title: 'Open destination',
+            is_read: false,
+            body: null,
+            action_url: '/away',
+            created_at: '2026-10-04T10:00:00Z',
+          },
+        ],
+        unread_count: 1,
+      },
+      isLoading: false,
+      error: null,
+    })
+    renderPage()
+    fireEvent.click(screen.getByRole('link', { name: /Open destination/ }))
+    expect(await screen.findByRole('heading', { name: 'Destination' })).toBeInTheDocument()
+    expect(useMarkNotificationRead().mutate).not.toHaveBeenCalled()
+  })
+})

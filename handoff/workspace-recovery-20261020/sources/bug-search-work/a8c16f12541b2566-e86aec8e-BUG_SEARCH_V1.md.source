@@ -1,0 +1,480 @@
+# Tracker Bug Search: owner contract v1
+
+Next source-only cancellation delta adds `runtime_custody.disposition =
+never_started_removed` to the existing100 never-submitted endpoint. It requires
+a closed positive Base proof: contract_version1, original operation/resource/
+context/generation/container IDs, registration/request SHA256, state observed
+and observation never_started_removed. Context must equal the outer custody;
+the canonical proof digest is checked before the atomic retained receipt and
+capacity release. This is distinct from NamespaceExited: it proves an original
+registered container was fenced against start and removed without force, not
+that a native run existed or completed. Exact configured Fleet attestation is
+still mandatory, including protective replay after owner revocation. Tracker101
+unknown submissions and actual runtime terminal remain NamespaceExited-only.
+No migration, new endpoint or historical receipt rewrite is needed. PG/HTTP and
+SDK259 qualification of this delta are UNRUN;975161 remains an unchanged export.
+
+`BugSourceIdentity.repository_id` — optional canonical repository UUID с
+default None и omission при сериализации None. Новые findings для snapshot с
+`targets[].source` обязаны передать UUID репозитория из этого исходного record;
+`checked_version` равен commit SHA именно этого target, в том числе для QA.
+Delivery ref не подменяет checked commit. Поэтому одинаковые rule/key/report/SHA
+из разных репозиториев дают разные source hashes и разные canonical Bugs.
+Проверка действует и перед новой регистрацией, и для terminal result whitelist.
+Старые source-less snapshot/report hashes и original-key receipts не переписываются;
+UUID из opaque refs/текста/URL не выводится. Новый delta пока source-only, без rollout.
+
+Source candidate, 18 October 2026. No rollout or live project search is enabled.
+The source candidate implements scoped capability/grant reads, accepted policy
+CAS, manual search reservation/admission and atomic finding registration.
+Periodic due/cancel, intake assignment and verification
+business transitions remain subsequent work. The next source candidate also
+contains protective terminal acceptance and late typed result delivery; it is not
+part of the first immutable 30-file export and requires its own qualification. Workflow preparation is attested
+by the exact Fleet coordinator after producer readback; this is not a caller
+boolean or a generic human permission. No periodic scheduler is added.
+
+## Identity and authority
+
+`TASKTRACKER_BUG_SEARCH__FLEET_SUBJECT` identifies the Fleet coordinator. Its own
+Central PAT has only `task-tracker:read`/`task-tracker:write`. The separate
+`TASKTRACKER_BUG_SEARCH__WORKFLOW_READER_SUBJECT` has exactly
+`task-tracker:read` on its own PAT. Workflow and CI service PATs are never forwarded
+to Tracker. The agent receives neither credential. Runtime authority is Workflow's
+execution/run token, checked against the retained Tracker delegation.
+
+Configuration is opt-in and absent by default. Both subjects must differ from
+each other and existing PM/orchestrator/verifier/scheduler subjects. New subjects
+are refused by generic human API mapping and restricted to project Bug routes
+by the strict Central route layer. A configured flag does not grant old PM
+assignment/reservation or generic issue creation authority.
+
+The opaque `TASKTRACKER_SDLC__INSTANCE_ID` remains the existing locator.
+`TT_NAMESPACE__INSTANCE_ID` provides an explicit, nonnil canonical Tracker resource
+instance UUID. Grant binding returns both `tracker_instance_id` and
+`tracker_instance_uuid`; a project Namespace projection must agree with the UUID.
+No alias-to-UUID cast or guessed cross-product mapping is used.
+
+Active users are resolved by exact central subject. Capability reads require a
+verified human session and explicit project ownership/membership. The management
+authority observation compares actual `projects.owner_id`, independently of the
+legacy central-mode project bypass. Archived/missing Namespace projections block
+writes. Existing member roles are not silently promoted to management authority.
+
+## HTTP surface
+
+All paths below begin `/api/v1/projects/{project_id}/sdlc`; responses use
+`Cache-Control: no-store` and generated OpenAPI DTOs.
+
+| Method and suffix | Authority / result |
+| --- | --- |
+| PUT `/bug-search/policy` | Exact Fleet write principal attests a freshly authorized human command; `owner_subject` must be the active actual project owner. CAS compares `expected_revision` with Tracker head (0 initially); `desired_revision` must be higher and may skip unapplied Fleet drafts. |
+| GET `/bug-search/policy` | Exact Fleet read principal, current retained-owner/project/Namespace read ACL; current accepted head only. |
+| GET `/bug-search/operations/{idempotency_key}` | Exact original Fleet actor/project/key and fresh retained-owner ACL. Immutable `{kind:policy|reserve|admit|register,result:<typed acceptance>}`; recovers old policy receipt after newer revisions. |
+| POST `/bug-search/executions` | Exact Fleet write attestation/current project owner, exact accepted policy revision/owner/targets/scope and full typed immutable snapshot/hash. Tracker mints execution/fence/grant and holds shared capacity. Only manual search is currently supported; disabled periodic policy still allows manual search. |
+| POST `/bug-search/executions/{execution_id}/admit` | Exact Fleet write principal, active reserved binding/fence/custody and canonical full inner prepared Workflow receipt. Exact binding, snapshot/profession/mode/version and null runtime pins are checked. |
+| POST `/bug-search/executions/{execution_id}/terminal` | Next candidate: exact retained Fleet machine/fence plus independently observed actual runtime terminal identity. Works after owner revocation/Namespace archive, only records evidence/releases custody. Optional exact Workflow result does not replace actual runtime proof. |
+| GET `/bug-search/capabilities` | Current human/project authority. `can_manage_policy` is the project-owner authority observation; `can_admit`, `can_register`, `can_set_own_intake` remain false until producer paths are implemented. |
+| GET `/bug-search/executions/{execution_id}/grant` | Configured Workflow reader or exact Fleet coordinator with read scope, and exact active owner/project. Returns immutable binding, expiry, revocation, admission state, `authorization_valid`, `dispatch_allowed`, bounded reasons. Reserved permits preparation only; no dispatch. |
+| POST `/bugs/register-or-link` | Configured Fleet identity with write scope plus exact retained admitted, unexpired, nonrevoked execution/fence and current owner/project write authority. |
+| GET `/bugs/registration-operations/{idempotency_key}` | Original Fleet actor/key/project with current read scope and owner/project/Namespace ACL. Returns the original receipt. |
+
+The execution binding contains contract version, both Tracker instance identities,
+project UUID, owner subject, execution UUID, dedicated agent UUID, purpose
+`search|verification`, snapshot SHA-256, policy revision, fence, Fleet machine
+subject and grant UUID. Verification additionally requires Bug UUID and expected
+delivery reference; search has no fake task/root-task IDs. Snapshot and binding
+identity are immutable. Grant expiry/revocation never releases capacity.
+
+`ApplyBugSearchPolicy` is `{idempotency_key,owner_subject,expected_revision,
+desired_revision,policy}`. Policy mirrors Fleet exactly: enabled, mode, targets
+(repository_ref/branch_ref/target_ref), scope, excluded_paths, interval_minutes.
+`BugSearchPolicyState` contains contract_version, tracker_instance_id, project_id,
+owner_subject, revision, policy, policy_sha256, operation_id, accepted_at and
+next_due_at (null until periodic owner-queue support is implemented).
+
+`ReserveBugSearch` is `{idempotency_key,owner_subject,snapshot,snapshot_sha256,
+expected_policy_revision,agent_id}`. Snapshot is the exact Fleet immutable JSON,
+including null fields. Branch resolution and profession/profile/config pins are
+Fleet producer attestations; Tracker checks the accepted catalog references,
+structure/hash and current owner. It does not invent a repository catalog API.
+The next source candidate uses a 35-minute lease (30-minute run bound plus
+5-minute transport/control grace); the first immutable QA export used 15 minutes.
+Dispatch must verify remaining authority covers the run bound. Expiry never frees
+custody. Both Namespace list and binding projections include held search custody,
+including expired/unknown executions.
+
+`AdmitBugSearch` is `{idempotency_key,expected_fence,workflow_receipt,
+workflow_receipt_sha256}`. `workflow_receipt` is the exact inner `result` from
+Workflow `/internal/bug-search/v1/executions/{execution_id}`, excluding its
+`{ok,result}` transport envelope. Its canonical hash includes
+`target_observations:null`; prepared receipt has no session/run/Hermes binding.
+No producer credential is forwarded. The original command receipt is historical
+acceptance; dispatch/recovery must freshly GET the execution grant.
+
+`RegisterBugFinding` contains original key, execution/finding UUIDs, expected
+fence, typed `source_identity` and bounded report. Source identity is exactly
+`{schema_version:1,producer,rule_key,stable_defect_key}`. Report contains title,
+basis, expected, actual, reproducer, checked version and evidence refs. It cannot
+select owner, assignee, issue type, workflow transition or destination project.
+Fleet maps its explicit typed source into this DTO; legacy opaque identities
+must not be guessed into producer/rule authority.
+
+## Atomic registration and retained history
+
+Additive migration 000096 creates retained project-only execution bindings,
+source identity records, occurrences, original registration receipts and a small
+project/execution outbox. It does not alter applied migration history. Additive 000097 adds immutable
+policy revisions, the accepted head and a common actor/key control journal;
+existing registration receipts are backfilled without loss. Reusing a key for
+another operation kind conflicts.
+
+Actor/key advisory lock precedes fresh user/project/binding authorization. The
+source lock is scoped by project and canonical source identity. One transaction
+reuses `issue_creation_receipts` and `allocate_project_issue_number`, inserts the
+Bug with existing default open status and initial status history, and writes
+source, occurrence, operation receipt and outbox event. The reporter is the
+authenticated execution owner. Project-required custom fields that cannot be
+populated by this contract block creation; no required-field bypass is used.
+Issue-key conflicts from legacy writes have a bounded allocator retry.
+
+Two executions with the same source create one Bug and separate occurrences.
+The semantic basis hash includes basis/expected/actual/reproducer, excluding
+checked-version/evidence/title. Same source with different basis returns 409
+`source_identity_basis_conflict` for explicit review. An existing closed Bug
+returns `needs_reopen` and `workflow_reopen_required`; it never silently loses
+the regression or performs an illegal transition. A deleted canonical Bug
+returns `suppressed` with its original identity, not a replacement Bug.
+Changed body under the same key conflicts; original acceptance survives restart.
+
+Readback and retries reauthorize before returning retained acceptance. Expiry or
+revocation blocks new effects but does not hide an original accepted receipt;
+changed bodies still conflict after expiry. No retry
+restarts discovery. Source/occurrence/receipt rows are append-only and preserve
+issue references; a business rollback cannot discard this history.
+
+The shared existing `sdlc_reservation_capacity` lock serializes future search
+capacity with PM/Analysis. Reciprocal SQL guards block the same agent in feature
+work and search. Task locks precede that singleton on existing feature paths.
+Unknown/expired search custody remains held until qualified terminal evidence;
+this schema is not a claim that admission or stop reconciliation already works.
+
+## Validation status
+
+Source tests cover canonical shared UTF-8 vectors, closed/bounded DTOs, exact
+static identity and old-route negative authorization; synthetic PostgreSQL tests
+cover concurrent deduplication, durable replay, basis collision, regression,
+injected transaction rollback, grant expiry and revoked owner. Additional source tests cover concurrent policy
+CAS, simultaneous reservations, exact prepared Workflow binding, cross-kind key
+conflict and original receipt recovery after head changes/lease expiry. Existing real
+HTTP acceptance adds capability/policy/manual-reserve/admit/grant/register/replay and rejects new services
+on old PM/reservation/generic issue routes. These tests are written; execution
+qualification is pending the coordinated Base ComposeHelper gate.
+
+PG test opt-in: `TT_TEST_DATABASE_URL` and
+`TT_BUG_SEARCH_DISPOSABLE_DB=1` before any connection. The external Base helper
+owns the full disposable DB and failure-safe teardown; retained rows are not
+deleted to clean a shared/runtime database. No deployment/autosearch is performed.
+
+## Protective terminal candidate (after first frozen export)
+
+`AcceptBugSearchTerminal` is `{idempotency_key,expected_fence,workflow_receipt,
+workflow_receipt_sha256,runtime_observation}`. The two Workflow fields are both
+null or both present; the full inner receipt is bounded to 262 KiB. The runtime
+observation is `{contract_version:1,execution_id,agent_id,session_id,session_run_id,
+hermes_run_ref,terminal_status,observed_at}` with exact nonnil IDs and status
+`succeeded|failed|stopped|cancelled|interrupted`. The exact Fleet producer must
+construct it from its actual Hermes/session-run journal readback. A Workflow
+completed phase or caller boolean is not runtime terminal proof. Observed time
+must follow execution creation and cannot be in the future.
+
+Confirmed runtime termination releases custody even while Workflow is unavailable,
+owner inactive or Namespace archived. Without Workflow evidence the receipt has
+`result_available=false`; no new finding can use that terminal execution.
+A later independently read exact Workflow completed receipt may append its typed
+result, without changing the immutable first terminal proof. Runtime tuple/status
+must remain identical. Whole typed result is at most 64 KiB and 100 findings;
+occurrence and source identities are unique and checked versions belong to the
+immutable commit/deployment snapshot. The source hash is canonical typed identity.
+
+Migration 000098 adds append-only result evidence. Lifecycle exceptions apply only
+to the protective terminal command and a first terminal-receipt/custody-release
+update with all other execution fields unchanged. They do not permit policy,
+admission, new issue creation or business transitions while archived. Capacity
+lock precedes execution locks on reserve/admit/terminal. The terminal receipt and
+result are committed with the original command key atomically; a journal failure
+rolls back release. The exact original Fleet reader can recover terminal acceptance
+after owner revocation, while ordinary acceptance readbacks retain current ACL.
+
+After a terminal result, automatic registration requires exact retained finding ID,
+typed source and full report equality. New issue effects still require the active
+actual owner and writable Namespace. Expiry, stopping or zero findings do not
+prove a Bug fixed; explicit verification/business transitions remain unavailable.
+Prepared Workflow receipts still have a 64 KiB limit. The test candidate covers
+lost/late producer readback, post-terminal whitelist, archive/revocation, rollback
+and both Namespace drained projections; these checks have not yet run.
+
+QA delivery uses the retained producer `result_qualification=qa_same_version`
+and independently derives the same outcome from exact confirmed before/after
+Forge observations: canonical project/target, expected commit/delivery, generation,
+manifest, artifact and serving identity must match. A changed/unavailable or
+`qa_unconfirmed` result remains retained for review and cannot create/link a Bug.
+A declared qualification string cannot substitute for those observations. QA
+findings cannot be delivered early under a still-active lease to bypass this gate.
+Stable partial coverage can contain valid individual findings. Source-only
+registration is pinned to snapshot commit SHA; late delivery additionally requires
+retained `source_pinned` evidence. Source fixtures reflect their immutable commits.
+
+## Отмена до запуска: следующий source candidate 000100
+
+`POST /api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/cancel`
+принимает только exact configured Fleet producer PAT и исходную execution/fence
+привязку. Это protective операция: отзыв owner, архив Namespace или expiry не
+мешают закрыть доказанно не запущенное исполнение, но не разрешают новые эффекты.
+Запуск и обработка live-проектов этим endpoint не включаются.
+
+Закрытый DTO:
+
+```text
+{
+  idempotency_key, expected_fence,
+  not_started_observation: {
+    contract_version: 1, execution_id, agent_id, snapshot_sha256,
+    journal_ref, disposition: "never_submitted", observed_at,
+    runtime_custody: {
+      contract_version: 1,
+      disposition: "never_provisioned" | "namespace_exited",
+      context_id: UUID | null,
+      stop_proof: JSON | null,
+      stop_proof_sha256: SHA256 | null
+    }
+  }
+}
+```
+
+`never_submitted` означает сохранённое producer-наблюдение после атомарного
+Fleet cancellation fence, исключающего будущий native submit. Отсутствие строки
+или ответ HTTP об ошибке сами по себе это не доказывают. Любой submitted/unknown
+dispatch требует original readback; его нельзя отменить этим путём.
+
+`never_provisioned` требует три null-поля custody и положительный durable initial
+creation/cancellation witness в Fleet journal. Если execution context/container
+уже создавался, нужен `namespace_exited`: actual context UUID и исходный Base
+stop receipt не более 8 KiB, exact canonical SHA256, `state=observed`,
+`observation=namespace_exited`, matching agent resource UUID, valid container,
+generation и snapshot identities. Stop ACK, закрытый API socket и истёкший TTL
+не заменяют actual namespace exit. Связь context↔Base generation аттестует Fleet
+из своего исходного журнала; Tracker не строит второй инфраструктурный verifier.
+
+Ответ — `BugSearchCancellationReceipt` с `contract_version:1`,
+`kind:cancelled_before_start`, operation/project/execution/fence,
+`not_started_observation`, `custody_released:true`, `accepted_at`.
+В нём нет вымышленных session/run/Hermes IDs и нет `runtime_observation`.
+Общий operation readback использует `{kind:"cancel",result:<receipt>}`.
+Первое принятие возвращает 201, replay — 200; ответы `Cache-Control:no-store`.
+
+Для хранения используется существующий immutable `terminal_receipt` как union
+двух execution-end receipts. Предыдущий runtime terminal и cancellation
+несовместимы: попытка заменить один другим возвращает conflict.
+Уже принятые findings или technical result того же execution также противоречат
+`never_submitted`: cancellation отклоняется, custody остаётся held. Exclusive
+execution lock сериализует эту проверку с concurrent registration/result commit.
+Namespace
+protective update exception уже разрешает единственную запись end receipt вместе
+с `capacity_held=false`; binding/admission/policy/issue при этом не меняются.
+Migration100 только добавляет command kind `cancel`, сохраняя `intake`, и узкую
+protective INSERT exception для command journal. Миграции096–098 не переписаны.
+
+Actor/key, project, capacity singleton и execution locks используются в прежнем
+порядке. Exact original-body replay происходит после fresh machine/retained
+binding проверки, до текущего state/TTL. Принятие receipt и освобождение capacity
+атомарны; ошибка журнала откатывает оба. Иное тело под тем же ключом конфликтует.
+После cancellation `authorization_valid=false` и `dispatch_allowed=false`;
+original admission receipt, полученный replay, не восстанавливает разрешение.
+
+Текущий running QA snapshot098 не содержит этот candidate. Domain/PG/HTTP tests
+добавлены в source; qualified cancel и producer Fleet fence/runtime proof ещё
+требуют отдельного следующего gate. Ни один caller boolean не заменяет этот
+обязательный owner contract.
+
+## Unknown native acceptance без bound run: source candidate 000101
+
+Отмена100 не называет неизвестный результат native POST «не запускалось».
+Отдельный protective endpoint:
+`POST /api/v1/projects/{project_id}/sdlc/bug-search/executions/{execution_id}/abort-unbound`.
+
+```text
+{
+  idempotency_key, expected_fence,
+  unbound_observation: {
+    contract_version: 1, execution_id, agent_id, snapshot_sha256,
+    journal_ref, observed_at,
+    native_submission: {
+      operation_key, body_sha256, submitted_at,
+      acceptance: "unknown", actual_run_ref: null
+    },
+    workflow_handoff: {
+      disposition: "bind_and_handoff_never_submitted",
+      bind_journal_ref, handoff_journal_ref, observed_at
+    },
+    runtime_custody: {
+      contract_version: 1, disposition: "namespace_exited",
+      context_id: UUID, stop_proof: original Base JSON,
+      stop_proof_sha256: SHA256
+    }
+  }
+}
+```
+
+Native operation key — исходный внешний namespace/key, отдельный от abort key;
+hash — исходного immutable native request body. Required `actual_run_ref:null`
+отвергает missing/string/number/boolean на десериализации. Submission timestamp
+не позже наблюдения с допуском 5 секунд; наблюдение не из будущего относительно
+Tracker clock с тем же допуском. Journal refs bounded 512 bytes без control chars;
+original Base proof bounded 8 KiB с проверенным canonical SHA256 и закрытым DTO.
+
+Fleet сначала сохраняет learned ACK/run ID, только потом пытается Workflow bind
+и credential handoff. Для101 нужны оба положительных durable fence: bind никогда
+не отправлялся И execution HMAC никогда не передавался. Любой bind/handoff attempt
+либо известный run требует ordinary terminal path с реальными IDs. Отсутствие строки,
+stop ACK, timeout и TTL не доказывают exit. `never_provisioned` запрещён: actual
+context и original namespace exit обязательны.
+
+Tracker требует admitted execution с retained Workflow prepared receipt и null
+session/run/Hermes/result полями. Exact original Fleet identity/binding/fence
+проверяются свежими, owner revocation/Namespace archive/expiry не блокируют
+protective release. Occurrences/results и иной end receipt конфликтуют с101.
+Capacity→exclusive execution lock исключает гонку с их принятием. Evidence,
+release и command journal атомарны; original key/body replay/readback сохраняется.
+
+Inner receipt `BugUnboundCancellationReceipt.kind="cancelled_without_bound_run"`,
+`custody_released:true`, с исходным observation; operation envelope
+`{kind:"abort_unbound",result:<receipt>}`. Native acceptance в истории unknown,
+без runtime success, fake IDs, result qualification и Bug transition. 201 — first
+acceptance,200 — replay, no-store. Additive101 расширяет command kind/protective
+exception, сохраняя100/099; существующий end-receipt storage не заменяется.
+DTO/PG/real HTTP tests написаны, но101 ещё не compile/qualification-qualified.
+
+## Periodic due source candidate 000102
+
+Используются существующие policy heads (`next_due_at`), immutable reservation
+outbox и original command receipts. Новых scheduler/service/queue таблиц нет.
+
+Exact configured Fleet read+write PAT читает
+`GET /api/v1/sdlc/bug-search/due?limit=1`; другой limit отклоняется. Ответ:
+`{contract_version:1,observed_at,due:null|{project_id,owner_subject,policy,
+expected_due_at,due_key},blocked_reasons:[]}`. `policy` — текущая applied policy
+с текущим head next_due_at. GET не резервирует и не меняет срок. При held custody
+(включая unknown/expired) возвращается due:null, blocked_reasons:["capacity_busy"].
+Это ожидание ресурса, не failed search и не повод для alert.
+
+Index-driven текущие heads сортируются по (next_due_at,project_id), response
+bounded1. Retained history не перебирается; inactive owner, сменившийся actual
+project owner, missing/archived/wrong-instance Namespace не предлагаются. Fresh
+manage проверяется повторно. Canonical opaque due_key включает ProjectRef,
+точную head revision и PostgreSQL timestamp в epoch microseconds; HTTP timestamps
+UTC. Consumer копирует ключ/at, не строит authority из URL или локального clock.
+
+Reserve body100 дополняется optional `expected_due:{at,key}`. Manual требует
+None/отсутствие; Periodic — exact enabled policy revision, due at/key и наступивший
+DB-срок. Snapshot всё так же immutable, включая trigger=periodic. Existing shared
+capacity lock атомарно исключает вторую reservation. Original due сохраняется
+в `bug.search_reserved.payload.expected_due`, immutable и индексированном по
+execution UUID/topic. Reserve не потребляет срок. При успешном periodic admit
+next_due_at атомарно становится DBnow+policy.interval_minutes (минимум60минут).
+Unknown/readback не создаёт новый occurrence и не освобождает custody.
+
+Enabled edit сохраняет due timestamp, но revision в due_key меняется: старый
+queued reserve отзывается, capacity остаётся held до100/101/actual terminal proof.
+Disable очищает head next_due_at и отзывает только ещё reserved periodic grants;
+already admitted run сохраняет исходный snapshot при fresh owner/project/runtime
+fence. Initial enable назначает первый due DBnow+interval; immediate запуск — manual.
+Original receipts после новой head revision не переписываются.
+
+Blocked target/catalog/configuration/runtime можно отложить через
+`POST /api/v1/projects/{project_id}/sdlc/bug-search/defer-due`:
+`{idempotency_key,owner_subject,expected_policy_revision,expected_due:{at,key},reason}`,
+reason — capacity_busy|target_unavailable|catalog_unavailable|configuration_pending|
+runtime_unavailable. Fresh owner/Namespace и exact occurrence обязательны; held
+reservation этого occurrence требует reconcile и не откладывается. Owner фиксирует
+DBnow+5минут, без caller timestamp/backoff knobs. Таким образом один неисправный
+проект не блокирует другие due heads. Receipt `BugSearchDueDeferral` содержит
+contract_version,operation_id,tracker_instance_id,project_id,owner_subject,
+policy_revision,previous_due,next_due_at,reason,accepted_at; command envelope
+`{kind:"defer_due",result:<receipt>}`. First201/replay200, no-store. Изменённое тело
+под исходным key конфликтует; journal failure откатывает due update.
+
+102 additive migration добавляет три узких индекса и command kind defer_due,
+сохраняя099–101 и прежние immutable/Namespace guards. SQL/PG source tests покрывают
+fairness/backoff, rollback, exact revision/time key, concurrent reserve, held
+revocation, admit advancement и admitted-disable continuity. Real HTTP source
+покрывает due limit/auth и original defer replay. Это ещё не compiled/qualified
+candidate; Fleet manual-priority journal/runtime wiring и общие gates отдельно.
+
+### Original reserve recovery after revoke: next source candidate
+
+Only the exact original configured Fleet machine may read its retained Reserve/Admit
+operation after human owner revocation. Project, machine, immutable execution,
+grant/fence and full retained binding must match; another actor/project cannot
+read it. The response is the historical receipt, including historical fields,
+not a fresh dispatch grant. Fresh grant, admission and new reservation still
+require current owner authority. This API-only correction needs no DDL, is not
+part of frozen102/4fe, and awaits its own PG/HTTP qualification. READ-only Fleet
+credentials retain their prior original-read behavior only with fresh active-owner
+project READ; protective recovery after revocation requires original READ+WRITE.
+
+### Перепроверка исходного сценария: следующий кандидат в исходниках
+
+`BugSearchSnapshot.verification_basis` — optional отчёт finding с подтверждённым
+producer: typed source/source_identity, title, basis, expected, actual, reproducer,
+checked_version и evidence_refs. None опускается; хеши прежних Search snapshot и
+чтение истории не меняются. Новый reserve перепроверки требует этот basis,
+ручной QA-режим, UUID реального Bug, одну выбранную доставленную цель и её
+`expected_fixed_deployment_ref`.
+
+Цель должна точно входить в принятую policy проекта: repository_ref, target_ref
+и canonical source branch. Scope, exclusions, revision и owner сохраняются.
+Поэтому Bug можно перепроверить в проекте с несколькими репозиториями, не
+подставляя один delivery ID разным приложениям. Обычный Search по-прежнему
+требует полный упорядоченный набор policy targets. Репозиторий исходного basis
+должен совпадать с выбранной целью; исправленный commit может отличаться от
+первоначально проверенного.
+
+Перед reserve Tracker сверяет basis с существующим Bug, immutable source,
+завершённым creation receipt и сохранённым occurrence. Новые grant/admit также
+проверяют доступность этой связи. Сетевых запросов под SQL-блокировками нет.
+Отсутствующий, удалённый, перемещённый или чужой Bug не даёт разрешения на запуск.
+Восстановление исходного protective receipt не меняется. Purpose, UUID Bug и
+ожидаемая доставка сохраняются в существующих execution columns; DDL не нужен.
+
+Завершённый технический результат Workflow содержит строгий `verification`:
+`{bug_id,basis_sha256,delivery_ref,verdict,actual,evidence_refs}`. Хеш basis
+охватывает полный исходный типизированный отчёт; Bug и доставка совпадают со
+snapshot. Verdict — passed|failed|inconclusive. Passed/failed требуют полного
+покрытия и подтверждённых before/after `qa_same_version` observations. Оба
+наблюдения должны совпадать с выбранными configuration/repository UUID, project,
+target, delivery, commit и неизменной serving identity. Частичное покрытие
+допускает только inconclusive. Выход native процесса и пустые findings не
+означают, что Bug исправлен.
+
+Регрессии в исходниках проверяют прежние wire/hash, новый commit в том же
+репозитории, чужие repositories/configurations, несовпадения basis/verdict,
+policy membership, реальную registration→reserve→admit→grant и восстановление
+исходного receipt после отзыва доступа. Добавлен настоящий HTTP-сценарий Tracker;
+его runtime/CI carriers явно synthetic. Квалификация ещё не завершена;
+capabilities, автопоиск и бизнес-переходы кандидатом не включаются. Результаты
+конкретных неизменных прогонов фиксируются в delivery evidence Fleet.
+
+
+Следующий source-кандидат original Tracker100 поддерживает дополнительную closed
+custody `unprepared_successor_cancelled`. Она требует actual context UUID и
+bounded exact SDK carrier с command/origin/predecessor/family manifest/native
+creation request/execution source hashes. `state=cancelled`, наблюдение строго
+`unprepared_successor_cancelled`; runtime exit/container/run refs не выдумываются.
+Это положительный Base creation/family no-create CAS под exact Fleet producer
+attestation, не вывод из отсутствующего journal или локального attempt counter.
+Используются прежние cancel endpoint, immutable original key/body/receipt,
+protective readback после owner revoke и contradiction guards; новый DDL не
+нужен. Tracker101 не принимает эту custody. Старые null/None bytes не меняются.
+Domain+PG regression source написаны, compile/PG UNRUN; actual Base/Fleet source
+adoption и native qualification остаются отдельными gates.

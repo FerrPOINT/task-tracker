@@ -1,5 +1,12 @@
 # Архитектура Task Tracker
 
+Project counters читают сохранённые `statuses.category` без учёта ASCII-регистра:
+Debug-формат записи `Todo`/`InProgress`/`Done`, wire-формат и прежнее
+`in_progress` дают соответствующую категорию как в status mapping, так и в batch
+aggregation. SQL-группы обоих написаний суммируются, неизвестная категория в
+batch остаётся ошибкой. Это исправление read projection без переписывания
+статусов, issue/history, миграций или HTTP/DTO-контракта.
+
 Привязка исходников сохраняет существующие controller/service/repository и
 транзакцию подтверждения требований. Владелец проекта утверждает проверенный
 источник, Draft выбирает immutable revision, а confirmation фиксирует точный

@@ -1,0 +1,21 @@
+-- Only the current accepted preference is mutable; its original receipts remain
+-- append-only in the existing Bug Search command journal.
+CREATE TABLE sdlc_bug_intake_preferences (
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ owner_subject text NOT NULL CHECK(octet_length(owner_subject) BETWEEN 1 AND 256),
+ fleet_instance_id uuid NOT NULL CHECK(fleet_instance_id<>'00000000-0000-0000-0000-000000000000'),
+ worker_id uuid NOT NULL CHECK(worker_id<>'00000000-0000-0000-0000-000000000000'),
+ revision bigint NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ enabled boolean NOT NULL,
+ payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object' AND octet_length(payload::text)<=8192),
+ PRIMARY KEY(project_id,owner_subject,fleet_instance_id,worker_id),
+ CHECK(payload->>'project_id'=project_id::text AND payload->>'owner_subject'=owner_subject
+   AND payload#>>'{worker_runtime,fleet_instance_id}'=fleet_instance_id::text
+   AND payload#>>'{worker_runtime,agent_id}'=worker_id::text
+   AND (payload->>'revision')::bigint=revision AND (payload->>'enabled')::boolean=enabled)
+);
+CREATE TRIGGER namespace_write_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_bug_intake_preferences
+ FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check
+ CHECK(kind IN ('policy','reserve','admit','register','terminal','intake'));

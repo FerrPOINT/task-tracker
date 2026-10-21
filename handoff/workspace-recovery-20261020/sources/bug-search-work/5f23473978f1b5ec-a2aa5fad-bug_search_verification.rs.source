@@ -1,0 +1,163 @@
+//! Public HTTP verification wire; issuer and Tracker are real parent fixtures.
+//! Runtime/CI carriers here are explicitly synthetic, not SDK qualification.
+use super::*;
+
+pub(super) async fn verify(
+    client: &Client,
+    prefix: &str,
+    original: &Value,
+    finding: &Value,
+    bug: Uuid,
+) {
+    let token = "sdlc_pat_bugs_fleet";
+    let basis_url = format!("{prefix}/bugs/{bug}/verification-basis");
+    for denied in ["sdlc_pat_bugs_workflow", "sdlc_pat_bugs_fleet_read"] {
+        let response = client
+            .get(&basis_url)
+            .query(&[("owner_subject", "owner")])
+            .bearer_auth(denied)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 403);
+    }
+    let response = client
+        .get(&basis_url)
+        .query(&[("owner_subject", "owner")])
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let canonical: Value = response.json().await.unwrap();
+    assert_eq!(canonical["bug_id"], json!(bug));
+    assert_eq!(
+        canonical["report_sha256"],
+        json!(app::bug_search::canonical_hash(&canonical["report"]).unwrap())
+    );
+    let denied = client
+        .get(&basis_url)
+        .query(&[("owner_subject", "another-owner")])
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403);
+    let mut snapshot = original.clone();
+    snapshot["kind"] = json!("verification");
+    snapshot["mode"] = json!("qa");
+    snapshot["policy_revision"] = json!(5);
+    snapshot["bug_id"] = json!(bug);
+    snapshot["expected_fixed_deployment_ref"] = json!("forge:delivered:http-fixed-b");
+    snapshot["targets"][0]["commit_sha"] = json!("b".repeat(40));
+    snapshot["targets"][0]["source"]["observed_head_sha"] = json!("b".repeat(40));
+    snapshot["targets"][0]["target_ref"] = json!("qa:portal");
+    snapshot["targets"][0]["deployment_ref"] = snapshot["expected_fixed_deployment_ref"].clone();
+    let mut basis = finding["report"].clone();
+    basis["source"] = finding["source_identity"].clone();
+    basis["source_identity"] =
+        json!(app::bug_search::canonical_hash(&finding["source_identity"]).unwrap());
+    assert_eq!(canonical["report"], basis);
+    snapshot["verification_basis"] = canonical["report"].clone();
+    let policy = json!({"idempotency_key":"http-verification-policy","owner_subject":"owner",
+        "expected_revision":4,"desired_revision":5,"policy":{"enabled":false,"mode":"qa",
+        "targets":[{"repository_ref":snapshot["targets"][0]["repository_ref"],"branch_ref":"main","target_ref":"qa:portal"}],
+        "scope":snapshot["scope"],"excluded_paths":snapshot["excluded_paths"],"interval_minutes":60}});
+    let response = client
+        .put(format!("{prefix}/bug-search/policy"))
+        .bearer_auth(token)
+        .json(&policy)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, 200, "{body}");
+    let reserve = json!({"idempotency_key":"http-verification-reserve","owner_subject":"owner",
+        "snapshot":snapshot,"snapshot_sha256":app::bug_search::canonical_hash(&snapshot).unwrap(),
+        "expected_policy_revision":5,"agent_id":snapshot["agent_id"]});
+    let reserve_url = format!("{prefix}/bug-search/executions");
+    post(
+        client,
+        &reserve_url,
+        "sdlc_pat_bugs_workflow",
+        &reserve,
+        403,
+    )
+    .await;
+    for (n, status) in [(0, 422), (1, 409), (2, 409)] {
+        let mut bad = reserve.clone();
+        bad["idempotency_key"] = json!(format!("http-verification-invalid-{n}"));
+        match n {
+            0 => bad["snapshot"]["targets"][0]["source"]["repository_id"] = json!(Uuid::new_v4()),
+            1 => bad["snapshot"]["verification_basis"]["reproducer"] = json!("Different scenario"),
+            _ => bad["snapshot"]["bug_id"] = json!(Uuid::new_v4()),
+        }
+        bad["snapshot_sha256"] = json!(app::bug_search::canonical_hash(&bad["snapshot"]).unwrap());
+        post(client, &reserve_url, token, &bad, status).await;
+    }
+    let reserved = post(client, &reserve_url, token, &reserve, 201).await;
+    assert_eq!(
+        post(client, &reserve_url, token, &reserve, 200).await,
+        reserved
+    );
+    let binding = &reserved["binding"];
+    assert_eq!(binding["purpose"], "verification");
+    assert_eq!(binding["bug_id"], json!(bug));
+    assert_eq!(
+        binding["expected_delivery_ref"],
+        snapshot["expected_fixed_deployment_ref"]
+    );
+    let execution = binding["execution_id"].as_str().unwrap();
+    let prepared = json!({"contract_version":1,"execution_id":execution,"binding":binding,
+        "snapshot_sha256":binding["snapshot_sha256"],"profession":snapshot["profession"],
+        "workflow_id":1,"mode_id":3,"mode_key":"verification","state":"prepared","version":1,
+        "fence":binding["fence"],"phase_index":0,"phase_contract":{"synthetic":"http-verification"},
+        "session_id":null,"session_run_id":null,"hermes_run_ref":null,"result":null,
+        "runtime_terminal_confirmed":false,"target_observations":null});
+    let admit = json!({"idempotency_key":"http-verification-admit","expected_fence":binding["fence"],
+        "workflow_receipt":prepared,"workflow_receipt_sha256":app::bug_search::canonical_hash(&prepared).unwrap()});
+    let admitted = post(
+        client,
+        &format!("{reserve_url}/{execution}/admit"),
+        token,
+        &admit,
+        201,
+    )
+    .await;
+    assert_eq!(admitted["dispatch_allowed"], true);
+    let runtime = json!({"contract_version":1,"execution_id":execution,"agent_id":snapshot["agent_id"],
+        "session_id":Uuid::new_v4(),"session_run_id":Uuid::new_v4(),
+        "hermes_run_ref":"hermes:synthetic-http-verification","terminal_status":"stopped","observed_at":shared::now()});
+    let mut claimed = prepared;
+    claimed["state"] = json!("completed");
+    claimed["version"] = json!(5);
+    claimed["phase_index"] = json!(3);
+    for key in ["session_id", "session_run_id", "hermes_run_ref"] {
+        claimed[key] = runtime[key].clone();
+    }
+    claimed["result"] = json!({"coverage":"complete","findings":[],"verification":{
+        "bug_id":bug,"basis_sha256":app::bug_search::canonical_hash(&snapshot["verification_basis"]).unwrap(),
+        "delivery_ref":snapshot["expected_fixed_deployment_ref"],"verdict":"passed",
+        "actual":"Unqualified model claim","evidence_refs":[]}});
+    let terminal_url = format!("{reserve_url}/{execution}/terminal");
+    let false_success = json!({"idempotency_key":"http-verification-unqualified-success",
+        "expected_fence":binding["fence"],"workflow_receipt":claimed,
+        "workflow_receipt_sha256":app::bug_search::canonical_hash(&claimed).unwrap(),"runtime_observation":runtime});
+    post(client, &terminal_url, token, &false_success, 422).await;
+    // Protective terminal acceptance is separate from the rejected verdict.
+    let stopped = json!({"idempotency_key":"http-verification-protective-stop",
+        "expected_fence":binding["fence"],"workflow_receipt":null,
+        "workflow_receipt_sha256":null,"runtime_observation":runtime});
+    let closed = post(client, &terminal_url, token, &stopped, 201).await;
+    assert_eq!(closed["custody_released"], true);
+    assert_eq!(closed["result_available"], false);
+    assert_eq!(
+        post(client, &terminal_url, token, &stopped, 200).await,
+        closed
+    );
+    println!(
+        "BUG_SEARCH HTTP verification original Bug/report, exact binding and unqualified verdict rejection passed; synthetic runtime only"
+    );
+}

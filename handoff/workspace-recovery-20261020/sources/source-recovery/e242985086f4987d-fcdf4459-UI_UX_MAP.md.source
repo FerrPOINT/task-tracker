@@ -1,0 +1,184 @@
+# Task Tracker UI/UX Map
+
+Нормативный контракт: [Base UI/UX Standard](../../services-base/docs/platform/UI_UX_STANDARD.md).
+Route patterns, роли, fixtures и обязательные acceptance states:
+[ui-routes.json](ui-routes.json). Это целевая матрица приёмки, а не доказательство
+реализации всех состояний. Release acceptance остаётся `pending`.
+
+Текущий create/search source checkpoint: parent
+`4785447d9b428803395e3a43bbda6b1d49cbb0c7`, Base
+`ce43bc6b4cfa9c80fbd175958ad6abb38c550639`.
+[Проверки и ограничения](UI_ACCEPTANCE_EVIDENCE.md).
+Исторический source reconciliation: `e49bfdde68928c3fd5def877efcbd04f9cdf8d92`,
+Base `6f63595a891f78b96b665889f80e6eb5cf34381a`.
+[Проверки и оставшаяся приёмка](uiux-source-evidence-2026-10-02.md).
+Предыдущие source checkpoints ниже исторические, не доказательства текущих images.
+
+## Ownership
+
+- Base владеет AppShell, header, sidebar/drawer, аккаунтом, темами, PageFrame,
+  controls, композициями страниц, resource states, pending и draft guard.
+- Task задаёт navigation entries, project context, уведомления, URL-контекст,
+  API-запросы и доменные операции. Единственный SSE subscriber остаётся в shell.
+- Создание задачи принадлежит странице, не глобальному header. Board/backlog
+  передают project key в URL; legacy router state остаётся совместимым.
+- Dashboard использует DashboardLayout, независимые состояния assigned/projects,
+  full-source project count и bounded preview по пять элементов. При недоступном
+  каталоге не предлагается создание задачи на основе stale parent.
+- Issue detail использует DetailPage: описание/активность в main, метаданные,
+  время и участие в aside. Колонки и breakpoint задаются Base CSS; локальная
+  media-query подписка и повторное монтирование aside удалены. PageHeader владеет
+  единственным h1 и actions. Разделы не оформляются вложенными UI cards.
+- Summary/description editor использует FormField/Input/Textarea/PendingForm и
+  UnsavedChangesGuard. Query-вкладки не теряют draft; уход со страницы блокируется.
+  Ошибка сохранения сохраняет ввод. Custom field draft не затирается refetch.
+- HTTP status сохраняется в Base ApiError для dashboard/projects/issue reads.
+  Root 403/404 не показывают cached issue и отключают comments/worklogs reads;
+  retryable refresh failure сохраняет issue с partial-error. Existing issue 404
+  по-прежнему возвращает `null`, без изменения публичного API.
+- Unknown URL остаётся на исходном адресе через SSO/reload и показывает not-found
+  внутри защищённого shell вместо redirect на dashboard.
+- Подтверждение удаления возвращает фокус кнопке actions. Удаление остаётся
+  существующим soft-delete с восстановлением из корзины.
+- Каталог projects использует ListPage и общий resource state policy. Cached
+  403/404 скрывают строки и CRUD; retryable refresh сохраняет readonly строки.
+  Search submit хранит `q` в URL, сбрасывает page и сохраняет прочий query/hash.
+  Back/Forward и reload восстанавливают submitted search.
+- Project form использует Base FormDialog/FormField/PendingForm/UnsavedChangesGuard.
+  Refetch той же сущности не затирает draft; key bounds соответствуют API.
+  Pending блокирует двойной submit и close, ошибка сохраняет ввод. При partial
+  refresh draft остаётся readonly, отмена доступна. ConfirmDialog отдельно
+  отключает недоступное delete confirmation, не блокируя отмену.
+- Mutation hooks не владеют navigation. Создание закрывает saved form перед
+  переходом на board; удаление сохраняет URL-фильтр каталога. Login передаёт
+  полный pathname/query/hash в Base SSO; повторная авторизация заменяет временную
+  запись истории и не добавляет дубликат текущего фильтра после reload.
+- Notification API reads/mutations сохраняют HTTP status в Base ApiError.
+  Header menu использует Base resource states: ошибка не превращается в empty,
+  cached 403/404 скрывают содержимое/count, cached 503 оставляет readonly данные.
+  Pending блокирует повторные one/all команды; feedback остаётся в открытом меню.
+  Возврат фокуса после удаления пункта не перехватывает намеренный переход или Escape.
+  Base владеет viewport inset/height; bounded preview прокручивается локально,
+  сохраняет header/footer и именованный доступный focus target.
+- Notifications page использует DetailPage с независимыми list/preferences states
+  и Base aside. FormField/Select/PendingForm/UnsavedChangesGuard/ConfirmDialog владеют
+  общим поведением настроек: draft сохраняется при refetch и URL-навигации, pending
+  блокирует повторный submit, discard подтверждается. Терминальные ошибки скрывают
+  только затронутый source, partial сохраняет readonly draft. Tabs/codecs сохраняют
+  query/hash и историю; mark-all сбрасывает page только после успешной команды.
+  Base Tabs устраняет duplicate history callbacks pointer/focus; blocked navigation
+  с несохранёнными настройками не отмечает уведомление прочитанным преждевременно.
+
+Search использует Base ListPage/FormField/Select/Tabs, URL helper и sort codec.
+Simple search сохраняет debounce и API Title-Case priority; JQL выполняется
+по submit и восстанавливается из истории. Reset сохраняет внешний query/hash.
+403/404 скрывают cached строки/filters; retryable refresh оставляет partial-error.
+Ошибка optional project/users source не скрывает успешные результаты поиска.
+Controls используют Base targets, обрезка длинного summary применяется к тексту,
+не к padded clickable target; полное имя доступно assistive technology и tooltip.
+Empty later page сохраняет pagination для возврата к предыдущим результатам.
+Source regression не заменяет actual-image/SSO/role/README acceptance.
+
+## Exceptions
+
+Нет согласованных исключений из Base стандарта. Остаточная legacy-реализация ниже
+является backlog миграции, не разрешённым обходом контракта.
+
+## Source QA
+
+### Shell And Detail Checkpoint
+
+Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, отдельная ветка
+`feat/base-ui-standard`. Base: `2a8de7ed2e4e7475bfcfb80e87222af4cc1fbc93`.
+
+- Frozen offline install, installed UI gate (16 patterns), 274 unit tests,
+  lint/semantic, typecheck в build и Vite build прошли.
+- Browser source smoke проверяет dashboard/projects/create/detail, три темы,
+  десять ширин, shell geometry, отсутствие overflow/пересечения header slots,
+  колонки detail и видимые targets. Отдельно: unknown URL, drawer Escape/focus,
+  draft при tabs/history/resize, navigation cancel, save failure и delete focus.
+- Browser API и OIDC изолированно mocked. Эти проверки не подтверждают actual
+  images, live SSO, все роли/route states или актуальность README-галереи.
+- Mocked smoke больше не записывает README screenshots даже при прежнем
+  `UPDATE_README_SCREENSHOTS`; gallery обновляется только реальными захватами.
+- Evidence и точные результаты: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+
+### Project Catalog Checkpoint
+
+Source: `5e6168151bc5dd950d41bbd2adbc0cc82f194ef1`.
+Base: `6bcde92c3901de395abe2f87d3b97b8a91731c59`.
+Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+16-pattern installed UI gate и документационные проверки прошли. Chromium:
+6 tests, 155 captures, включая 30 modal captures (3 themes x 10 widths), cached
+503/403 и cold 404, create failure/success, draft/focus и URL/SSO/reload/history.
+Это source QA с mocked HTTP/OIDC, не actual-image acceptance. Остаточные
+англоязычные технические API errors отмечены ниже; остальные потребители ещё
+требуют синхронизации на этом Base snapshot перед выпускной приёмкой.
+
+## Remaining Acceptance
+
+Source migration create использует Base FormPage/FormField и ResourceStateView.
+Черновики полей/назначений сохраняются по project key, включая history;
+Base guard защищает pathname и несогласованные URL-параметры. Успешное создание
+снимает guard перед переходом в backlog. 403/404 обязательных источников скрывают
+CRUD; временный refetch блокирует запись, не сбрасывая ввод. Недоступный исполнитель
+требует явного выбора/снятия назначения, а не автоматического изменения payload.
+Backend/API/schema/auth не меняются; actual-image acceptance остаётся обязательной.
+
+Исторический notification checkpoint: `29c405f084058965a6f8894cacd2362b2d8fa791`, Base
+`26a9523bf739c2fb4aafa343fdbc194d02a78e6a`. 371 unit tests (47 files), lint,
+build/typecheck, installed gate и 10 Chromium tests (222 PNG) прошли. Menu и
+notifications page проверены в трёх темах на десяти ширинах; page main scope
+прошёл axe на 375/1920, URL history, pending/draft/focus и независимые states.
+Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+
+Корзина проекта мигрирована в source на Base ListPage/ResourceState и controls.
+URL page сохраняет внешний query/hash; пагинация и возврат на board имеют один
+владелец параметров.403/404 и неповторяемые read errors скрывают cached rows и
+закрывают устаревшее confirmation;503 оставляет partial content с блокировкой
+записи. Restore/purge используют Promise lock и read-only reconciliation перед
+явным повтором. После удаления/утраты инициатора фокус получает именованный
+region. Результат записи не выводится из отсутствия строки на одной странице.
+Source evidence: [Trash checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-trash-source-checkpoint).
+Actual-image/role/SSO acceptance этой страницы остаётся обязательной.
+
+Доска проекта мигрирована в source на Base ListPage/Tabs/FormField/Select.
+Create action один и локальный; unframed columns содержат самостоятельные issue
+cards. Density/status используют общий URL helper и сохраняют query/hash/history.
+Rules имеют независимые loading/error состояния; ошибки не выглядят отсутствием
+переходов.403/404 и неповторяемые board failures скрывают stale data; partial
+failures оставляют чтение, блокируя writes. Keyboard/native drag/drop сохраняют
+server transition contract, same-tick lock и безопасный fallback focus.
+Сбой переноса требует явного readback доски И правил; background recovery не
+разрешает повтор, отсутствие/изменение issue не объявляется успешной записью.
+Source evidence: [Board checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-board-source-checkpoint).
+Actual-image/role/SSO acceptance остаётся обязательной.
+
+Sprint create/edit dialog использует Base FormDialog/FormField/Textarea и guard.
+Pending удерживается фактическим Promise; same-sprint refetch не перезаписывает
+черновик. Переключение error/loading основного бэклога сохраняет тот же экземпляр
+диалога. Ошибка дат связана с полем; закрытие возвращает фокус инициатору или
+стабильному заголовку. Unknown save требует отдельного чтения каталога, не
+background recovery и не automatic resend. Полная композиция бэклога, независимые
+states каталога, lifecycle/move actions и URL pagination остаются в миграции.
+Source evidence: [Sprint checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-sprint-source-checkpoint).
+Actual-image/role/SSO acceptance и реальная README gallery не подтверждаются fixtures.
+
+1. Мигрировать остальные list/form/audit/log compositions:
+   backlog, settings, reports и admin. Для create, search, trash и board завершить
+   actual-image/role/SSO приёмку после source regression checkpoint.
+2. Довести независимые states вспомогательных issue sources; не считать ошибки
+   custom fields/labels/links/notifications пустым результатом. Завершить draft,
+   pending, validation и focus сценарии всех форм/диалогов. Локализовать generic
+   технические API errors каталога/форм projects; не считать source QA доказательством
+   всех effective-role и server validation сценариев.
+   Source migration notifications page проверена; actual-image/role acceptance
+   остаётся обязательной. Typography/theme CSS header counter пока legacy.
+3. Проверить URL filters/sort/pagination и Back/Forward во всех списках. Проверить
+   все manifest patterns с long/big fixtures и loading/empty/403/404/5xx/partial.
+4. Выполнить полный backend gate и no-mock QA immutable images через штатный
+   launcher; проверить health и одинаковые product/Base fingerprints.
+5. Обновить реальную desktop-only README gallery и provenance, локально
+   интегрировать принятые источники и выполнить штатный mirror sync.
+
+Все исходные findings остаются открытыми до требуемых выпускных доказательств.

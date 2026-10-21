@@ -39,15 +39,20 @@ use crate::entities::{
     project_version, sprint, status, system_setting, user, workflow_transition, worklog,
 };
 
+fn map_status_category(category: &str) -> Option<StatusCategory> {
+    match category.to_ascii_lowercase().as_str() {
+        "todo" => Some(StatusCategory::Todo),
+        "inprogress" | "in_progress" => Some(StatusCategory::InProgress),
+        "done" => Some(StatusCategory::Done),
+        _ => None,
+    }
+}
+
 fn map_status(m: status::Model) -> Status {
     Status {
         id: StatusId::from_uuid(m.id),
         name: domain::ArcStr::from(m.name),
-        category: match m.category.as_str() {
-            "inprogress" => StatusCategory::InProgress,
-            "done" => StatusCategory::Done,
-            _ => StatusCategory::Todo,
-        },
+        category: map_status_category(&m.category).unwrap_or_default(),
         position: m.position,
         is_default: m.is_default,
         is_closed: m.is_closed,
@@ -1116,16 +1121,17 @@ impl IssueRepository for IssueRepo {
         for row in rows {
             let project: Uuid = row.try_get("", "project_id").map_err(AppError::database)?;
             let category: String = row.try_get("", "category").map_err(AppError::database)?;
-            let index = match category.as_str() {
-                "todo" => 0,
-                "inprogress" => 1,
-                "done" => 2,
-                _ => return Err(AppError::Internal("invalid_status_category".into())),
+            let index = match map_status_category(&category)
+                .ok_or_else(|| AppError::Internal("invalid_status_category".into()))?
+            {
+                StatusCategory::Todo => 0,
+                StatusCategory::InProgress => 1,
+                StatusCategory::Done => 2,
             };
+            let count: i64 = row.try_get("", "count").map_err(AppError::database)?;
             result
                 .entry(ProjectId::from_uuid(project))
-                .or_insert([0, 0, 0])[index] =
-                row.try_get("", "count").map_err(AppError::database)?;
+                .or_insert([0, 0, 0])[index] += count;
         }
         Ok(result)
     }
@@ -3772,6 +3778,10 @@ impl OidcRepository for OidcRepo {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "project_category_counts_tests.rs"]
+mod project_category_counts_tests;
 
 #[cfg(test)]
 mod namespace_available_resources_tests {

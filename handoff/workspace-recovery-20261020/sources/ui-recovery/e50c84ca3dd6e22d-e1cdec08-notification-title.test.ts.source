@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest'
+import i18n from '@/shared/i18n/config'
+import { notificationTitle } from './notification-title'
+
+const templates = [
+  ['issue_assigned', 'You were assigned to qa-test-1', 'Вам назначена задача qa-test-1', {}],
+  ['issue_updated', 'qa-test-1 updated', 'Задача qa-test-1 обновлена', {}],
+  ['issue_commented', 'New comment on qa-test-1', 'Новый комментарий к задаче qa-test-1', {}],
+  [
+    'issue_comment_edited',
+    'Comment edited on qa-test-1',
+    'Комментарий к задаче qa-test-1 изменён',
+    {},
+  ],
+  [
+    'issue_comment_deleted',
+    'Comment deleted on qa-test-1',
+    'Комментарий к задаче qa-test-1 удалён',
+    {},
+  ],
+  [
+    'issue_worklog_logged',
+    'Work logged on qa-test-1',
+    'К задаче qa-test-1 добавлена запись о работе',
+    {},
+  ],
+  [
+    'issue_attachment_added',
+    'Attachment added to qa-test-1',
+    'К задаче qa-test-1 добавлен файл',
+    {},
+  ],
+  [
+    'issue_moved',
+    'qa-test-1 moved to Done',
+    'qa-test-1: статус изменён на «Готово»',
+    { status: 'Done' },
+  ],
+  [
+    'issue_link_created',
+    'qa-test-1 linked to OTHER-2',
+    'qa-test-1: добавлена связь с OTHER-2',
+    { linked_issue_key: 'OTHER-2' },
+  ],
+  [
+    'issue_link_deleted',
+    'qa-test-1 unlinked from OTHER-2',
+    'qa-test-1: удалена связь с OTHER-2',
+    { linked_issue_key: 'OTHER-2' },
+  ],
+] as const
+
+describe('notificationTitle', () => {
+  it.each(templates)(
+    'localizes backend template %s in RU and EN without mutation',
+    (event, source, translated, extra) => {
+      const notification = Object.freeze({
+        event_type: event,
+        title: source,
+        entity_type: 'issue',
+        metadata: Object.freeze({ issue_key: 'qa-test-1', ...extra }),
+      })
+      expect(notificationTitle(notification, i18n.getFixedT('ru'))).toBe(translated)
+      expect(notificationTitle(notification, i18n.getFixedT('en'))).toBe(source)
+      expect(notification.title).toBe(source)
+    },
+  )
+
+  it.each([null, undefined, true, 'metadata', [], {}, { issue_key: 12 }, { issue_key: 'bad/key' }])(
+    'preserves the raw title for incomplete metadata %j',
+    (metadata) => {
+      const title = 'You were assigned to qa-test-1'
+      expect(
+        notificationTitle(
+          { event_type: 'issue_assigned', entity_type: 'issue', title, metadata },
+          i18n.getFixedT('ru'),
+        ),
+      ).toBe(title)
+    },
+  )
+
+  it('preserves arbitrary user titles even with known event metadata', () => {
+    const title = 'User content: New comment on qa-test-1'
+    expect(
+      notificationTitle(
+        {
+          event_type: 'issue_commented',
+          entity_type: 'issue',
+          title,
+          metadata: { issue_key: 'qa-test-1' },
+        },
+        i18n.getFixedT('ru'),
+      ),
+    ).toBe(title)
+  })
+
+  it.each(['future_event', 'issue_assigned'])(
+    'does not infer a system template for unrelated event/entity %s',
+    (event_type) => {
+      const title = 'You were assigned to qa-test-1'
+      expect(
+        notificationTitle(
+          {
+            event_type,
+            entity_type: event_type === 'future_event' ? 'issue' : 'project',
+            title,
+            metadata: { issue_key: 'qa-test-1' },
+          },
+          i18n.getFixedT('ru'),
+        ),
+      ).toBe(title)
+    },
+  )
+
+  it.each(['issue_moved', 'issue_link_created', 'issue_link_deleted'])(
+    'preserves incomplete supplemental metadata for %s',
+    (event_type) => {
+      const title = 'Keep original details'
+      expect(
+        notificationTitle(
+          {
+            event_type,
+            entity_type: 'issue',
+            title,
+            metadata: { issue_key: 'qa-test-1', status: 123, linked_issue_key: false },
+          },
+          i18n.getFixedT('ru'),
+        ),
+      ).toBe(title)
+    },
+  )
+
+  it('preserves a custom status instead of translating user-defined status names', () => {
+    const status = 'Awaiting <customer> approval'
+    expect(
+      notificationTitle(
+        {
+          event_type: 'issue_moved',
+          entity_type: 'issue',
+          title: `qa-test-1 moved to ${status}`,
+          metadata: { issue_key: 'qa-test-1', status },
+        },
+        i18n.getFixedT('ru'),
+      ),
+    ).toBe(`qa-test-1: статус изменён на «${status}»`)
+  })
+})

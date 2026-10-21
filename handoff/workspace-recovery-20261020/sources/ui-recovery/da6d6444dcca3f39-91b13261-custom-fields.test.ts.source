@@ -1,0 +1,80 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { api } from './client'
+import {
+  createCustomField,
+  updateCustomField,
+  deleteCustomField,
+  setIssueCustomFieldValue,
+  listCustomFields,
+  listIssueCustomFieldValues,
+  CustomFieldMutationError,
+} from './custom-fields'
+
+vi.mock('./client', () => ({ api: { GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() } }))
+const input = { name: 'Estimate', field_type: 'number', options: [], is_required: false }
+beforeEach(() => vi.resetAllMocks())
+
+describe('custom field HTTP outcomes', () => {
+  it.each([400, 401, 403, 404, 409, 422, 429])(
+    'preserves rejection %s without diagnostics',
+    async (status) => {
+      vi.mocked(api.POST).mockResolvedValue({
+        response: new Response('{}', { status }),
+        error: { private: 'diagnostic' },
+      } as never)
+      await expect(createCustomField('TT', input)).rejects.toMatchObject({
+        status,
+        outcome: 'rejected',
+      })
+      await expect(createCustomField('TT', input)).rejects.not.toThrow('diagnostic')
+    },
+  )
+  it.each(['create', 'update'] as const)('requires a confirmed %s body', async (operation) => {
+    const method = operation === 'create' ? api.POST : api.PUT
+    const mutate = operation === 'create' ? createCustomField : updateCustomField
+    for (const status of [200, 201, 500]) {
+      vi.mocked(method).mockResolvedValueOnce({ response: new Response(null, { status }) } as never)
+      await expect(mutate('id', input)).rejects.toMatchObject({ status, outcome: 'unknown' })
+    }
+    vi.mocked(method).mockRejectedValueOnce(new TypeError('private details'))
+    await expect(mutate('id', input)).rejects.toBeInstanceOf(CustomFieldMutationError)
+    vi.mocked(method).mockResolvedValueOnce({
+      data: { id: 'f1', ...input },
+      response: new Response('{}', { status: 201 }),
+    } as never)
+    await expect(mutate('id', input)).resolves.toMatchObject({ id: 'f1', ...input })
+  })
+  it.each(['delete', 'value'] as const)('checks bodyless %s status', async (operation) => {
+    const method = operation === 'delete' ? api.DELETE : api.PUT
+    const mutate = () =>
+      operation === 'delete' ? deleteCustomField('f1') : setIssueCustomFieldValue('i1', 'f1', 0)
+    for (const status of [422, 500]) {
+      vi.mocked(method).mockResolvedValueOnce({ response: new Response(null, { status }) } as never)
+      await expect(mutate()).rejects.toMatchObject({
+        status,
+        outcome: status === 422 ? 'rejected' : 'unknown',
+      })
+    }
+    vi.mocked(method).mockResolvedValueOnce({
+      response: new Response(null, { status: 204 }),
+    } as never)
+    await expect(mutate()).resolves.toBeUndefined()
+    vi.mocked(method).mockRejectedValueOnce(new Error('private network'))
+    await expect(mutate()).rejects.toMatchObject({ outcome: 'unknown' })
+  })
+  it.each(['directory', 'values'] as const)(
+    'does not treat failed %s GET as empty',
+    async (kind) => {
+      const list = kind === 'directory' ? listCustomFields : listIssueCustomFieldValues
+      vi.mocked(api.GET).mockResolvedValueOnce({
+        response: new Response(null, { status: 500 }),
+      } as never)
+      await expect(list('id')).rejects.toThrow('Failed to load')
+      vi.mocked(api.GET).mockResolvedValueOnce({
+        response: new Response('{}'),
+        data: { fields: [], values: [] },
+      } as never)
+      await expect(list('id')).resolves.toEqual([])
+    },
+  )
+})
