@@ -432,12 +432,19 @@ async fn finalized_or_unbound_cursor_must_be_exact_never_pending_or_unknown() {
         assert!(f.plan().await.is_err());
     }
     let mut f = fixture();
+    let finalized = f.command.predecessor.finalized_binding.clone();
     f.command.predecessor.finalized_binding = None;
     f.readback.predecessor = f.command.predecessor.clone();
     f.readback.generic_binding = BootstrapReadbackState::Absent;
     assert!(f.plan().await.is_ok());
     f.readback.generic_binding = BootstrapReadbackState::Present;
     assert!(f.plan().await.is_err());
+    // A late original bind changes the authoritative predecessor after an
+    // unbound request was frozen. It must not consume a lease using that request.
+    f.readback.predecessor.finalized_binding = finalized;
+    let lease_before = serde_json::to_value(&f.lease).unwrap();
+    assert!(f.plan().await.is_err());
+    assert_eq!(serde_json::to_value(&f.lease).unwrap(), lease_before);
 }
 
 #[tokio::test]

@@ -100,10 +100,12 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack(
     let f = Fixture::new_with_migration_steps(Some(index as u32)).await;
     let p = initial(&f, "bootstrap-original").await;
     let q = initial(&f, "bootstrap-concurrent").await;
+    let u = initial(&f, "bootstrap-unbound").await;
     let before_p = upgrade_snapshot(&f, &p).await;
     let before_q = upgrade_snapshot(&f, &q).await;
     let original_p = original_operations(&f, &p).await;
     let original_q = original_operations(&f, &q).await;
+    let original_u = original_operations(&f, &u).await;
     let old_ledger = migration_versions(&f).await;
     migration::Migrator::up(&f.db, None).await.unwrap();
     assert_eq!(upgrade_snapshot(&f, &p).await, before_p);
@@ -112,6 +114,11 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack(
     expected_ledger.push("m20261021_0000099_pm_bootstrap_retry".into());
     assert_eq!(migration_versions(&f).await, expected_ledger);
     let (c, mut w) = retry(&p);
+    let (mut unbound, mut unbound_witness) = retry(&u);
+    let late_binding = unbound.predecessor.finalized_binding.clone();
+    unbound.predecessor.finalized_binding = None;
+    unbound_witness.predecessor = unbound.predecessor.clone();
+    unbound_witness.generic_binding = BootstrapReadbackState::Absent;
     assert!(
         f.repo
             .preflight_pm_bootstrap_retry(p.task, &f.writer, &c)
@@ -120,6 +127,32 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack(
         "active lease uses heartbeat"
     );
     tokio::time::sleep(std::time::Duration::from_secs(31)).await;
+    unbound_witness.observed_at = chrono::Utc::now();
+    let unbound_before = snapshot(&f, &u).await;
+    let mut late = unbound_witness.clone();
+    late.generic_binding = BootstrapReadbackState::Present;
+    late.predecessor.finalized_binding = late_binding;
+    assert!(
+        f.repo
+            .retry_pm_bootstrap(u.task, &f.writer, unbound.clone(), late)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        snapshot(&f, &u).await,
+        unbound_before,
+        "late-bind witness must not consume unbound retry"
+    );
+    let (unbound_result, replayed) = f
+        .repo
+        .retry_pm_bootstrap(u.task, &f.writer, unbound, unbound_witness)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(unbound_result.lease.version, u.lease.lease.version + 1);
+    assert_eq!(unbound_result.lease.lease_id, u.lease.lease.lease_id);
+    assert_eq!(unbound_result.lease.claimed_at, u.lease.lease.claimed_at);
+    assert_eq!(original_operations(&f, &u).await, original_u);
     w.observed_at = chrono::Utc::now();
     let stable = snapshot(&f, &p).await;
     for case in 0..12 {
