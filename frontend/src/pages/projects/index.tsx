@@ -1,6 +1,11 @@
+import { useApplicationAccess } from '@pdlc/ui/auth'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
-import { ProjectCardActionItems, ProjectCardLink, ProjectCardState } from '@/widgets/project-actions'
+import {
+  ProjectCardActionItems,
+  ProjectCardLink,
+  ProjectCardState,
+} from '@/widgets/project-actions'
 import {
   ProjectAvatar,
   ResourceList,
@@ -46,6 +51,7 @@ export function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
 
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const create = useCreateProject()
   const remove = useDeleteProject()
 
@@ -77,23 +83,24 @@ export function ProjectsPage() {
           Далее
         </Button>
       </div>
-      {import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true' ? (
-        <CreateProjectInSpacesDialog open={formOpen} onOpenChange={setFormOpen} />
-      ) : (
-        <ProjectFormDialog
-          open={formOpen}
-          onOpenChange={(open) => {
-            setFormOpen(open)
-          }}
-          onSubmit={(values) => {
-            create.mutate(values as import('@/api/project').CreateProjectRequest, {
-              onSuccess: () => setFormOpen(false),
-            })
-          }}
-          isPending={create.isPending}
-          error={create.error}
-        />
-      )}
+      {canAdmin &&
+        (import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true' ? (
+          <CreateProjectInSpacesDialog open={formOpen} onOpenChange={setFormOpen} />
+        ) : (
+          <ProjectFormDialog
+            open={formOpen}
+            onOpenChange={(open) => {
+              setFormOpen(open)
+            }}
+            onSubmit={(values) => {
+              create.mutate(values as import('@/api/project').CreateProjectRequest, {
+                onSuccess: () => setFormOpen(false),
+              })
+            }}
+            isPending={create.isPending}
+            error={create.error}
+          />
+        ))}
 
       <AlertDialog
         open={!!deletingProject}
@@ -137,11 +144,13 @@ export function ProjectsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
-        <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('projects.create')}</span>
-          <span className="sm:hidden">{t('navigation.create')}</span>
-        </Button>
+        {canAdmin && (
+          <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('projects.create')}</span>
+            <span className="sm:hidden">{t('navigation.create')}</span>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -227,10 +236,14 @@ export function ProjectsPage() {
                       <DropdownMenuContent align="end">
                         <ProjectCardActionItems
                           project={project}
-                          onDelete={() => {
-                            remove.reset()
-                            setDeletingProject(project)
-                          }}
+                          onDelete={
+                            canAdmin
+                              ? () => {
+                                  remove.reset()
+                                  setDeletingProject(project)
+                                }
+                              : undefined
+                          }
                         />
                       </DropdownMenuContent>
                     </DropdownMenu>

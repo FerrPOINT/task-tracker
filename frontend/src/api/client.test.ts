@@ -107,3 +107,43 @@ it.each(['different-user-token', 'refreshed-session-token', null])(
     vi.unstubAllGlobals()
   },
 )
+
+it('rejects a streamed body after an application change with the same token', async () => {
+  vi.resetModules()
+  createClient.mockReset()
+  let middleware!: {
+    onRequest: (args: { request: Request }) => Request
+    onResponse: (args: { request: Request; response: Response }) => Response
+  }
+  createClient.mockReturnValueOnce({
+    use: vi.fn((value) => {
+      middleware = value
+    }),
+  })
+  authState.token = 'same-token'
+  await import('./client')
+  const { clearPlatformPrivateQueries } = await import('@pdlc/ui/platform')
+  const request = middleware.onRequest({
+    request: new Request('https://api.example.test/api/v1/issues'),
+  })
+  let source!: ReadableStreamDefaultController<Uint8Array>
+  const response = middleware.onResponse({
+    request,
+    response: new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          source = controller
+        },
+      }),
+    ),
+  })
+  const reading = response.json()
+  const rejection = expect(reading).rejects.toMatchObject({
+    status: 403,
+    code: 'AUTH_CONTEXT_CHANGED',
+  })
+  clearPlatformPrivateQueries()
+  source.enqueue(new TextEncoder().encode('{"private":"old"}'))
+  source.close()
+  await rejection
+})

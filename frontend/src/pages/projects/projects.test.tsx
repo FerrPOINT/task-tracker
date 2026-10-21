@@ -7,6 +7,15 @@ import { ProjectsPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 
+const ownerAccess = vi.hoisted(() => ({ admin: true }))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<typeof import('@pdlc/ui/auth')>()),
+  useApplicationAccess: () => ({
+    permits: (_apps: readonly string[], administrative = false) =>
+      !administrative || ownerAccess.admin,
+  }),
+}))
+
 const useProjects = vi.hoisted(() => vi.fn())
 const useCreateProject = vi.hoisted(() => vi.fn())
 const useUpdateProject = vi.hoisted(() => vi.fn())
@@ -62,6 +71,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  ownerAccess.admin = true
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'false')
   namespaceCatalog.mockReturnValue({ data: [], isPending: false, isError: false, isSuccess: true })
   platformServices.mockReturnValue({
@@ -276,4 +286,19 @@ it('hides an archived shared row without hiding its active standalone neighbor',
   renderPage()
   expect(screen.queryByRole('link', { name: /Task Tracker/i })).toBeNull()
   expect(screen.getByRole('link', { name: /Knowledge Base/i })).toBeInTheDocument()
+})
+
+it('preserves ordinary project navigation while hiding structure changes', async () => {
+  ownerAccess.admin = false
+  renderPage()
+  expect(screen.getByRole('link', { name: /Task Tracker/i })).toHaveAttribute(
+    'href',
+    '/projects/TT/board',
+  )
+  expect(screen.queryByRole('button', { name: 'Создать проект' })).not.toBeInTheDocument()
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
+  expect(await screen.findByRole('menuitem', { name: 'Корзина' })).toBeInTheDocument()
+  expect(screen.queryByRole('menuitem', { name: 'Удалить' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('menuitem', { name: 'Настройки' })).not.toBeInTheDocument()
 })
