@@ -245,7 +245,7 @@ impl UserRepository for UserRepo {
             if !model.is_active {
                 return Err(AppError::Unauthorized);
             }
-            if model.is_system_admin && model.display_name == display_name.trim() {
+            if model.display_name == display_name.trim() {
                 return Ok(map_user(model));
             }
         }
@@ -256,7 +256,7 @@ impl UserRepository for UserRepo {
                 sea_orm::DatabaseBackend::Postgres,
                 "INSERT INTO users (id, email, username, display_name, password_hash, central_sub, \
                is_system_admin, is_active, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, '!', $5, true, true, now(), now()) \
+             VALUES ($1, $2, $3, $4, '!', $5, false, true, now(), now()) \
              ON CONFLICT (central_sub) WHERE central_sub IS NOT NULL DO UPDATE \
              SET display_name = EXCLUDED.display_name, updated_at = now() \
              WHERE users.is_active AND users.display_name IS DISTINCT FROM EXCLUDED.display_name",
@@ -270,11 +270,6 @@ impl UserRepository for UserRepo {
             ))
             .await
             .map_err(AppError::database)?;
-        self.db.as_ref().execute(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-                "UPDATE users SET is_system_admin = true WHERE central_sub = $1 AND is_active AND NOT is_system_admin",
-            [sub.trim().into()],
-        )).await.map_err(AppError::database)?;
         let model = user::Entity::find()
             .filter(user::Column::CentralSub.eq(sub.trim()))
             .one(&*self.db)

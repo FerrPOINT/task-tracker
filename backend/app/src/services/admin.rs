@@ -56,7 +56,12 @@ impl AdminServiceImpl {
     /// Legacy user-management service calls are not exposed by the router.
     async fn require_admin(&self, requester_id: UserId) -> Result<User, AppError> {
         let user = self.require_active_user(requester_id).await?;
-        if !user.is_system_admin {
+        let administrator = if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            crate::authz::central_administrator(requester_id)?
+        } else {
+            user.is_system_admin
+        };
+        if !administrator {
             return Err(AppError::Forbidden);
         }
         Ok(user)

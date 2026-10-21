@@ -1001,6 +1001,11 @@ impl crate::context::IssueService for IssueServiceImpl {
     }
 
     async fn purge(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some()
+            && !crate::authz::central_administrator(actor_id)?
+        {
+            return Err(AppError::Forbidden);
+        }
         let issue = self.issues.get_by_id_include_deleted(id).await?;
         self.authz
             .require_project_edit(issue.project_id, actor_id)

@@ -84,6 +84,9 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         &self,
         cmd: crate::commands::CreateProjectCommand,
     ) -> Result<ProjectDto, AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            crate::authz::require_central_administrator()?;
+        }
         let name = normalize_project_name(&cmd.name)?;
         let owner = self.users.get_by_id(cmd.owner_id).await?;
         let board_id = BoardId::new();

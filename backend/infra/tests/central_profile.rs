@@ -42,6 +42,10 @@ async fn directory_profile_lookup_is_read_only_and_includes_inactive_bindings() 
         .await
         .unwrap();
     assert_eq!(profile.id, shared::UserId::for_central_subject(&subject));
+    assert!(
+        !profile.is_system_admin,
+        "JIT must not create an administrator"
+    );
     let mut inactive = profile.clone();
     inactive.is_active = false;
     repos.users.save(&inactive).await.unwrap();
@@ -84,6 +88,10 @@ async fn existing_random_uuid_binding_survives_deterministic_profile_ids() {
         .unwrap();
     assert_eq!(materialized.id.as_uuid(), id);
     assert_eq!(materialized.username.as_ref(), "historical-central");
+    assert!(
+        materialized.is_system_admin,
+        "historical grant is preserved as data"
+    );
     assert_eq!(repos.users.list().await.unwrap().len(), 1);
 }
 

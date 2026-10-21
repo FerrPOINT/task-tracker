@@ -60,6 +60,13 @@ impl Authz {
         project_id: ProjectId,
         user: UserId,
     ) -> Result<(), AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            let role = pdlc_auth_core::human_request::role_for(user.as_uuid())
+                .map_err(|_| AppError::Forbidden)?;
+            if role.is_none() {
+                return Err(AppError::Forbidden);
+            }
+        }
         self.require_project_access(project_id, user).await?;
         self.projects.require_writable(project_id).await
     }
@@ -71,12 +78,29 @@ impl Authz {
         self.projects.require_writable(project_id).await?;
         if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
             self.projects.get_by_id(project_id).await?;
-            return Ok(());
+            return if central_administrator(user)? {
+                Ok(())
+            } else {
+                Err(AppError::Forbidden)
+            };
         }
         if self.is_owner(project_id, user).await? {
             Ok(())
         } else {
             Err(AppError::Forbidden)
+        }
+    }
+
+    /// Shared catalog settings require platform administration in central mode.
+    pub async fn require_configuration_edit(
+        &self,
+        project: ProjectId,
+        user: UserId,
+    ) -> Result<(), AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            self.require_owner(project, user).await
+        } else {
+            self.require_project_edit(project, user).await
         }
     }
 
@@ -127,6 +151,59 @@ impl Authz {
             Ok(_) => Ok(()),
             Err(AppError::NotFound(_)) => Err(AppError::Forbidden),
             Err(e) => Err(e),
+        }
+    }
+}
+
+/// Only the current request may authorize a central human; saved local flags are history.
+pub fn central_administrator(user: UserId) -> Result<bool, AppError> {
+    pdlc_auth_core::human_request::role_for(user.as_uuid())
+        .map(|role| role == Some(pdlc_auth_core::application_access::HumanRole::Admin))
+        .map_err(|error| match error {
+            pdlc_auth_core::human_request::HumanRequestError::Expired => {
+                AppError::Unavailable("Current human authority expired".into())
+            }
+            _ => AppError::Forbidden,
+        })
+}
+pub fn require_central_administrator() -> Result<(), AppError> {
+    let role = pdlc_auth_core::human_request::current_role().map_err(|_| AppError::Forbidden)?;
+    if role == Some(pdlc_auth_core::application_access::HumanRole::Admin) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
+}
+
+#[cfg(test)]
+mod central_role_tests {
+    use super::*;
+    #[tokio::test]
+    async fn only_the_bound_current_administrator_can_manage_structure() {
+        let actor = UserId::new();
+        let other = UserId::new();
+        assert!(!central_administrator(actor).unwrap());
+        for (role, expected) in [("user", false), ("admin", true), ("operator", false)] {
+            let context = pdlc_auth_core::AuthContext {
+                user_id: "central-identity".into(),
+                role: Some(role.into()),
+                email: None,
+                scopes: Default::default(),
+                session_id: Some("synthetic-session".into()),
+                token: String::new(),
+            };
+            pdlc_auth_core::human_request::with_human_request(
+                actor.as_uuid(),
+                &context,
+                None,
+                async {
+                    assert_eq!(central_administrator(actor).unwrap(), expected);
+                    assert!(central_administrator(other).is_err());
+                    assert_eq!(require_central_administrator().is_ok(), expected);
+                },
+            )
+            .await
+            .unwrap();
         }
     }
 }

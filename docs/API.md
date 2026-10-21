@@ -2001,3 +2001,9 @@ Scheduler-only initial bootstrap recovery retains canonical assignment/execution
 and uses the existing configured Fleet composite readback, never caller booleans.
 POST/GET operation paths, strict DTO and unrun qualification are documented in
 [the bounded contract](contracts/pm-bootstrap-technical-retry.md). No live readiness claim.
+
+## Глобальные роли и приложения
+
+Исходная интеграция и открытые gates описаны в
+[контракте ролей и приложений](HUMAN_APPLICATION_ACCESS.md).
+Публикация исходников не означает активацию новой политики.

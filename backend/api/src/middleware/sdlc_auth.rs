@@ -16,8 +16,10 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
                 .or_else(|| h.strip_prefix("bearer "))
         })
         .ok_or(AppError::Unauthorized)?;
-    let central = match super::central_auth::check_token(token).await {
+    let (checked, proof) = super::central_auth::check_token_with_policy(token).await;
+    let central = match checked {
         super::central_auth::CentralCheck::Validated(central, _verified_name) => central,
+        super::central_auth::CentralCheck::Forbidden => return Err(AppError::Forbidden),
         super::central_auth::CentralCheck::Unavailable => {
             return Err(AppError::Unavailable("Central Auth unavailable".into()));
         }
@@ -41,10 +43,10 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     let trusted_human = is_trusted_human(&central, configured_machine);
     let human_session = is_human_session(&central, configured_machine);
     let actor = domain::sdlc::Principal {
-        subject: central.user_id,
+        subject: central.user_id.clone(),
         human_session,
         trusted_human,
-        scopes: central.scopes,
+        scopes: central.scopes.clone(),
     };
     let path = request
         .extensions()
@@ -61,6 +63,25 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     pm_request_policy(&actor, request.method().as_str(), path)?;
     app::sdlc_lifecycle::delivery_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
+    if trusted_human {
+        let subject = central
+            .user_id
+            .parse::<uuid::Uuid>()
+            .map_err(|_| AppError::Unauthorized)?;
+        return pdlc_auth_core::human_request::with_human_request(
+            subject,
+            &central,
+            proof,
+            async {
+                let response = next.run(request).await;
+                pdlc_auth_core::human_request::current_role()
+                    .map_err(|_| AppError::Unavailable("Current human authority expired".into()))?;
+                Ok(response)
+            },
+        )
+        .await
+        .map_err(|_| AppError::Forbidden)?;
+    }
     Ok(next.run(request).await)
 }
 

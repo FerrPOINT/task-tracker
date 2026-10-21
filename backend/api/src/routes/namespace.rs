@@ -53,6 +53,9 @@ async fn machine_auth(mut req: Request, next: Next, key: &str) -> Result<Respons
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let ctx = match super::super::middleware::central_auth::check_token(token).await {
         super::super::middleware::central_auth::CentralCheck::Validated(ctx, _) => ctx,
+        super::super::middleware::central_auth::CentralCheck::Forbidden => {
+            return Err(StatusCode::FORBIDDEN);
+        }
         super::super::middleware::central_auth::CentralCheck::Unavailable => {
             return Err(StatusCode::SERVICE_UNAVAILABLE);
         }

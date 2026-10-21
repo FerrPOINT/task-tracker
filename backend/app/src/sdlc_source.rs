@@ -16,6 +16,9 @@ impl crate::sdlc::SdlcService {
 }
 
 pub fn human_owner(actor: &Principal) -> Result<(), AppError> {
+    if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+        crate::authz::require_central_administrator()?;
+    }
     if !actor.human_session
         || crate::sdlc::has_pm_grant(&actor.scopes)
         || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)

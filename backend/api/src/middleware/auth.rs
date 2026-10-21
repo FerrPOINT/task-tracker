@@ -24,7 +24,8 @@ pub async fn bearer_auth(
 
     // Central fleet auth-server first (ES256 via JWKS); legacy HS256 access
     // tokens remain valid during the migration window.
-    match super::central_auth::check_token(&token).await {
+    let (checked, proof) = super::central_auth::check_token_with_policy(&token).await;
+    match checked {
         super::central_auth::CentralCheck::Validated(central, display_name) => {
             // Preserve task-scoped PM grants and machine identity before human mapping.
             if app::sdlc::has_pm_grant(&central.scopes)
@@ -47,8 +48,21 @@ pub async fn bearer_auth(
                 jti: None,
             };
             req.extensions_mut().insert(claims);
-            return Ok(next.run(req).await);
+            return pdlc_auth_core::human_request::with_human_request(
+                user.id.as_uuid(),
+                &central,
+                proof,
+                async {
+                    let response = next.run(req).await;
+                    pdlc_auth_core::human_request::current_role()
+                        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                    Ok(response)
+                },
+            )
+            .await
+            .map_err(|_| StatusCode::FORBIDDEN)?;
         }
+        super::central_auth::CentralCheck::Forbidden => return Err(StatusCode::FORBIDDEN),
         super::central_auth::CentralCheck::Expired => return Err(StatusCode::UNAUTHORIZED),
         super::central_auth::CentralCheck::Unavailable => {
             return Err(StatusCode::SERVICE_UNAVAILABLE);

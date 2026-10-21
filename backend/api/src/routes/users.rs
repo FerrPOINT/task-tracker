@@ -192,7 +192,7 @@ async fn fetch_central_directory(
         .ok_or(shared::AppError::Unauthorized)?;
     let mut url = reqwest::Url::parse(jwks_uri)
         .map_err(|_| shared::AppError::Unavailable("Central Auth URL is invalid".into()))?;
-    url.set_path("/auth/users");
+    url.set_path("/auth/directory");
     url.set_query(None);
     url.set_fragment(None);
     let client = reqwest::Client::builder()
@@ -294,7 +294,7 @@ mod tests {
         // not identity or proof that an otherwise active account is invalid.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let router = axum::Router::new().route("/auth/users", axum::routing::get(|| async {
+        let router = axum::Router::new().route("/auth/directory", axum::routing::get(|| async {
             Json(serde_json::json!([
                 {"id":"active-subject","email":"active@example.test","display_name":"  ","status":"active"},
                 {"id":"disabled-subject","email":"disabled@example.test","display_name":"","status":"disabled"}

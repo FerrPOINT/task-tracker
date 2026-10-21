@@ -83,6 +83,7 @@ pub async fn attachment_auth(
         super::central_auth::CentralCheck::Unavailable => {
             return Err(AppError::Unavailable("Central Auth unavailable".into()));
         }
+        super::central_auth::CentralCheck::Forbidden => return Err(AppError::Forbidden),
         super::central_auth::CentralCheck::Expired => return Err(AppError::Unauthorized),
         super::central_auth::CentralCheck::FallThrough => (),
     }
