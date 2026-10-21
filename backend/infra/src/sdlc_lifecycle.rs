@@ -43,6 +43,21 @@ pub(super) async fn project_issue_status(
     actor: &Principal,
     status_id: Uuid,
 ) -> Result<(), AppError> {
+    if let Some(native) = app::native_space_access::current()? {
+        if native.identity().subject != actor.subject || !native.may_write() {
+            return Err(AppError::Forbidden);
+        }
+        exec(
+            tx,
+            "SELECT set_config('pdlc.tracker.native_issue_projection',$1,true)",
+            vec![
+                json!({"task_id":task,"status_id":status_id})
+                    .to_string()
+                    .into(),
+            ],
+        )
+        .await?;
+    }
     exec(tx,"INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
         SELECT $1,i.id,i.status_id,s.id,u.id,clock_timestamp() FROM issues i
         JOIN statuses s ON s.id=$3

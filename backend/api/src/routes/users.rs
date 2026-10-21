@@ -26,7 +26,8 @@ pub async fn get_me(
         email: user.email,
         username: user.username,
         display_name: user.display_name,
-        is_system_admin: user.is_system_admin,
+        is_system_admin: app::space_access::current_request_for(user_id)?
+            .map_or(user.is_system_admin, |c| c.is_global_admin()),
     }))
 }
 

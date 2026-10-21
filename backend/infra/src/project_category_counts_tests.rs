@@ -12,11 +12,11 @@ fn row(project: ProjectId, category: &str, count: i64) -> BTreeMap<String, Value
 
 fn repo(rows: Vec<BTreeMap<String, Value>>) -> IssueRepo {
     IssueRepo {
-        db: Arc::new(
+        db: Arc::new(crate::guarded_db::GuardedDb::new(
             MockDatabase::new(DbBackend::Postgres)
                 .append_query_results([rows])
                 .into_connection(),
-        ),
+        )),
     }
 }
 
@@ -82,7 +82,8 @@ async fn batch_counts_sum_both_in_progress_spellings_and_keep_other_projects_sep
         assert_eq!(counts[&second], [0, 1, 0]);
 
         // Mock execution checks the actual query/bindings, not PostgreSQL filtering.
-        let db = Arc::try_unwrap(repository.db).unwrap();
+        let db = Arc::try_unwrap(repository.db)
+            .unwrap_or_else(|_| panic!("fixture retains a database reference"));
         assert_eq!(
             db.into_transaction_log(),
             vec![Transaction::from_sql_and_values(

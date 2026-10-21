@@ -34,6 +34,9 @@ pub use sea_orm_migration::prelude::*;
 mod m20261016_0000096_project_repositories;
 mod m20261016_0000096_task_source_compatibility;
 mod m20261018_0000098_project_repository_catalog;
+mod m20261019_0000099_unified_spaces;
+mod m20261021_0000100_human_sdlc_spaces;
+mod m20261021_0000101_native_sdlc_spaces;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -118,9 +121,15 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261018_0000098_pm_unsubmitted_recovery::Migration),
             Box::new(m20261018_0000098_project_repository_catalog::Migration),
             Box::new(m20261021_0000099_pm_bootstrap_retry::Migration),
+            Box::new(m20261019_0000099_unified_spaces::Migration),
+            Box::new(m20261021_0000100_human_sdlc_spaces::Migration),
+            Box::new(m20261021_0000101_native_sdlc_spaces::Migration),
         ]
     }
 }
 
 #[cfg(test)]
 mod project_repository_tests;
+
+#[cfg(test)]
+mod unified_space_tests;

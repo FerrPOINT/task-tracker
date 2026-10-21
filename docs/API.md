@@ -758,6 +758,9 @@ password/register/refresh endpoints являются legacy-контрактом
 
 Оба пути принимают `{ "project_key": "TT" }`, требуют обычный project-access и
 возвращают attachment с детерминированным порядком задач (`created_at DESC`).
+Это read-only POST: human PAT требует task-tracker:read, а не write. Допуск
+проверяется к запрошенному проекту; write-only PAT и машинный principal не дают
+human export. Ответ ограничен исходным admission deadline, без продления TTL.
 
 ### Real-time (SSE)
 
@@ -2007,3 +2010,91 @@ POST/GET operation paths, strict DTO and unrun qualification are documented in
 Исходная интеграция и открытые gates описаны в
 [контракте ролей и приложений](HUMAN_APPLICATION_ACCESS.md).
 Публикация исходников не означает активацию новой политики.
+
+## Project/Space v2: source-кандидат
+
+- GET /api/v2/projects: собственный human каталог VisibleProjectCatalogV2 с
+  tracker_instance_id, identity/policy_revision/original validity и count/page.
+  limit1…100, offset, literal q до200 символов; optional project_key — точное
+  совпадение, не поиск/первый результат. registry_instance_id/space_id принимаются
+  только вместе; partial/duplicate/legacy namespace context отклоняются.
+  ANY admission и Space/q/key применяются до count/page, M:N без дублей.
+  Count/page и последующее чтение Project rows используют один RR snapshot;
+  beyond-end страница сохраняет настоящий total. Недоступное выбранное Space
+  даёт403; отсутствие доступных проектов — пустой каталог. Нет legacy fallback.
+- POST `/api/v2/projects`: key/name/description и обязательный непустой spaces[];
+  до1000 уникальных ненулевых SpaceRef. Project/default board/первые links атомарны.
+- GET `/api/v2/projects/{project_key}/spaces`: canonical ProjectRef, revision,
+  полный links-набор и original Tracker validity; ANY admission открывает Project,
+  но не документы других Space. Response headers
+  x-pdlc-project-spaces-can-change и x-pdlc-admission-policy-revision — UI hints
+  из того же current proof; входящие одноимённые headers не дают полномочий.
+  Строгий ConfirmedProjectSpaces не расширяется.
+- GET /api/v2/projects/{project_key}/spaces/operations/{operation_id}: отдельный
+  ProjectSpaceOperationReceipt schema1 для committed операции текущего автора.
+  Нужен текущий project read, не write. Архив проекта не скрывает квитанцию;
+  чужой автор/проект её не получает. 404 не доказывает откат или отсутствие
+  выполняющейся транзакции. Квитанция не является grant или ACK Wiki.
+- PUT /api/v2/projects/{project_key}/spaces: expected_revision + непустой полный spaces[]. Существующий
+  owner role, разрешённое активное Space прежнего Project и активный допуск ко
+  всем новым links обязательны. Срок/owner/catalog проверяются после row wait;
+  catalog locks удерживаются до commit. Ни primary, ни первый Space не выбираются.
+
+Сервер получает admission через общий SDK; TT_SPACES__ADMISSION_URL/TOKEN —
+операторская конфигурация с зарегистрированным узким Admin machine PAT. Exact
+central-subject/local-user mapping подтверждается по profiles, не email. PAT
+scopes остаются дополнительным ограничением. Success ответы no-store.
+UI settings сохраняет исходный payload/ключ до PUT; read-only receipt recovery
+не повторяет запись и не создаёт новый ключ. Неизвестный исход остаётся в журнале.
+[Сценарии и политика кеша](PROJECT_SPACES_UI_V2.md).
+После активации storage guard старый POST v1 без spaces возвращает понятный отказ
+project_spaces_required_use_v2. До общего compatible cohort activation запрещена.
+Новые source API ещё требуют native/API/UI/migration qualification; это не live
+поставка и не завершённый общий фильтр всех прежних Tracker routes.
+
+
+## Единое пространство: API v2
+
+[Контракт, транзакции и durable проекция](PROJECT_SPACES_V2.md).
+
+
+Project lifecycle v2: GET/PUT `/api/v2/projects/{project_key}/lifecycle`;
+[поля, оригинальный ключ, CAS, полномочия и совместимость](PROJECT_LIFECYCLE_V2.md).
+Это source-кандидат, не установленный общий доступ.
+
+Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).
+
+
+Каталог текущего пользователя: GET /api/v2/spaces/visible; строгая bounded
+pagination и server-only original-actor relay описаны в
+[PROJECT_SPACES_V2](PROJECT_SPACES_V2.md#каталог-доступных-пространств).
+
+
+Human V2 project/space ответы используют typed response deadline из SpaceActor,
+включая staging до общего flag. Header/body stream не получают новое окно от
+внешнего middleware, если owner admission короче identity/session. DTO V1/V2
+не расширяются; policy revision/read-only hint — отдельные bounded headers.
+Глобальная UI страница /admin имеет независимую route classification; доступ к
+ней определяют её прежние серверные глобальные полномочия, не Project catalog.
+
+Human SDLC project directory/access применяет тот же набор SpaceRef, включая
+наследование, до сортировки и страниц. Native ACL не сохраняет чтение отозванного
+пространства. Допуск пространства открывает чтение проекта, а SDLC изменение
+дополнительно требует прежнего native project membership/ownership и active
+space permit. ProjectRef берётся из текущего владельца Tracker; legacy instance
+строка SDLC сохраняет прежний wire и не преобразуется в UUID неявно.
+
+SDLC repository использует существующий GuardedDb для request-owned write context;
+не создаётся второй допуск, пул или копия членства. Отсутствующий human proof при
+активной политике закрывает доступ. Native capability не становится human proof.
+
+### Каталог общего пространства
+
+Явный фильтр общего пространства включает его собственные проекты и проекты
+связанных дочерних пространств. Каждый target отдельно проходит исходный допуск;
+участие в дочернем пространстве не разрешает запрос родительского каталога.
+Состав фильтруется до count/page. Независимые связи M:N не становятся иерархией;
+добавочные project links в родителя ради каталога не создаются. После исключения
+дочернего пространства оно исчезает из родительского каталога; отдельное прямое
+участие продолжает работать через его собственный каталог. У режима all явная
+иерархия возвращается как metadata, не как новое основание доступа.

@@ -31,6 +31,8 @@ use shared::{
 use uuid::Uuid;
 #[path = "repos_namespace.rs"]
 mod namespace;
+#[path = "resource_visibility.rs"]
+mod resource_visibility;
 
 use crate::entities::{
     attachment, audit_log, board, comment, custom_field, issue, issue_custom_field_value,
@@ -169,7 +171,7 @@ pub struct SeaOrmRepositories {
 
 impl SeaOrmRepositories {
     pub fn new(db: DatabaseConnection) -> Self {
-        let db = Arc::new(db);
+        let db = Arc::new(crate::guarded_db::GuardedDb::new(db));
         Self {
             users: Arc::new(UserRepo { db: db.clone() }),
             totp: Arc::new(TotpRepo { db: db.clone() }),
@@ -203,11 +205,19 @@ impl SeaOrmRepositories {
 }
 
 struct UserRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn central_subject(&self, user: UserId) -> Result<Option<String>, AppError> {
+        let row = user::Entity::find_by_id(user.as_uuid())
+            .filter(user::Column::IsActive.eq(true))
+            .one(self.db.as_ref())
+            .await
+            .map_err(crate::db_error::map)?;
+        Ok(row.and_then(|r| r.central_sub))
+    }
     async fn central_profiles(
         &self,
         subjects: &[String],
@@ -219,7 +229,7 @@ impl UserRepository for UserRepo {
             .filter(user::Column::CentralSub.is_in(subjects.iter().cloned()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .filter_map(|model| model.central_sub.clone().map(|sub| (sub, map_user(model))))
@@ -240,7 +250,7 @@ impl UserRepository for UserRepo {
             .filter(user::Column::CentralSub.eq(sub.trim()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
         {
             if !model.is_active {
                 return Err(AppError::Unauthorized);
@@ -269,12 +279,12 @@ impl UserRepository for UserRepo {
                 ],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let model = user::Entity::find()
             .filter(user::Column::CentralSub.eq(sub.trim()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .ok_or(AppError::Unauthorized)?;
         if !model.is_active {
             return Err(AppError::Unauthorized);
@@ -288,7 +298,12 @@ impl UserRepository for UserRepo {
         new_hash: &str,
     ) -> Result<(), AppError> {
         use sea_orm::Statement;
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
         // Serialize rotation per user so two concurrent refreshes cannot
         // both pass the hash comparison.
         let lock_key = (user_id.as_uuid().as_u128() >> 64) as i64;
@@ -298,7 +313,7 @@ impl UserRepository for UserRepo {
             [lock_key.into()],
         ))
         .await
-        .map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
         let res = txn
             .execute(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,
@@ -306,11 +321,11 @@ impl UserRepository for UserRepo {
                 [new_hash.into(), user_id.as_uuid().into(), expected_hash.into()],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if res.rows_affected() == 0 {
             return Err(AppError::Unauthorized);
         }
-        txn.commit().await.map_err(AppError::database)?;
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -326,7 +341,7 @@ impl UserRepository for UserRepo {
                 [user_id.as_uuid().into()],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -334,7 +349,7 @@ impl UserRepository for UserRepo {
         let model = user::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_user)
             .ok_or_else(|| AppError::not_found("user", id))
@@ -346,7 +361,7 @@ impl UserRepository for UserRepo {
             .filter(user::Column::CentralSub.is_null())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_user)
             .ok_or_else(|| AppError::not_found("user", email))
@@ -357,7 +372,7 @@ impl UserRepository for UserRepo {
             .filter(user::Column::RefreshTokenHash.eq(token_hash))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_user)
             .ok_or_else(|| AppError::not_found("user", "refresh"))
@@ -383,12 +398,18 @@ impl UserRepository for UserRepo {
         let exists = user::Entity::find_by_id(user.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .is_some();
         if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         }
         Ok(user.id)
     }
@@ -398,353 +419,37 @@ impl UserRepository for UserRepo {
             .order_by_asc(user::Column::DisplayName)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_user).collect())
     }
 }
 
 struct ProjectRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
-#[async_trait]
-impl ProjectRepository for ProjectRepo {
-    async fn namespace_task_catalog(
-        &self,
-        namespace: &shared::resource_context::NamespaceRef,
-        offset: i64,
-    ) -> Result<Vec<shared::resource_context::TaskCatalogItem>, AppError> {
-        let contexts = self.namespace_contexts(Some(namespace), 1, 0).await?;
-        let binding = &contexts
-            .first()
-            .ok_or_else(|| AppError::not_found("namespace_binding", namespace.namespace_id))?
-            .binding;
-        let rows=self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT id,key,summary FROM issues WHERE project_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id LIMIT 50 OFFSET $2",[binding.resource.resource_id.into(),offset.max(0).into()])).await.map_err(AppError::database)?;
-        rows.into_iter()
-            .map(|row| {
-                Ok(shared::resource_context::TaskCatalogItem {
-                    namespace: namespace.clone(),
-                    task: shared::resource_context::TaskRef {
-                        tracker_instance_id: binding.resource.instance_id,
-                        task_id: row.try_get("", "id").map_err(AppError::database)?,
-                    },
-                    task_key: row.try_get("", "key").map_err(AppError::database)?,
-                    label: row.try_get("", "summary").map_err(AppError::database)?,
-                })
-            })
-            .collect()
-    }
-    async fn namespace_available_resources(
-        &self,
-        accessible_projects: &[ProjectId],
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
-        let instance = std::env::var("TT_NAMESPACE__INSTANCE_ID")
-            .ok()
-            .and_then(|value| value.parse::<uuid::Uuid>().ok())
-            .filter(|id| !id.is_nil())
-            .ok_or_else(|| AppError::Unavailable("namespace_owner_not_configured".into()))?;
-        let statement = namespace_available_resources_statement(accessible_projects, limit, offset);
-        let rows = self
-            .db
-            .query_all(statement)
-            .await
-            .map_err(AppError::database)?;
-        rows.into_iter()
-            .map(|row| {
-                Ok(shared::resource_context::ResourceCatalogItem {
-                    resource: shared::resource_context::ResourceRef {
-                        kind: shared::resource_context::ResourceKind::TrackerProject,
-                        instance_id: instance,
-                        resource_id: row.try_get("", "id").map_err(AppError::database)?,
-                    },
-                    label: row.try_get("", "name").map_err(AppError::database)?,
-                    resource_key: row.try_get("", "key").map_err(AppError::database)?,
-                })
-            })
-            .collect()
-    }
-    async fn namespace_stats(
-        &self,
-        project: ProjectId,
-    ) -> Result<shared::resource_context::ResourceStats, AppError> {
-        let binding = namespace::binding(&self.db, project)
-            .await?
-            .ok_or_else(|| AppError::not_found("namespace_binding", project))?;
-        let row=self.db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT (SELECT count(*) FROM issues WHERE project_id=$1 AND deleted_at IS NULL) AS tasks,(SELECT count(*) FROM project_members WHERE project_id=$1) AS team",[project.as_uuid().into()])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_stats_not_available".into()))?;
-        Ok(shared::resource_context::ResourceStats {
-            binding,
-            counters: std::collections::BTreeMap::from([
-                (
-                    "tasks".into(),
-                    row.try_get("", "tasks").map_err(AppError::database)?,
-                ),
-                (
-                    "team".into(),
-                    row.try_get("", "team").map_err(AppError::database)?,
-                ),
-            ]),
-        })
-    }
-    async fn namespace_contexts(
-        &self,
-        namespace: Option<&shared::resource_context::NamespaceRef>,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
-        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
-        rows.into_iter()
-            .map(|row| {
-                let command: shared::resource_context::OwnerCommand =
-                    serde_json::from_value(row.try_get("", "command").map_err(AppError::database)?)
-                        .map_err(|_| {
-                            AppError::Unavailable("invalid_namespace_projection".into())
-                        })?;
-                namespace::validate_projection(&command)?;
-                Ok(shared::resource_context::ResourceContextSummary {
-                    binding: command
-                        .readback(row.try_get("", "drained").map_err(AppError::database)?),
-                    label: row.try_get("", "name").map_err(AppError::database)?,
-                    resource_key: row.try_get("", "key").map_err(AppError::database)?,
-                })
-            })
-            .collect()
-    }
-    async fn issue_creation_ticket(
-        &self,
-        project: ProjectId,
-        actor: UserId,
-        operation: uuid::Uuid,
-        payload: &serde_json::Value,
-        allocate: bool,
-    ) -> Result<Option<domain::IssueCreationTicket>, AppError> {
-        let tx = self.db.as_ref().begin().await.map_err(AppError::database)?;
-        tx.execute(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
-            [operation.to_string().into()],
-        ))
-        .await
-        .map_err(AppError::database)?;
-        let mut row = tx
-            .query_one(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT * FROM issue_creation_receipts WHERE operation_id=$1",
-                [operation.into()],
-            ))
-            .await
-            .map_err(AppError::database)?;
-        if row.is_none() && allocate {
-            let issue_id = uuid::Uuid::new_v4();
-            row = tx.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO issue_creation_receipts(operation_id,project_id,actor_id,payload,issue_id,number) VALUES($1,$2,$3,$4,$5,allocate_project_issue_number($2)) RETURNING *",[operation.into(),project.as_uuid().into(),actor.as_uuid().into(),payload.clone().into(),issue_id.into()])).await.map_err(AppError::database)?;
-        }
-        let result = if let Some(row) = row {
-            if row
-                .try_get::<uuid::Uuid>("", "project_id")
-                .map_err(AppError::database)?
-                != project.as_uuid()
-                || row
-                    .try_get::<uuid::Uuid>("", "actor_id")
-                    .map_err(AppError::database)?
-                    != actor.as_uuid()
-                || row
-                    .try_get::<serde_json::Value>("", "payload")
-                    .map_err(AppError::database)?
-                    != *payload
-            {
-                return Err(AppError::conflict("issue_operation_payload_conflict"));
-            }
-            Some(domain::IssueCreationTicket {
-                issue_id: IssueId::from_uuid(
-                    row.try_get("", "issue_id").map_err(AppError::database)?,
-                ),
-                number: u32::try_from(
-                    row.try_get::<i64>("", "number")
-                        .map_err(AppError::database)?,
-                )
-                .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
-                completed: row.try_get("", "completed").map_err(AppError::database)?,
-            })
-        } else {
-            None
-        };
-        tx.commit().await.map_err(AppError::database)?;
-        Ok(result)
-    }
-
-    async fn advance_issue_creation_ticket(
-        &self,
-        project: ProjectId,
-        actor: UserId,
-        operation: uuid::Uuid,
-        payload: &serde_json::Value,
-        issue_id: IssueId,
-        expected_number: u32,
-    ) -> Result<domain::IssueCreationTicket, AppError> {
-        let tx = self.db.as_ref().begin().await.map_err(AppError::database)?;
-        tx.execute(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
-            [operation.to_string().into()],
-        ))
-        .await
-        .map_err(AppError::database)?;
-        let row = tx.query_one(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT project_id,actor_id,payload,issue_id,number,completed FROM issue_creation_receipts WHERE operation_id=$1 FOR UPDATE",
-            [operation.into()],
-        )).await.map_err(AppError::database)?
-            .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
-        if row
-            .try_get::<uuid::Uuid>("", "project_id")
-            .map_err(AppError::database)?
-            != project.as_uuid()
-            || row
-                .try_get::<uuid::Uuid>("", "actor_id")
-                .map_err(AppError::database)?
-                != actor.as_uuid()
-            || row
-                .try_get::<serde_json::Value>("", "payload")
-                .map_err(AppError::database)?
-                != *payload
-            || row
-                .try_get::<uuid::Uuid>("", "issue_id")
-                .map_err(AppError::database)?
-                != issue_id.as_uuid()
-        {
-            return Err(AppError::conflict("issue_operation_payload_conflict"));
-        }
-        let current_number = row
-            .try_get::<i64>("", "number")
-            .map_err(AppError::database)?;
-        let completed = row
-            .try_get::<bool>("", "completed")
-            .map_err(AppError::database)?;
-        let row = if !completed && current_number == i64::from(expected_number) {
-            tx.query_one(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE issue_creation_receipts SET number=allocate_project_issue_number(project_id) WHERE operation_id=$1 RETURNING issue_id,number,completed",
-                [operation.into()],
-            )).await.map_err(AppError::database)?
-                .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?
-        } else {
-            row
-        };
-        let ticket = domain::IssueCreationTicket {
-            issue_id: IssueId::from_uuid(row.try_get("", "issue_id").map_err(AppError::database)?),
-            number: u32::try_from(
-                row.try_get::<i64>("", "number")
-                    .map_err(AppError::database)?,
-            )
-            .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
-            completed: row.try_get("", "completed").map_err(AppError::database)?,
-        };
-        tx.commit().await.map_err(AppError::database)?;
-        Ok(ticket)
-    }
-
-    async fn list_accessible_page(
-        &self,
-        ids: &[ProjectId],
-        limit: u64,
-        offset: u64,
-    ) -> Result<Vec<Project>, AppError> {
-        let rows = project::Entity::find()
-            .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
-            .order_by_asc(project::Column::Key)
-            .order_by_asc(project::Column::Id)
-            .limit(limit.clamp(1, 100))
-            .offset(offset)
-            .all(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        Ok(rows.into_iter().map(map_project).collect())
-    }
-    async fn namespace_binding(
-        &self,
-        id: ProjectId,
-    ) -> Result<Option<shared::resource_context::OwnerReadback>, AppError> {
-        namespace::binding(&self.db, id).await
-    }
-    async fn apply_namespace(
-        &self,
-        command: &shared::resource_context::OwnerCommand,
-    ) -> Result<shared::resource_context::OwnerReadback, AppError> {
-        namespace::apply(&self.db, command).await
-    }
-    async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError> {
-        let model = project::Entity::find_by_id(id.as_uuid())
-            .one(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        model
-            .map(map_project)
-            .ok_or_else(|| AppError::not_found("project", id))
-    }
-
-    async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError> {
-        let model = project::Entity::find()
-            .filter(project::Column::Key.eq(key.as_str()))
-            .one(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        model
-            .map(map_project)
-            .ok_or_else(|| AppError::not_found("project", key))
-    }
-
-    async fn list(&self, query: domain::ProjectQuery) -> Result<Vec<Project>, AppError> {
-        let mut select = project::Entity::find();
-        if let Some(owner_id) = query.owner_id {
-            select = select.filter(project::Column::OwnerId.eq(owner_id.as_uuid()));
-        }
-        if query.limit > 0 {
-            select = select.limit(query.limit);
-        }
-        if query.offset > 0 {
-            select = select.offset(query.offset);
-        }
-        select = select
-            .order_by_asc(project::Column::Key)
-            .order_by_asc(project::Column::Id);
-        let models = select.all(&*self.db).await.map_err(AppError::database)?;
-        Ok(models.into_iter().map(map_project).collect())
-    }
-
-    async fn save(&self, project: &Project) -> Result<ProjectId, AppError> {
-        let active = project::ActiveModel {
-            id: Set(project.id.as_uuid()),
-            key: Set(project.key.to_string()),
-            name: Set(project.name.as_ref().to_string()),
-            description: Set(project.description.as_ref().map(|d| d.as_ref().to_string())),
-            owner_id: Set(project.owner_id.as_uuid()),
-            default_board_id: Set(project.default_board_id.as_uuid()),
-            created_at: Set(project.created_at),
-            updated_at: Set(shared::now()),
-        };
-        let exists = project::Entity::find_by_id(project.id.as_uuid())
-            .one(&*self.db)
-            .await
-            .map_err(AppError::database)?
-            .is_some();
-        if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
-        } else {
-            project::Entity::insert(active)
-                .exec(&*self.db)
-                .await
-                .map_err(AppError::database)?;
-        }
-        Ok(project.id)
-    }
-
-    async fn save_with_board(
+impl ProjectRepo {
+    async fn persist_project_with_board(
         &self,
         project: &Project,
         board: &Board,
+        spaces: Option<(
+            &[shared::space_access::SpaceRef],
+            &domain::project_spaces::SpaceWritePermit,
+        )>,
     ) -> Result<ProjectId, AppError> {
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
+        if let Some((spaces, permit)) = spaces {
+            if project.owner_id != permit.actor() {
+                return Err(AppError::Forbidden);
+            }
+            crate::guarded_db::bind_creation_context(&txn, project.id, spaces, permit).await?;
+        }
         let active = project::ActiveModel {
             id: Set(project.id.as_uuid()),
             key: Set(project.key.to_string()),
@@ -758,7 +463,12 @@ impl ProjectRepository for ProjectRepo {
         project::Entity::insert(active)
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
+        // DefaultBoardId has no FK in the existing schema. Establish the exact
+        // nonempty links before the first board/content write, still in one TX.
+        if let Some((spaces, permit)) = spaces {
+            crate::project_spaces::insert_initial(&txn, project.id, spaces, permit).await?;
+        }
         let columns = serde_json::to_value(
             board
                 .columns
@@ -783,9 +493,558 @@ impl ProjectRepository for ProjectRepo {
         })
         .exec(&txn)
         .await
-        .map_err(AppError::database)?;
-        txn.commit().await.map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
+        if let Some((spaces, permit)) = spaces {
+            if project.owner_id != permit.actor() {
+                return Err(AppError::Forbidden);
+            }
+            permit.require_set(spaces)?;
+        }
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(project.id)
+    }
+}
+
+#[async_trait]
+impl ProjectRepository for ProjectRepo {
+    async fn project_lifecycle(
+        &self,
+        project: ProjectId,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        crate::project_lifecycle::get(self.db.as_ref(), project).await
+    }
+    async fn change_project_lifecycle(
+        &self,
+        project: ProjectId,
+        change: &domain::project_spaces::ChangeProjectLifecycle,
+        permit: &domain::project_spaces::SpaceWritePermit,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        crate::project_lifecycle::change(self.db.raw(), project, change, permit).await
+    }
+    async fn require_writable(&self, project: ProjectId) -> Result<(), AppError> {
+        if self.project_lifecycle(project).await?.archived {
+            return Err(AppError::conflict("project_archived_read_only"));
+        }
+        // Legacy 1:1 binding cannot make an A+B project read-only after A is
+        // archived. Active-mode Authz uses this actor's admitted active Space.
+        if !self.space_admission_enabled().await?
+            && self
+                .namespace_binding(project)
+                .await?
+                .is_some_and(|n| n.state != "active")
+        {
+            return Err(AppError::conflict("namespace_resource_read_only"));
+        }
+        Ok(())
+    }
+    async fn apply_space_owner_v2(
+        &self,
+        command: &shared::space_lifecycle::SpaceOwnerCommandV2,
+        authority: &shared::space_lifecycle::SpaceOwnerAuthority,
+    ) -> Result<shared::space_lifecycle::SpaceOwnerReadbackV2, AppError> {
+        crate::space_owner::apply(self.db.raw(), command, authority).await
+    }
+    async fn space_admission_enabled(&self) -> Result<bool, AppError> {
+        let row = self
+            .db
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT active FROM tracker_space_admission_state WHERE singleton".to_owned(),
+            ))
+            .await
+            .map_err(crate::db_error::map)?
+            .ok_or_else(|| AppError::Unavailable("space_admission_state_missing".into()))?;
+        row.try_get("", "active").map_err(crate::db_error::map)
+    }
+    async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
+        crate::project_spaces::catalog_refs(self.db.as_ref()).await
+    }
+    async fn admitted_project_ids(
+        &self,
+        readable: &[shared::space_access::SpaceRef],
+        active: &[shared::space_access::SpaceRef],
+    ) -> Result<(Vec<uuid::Uuid>, Vec<uuid::Uuid>), AppError> {
+        crate::project_spaces::admitted_project_ids(self.db.as_ref(), readable, active).await
+    }
+    async fn list_space_accessible_catalog(
+        &self,
+        spaces: &[shared::space_access::SpaceRef],
+        query: &domain::project_spaces::ProjectCatalogQuery,
+    ) -> Result<domain::project_spaces::VisibleProjectPage, AppError> {
+        query.validate()?;
+        let tx = self
+            .db
+            .begin_with_config(
+                Some(sea_orm::IsolationLevel::RepeatableRead),
+                Some(sea_orm::AccessMode::ReadOnly),
+            )
+            .await
+            .map_err(crate::db_error::map)?;
+        let (total, ids) =
+            crate::project_spaces::visible_project_catalog_ids(&tx, spaces, query).await?;
+        let rows = if ids.is_empty() {
+            Vec::new()
+        } else {
+            project::Entity::find()
+                .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+                .order_by_asc(project::Column::Key)
+                .order_by_asc(project::Column::Id)
+                .all(&tx)
+                .await
+                .map_err(crate::db_error::map)?
+        };
+        if rows.len() != ids.len() {
+            return Err(AppError::Unavailable(
+                "project_catalog_snapshot_changed".into(),
+            ));
+        }
+        tx.commit().await.map_err(crate::db_error::map)?;
+        Ok(domain::project_spaces::VisibleProjectPage {
+            projects: rows.into_iter().map(map_project).collect(),
+            total,
+        })
+    }
+    async fn list_space_accessible_page(
+        &self,
+        spaces: &[shared::space_access::SpaceRef],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        let tx = self
+            .db
+            .begin_with_config(
+                Some(sea_orm::IsolationLevel::RepeatableRead),
+                Some(sea_orm::AccessMode::ReadOnly),
+            )
+            .await
+            .map_err(crate::db_error::map)?;
+        let ids = crate::project_spaces::visible_project_ids(&tx, spaces, limit, offset).await?;
+        if ids.is_empty() {
+            tx.commit().await.map_err(crate::db_error::map)?;
+            return Ok(Vec::new());
+        }
+        // IDs are already paginated. Do not call the legacy helper whose zero limit
+        // means one row, rather than an unbounded internal result.
+        let rows = project::Entity::find()
+            .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+            .order_by_asc(project::Column::Key)
+            .order_by_asc(project::Column::Id)
+            .all(&tx)
+            .await
+            .map_err(crate::db_error::map)?;
+        tx.commit().await.map_err(crate::db_error::map)?;
+        Ok(rows.into_iter().map(map_project).collect())
+    }
+    async fn project_spaces(
+        &self,
+        project: ProjectId,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        crate::project_spaces::get(self.db.as_ref(), project).await
+    }
+    async fn project_space_operation(
+        &self,
+        project: ProjectId,
+        operation: Uuid,
+        actor: &shared::space_access::CentralIdentity,
+    ) -> Result<Option<domain::project_spaces::StoredProjectSpaceOperation>, AppError> {
+        crate::project_spaces::operation(self.db.as_ref(), project, operation, actor).await
+    }
+    async fn replace_project_spaces(
+        &self,
+        project: ProjectId,
+        change: &domain::project_spaces::ReplaceProjectSpaces,
+        permit: &domain::project_spaces::SpaceWritePermit,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        crate::project_spaces::replace(self.db.raw(), project, change, permit).await
+    }
+    async fn project_space_contexts(
+        &self,
+        projects: &[shared::space_access::ProjectRef],
+    ) -> Result<Vec<shared::project_spaces::ProjectSpaceReadContext>, AppError> {
+        crate::project_spaces::contexts(self.db.as_ref(), projects).await
+    }
+    async fn project_space_context_page(
+        &self,
+        space: &shared::space_access::SpaceRef,
+        limit: u32,
+        offset: u32,
+    ) -> Result<domain::project_spaces::CanonicalProjectContextPage, AppError> {
+        crate::project_spaces::context_page(self.db.raw(), space, limit, offset).await
+    }
+    async fn project_space_projection_status(
+        &self,
+        project: ProjectId,
+    ) -> Result<domain::project_spaces::ProjectSpaceProjectionStatus, AppError> {
+        crate::project_space_outbox::current_status(self.db.raw(), project).await
+    }
+    async fn reconcile_project_spaces(
+        &self,
+        project: ProjectId,
+        permit: &domain::project_spaces::SpaceWritePermit,
+    ) -> Result<domain::project_spaces::ProjectSpaceProjectionStatus, AppError> {
+        crate::project_space_outbox::reconcile(self.db.raw(), project, permit).await
+    }
+    async fn namespace_task_catalog(
+        &self,
+        namespace: &shared::resource_context::NamespaceRef,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::TaskCatalogItem>, AppError> {
+        let contexts = self.namespace_contexts(Some(namespace), 1, 0).await?;
+        let binding = &contexts
+            .first()
+            .ok_or_else(|| AppError::not_found("namespace_binding", namespace.namespace_id))?
+            .binding;
+        let rows=self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT id,key,summary FROM issues WHERE project_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id LIMIT 50 OFFSET $2",[binding.resource.resource_id.into(),offset.max(0).into()])).await.map_err(crate::db_error::map)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(shared::resource_context::TaskCatalogItem {
+                    namespace: namespace.clone(),
+                    task: shared::resource_context::TaskRef {
+                        tracker_instance_id: binding.resource.instance_id,
+                        task_id: row.try_get("", "id").map_err(crate::db_error::map)?,
+                    },
+                    task_key: row.try_get("", "key").map_err(crate::db_error::map)?,
+                    label: row.try_get("", "summary").map_err(crate::db_error::map)?,
+                })
+            })
+            .collect()
+    }
+    async fn namespace_available_resources(
+        &self,
+        accessible_projects: &[ProjectId],
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
+        let instance = std::env::var("TT_NAMESPACE__INSTANCE_ID")
+            .ok()
+            .and_then(|value| value.parse::<uuid::Uuid>().ok())
+            .filter(|id| !id.is_nil())
+            .ok_or_else(|| AppError::Unavailable("namespace_owner_not_configured".into()))?;
+        let statement = namespace_available_resources_statement(accessible_projects, limit, offset);
+        let rows = self
+            .db
+            .query_all(statement)
+            .await
+            .map_err(crate::db_error::map)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(shared::resource_context::ResourceCatalogItem {
+                    resource: shared::resource_context::ResourceRef {
+                        kind: shared::resource_context::ResourceKind::TrackerProject,
+                        instance_id: instance,
+                        resource_id: row.try_get("", "id").map_err(crate::db_error::map)?,
+                    },
+                    label: row.try_get("", "name").map_err(crate::db_error::map)?,
+                    resource_key: row.try_get("", "key").map_err(crate::db_error::map)?,
+                })
+            })
+            .collect()
+    }
+    async fn namespace_stats(
+        &self,
+        project: ProjectId,
+    ) -> Result<shared::resource_context::ResourceStats, AppError> {
+        let binding = namespace::binding(self.db.raw(), project)
+            .await?
+            .ok_or_else(|| AppError::not_found("namespace_binding", project))?;
+        let row=self.db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT (SELECT count(*) FROM issues WHERE project_id=$1 AND deleted_at IS NULL) AS tasks,(SELECT count(*) FROM project_members WHERE project_id=$1) AS team",[project.as_uuid().into()])).await.map_err(crate::db_error::map)?.ok_or_else(|| AppError::Unavailable("namespace_stats_not_available".into()))?;
+        Ok(shared::resource_context::ResourceStats {
+            binding,
+            counters: std::collections::BTreeMap::from([
+                (
+                    "tasks".into(),
+                    row.try_get("", "tasks").map_err(crate::db_error::map)?,
+                ),
+                (
+                    "team".into(),
+                    row.try_get("", "team").map_err(crate::db_error::map)?,
+                ),
+            ]),
+        })
+    }
+    async fn namespace_contexts(
+        &self,
+        namespace: Option<&shared::resource_context::NamespaceRef>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
+        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(crate::db_error::map)?;
+        rows.into_iter()
+            .map(|row| {
+                let command: shared::resource_context::OwnerCommand = serde_json::from_value(
+                    row.try_get("", "command").map_err(crate::db_error::map)?,
+                )
+                .map_err(|_| AppError::Unavailable("invalid_namespace_projection".into()))?;
+                namespace::validate_projection(&command)?;
+                Ok(shared::resource_context::ResourceContextSummary {
+                    binding: command
+                        .readback(row.try_get("", "drained").map_err(crate::db_error::map)?),
+                    label: row.try_get("", "name").map_err(crate::db_error::map)?,
+                    resource_key: row.try_get("", "key").map_err(crate::db_error::map)?,
+                })
+            })
+            .collect()
+    }
+    async fn issue_creation_ticket(
+        &self,
+        project: ProjectId,
+        actor: UserId,
+        operation: uuid::Uuid,
+        payload: &serde_json::Value,
+        allocate: bool,
+    ) -> Result<Option<domain::IssueCreationTicket>, AppError> {
+        let tx = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
+        tx.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
+            [operation.to_string().into()],
+        ))
+        .await
+        .map_err(crate::db_error::map)?;
+        let mut row = tx
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT * FROM issue_creation_receipts WHERE operation_id=$1",
+                [operation.into()],
+            ))
+            .await
+            .map_err(crate::db_error::map)?;
+        if row.is_none() && allocate {
+            let issue_id = uuid::Uuid::new_v4();
+            row = tx.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO issue_creation_receipts(operation_id,project_id,actor_id,payload,issue_id,number) VALUES($1,$2,$3,$4,$5,allocate_project_issue_number($2)) RETURNING *",[operation.into(),project.as_uuid().into(),actor.as_uuid().into(),payload.clone().into(),issue_id.into()])).await.map_err(crate::db_error::map)?;
+        }
+        let result = if let Some(row) = row {
+            if row
+                .try_get::<uuid::Uuid>("", "project_id")
+                .map_err(crate::db_error::map)?
+                != project.as_uuid()
+                || row
+                    .try_get::<uuid::Uuid>("", "actor_id")
+                    .map_err(crate::db_error::map)?
+                    != actor.as_uuid()
+                || row
+                    .try_get::<serde_json::Value>("", "payload")
+                    .map_err(crate::db_error::map)?
+                    != *payload
+            {
+                return Err(AppError::conflict("issue_operation_payload_conflict"));
+            }
+            Some(domain::IssueCreationTicket {
+                issue_id: IssueId::from_uuid(
+                    row.try_get("", "issue_id").map_err(crate::db_error::map)?,
+                ),
+                number: u32::try_from(
+                    row.try_get::<i64>("", "number")
+                        .map_err(crate::db_error::map)?,
+                )
+                .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
+                completed: row.try_get("", "completed").map_err(crate::db_error::map)?,
+            })
+        } else {
+            None
+        };
+        tx.commit().await.map_err(crate::db_error::map)?;
+        Ok(result)
+    }
+
+    async fn advance_issue_creation_ticket(
+        &self,
+        project: ProjectId,
+        actor: UserId,
+        operation: uuid::Uuid,
+        payload: &serde_json::Value,
+        issue_id: IssueId,
+        expected_number: u32,
+    ) -> Result<domain::IssueCreationTicket, AppError> {
+        let tx = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
+        tx.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
+            [operation.to_string().into()],
+        ))
+        .await
+        .map_err(crate::db_error::map)?;
+        let row = tx.query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT project_id,actor_id,payload,issue_id,number,completed FROM issue_creation_receipts WHERE operation_id=$1 FOR UPDATE",
+            [operation.into()],
+        )).await.map_err(crate::db_error::map)?
+            .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
+        if row
+            .try_get::<uuid::Uuid>("", "project_id")
+            .map_err(crate::db_error::map)?
+            != project.as_uuid()
+            || row
+                .try_get::<uuid::Uuid>("", "actor_id")
+                .map_err(crate::db_error::map)?
+                != actor.as_uuid()
+            || row
+                .try_get::<serde_json::Value>("", "payload")
+                .map_err(crate::db_error::map)?
+                != *payload
+            || row
+                .try_get::<uuid::Uuid>("", "issue_id")
+                .map_err(crate::db_error::map)?
+                != issue_id.as_uuid()
+        {
+            return Err(AppError::conflict("issue_operation_payload_conflict"));
+        }
+        let current_number = row
+            .try_get::<i64>("", "number")
+            .map_err(crate::db_error::map)?;
+        let completed = row
+            .try_get::<bool>("", "completed")
+            .map_err(crate::db_error::map)?;
+        let row = if !completed && current_number == i64::from(expected_number) {
+            tx.query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE issue_creation_receipts SET number=allocate_project_issue_number(project_id) WHERE operation_id=$1 RETURNING issue_id,number,completed",
+                [operation.into()],
+            )).await.map_err(crate::db_error::map)?
+                .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?
+        } else {
+            row
+        };
+        let ticket = domain::IssueCreationTicket {
+            issue_id: IssueId::from_uuid(
+                row.try_get("", "issue_id").map_err(crate::db_error::map)?,
+            ),
+            number: u32::try_from(
+                row.try_get::<i64>("", "number")
+                    .map_err(crate::db_error::map)?,
+            )
+            .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
+            completed: row.try_get("", "completed").map_err(crate::db_error::map)?,
+        };
+        tx.commit().await.map_err(crate::db_error::map)?;
+        Ok(ticket)
+    }
+
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        let rows = project::Entity::find()
+            .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+            .order_by_asc(project::Column::Key)
+            .order_by_asc(project::Column::Id)
+            .limit(limit.clamp(1, 100))
+            .offset(offset)
+            .all(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
+        Ok(rows.into_iter().map(map_project).collect())
+    }
+    async fn namespace_binding(
+        &self,
+        id: ProjectId,
+    ) -> Result<Option<shared::resource_context::OwnerReadback>, AppError> {
+        namespace::binding(self.db.raw(), id).await
+    }
+    async fn apply_namespace(
+        &self,
+        command: &shared::resource_context::OwnerCommand,
+    ) -> Result<shared::resource_context::OwnerReadback, AppError> {
+        namespace::apply(self.db.raw(), command).await
+    }
+    async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError> {
+        let model = project::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
+        model
+            .map(map_project)
+            .ok_or_else(|| AppError::not_found("project", id))
+    }
+
+    async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError> {
+        let model = project::Entity::find()
+            .filter(project::Column::Key.eq(key.as_str()))
+            .one(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
+        model
+            .map(map_project)
+            .ok_or_else(|| AppError::not_found("project", key))
+    }
+
+    async fn list(&self, query: domain::ProjectQuery) -> Result<Vec<Project>, AppError> {
+        let mut select = project::Entity::find();
+        if let Some(owner_id) = query.owner_id {
+            select = select.filter(project::Column::OwnerId.eq(owner_id.as_uuid()));
+        }
+        if query.limit > 0 {
+            select = select.limit(query.limit);
+        }
+        if query.offset > 0 {
+            select = select.offset(query.offset);
+        }
+        select = select
+            .order_by_asc(project::Column::Key)
+            .order_by_asc(project::Column::Id);
+        let models = select.all(&*self.db).await.map_err(crate::db_error::map)?;
+        Ok(models.into_iter().map(map_project).collect())
+    }
+
+    async fn save(&self, project: &Project) -> Result<ProjectId, AppError> {
+        let active = project::ActiveModel {
+            id: Set(project.id.as_uuid()),
+            key: Set(project.key.to_string()),
+            name: Set(project.name.as_ref().to_string()),
+            description: Set(project.description.as_ref().map(|d| d.as_ref().to_string())),
+            owner_id: Set(project.owner_id.as_uuid()),
+            default_board_id: Set(project.default_board_id.as_uuid()),
+            created_at: Set(project.created_at),
+            updated_at: Set(shared::now()),
+        };
+        let exists = project::Entity::find_by_id(project.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?
+            .is_some();
+        if exists {
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
+        } else {
+            project::Entity::insert(active)
+                .exec(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
+        }
+        Ok(project.id)
+    }
+
+    async fn save_with_board(
+        &self,
+        project: &Project,
+        board: &Board,
+    ) -> Result<ProjectId, AppError> {
+        self.persist_project_with_board(project, board, None).await
+    }
+    async fn save_with_board_and_spaces(
+        &self,
+        project: &Project,
+        board: &Board,
+        spaces: &[shared::space_access::SpaceRef],
+        permit: &domain::project_spaces::SpaceWritePermit,
+    ) -> Result<ProjectId, AppError> {
+        permit.require_set(spaces)?;
+        self.persist_project_with_board(project, board, Some((spaces, permit)))
+            .await
     }
 
     async fn repository_links(
@@ -801,9 +1060,9 @@ impl ProjectRepository for ProjectRepo {
                 [project.as_uuid().into(), i64::from(offset).into()],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         rows.into_iter()
-            .map(|row| row.try_get("", "snapshot").map_err(AppError::database))
+            .map(|row| row.try_get("", "snapshot").map_err(crate::db_error::map))
             .collect()
     }
 
@@ -827,7 +1086,7 @@ impl ProjectRepository for ProjectRepo {
                 ],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -847,12 +1106,30 @@ impl ProjectRepository for ProjectRepo {
                 ],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
     async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        if self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT 1 FROM tracker_project_spaces WHERE project_id=$1 LIMIT 1",
+                [id.as_uuid().into()],
+            ))
+            .await
+            .map_err(crate::db_error::map)?
+            .is_some()
+        {
+            return Err(AppError::conflict("linked_project_requires_archive"));
+        }
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
         txn.execute(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             "DELETE FROM notifications \
@@ -861,20 +1138,20 @@ impl ProjectRepository for ProjectRepo {
             [sea_orm::Value::Uuid(Some(Box::new(id.as_uuid())))],
         ))
         .await
-        .map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
         issue::Entity::delete_many()
             .filter(issue::Column::ProjectId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let res = project::Entity::delete_by_id(id.as_uuid())
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if res.rows_affected == 0 {
             return Err(AppError::not_found("project", id));
         }
-        txn.commit().await.map_err(AppError::database)?;
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -887,9 +1164,9 @@ impl ProjectRepository for ProjectRepo {
                 [sea_orm::Value::Uuid(Some(Box::new(project_id.as_uuid())))],
             ))
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .ok_or_else(|| AppError::Internal("allocator returned no row".into()))?;
-        let number: i64 = row.try_get("", "number").map_err(AppError::database)?;
+        let number: i64 = row.try_get("", "number").map_err(crate::db_error::map)?;
         u32::try_from(number).map_err(|_| AppError::invalid_input("issue number overflow"))
     }
 }
@@ -922,7 +1199,7 @@ fn namespace_available_resources_statement(
 }
 
 struct IssueRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 impl IssueRepo {
@@ -1038,7 +1315,7 @@ impl IssueRepo {
         let rows = <issue::Model as FromQueryResult>::find_by_statement(stmt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(rows.into_iter().map(map_issue).collect())
     }
 
@@ -1087,9 +1364,9 @@ impl IssueRepo {
 #[async_trait]
 impl IssueRepository for IssueRepo {
     async fn repository_links(&self, task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
-        let rows=self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT snapshot FROM task_repository_links WHERE issue_id=$1 ORDER BY created_at,repository_id LIMIT 100",[sea_orm::Value::Uuid(Some(Box::new(task.as_uuid())))])).await.map_err(AppError::database)?;
+        let rows=self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT snapshot FROM task_repository_links WHERE issue_id=$1 ORDER BY created_at,repository_id LIMIT 100",[sea_orm::Value::Uuid(Some(Box::new(task.as_uuid())))])).await.map_err(crate::db_error::map)?;
         rows.into_iter()
-            .map(|row| row.try_get("", "snapshot").map_err(AppError::database))
+            .map(|row| row.try_get("", "snapshot").map_err(crate::db_error::map))
             .collect()
     }
     async fn link_repository(
@@ -1099,7 +1376,7 @@ impl IssueRepository for IssueRepo {
         repository: &domain::task_repositories::RepositoryRef,
         snapshot: &serde_json::Value,
     ) -> Result<(), AppError> {
-        self.db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"INSERT INTO task_repository_links(issue_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(issue_id,forge_instance_id,repository_id) DO NOTHING",vec![sea_orm::Value::Uuid(Some(Box::new(task.as_uuid()))),sea_orm::Value::Uuid(Some(Box::new(repository.forge_instance_id))),sea_orm::Value::Uuid(Some(Box::new(repository.repository_id))),snapshot.clone().into(),sea_orm::Value::Uuid(Some(Box::new(actor.as_uuid())))])).await.map_err(AppError::database)?;
+        self.db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"INSERT INTO task_repository_links(issue_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(issue_id,forge_instance_id,repository_id) DO NOTHING",vec![sea_orm::Value::Uuid(Some(Box::new(task.as_uuid()))),sea_orm::Value::Uuid(Some(Box::new(repository.forge_instance_id))),sea_orm::Value::Uuid(Some(Box::new(repository.repository_id))),snapshot.clone().into(),sea_orm::Value::Uuid(Some(Box::new(actor.as_uuid())))])).await.map_err(crate::db_error::map)?;
         Ok(())
     }
     async fn status_category_counts(
@@ -1111,11 +1388,13 @@ impl IssueRepository for IssueRepo {
             .iter()
             .map(|id| sea_orm::Value::Uuid(Some(Box::new(id.as_uuid()))))
             .collect::<Vec<_>>();
-        let rows = self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT i.project_id,s.category,count(*)::bigint AS count FROM issues i JOIN statuses s ON s.id=i.status_id WHERE i.project_id=ANY($1) AND i.deleted_at IS NULL GROUP BY i.project_id,s.category",[sea_orm::Value::Array(sea_orm::sea_query::ArrayType::Uuid,Some(Box::new(values)))])).await.map_err(AppError::database)?;
+        let rows = self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT i.project_id,s.category,count(*)::bigint AS count FROM issues i JOIN statuses s ON s.id=i.status_id WHERE i.project_id=ANY($1) AND i.deleted_at IS NULL GROUP BY i.project_id,s.category",[sea_orm::Value::Array(sea_orm::sea_query::ArrayType::Uuid,Some(Box::new(values)))])).await.map_err(crate::db_error::map)?;
         let mut result = std::collections::HashMap::new();
         for row in rows {
-            let project: Uuid = row.try_get("", "project_id").map_err(AppError::database)?;
-            let category: String = row.try_get("", "category").map_err(AppError::database)?;
+            let project: Uuid = row
+                .try_get("", "project_id")
+                .map_err(crate::db_error::map)?;
+            let category: String = row.try_get("", "category").map_err(crate::db_error::map)?;
             let index = match map_status_category(&category)
                 .ok_or_else(|| AppError::Internal("invalid_status_category".into()))?
             {
@@ -1123,7 +1402,7 @@ impl IssueRepository for IssueRepo {
                 StatusCategory::InProgress => 1,
                 StatusCategory::Done => 2,
             };
-            let count: i64 = row.try_get("", "count").map_err(AppError::database)?;
+            let count: i64 = row.try_get("", "count").map_err(crate::db_error::map)?;
             result
                 .entry(ProjectId::from_uuid(project))
                 .or_insert([0, 0, 0])[index] += count;
@@ -1140,7 +1419,12 @@ impl IssueRepository for IssueRepo {
         guard: &domain::TransitionGuard,
     ) -> Result<(), AppError> {
         use sea_orm::Statement;
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
         // Serialize capacity checks per target column.
         let lock_key = Self::wip_lock_key(to_status_id);
         txn.execute(Statement::from_sql_and_values(
@@ -1149,7 +1433,7 @@ impl IssueRepository for IssueRepo {
             [lock_key.into()],
         ))
         .await
-        .map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
         // Re-count inside the transaction (READ COMMITTED snapshot starts now).
         let count_stmt = Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
@@ -1159,7 +1443,7 @@ impl IssueRepository for IssueRepo {
         let row: Option<i64> = txn
             .query_one(count_stmt)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .map(|r| r.try_get::<i64>("", "c").unwrap_or(0));
         let live_guard = domain::TransitionGuard {
             target_count: row.unwrap_or(0) as u64,
@@ -1193,8 +1477,8 @@ impl IssueRepository for IssueRepo {
             ],
         ))
         .await
-        .map_err(AppError::database)?;
-        txn.commit().await.map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -1203,7 +1487,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_issue)
             .ok_or_else(|| AppError::not_found("issue", id))
@@ -1213,7 +1497,7 @@ impl IssueRepository for IssueRepo {
         let model = issue::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_issue)
             .ok_or_else(|| AppError::not_found("issue", id))
@@ -1224,7 +1508,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::Key.eq(key.to_string()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .map(map_issue)
             .ok_or_else(|| AppError::not_found("issue", key))
     }
@@ -1234,7 +1518,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_issue)
             .ok_or_else(|| AppError::not_found("issue", key))
@@ -1324,7 +1608,7 @@ impl IssueRepository for IssueRepo {
         if query.offset > 0 {
             select = select.offset(query.offset);
         }
-        let models = select.all(&*self.db).await.map_err(AppError::database)?;
+        let models = select.all(&*self.db).await.map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_issue).collect())
     }
 
@@ -1339,7 +1623,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .count(&*self.db)
             .await
-            .map_err(AppError::database)
+            .map_err(crate::db_error::map)
     }
 
     async fn count_backlog(
@@ -1354,7 +1638,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .count(&*self.db)
             .await
-            .map_err(AppError::database)
+            .map_err(crate::db_error::map)
     }
 
     async fn list_backlog_page(
@@ -1375,7 +1659,7 @@ impl IssueRepository for IssueRepo {
             .offset(offset)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_issue).collect())
     }
 
@@ -1383,7 +1667,7 @@ impl IssueRepository for IssueRepo {
         let exists = issue::Entity::find_by_id(issue.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .is_some();
         let active = issue_active_model(issue);
         if exists {
@@ -1392,10 +1676,15 @@ impl IssueRepository for IssueRepo {
                 .await
                 .map_err(crate::sdlc::map_db)?;
         } else {
-            let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+            let txn = self
+                .db
+                .as_ref()
+                .begin()
+                .await
+                .map_err(crate::db_error::map)?;
             Self::advance_issue_counter(&txn, issue).await?;
-            active.insert(&txn).await.map_err(AppError::database)?;
-            txn.commit().await.map_err(AppError::database)?;
+            active.insert(&txn).await.map_err(crate::db_error::map)?;
+            txn.commit().await.map_err(crate::db_error::map)?;
         }
         Ok(issue.id)
     }
@@ -1406,21 +1695,26 @@ impl IssueRepository for IssueRepo {
         status_history: &IssueStatusHistory,
         custom_field_values: &[(CustomFieldId, serde_json::Value)],
     ) -> Result<IssueId, AppError> {
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
         Self::advance_issue_counter(&txn, issue).await?;
         issue_active_model(issue)
             .insert(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_status_history_active_model(status_history)
             .insert(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         for (field_id, value) in custom_field_values {
             custom_field_value_active_model(issue.id, *field_id, value.clone())
                 .insert(&txn)
                 .await
-                .map_err(AppError::database)?;
+                .map_err(crate::db_error::map)?;
         }
         txn.execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -1428,8 +1722,8 @@ impl IssueRepository for IssueRepo {
             [issue.id.as_uuid().into()],
         ))
         .await
-        .map_err(AppError::database)?;
-        txn.commit().await.map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(issue.id)
     }
 
@@ -1441,7 +1735,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if res.rows_affected == 0 {
             // Either the issue doesn't exist or it's already deleted.
             return Err(AppError::not_found("issue", id));
@@ -1460,13 +1754,13 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_not_null())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if res.rows_affected == 0 {
             // Distinguish "not found" from "not deleted" for a better error message.
             let exists = issue::Entity::find_by_id(id.as_uuid())
                 .one(&*self.db)
                 .await
-                .map_err(AppError::database)?;
+                .map_err(crate::db_error::map)?;
             if exists.is_some() {
                 return Err(AppError::invalid_input(
                     "issue is not deleted; nothing to restore",
@@ -1482,37 +1776,49 @@ impl IssueRepository for IssueRepo {
         // All child deletions and the issue row itself run in a single
         // transaction so a mid-cascade failure cannot leave the trashed issue
         // alive with partially destroyed data.
-        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let txn = self
+            .db
+            .as_ref()
+            .begin()
+            .await
+            .map_err(crate::db_error::map)?;
         // Verify the issue exists and is trashed.
         let exists = issue::Entity::find()
             .filter(issue::Column::Id.eq(id.as_uuid()))
             .filter(issue::Column::DeletedAt.is_not_null())
             .one(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if exists.is_none() {
             return Err(AppError::not_found("issue", id));
         }
+        txn.query_one(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Postgres,
+            "SELECT tracker_begin_issue_purge($1)",
+            [id.as_uuid().into()],
+        ))
+        .await
+        .map_err(crate::db_error::map)?;
         comment::Entity::delete_many()
             .filter(comment::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         worklog::Entity::delete_many()
             .filter(worklog::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         attachment::Entity::delete_many()
             .filter(attachment::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_label::Entity::delete_many()
             .filter(issue_label::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_link::Entity::delete_many()
             .filter(
                 sea_orm::Condition::any()
@@ -1521,47 +1827,47 @@ impl IssueRepository for IssueRepo {
             )
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_status_history::Entity::delete_many()
             .filter(issue_status_history::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_custom_field_value::Entity::delete_many()
             .filter(issue_custom_field_value::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_vote::Entity::delete_many()
             .filter(issue_vote::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         issue_watcher::Entity::delete_many()
             .filter(issue_watcher::Column::IssueId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         notification::Entity::delete_many()
             .filter(notification::Column::EntityType.eq("issue"))
             .filter(notification::Column::EntityId.eq(id.as_uuid()))
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         // Finally, hard-delete the issue row.
         issue::Entity::delete_many()
             .filter(issue::Column::Id.eq(id.as_uuid()))
             .filter(issue::Column::DeletedAt.is_not_null())
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
-        txn.commit().await.map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
+        txn.commit().await.map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct BoardRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -1570,7 +1876,7 @@ impl BoardRepository for BoardRepo {
         let model = board::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_board)
             .ok_or_else(|| AppError::not_found("board", id))
@@ -1581,7 +1887,7 @@ impl BoardRepository for BoardRepo {
             .filter(board::Column::ProjectId.eq(project_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_board)
             .ok_or_else(|| AppError::not_found("board", project_id))
@@ -1595,7 +1901,7 @@ impl BoardRepository for BoardRepo {
             .filter(project::Column::Key.eq(project_key.as_str()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let project_id = project
             .map(|p| p.id)
             .ok_or_else(|| AppError::not_found("project", project_key))?;
@@ -1603,7 +1909,7 @@ impl BoardRepository for BoardRepo {
             .filter(board::Column::ProjectId.eq(project_id))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_board)
             .ok_or_else(|| AppError::not_found("board", project_key))
@@ -1632,13 +1938,16 @@ impl BoardRepository for BoardRepo {
             name: Set(board.name.as_ref().to_string()),
             columns: Set(columns),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct SprintRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -1654,7 +1963,7 @@ impl SprintRepository for SprintRepo {
             .filter(sprint::Column::State.eq("Active"))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(model.map(map_sprint))
     }
 
@@ -1662,7 +1971,7 @@ impl SprintRepository for SprintRepo {
         let model = sprint::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_sprint)
             .ok_or_else(|| AppError::not_found("sprint", id))
@@ -1673,7 +1982,7 @@ impl SprintRepository for SprintRepo {
             .filter(sprint::Column::ProjectId.eq(project_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_sprint).collect())
     }
 
@@ -1681,7 +1990,7 @@ impl SprintRepository for SprintRepo {
         let exists = sprint::Entity::find_by_id(sprint.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .is_some();
         let active = sprint::ActiveModel {
             id: Set(sprint.id.as_uuid()),
@@ -1694,9 +2003,15 @@ impl SprintRepository for SprintRepo {
             velocity: Set(sprint.velocity),
         };
         if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         }
         Ok(sprint.id)
     }
@@ -1852,7 +2167,7 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
 }
 
 struct AttachmentRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -1865,8 +2180,15 @@ impl AttachmentRepository for AttachmentRepo {
         upload: domain::attachment_artifact::ArtifactUpload,
         storage: &dyn domain::FileStorage,
     ) -> Result<Attachment, AppError> {
-        crate::sdlc::attachment_artifacts::publish(&self.db, config, actor, issue, upload, storage)
-            .await
+        crate::sdlc::attachment_artifacts::publish(
+            self.db.raw(),
+            config,
+            actor,
+            issue,
+            upload,
+            storage,
+        )
+        .await
     }
     async fn list_artifacts(
         &self,
@@ -1874,7 +2196,7 @@ impl AttachmentRepository for AttachmentRepo {
         actor: &domain::sdlc::Principal,
         issue: IssueId,
     ) -> Result<Vec<Attachment>, AppError> {
-        crate::sdlc::attachment_artifacts::list(&self.db, config, actor, issue).await
+        crate::sdlc::attachment_artifacts::list(self.db.raw(), config, actor, issue).await
     }
     async fn download_artifact(
         &self,
@@ -1883,20 +2205,20 @@ impl AttachmentRepository for AttachmentRepo {
         id: AttachmentId,
         storage: &dyn domain::FileStorage,
     ) -> Result<(Attachment, Vec<u8>), AppError> {
-        crate::sdlc::attachment_artifacts::download(&self.db, config, actor, id, storage).await
+        crate::sdlc::attachment_artifacts::download(self.db.raw(), config, actor, id, storage).await
     }
     async fn authorize_sealed_human_read(
         &self,
         issue: IssueId,
         requester: UserId,
     ) -> Result<(), AppError> {
-        crate::sdlc::attachment_artifacts::human_access(&self.db, issue, requester).await
+        crate::sdlc::attachment_artifacts::human_access(self.db.raw(), issue, requester).await
     }
     async fn get_by_id(&self, id: AttachmentId) -> Result<Attachment, AppError> {
         let model = attachment::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_attachment)
             .ok_or_else(|| AppError::not_found("attachment", id))
@@ -1908,7 +2230,7 @@ impl AttachmentRepository for AttachmentRepo {
             .order_by_asc(attachment::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_attachment).collect())
     }
 
@@ -1926,7 +2248,10 @@ impl AttachmentRepository for AttachmentRepo {
             storage_key: Set(attachment.storage_key.as_ref().to_string()),
             created_at: Set(attachment.created_at),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(attachment.id)
     }
 
@@ -1934,14 +2259,14 @@ impl AttachmentRepository for AttachmentRepo {
         if let Some(item) = attachment::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
         {
             app::attachment_artifacts::deny_sealed_delete(&item.storage_key)?;
         }
         attachment::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -1960,7 +2285,7 @@ pub(crate) fn map_attachment(m: attachment::Model) -> Attachment {
 }
 
 struct LabelRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn map_label(m: label::Model) -> Label {
@@ -1978,7 +2303,7 @@ impl LabelRepository for LabelRepo {
         let model = label::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_label)
             .ok_or_else(|| AppError::not_found("label", id))
@@ -1990,7 +2315,7 @@ impl LabelRepository for LabelRepo {
             .order_by_asc(label::Column::Name)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_label).collect())
     }
 
@@ -1998,7 +2323,7 @@ impl LabelRepository for LabelRepo {
         let existing = label::Entity::find_by_id(label.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let active = label::ActiveModel {
             id: Set(label.id.as_uuid()),
             project_id: Set(label.project_id.as_uuid()),
@@ -2012,9 +2337,15 @@ impl LabelRepository for LabelRepo {
         // Explicit insert/update branch: a new entity with a client-generated UUID
         // must INSERT, not UPDATE-by-id (which matches zero rows).
         let saved = if existing.is_some() {
-            active.update(&*self.db).await.map_err(AppError::database)?
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         };
         Ok(LabelId::from_uuid(saved.id))
     }
@@ -2023,7 +2354,7 @@ impl LabelRepository for LabelRepo {
         label::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2032,7 +2363,7 @@ impl LabelRepository for LabelRepo {
             .filter(issue_label::Column::IssueId.eq(issue_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| LabelId::from_uuid(m.label_id))
@@ -2044,7 +2375,7 @@ impl LabelRepository for LabelRepo {
             .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| IssueId::from_uuid(m.issue_id))
@@ -2068,7 +2399,7 @@ impl LabelRepository for LabelRepo {
             .filter(issue_label::Column::IssueId.is_in(raw_issue_ids))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let label_ids = links
             .iter()
             .map(|link| link.label_id)
@@ -2082,7 +2413,7 @@ impl LabelRepository for LabelRepo {
             .order_by_asc(label::Column::Name)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .into_iter()
             .map(map_label)
             .map(|label| (label.id, label))
@@ -2107,7 +2438,7 @@ impl LabelRepository for LabelRepo {
             .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if existing.is_some() {
             return Ok(());
         }
@@ -2115,7 +2446,10 @@ impl LabelRepository for LabelRepo {
             issue_id: Set(issue_id.as_uuid()),
             label_id: Set(label_id.as_uuid()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2125,13 +2459,13 @@ impl LabelRepository for LabelRepo {
             .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct CustomFieldRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn map_custom_field(m: custom_field::Model) -> CustomField {
@@ -2159,7 +2493,7 @@ impl CustomFieldRepository for CustomFieldRepo {
         custom_field::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .map(map_custom_field)
             .ok_or_else(|| AppError::not_found("custom field", id))
     }
@@ -2170,7 +2504,7 @@ impl CustomFieldRepository for CustomFieldRepo {
             .order_by_asc(custom_field::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_custom_field).collect())
     }
 
@@ -2178,7 +2512,7 @@ impl CustomFieldRepository for CustomFieldRepo {
         let existing = custom_field::Entity::find_by_id(field.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let active = custom_field::ActiveModel {
             id: Set(field.id.as_uuid()),
             project_id: Set(field.project_id.as_uuid()),
@@ -2189,9 +2523,15 @@ impl CustomFieldRepository for CustomFieldRepo {
             created_at: Set(field.created_at),
         };
         let saved = if existing.is_some() {
-            active.update(&*self.db).await.map_err(AppError::database)?
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         };
         Ok(CustomFieldId::from_uuid(saved.id))
     }
@@ -2200,7 +2540,7 @@ impl CustomFieldRepository for CustomFieldRepo {
         custom_field::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2215,16 +2555,22 @@ impl CustomFieldRepository for CustomFieldRepo {
             .filter(issue_custom_field_value::Column::FieldId.eq(field_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let active = issue_custom_field_value::ActiveModel {
             issue_id: Set(issue_id.as_uuid()),
             field_id: Set(field_id.as_uuid()),
             value: Set(value.clone()),
         };
         if existing.is_some() {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         }
         Ok(())
     }
@@ -2239,7 +2585,7 @@ impl CustomFieldRepository for CustomFieldRepo {
             .filter(issue_custom_field_value::Column::FieldId.eq(field_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2251,7 +2597,7 @@ impl CustomFieldRepository for CustomFieldRepo {
             .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| CustomFieldValue {
@@ -2267,13 +2613,13 @@ impl CustomFieldRepository for CustomFieldRepo {
             .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct IssueLinkRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2282,7 +2628,7 @@ impl IssueLinkRepository for IssueLinkRepo {
         let model = issue_link::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(|m| IssueLink {
                 id: IssueLinkId::from_uuid(m.id),
@@ -2301,7 +2647,10 @@ impl IssueLinkRepository for IssueLinkRepo {
             link_type: Set(link.link_type.as_str().to_string()),
             created_at: Set(chrono::Utc::now().fixed_offset()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(link.id)
     }
 
@@ -2314,7 +2663,7 @@ impl IssueLinkRepository for IssueLinkRepo {
             )
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| IssueLink {
@@ -2330,13 +2679,13 @@ impl IssueLinkRepository for IssueLinkRepo {
         issue_link::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct CommentRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2345,7 +2694,7 @@ impl CommentRepository for CommentRepo {
         let model = comment::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_comment)
             .ok_or_else(|| AppError::not_found("comment", id))
@@ -2357,7 +2706,7 @@ impl CommentRepository for CommentRepo {
             .order_by_asc(comment::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_comment).collect())
     }
 
@@ -2374,7 +2723,7 @@ impl CommentRepository for CommentRepo {
             .limit(limit)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_comment).collect())
     }
 
@@ -2382,7 +2731,7 @@ impl CommentRepository for CommentRepo {
         let exists = comment::Entity::find_by_id(comment_item.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .is_some();
         let active = comment::ActiveModel {
             id: Set(comment_item.id.as_uuid()),
@@ -2393,9 +2742,15 @@ impl CommentRepository for CommentRepo {
             updated_at: Set(shared::now()),
         };
         if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         }
         Ok(comment_item.id)
     }
@@ -2404,7 +2759,7 @@ impl CommentRepository for CommentRepo {
         comment::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -2421,7 +2776,7 @@ fn map_comment(m: comment::Model) -> Comment {
 }
 
 struct WorklogRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2430,7 +2785,7 @@ impl WorklogRepository for WorklogRepo {
         let model = worklog::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_worklog)
             .ok_or_else(|| AppError::not_found("worklog", id))
@@ -2449,7 +2804,7 @@ impl WorklogRepository for WorklogRepo {
             .limit(limit)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_worklog).collect())
     }
 
@@ -2463,7 +2818,7 @@ impl WorklogRepository for WorklogRepo {
         let exists = worklog::Entity::find_by_id(worklog_item.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .is_some();
         let active = worklog::ActiveModel {
             id: Set(worklog_item.id.as_uuid()),
@@ -2479,9 +2834,15 @@ impl WorklogRepository for WorklogRepo {
             updated_at: Set(shared::now()),
         };
         if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?;
         }
         Ok(worklog_item.id)
     }
@@ -2490,7 +2851,7 @@ impl WorklogRepository for WorklogRepo {
         worklog::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -2509,7 +2870,7 @@ fn map_worklog(m: worklog::Model) -> Worklog {
 }
 
 struct ProjectMemberRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2519,7 +2880,7 @@ impl ProjectMemberRepository for ProjectMemberRepo {
             .filter(project_member::Column::ProjectId.eq(project_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_project_member).collect())
     }
 
@@ -2528,7 +2889,7 @@ impl ProjectMemberRepository for ProjectMemberRepo {
             .filter(project_member::Column::UserId.eq(user_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_project_member).collect())
     }
 
@@ -2536,7 +2897,7 @@ impl ProjectMemberRepository for ProjectMemberRepo {
         let model = project_member::Entity::find_by_id((project_id.as_uuid(), user_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_project_member)
             .ok_or_else(|| AppError::not_found("project member", project_id))
@@ -2574,7 +2935,7 @@ impl ProjectMemberRepository for ProjectMemberRepo {
                 [],
             ))
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2582,7 +2943,7 @@ impl ProjectMemberRepository for ProjectMemberRepo {
         project_member::Entity::delete_by_id((project_id.as_uuid(), user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -2597,7 +2958,7 @@ fn map_project_member(m: project_member::Model) -> ProjectMember {
 }
 
 struct StatusRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2607,7 +2968,7 @@ impl StatusRepository for StatusRepo {
             .order_by_asc(status::Column::Position)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_status).collect())
     }
 
@@ -2616,7 +2977,7 @@ impl StatusRepository for StatusRepo {
             .filter(status::Column::IsDefault.eq(true))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_status)
             .ok_or_else(|| AppError::not_found("default status", "default"))
@@ -2626,7 +2987,7 @@ impl StatusRepository for StatusRepo {
         let model = status::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_status)
             .ok_or_else(|| AppError::not_found("status", id))
@@ -2634,7 +2995,7 @@ impl StatusRepository for StatusRepo {
 }
 
 struct TransitionRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2643,7 +3004,7 @@ impl WorkflowTransitionRepository for TransitionRepo {
         let models = workflow_transition::Entity::find()
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_transition).collect())
     }
 
@@ -2662,13 +3023,13 @@ impl WorkflowTransitionRepository for TransitionRepo {
             .filter(workflow_transition::Column::ToStatusId.eq(to_uuid))
             .count(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(count > 0)
     }
 }
 
 struct IssueTypeRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -2678,7 +3039,7 @@ impl IssueTypeRepository for IssueTypeRepo {
             .order_by_asc(issue_type::Column::HierarchyLevel)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_issue_type).collect())
     }
 
@@ -2686,7 +3047,7 @@ impl IssueTypeRepository for IssueTypeRepo {
         let model = issue_type::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_issue_type)
             .ok_or_else(|| AppError::not_found("issue type", id))
@@ -2694,11 +3055,29 @@ impl IssueTypeRepository for IssueTypeRepo {
 }
 
 struct NotificationRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait::async_trait]
 impl NotificationRepository for NotificationRepo {
+    async fn list_space_visible(
+        &self,
+        recipient: UserId,
+        spaces: &[shared::space_access::SpaceRef],
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<(Vec<Notification>, u64), AppError> {
+        resource_visibility::notifications(
+            self.db.raw(),
+            recipient,
+            spaces,
+            include_read,
+            limit,
+            offset,
+        )
+        .await
+    }
     async fn save(&self, notification: &Notification) -> Result<NotificationId, AppError> {
         let model = notification::ActiveModel {
             id: sea_orm::ActiveValue::Set(notification.id.as_uuid()),
@@ -2725,7 +3104,7 @@ impl NotificationRepository for NotificationRepo {
         notification::Entity::insert(model)
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(notification.id)
     }
 
@@ -2736,7 +3115,7 @@ impl NotificationRepository for NotificationRepo {
             .order_by_asc(notification::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_notification).collect())
     }
 
@@ -2759,7 +3138,7 @@ impl NotificationRepository for NotificationRepo {
             .limit(limit)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_notification).collect())
     }
 
@@ -2769,7 +3148,7 @@ impl NotificationRepository for NotificationRepo {
             .filter(notification::Column::IsRead.eq(false))
             .count(&*self.db)
             .await
-            .map_err(AppError::database)
+            .map_err(crate::db_error::map)
     }
 
     async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
@@ -2778,7 +3157,7 @@ impl NotificationRepository for NotificationRepo {
             .order_by_asc(notification::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_notification).collect())
     }
 
@@ -2794,7 +3173,7 @@ impl NotificationRepository for NotificationRepo {
             .filter(notification::Column::IsRead.eq(false))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if result.rows_affected == 0 {
             return Err(AppError::not_found("notification", id));
         }
@@ -2812,7 +3191,7 @@ impl NotificationRepository for NotificationRepo {
             .filter(notification::Column::IsRead.eq(false))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2831,7 +3210,7 @@ impl NotificationRepository for NotificationRepo {
             .filter(notification::Column::IsRead.eq(false))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -2855,7 +3234,7 @@ fn map_notification(m: notification::Model) -> Notification {
 }
 
 struct NotificationUserSettingsRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait::async_trait]
@@ -2864,7 +3243,7 @@ impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
         let model = notification_user_settings::Entity::find_by_id(user_id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .ok_or_else(|| AppError::not_found("notification settings", user_id))?;
         Ok(map_notification_user_settings(model))
     }
@@ -2895,7 +3274,7 @@ impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
             )
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -2912,7 +3291,7 @@ impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
             .filter(notification_user_settings::Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if result.rows_affected == 0 {
             return Err(AppError::not_found("notification settings", user_id));
         }
@@ -2938,7 +3317,7 @@ fn map_notification_user_settings(
 }
 
 struct IssueStatusHistoryRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn map_issue_status_history(m: issue_status_history::Model) -> IssueStatusHistory {
@@ -2962,7 +3341,7 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
             .order_by_asc(issue_status_history::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_issue_status_history).collect())
     }
 
@@ -2978,7 +3357,7 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
             .into_tuple()
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if issue_ids.is_empty() {
             return Ok(vec![]);
         }
@@ -2987,7 +3366,7 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
             .order_by_asc(issue_status_history::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_issue_status_history).collect())
     }
 
@@ -2996,17 +3375,25 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
         issue_status_history::Entity::insert(model)
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 struct AuditLogRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
 impl AuditLogRepository for AuditLogRepo {
+    async fn list_space_visible(
+        &self,
+        spaces: &[shared::space_access::SpaceRef],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
+        resource_visibility::audit(self.db.raw(), spaces, limit, offset).await
+    }
     async fn save(&self, entry: &AuditLog) -> Result<(), AppError> {
         audit_log::ActiveModel {
             id: Set(entry.id.as_uuid()),
@@ -3019,7 +3406,7 @@ impl AuditLogRepository for AuditLogRepo {
         }
         .insert(&*self.db)
         .await
-        .map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -3042,7 +3429,7 @@ impl AuditLogRepository for AuditLogRepo {
             .limit(limit)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_audit_log).collect())
     }
 }
@@ -3060,7 +3447,7 @@ fn map_audit_log(m: audit_log::Model) -> AuditLog {
 }
 
 struct SystemSettingRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -3069,7 +3456,7 @@ impl SystemSettingRepository for SystemSettingRepo {
         let model = system_setting::Entity::find_by_id(key)
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?
+            .map_err(crate::db_error::map)?
             .ok_or_else(|| AppError::not_found("system setting", key))?;
         Ok(map_system_setting(model))
     }
@@ -3079,7 +3466,7 @@ impl SystemSettingRepository for SystemSettingRepo {
             .order_by_asc(system_setting::Column::Key)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_system_setting).collect())
     }
 
@@ -3099,7 +3486,7 @@ impl SystemSettingRepository for SystemSettingRepo {
         )
         .exec(&*self.db)
         .await
-        .map_err(AppError::database)?;
+        .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -3113,7 +3500,7 @@ fn map_system_setting(m: system_setting::Model) -> SystemSetting {
 }
 
 struct WatcherRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -3124,7 +3511,7 @@ impl WatcherRepository for WatcherRepo {
             .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if existing.is_some() {
             return Ok(());
         }
@@ -3132,7 +3519,10 @@ impl WatcherRepository for WatcherRepo {
             issue_id: Set(issue_id.as_uuid()),
             user_id: Set(user_id.as_uuid()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -3142,7 +3532,7 @@ impl WatcherRepository for WatcherRepo {
             .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -3151,7 +3541,7 @@ impl WatcherRepository for WatcherRepo {
             .filter(issue_watcher::Column::IssueId.eq(issue_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| IssueWatcher {
@@ -3167,7 +3557,7 @@ impl WatcherRepository for WatcherRepo {
             .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
             .count(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(count > 0)
     }
 
@@ -3176,7 +3566,7 @@ impl WatcherRepository for WatcherRepo {
             .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| IssueWatcher {
@@ -3188,7 +3578,7 @@ impl WatcherRepository for WatcherRepo {
 }
 
 struct VoteRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 #[async_trait]
@@ -3199,7 +3589,7 @@ impl VoteRepository for VoteRepo {
             .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         if let Some(m) = existing {
             return Ok(IssueVote {
                 issue_id: IssueId::from_uuid(m.issue_id),
@@ -3213,7 +3603,10 @@ impl VoteRepository for VoteRepo {
             user_id: Set(user_id.as_uuid()),
             voted_at: Set(now),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        active
+            .insert(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
         Ok(IssueVote {
             issue_id,
             user_id,
@@ -3227,7 +3620,7 @@ impl VoteRepository for VoteRepo {
             .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 
@@ -3237,7 +3630,7 @@ impl VoteRepository for VoteRepo {
             .order_by_asc(issue_vote::Column::VotedAt)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models
             .into_iter()
             .map(|m| IssueVote {
@@ -3253,7 +3646,7 @@ impl VoteRepository for VoteRepo {
             .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
             .count(&*self.db)
             .await
-            .map_err(AppError::database)
+            .map_err(crate::db_error::map)
     }
 
     async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
@@ -3262,7 +3655,7 @@ impl VoteRepository for VoteRepo {
             .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
             .count(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(count > 0)
     }
 }
@@ -3272,7 +3665,7 @@ impl VoteRepository for VoteRepo {
 // ---------------------------------------------------------------------------
 
 struct ProjectComponentRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn map_project_component(m: project_component::Model) -> ProjectComponent {
@@ -3291,7 +3684,7 @@ impl ProjectComponentRepository for ProjectComponentRepo {
         let model = project_component::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_project_component)
             .ok_or_else(|| AppError::not_found("component", id))
@@ -3306,7 +3699,7 @@ impl ProjectComponentRepository for ProjectComponentRepo {
             .order_by_asc(project_component::Column::Name)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_project_component).collect())
     }
 
@@ -3314,7 +3707,7 @@ impl ProjectComponentRepository for ProjectComponentRepo {
         let existing = project_component::Entity::find_by_id(component.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let active = project_component::ActiveModel {
             id: Set(component.id.as_uuid()),
             project_id: Set(component.project_id.as_uuid()),
@@ -3329,9 +3722,15 @@ impl ProjectComponentRepository for ProjectComponentRepo {
                 .unwrap_or_else(|| component.created_at)),
         };
         let saved = if existing.is_some() {
-            active.update(&*self.db).await.map_err(AppError::database)?
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         };
         Ok(ProjectComponentId::from_uuid(saved.id))
     }
@@ -3340,7 +3739,7 @@ impl ProjectComponentRepository for ProjectComponentRepo {
         project_component::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
@@ -3350,7 +3749,7 @@ impl ProjectComponentRepository for ProjectComponentRepo {
 // ---------------------------------------------------------------------------
 
 struct ProjectVersionRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn map_project_version(m: project_version::Model) -> ProjectVersion {
@@ -3371,7 +3770,7 @@ impl ProjectVersionRepository for ProjectVersionRepo {
         let model = project_version::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         model
             .map(map_project_version)
             .ok_or_else(|| AppError::not_found("version", id))
@@ -3386,7 +3785,7 @@ impl ProjectVersionRepository for ProjectVersionRepo {
             .order_by_asc(project_version::Column::Name)
             .all(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(models.into_iter().map(map_project_version).collect())
     }
 
@@ -3394,7 +3793,7 @@ impl ProjectVersionRepository for ProjectVersionRepo {
         let existing = project_version::Entity::find_by_id(version.id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         let active = project_version::ActiveModel {
             id: Set(version.id.as_uuid()),
             project_id: Set(version.project_id.as_uuid()),
@@ -3408,9 +3807,15 @@ impl ProjectVersionRepository for ProjectVersionRepo {
                 .unwrap_or_else(|| version.created_at)),
         };
         let saved = if existing.is_some() {
-            active.update(&*self.db).await.map_err(AppError::database)?
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?
+            active
+                .insert(&*self.db)
+                .await
+                .map_err(crate::db_error::map)?
         };
         Ok(ProjectVersionId::from_uuid(saved.id))
     }
@@ -3419,18 +3824,20 @@ impl ProjectVersionRepository for ProjectVersionRepo {
         project_version::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::db_error::map)?;
         Ok(())
     }
 }
 
 pub struct TotpRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 impl TotpRepo {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db: Arc::new(db) }
+        Self {
+            db: Arc::new(crate::guarded_db::GuardedDb::new(db)),
+        }
     }
 
     fn to_domain(m: &crate::entities::totp::Model) -> TotpConfig {
@@ -3582,12 +3989,14 @@ impl TotpRepository for TotpRepo {
 }
 
 pub struct PasswordResetRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 impl PasswordResetRepo {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db: Arc::new(db) }
+        Self {
+            db: Arc::new(crate::guarded_db::GuardedDb::new(db)),
+        }
     }
 }
 
@@ -3660,7 +4069,7 @@ impl domain::PasswordResetRepository for PasswordResetRepo {
 }
 
 pub struct OidcRepo {
-    db: Arc<DatabaseConnection>,
+    db: Arc<crate::guarded_db::GuardedDb>,
 }
 
 fn oidc_identity_from_row(row: crate::entities::oidc_identity::Model) -> domain::OidcIdentity {

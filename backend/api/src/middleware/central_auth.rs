@@ -3,11 +3,10 @@
 //! All JWKS/login mechanics live in `pdlc_auth_core::service_bridge`;
 //! this file only maps bridge outcomes to task-tracker types.
 
-use pdlc_auth_core::service_bridge::{BridgeOutcome, ServiceBridge};
+use pdlc_auth_core::service_bridge::BridgeOutcome;
 
 /// Env prefix: TT_AUTH__CENTRAL_{JWKS_URI,ISSUER,LOGIN_URL,TIMEOUT_SECS}.
-pub static BRIDGE: ServiceBridge =
-    ServiceBridge::for_application("TT_AUTH__CENTRAL", "task-tracker");
+pub use app::space_access::CENTRAL_BRIDGE as BRIDGE;
 
 /// Central-first bearer validation result, flattened for the middleware.
 pub enum CentralCheck {

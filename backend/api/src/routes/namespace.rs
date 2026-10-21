@@ -23,6 +23,7 @@ pub fn registered_machine(subject: &str) -> bool {
     [
         "TT_NAMESPACE__OWNER_SUBJECTS",
         "TT_NAMESPACE__READER_SUBJECTS",
+        "TT_SPACES__CONTEXT_READER_SUBJECTS",
     ]
     .iter()
     .any(|key| subjects(key).iter().any(|s| s == subject))
@@ -676,4 +677,90 @@ pub async fn link_repository(
         .link_repository(task.id, user, &repository, &snapshot)
         .await?;
     Ok(Json(link))
+}
+
+fn may_apply_space_owner_v2(ctx: &pdlc_auth_core::AuthContext, registered: bool) -> bool {
+    ctx.session_id.is_none() && registered && ctx.has_scope("task-tracker:write")
+}
+pub async fn owner_v2_auth(mut req: Request, next: Next) -> Result<Response, StatusCode> {
+    let token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let verified = crate::middleware::central_auth::BRIDGE
+        .try_verified_token(token)
+        .await
+        .map_err(|error| match error {
+            pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable
+            | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+            _ => StatusCode::UNAUTHORIZED,
+        })?;
+    let registered = subjects("TT_NAMESPACE__OWNER_SUBJECTS").contains(&verified.context.user_id);
+    if !may_apply_space_owner_v2(&verified.context, registered) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let validity = shared::space_access::AdmissionValidity::confirmed(
+        verified.lifetime.source_observed_at,
+        verified.lifetime.local_valid_until(),
+        i64::MAX,
+    )
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+    let authority = shared::space_lifecycle::SpaceOwnerAuthority::confirmed(
+        shared::space_access::CentralIdentity {
+            issuer: verified.issuer,
+            subject: verified.context.user_id,
+        },
+        validity,
+    )
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+    req.extensions_mut().insert(authority);
+    Ok(next.run(req).await)
+}
+#[utoipa::path(put,operation_id="tracker_space_owner_v2",path="/api/v2/spaces/{registry}/{space}/owner-state",tag="spaces-v2",params(("registry"=Uuid,Path),("space"=Uuid,Path)),request_body=shared::space_lifecycle::SpaceOwnerCommandV2,responses((status=200,body=shared::space_lifecycle::SpaceOwnerReadbackV2),(status=403,description="Registered owner PAT with exact Tracker write scope required"),(status=409,description="Operation/revision conflict")))]
+pub async fn apply_space_v2(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(authority): Extension<shared::space_lifecycle::SpaceOwnerAuthority>,
+    Path((registry, space)): Path<(Uuid, Uuid)>,
+    Json(command): Json<shared::space_lifecycle::SpaceOwnerCommandV2>,
+) -> Result<Json<shared::space_lifecycle::SpaceOwnerReadbackV2>, AppError> {
+    if registry != command.space.registry_instance_id || space != command.space.space_id {
+        return Err(AppError::invalid_input("space_ref_mismatch"));
+    }
+    let result = ctx
+        .repos
+        .projects
+        .apply_space_owner_v2(&command, &authority)
+        .await?;
+    if !authority.is_current() {
+        return Err(AppError::Forbidden);
+    }
+    Ok(Json(result))
+}
+#[cfg(test)]
+mod space_owner_v2_tests {
+    use super::*;
+    #[test]
+    fn owner_requires_registered_non_browser_and_exact_tracker_scope() {
+        let mut ctx = pdlc_auth_core::AuthContext {
+            user_id: "registered-owner".into(),
+            email: None,
+            role: Some("admin".into()),
+            scopes: HashSet::from(["task-tracker:write".into()]),
+            session_id: None,
+            token: "synthetic".into(),
+        };
+        assert!(may_apply_space_owner_v2(&ctx, true));
+        assert!(!may_apply_space_owner_v2(&ctx, false));
+        ctx.session_id = Some("browser".into());
+        assert!(!may_apply_space_owner_v2(&ctx, true));
+        ctx.session_id = None;
+        ctx.scopes = HashSet::from(["task-tracker:read".into()]);
+        assert!(!may_apply_space_owner_v2(&ctx, true));
+        ctx.scopes = HashSet::from(["wiki:write".into()]);
+        assert!(!may_apply_space_owner_v2(&ctx, true));
+    }
 }

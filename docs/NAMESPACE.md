@@ -40,6 +40,13 @@ PR/commits и точные CI checks. Wiki владеет document link; Tracker
 ограниченным reader. Сохранённые repository links читаются без Forge callback.
 Недоступность владельца показывается unavailable, а не пустым каталогом.
 
+Карточка общего проекта показывает архивный статус из confirmed local binding.
+Действия карточки используют тот же каталог по Resource UUID: управление жизненным
+циклом открывается в Admin по URL из runtime service catalog. Прямое удаление
+остаётся только у самостоятельного проекта Tracker. Пока каталог недоступен,
+загружается или возвращает неоднозначную привязку, удаление не предлагается.
+Отсутствие Admin UI URL не превращает общий проект в самостоятельный.
+
 Archive закрывает mutations всех старых и новых paths и физический delete
 managed Project. Restore сохраняет IDs. Foundation reservation без verified
 release не считается drained по истёкшему lease или `dispatch_allowed=false`;

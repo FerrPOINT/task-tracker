@@ -8,15 +8,18 @@ const MAX_NOTIFICATION_LIMIT: u64 = 50;
 
 pub struct NotificationServiceImpl {
     notifications: Arc<dyn domain::NotificationRepository>,
+    projects: Arc<dyn domain::ProjectRepository>,
     settings: Arc<dyn domain::UserNotificationSettingsRepository>,
 }
 
 impl NotificationServiceImpl {
     pub fn new(
         notifications: Arc<dyn domain::NotificationRepository>,
+        projects: Arc<dyn domain::ProjectRepository>,
         settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     ) -> Self {
         Self {
+            projects,
             notifications,
             settings,
         }
@@ -67,11 +70,31 @@ impl crate::context::NotificationService for NotificationServiceImpl {
                 "limit must be between 1 and {MAX_NOTIFICATION_LIMIT}",
             )));
         }
-        let notifications = self
-            .notifications
-            .list_for_recipient(user_id, include_read, limit, offset)
-            .await?;
-        let unread_count = self.notifications.count_unread(user_id).await? as usize;
+        let (notifications, unread_count) = if let Some(actor) =
+            crate::space_access::request_space_actor(user_id, self.projects.as_ref()).await?
+        {
+            let result = self
+                .notifications
+                .list_space_visible(
+                    user_id,
+                    &actor.readable_spaces()?,
+                    include_read,
+                    limit,
+                    offset,
+                )
+                .await?;
+            actor.readable_spaces()?;
+            result
+        } else {
+            (
+                self.notifications
+                    .list_for_recipient(user_id, include_read, limit, offset)
+                    .await?,
+                self.notifications.count_unread(user_id).await?,
+            )
+        };
+        let unread_count = usize::try_from(unread_count)
+            .map_err(|_| AppError::Unavailable("notification_count_invalid".into()))?;
         Ok(crate::context::NotificationListDto {
             notifications: notifications
                 .into_iter()

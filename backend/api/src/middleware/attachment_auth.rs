@@ -22,20 +22,29 @@ pub async fn attachment_auth(
                 .or_else(|| v.strip_prefix("bearer "))
         })
         .ok_or(AppError::Unauthorized)?;
-    match super::central_auth::check_token(token).await {
-        super::central_auth::CentralCheck::Validated(central, _) => {
-            if app::sdlc::has_pm_grant(&central.scopes) {
-                let outcome: Result<Response, AppError> = async {
+    match super::central_auth::BRIDGE.try_verified_token(token).await {
+        Ok(mut verified) => {
+            if verified.context.role.is_none() {
+                verified.context.role = verified.subject_role.clone();
+            }
+            let central = &verified.context;
+            let pm = app::sdlc::has_pm_grant(&central.scopes);
+            let machine = pm
+                || app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
+                || central.role.as_deref() == Some("service_account")
+                || crate::routes::namespace::human_route_machine(&central.user_id);
+            if machine {
+                let result: Result<Response, AppError> = async {
                     if crate::routes::namespace::registered_machine(&central.user_id)
                         || !central.allows_service("task-tracker", request.method().as_str())
                     {
                         return Err(AppError::Forbidden);
                     }
                     let actor = domain::sdlc::Principal {
-                        subject: central.user_id,
+                        subject: central.user_id.clone(),
                         human_session: central.session_id.is_some(),
                         trusted_human: false,
-                        scopes: central.scopes,
+                        scopes: central.scopes.clone(),
                     };
                     let path = request
                         .extensions()
@@ -46,58 +55,73 @@ pub async fn attachment_auth(
                         request.method().as_str(),
                         path,
                     )?;
+                    let mutation = !matches!(request.method().as_str(), "GET" | "HEAD" | "OPTIONS");
+                    let native = app::native_space_access::NativeRequest::verified(
+                        &verified, true, mutation,
+                    )?;
                     request.extensions_mut().insert(actor);
-                    Ok(next.run(request).await)
+                    request.extensions_mut().insert(verified.clone());
+                    let lifetime = verified.lifetime.clone();
+                    let deadline = lifetime.monotonic_deadline();
+                    let response = tokio::time::timeout_at(
+                        deadline.into(),
+                        app::native_space_access::with_request(native, next.run(request)),
+                    )
+                    .await
+                    .map_err(|_| AppError::Forbidden)?;
+                    if !lifetime.is_current() {
+                        return Err(AppError::Forbidden);
+                    }
+                    let (parts, body) = response.into_parts();
+                    Ok(Response::from_parts(
+                        parts,
+                        super::auth::guard_admission_body(body, deadline, move || {
+                            lifetime.is_current()
+                        }),
+                    ))
                 }
                 .await;
-                return Ok(pm_no_store(outcome));
+                return if pm { Ok(pm_no_store(result)) } else { result };
             }
-            let machine = app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
-                || central.role.as_deref() == Some("service_account")
-                || crate::routes::namespace::human_route_machine(&central.user_id);
-            if machine {
-                if crate::routes::namespace::registered_machine(&central.user_id)
-                    || !central.allows_service("task-tracker", request.method().as_str())
-                {
-                    return Err(AppError::Forbidden);
-                }
-                let actor = domain::sdlc::Principal {
-                    subject: central.user_id,
-                    human_session: central.session_id.is_some(),
-                    trusted_human: false,
-                    scopes: central.scopes,
-                };
-                let path = request
-                    .extensions()
-                    .get::<OriginalUri>()
-                    .map_or_else(|| request.uri().path(), |uri| uri.0.path());
-                ctx.services.attachment.authorize_artifact_route(
-                    &actor,
-                    request.method().as_str(),
-                    path,
-                )?;
-                request.extensions_mut().insert(actor);
-                return Ok(next.run(request).await);
-            }
+            let active = ctx.repos.projects.space_admission_enabled().await?;
+            let path = request
+                .extensions()
+                .get::<OriginalUri>()
+                .map_or_else(|| request.uri().path(), |uri| uri.0.path());
+            let operation = super::auth::request_operation(request.method(), path);
+            super::auth::verified_request(ctx, request, next, verified, active, operation)
+                .await
+                .map_err(map_status)
         }
-        super::central_auth::CentralCheck::Unavailable => {
-            return Err(AppError::Unavailable("Central Auth unavailable".into()));
+        Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable) => {
+            Err(AppError::Unavailable("Central Auth unavailable".into()))
         }
-        super::central_auth::CentralCheck::Forbidden => return Err(AppError::Forbidden),
-        super::central_auth::CentralCheck::Expired => return Err(AppError::Unauthorized),
-        super::central_auth::CentralCheck::FallThrough => (),
+        Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::Forbidden) => {
+            Err(AppError::Forbidden)
+        }
+        Err(
+            pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured
+            | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotOurs,
+        ) => {
+            // The legacy adapter itself rejects fallback if either central mode
+            // or space admission is active. No accepted central token is read twice.
+            super::auth::bearer_auth(State(ctx), request, next)
+                .await
+                .map_err(map_status)
+        }
+        Err(_) => Err(AppError::Unauthorized),
     }
-    // Preserve existing human/legacy authentication. No machine-to-UserClaims materialization.
-    super::auth::bearer_auth(State(ctx), request, next)
-        .await
-        .map_err(|status| match status {
-            StatusCode::UNAUTHORIZED => AppError::Unauthorized,
-            StatusCode::FORBIDDEN => AppError::Forbidden,
-            StatusCode::SERVICE_UNAVAILABLE => {
-                AppError::Unavailable("authentication unavailable".into())
-            }
-            _ => AppError::internal("attachment authentication failed"),
-        })
+}
+
+fn map_status(status: StatusCode) -> AppError {
+    match status {
+        StatusCode::UNAUTHORIZED => AppError::Unauthorized,
+        StatusCode::FORBIDDEN => AppError::Forbidden,
+        StatusCode::SERVICE_UNAVAILABLE => {
+            AppError::Unavailable("authentication unavailable".into())
+        }
+        _ => AppError::internal("attachment authentication failed"),
+    }
 }
 
 fn pm_no_store(outcome: Result<Response, AppError>) -> Response {
