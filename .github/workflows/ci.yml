@@ -111,6 +111,9 @@ jobs:
           workspaces: task-tracker/backend
       - run: cargo fmt --all -- --check
       - run: cargo test --locked -p domain --lib
+      - name: Check shipped server on the declared minimum
+        if: needs.changes.outputs.backend_build == 'true'
+        run: cargo check --locked -p server --bin server
       - name: OpenAPI drift gate
         if: needs.changes.outputs.backend_build == 'true'
         run: |
@@ -169,34 +172,3 @@ jobs:
         run: git diff --exit-code -- pnpm-lock.yaml src/api/generated.ts src/api/schema.d.ts
       - run: pnpm exec vite build
         if: needs.changes.outputs.frontend_build == 'true'
-  minimum-rust:
-    needs: changes
-    if: needs.changes.outputs.backend_build == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      - name: Read pinned Base revision
-        id: base
-        working-directory: task-tracker
-        run: echo "sha=$(cat .base-revision)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: ${{ steps.base.outputs.sha }}
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - name: Verify pinned Base checkout
-        working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision .base-revision --base ../services-base
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.88.0"
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-      - name: Check shipped server on the declared minimum
-        working-directory: task-tracker/backend
-        run: cargo check --locked -p server --bin server

@@ -101,8 +101,12 @@ class QualityRouteTests(unittest.TestCase):
                         'pnpm lint', 'pnpm format:check', 'pnpm openapi:compat'):
             self.assertIn(command, job(ci, 'frontend'))
         self.assertIn("if: needs.changes.outputs.frontend_build == 'true'", job(ci, 'frontend'))
-        self.assertIn("if: needs.changes.outputs.backend_build == 'true'", job(ci, 'minimum-rust'))
-        self.assertIn('cargo check --locked -p server --bin server', job(ci, 'minimum-rust'))
+        backend = job(ci, 'backend')
+        self.assertIn("if: needs.changes.outputs.backend_build == 'true'", backend)
+        self.assertIn('cargo check --locked -p server --bin server', backend)
+        self.assertNotIn('\n  minimum-rust:', ci)
+        self.assertEqual(ci.count('uses: dtolnay/rust-toolchain@stable'), 1)
+        self.assertEqual(ci.count('uses: Swatinem/rust-cache@v2'), 1)
 
     def test_manual_acceptance_preserves_complete_original_jobs(self):
         release = (ROOT/'.github/workflows/release.yml').read_text(encoding='utf-8')

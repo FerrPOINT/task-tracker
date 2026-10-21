@@ -13,6 +13,8 @@
 - Автоматические backend units — `cargo test --locked -p domain --lib`.
   Проверка поставляемого server и OpenAPI выполняется при production inputs.
   Остальные backend tests сохраняются в ручной полной проверке.
+- Automatic Rust1.88.0 units и server check используют один job/checkout/cache
+  setup. Отдельный minimum-rust job с полным inventory сохранён в manual release.
 - `pnpm test:unit` исключает integration/slow/e2e filenames; `test:all` сохраняет
   полный прежний Vitest inventory. Base Build вызывает unit и Vite по одному разу.
 - Исходный CI целиком сохранён в `release.yml`: PostgreSQL, ignored restore,
