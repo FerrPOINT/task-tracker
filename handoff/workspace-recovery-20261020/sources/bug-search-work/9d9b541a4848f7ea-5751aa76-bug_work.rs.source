@@ -1,0 +1,659 @@
+//! One real Bug claim, no queue, PM lease or manufactured Workflow authority.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, exec, field, stmt};
+use crate::bug_search_control::{command_hash, locks, save, saved};
+use app::bug_work::BugWorkRepository;
+use domain::{
+    bug_search::*, bug_search_control::BugSearchCommandReceipt, bug_search_intake::*, bug_work::*,
+    sdlc::Principal,
+};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, QueryResult, TransactionTrait};
+use serde_json::{Value, json};
+use shared::AppError;
+use uuid::Uuid;
+
+fn encoded(value: &impl serde::Serialize) -> Result<Value, AppError> {
+    serde_json::to_value(value).map_err(AppError::internal)
+}
+pub(super) fn state(row: &QueryResult) -> Result<BugWorkState, AppError> {
+    let assignment: BugWorkAssignment = decode(row, "payload")?;
+    assignment.validate()?;
+    let hash: String = field(row, "payload_sha256")?;
+    if app::bug_search::canonical_hash(&assignment)? != hash
+        || app::bug_search::canonical_hash(&assignment.source_identity)? != assignment.source_sha256
+        || app::bug_search::canonical_hash(&assignment.verification_basis)?
+            != assignment.verification_basis_sha256
+        || app::bug_search::basis_hash(&assignment.verification_basis)?
+            != assignment.canonical_basis_sha256
+    {
+        return Err(AppError::conflict("retained Bug work input hashes differ"));
+    }
+    let binding: Option<BugWorkRuntimeBinding> = field::<Option<Value>>(row, "binding")?
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| AppError::conflict("retained Bug work binding is incompatible"))?;
+    if let Some(binding) = &binding {
+        binding.validate()?;
+    }
+    let closure: Option<BugWorkCloseProof> = field::<Option<Value>>(row, "closure")?
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| AppError::conflict("retained Bug work closure is incompatible"))?;
+    if let Some(proof) = &closure {
+        CloseBugWork {
+            idempotency_key: "retained:validation".into(),
+            expected_fence: assignment.fence,
+            proof: proof.clone(),
+        }
+        .validate()?;
+    }
+    let capacity_held: bool = field(row, "capacity_held")?;
+    if capacity_held == closure.is_some() {
+        return Err(AppError::conflict("retained Bug work custody differs"));
+    }
+    Ok(BugWorkState {
+        assignment,
+        assignment_sha256: hash,
+        binding,
+        closure,
+        capacity_held,
+        can_take_bugs: false,
+        blocked_reasons: vec!["bug_work_runtime_consumer_not_available".into()],
+    })
+}
+
+impl PostgresBugSearchRepository {
+    pub(super) fn work_machine(&self, a: &Principal) -> Result<Uuid, AppError> {
+        self.intake_producer(a)
+    }
+    fn work_reader(&self, a: &Principal) -> Result<Uuid, AppError> {
+        if (a.subject == self.config.workflow_reader_subject
+            || self.bug_work_ci_reader_subject.as_deref() == Some(a.subject.as_str()))
+            && !a.human_session
+            && !a.trusted_human
+            && a.scopes.len() == 1
+            && a.scopes.contains("task-tracker:read")
+        {
+            return self.intake_fleet_instance.ok_or_else(|| {
+                AppError::Unavailable("Bug work Fleet instance unavailable".into())
+            });
+        }
+        self.work_machine(a)
+    }
+    pub(super) async fn work_row(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        id: Uuid,
+    ) -> Result<QueryResult, AppError> {
+        tx.query_one(stmt("SELECT *,clock_timestamp() AS observed_at FROM sdlc_bug_work_assignments WHERE assignment_id=$1 AND project_id=$2",vec![id.into(),p.into()]))
+            .await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_work_assignment",id))
+    }
+    pub(super) fn work_binding(
+        &self,
+        p: Uuid,
+        fleet: Uuid,
+        s: &BugWorkState,
+    ) -> Result<(), AppError> {
+        if s.assignment.project_id != p
+            || s.assignment.worker_runtime.fleet_instance_id != fleet
+            || s.assignment.tracker_instance_id != self.config.tracker_instance_id
+            || s.assignment.tracker_instance_uuid != self.config.tracker_instance_uuid
+            || s.assignment.machine_subject != self.config.fleet_subject
+        {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
+    }
+    pub(super) async fn work_fresh(
+        &self,
+        tx: &DatabaseTransaction,
+        s: &BugWorkState,
+    ) -> Result<(), AppError> {
+        let g = &s.assignment;
+        self.intake_owner(tx, g.project_id, &g.owner_subject)
+            .await?;
+        let (owner, _, _) = self
+            .owner_access(tx, g.project_id, &g.owner_subject, true)
+            .await?;
+        let pref=tx.query_one(stmt("SELECT revision,enabled,payload FROM sdlc_bug_intake_preferences WHERE project_id=$1 AND owner_subject=$2 AND fleet_instance_id=$3 AND worker_id=$4 FOR SHARE",vec![g.project_id.into(),g.owner_subject.clone().into(),g.worker_runtime.fleet_instance_id.into(),g.worker_runtime.agent_id.into()])).await.map_err(db_error)?.ok_or_else(||AppError::conflict("Bug work consent missing"))?;
+        let payload: BugIntakeApplied = decode(&pref, "payload")?;
+        if !field::<bool>(&pref, "enabled")?
+            || field::<i64>(&pref, "revision")? != g.preference_revision
+            || payload.worker_runtime != g.worker_runtime
+            || !payload.enabled
+            || payload.revision != g.preference_revision
+        {
+            return Err(AppError::conflict("Bug work consent/configuration changed"));
+        }
+        let issue=tx.query_one(stmt("SELECT i.id FROM issues i JOIN statuses st ON st.id=i.status_id WHERE i.id=$1 AND i.project_id=$2 AND i.issue_type='bug' AND i.deleted_at IS NULL AND NOT st.is_closed AND (i.assignee_id IS NULL OR i.assignee_id=$3) FOR SHARE OF i,st",vec![g.bug_id.into(),g.project_id.into(),owner.into()])).await.map_err(db_error)?;
+        if issue.is_none() {
+            return Err(AppError::conflict("Bug work issue no longer eligible"));
+        }
+        Ok(())
+    }
+    pub(super) async fn work_receipt_access(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        r: &BugWorkReceipt,
+    ) -> Result<(), AppError> {
+        let fleet = self.work_machine(a)?;
+        if r.contract_version != 1
+            || r.project_id != p
+            || r.operation_id.is_nil()
+            || r.worker_runtime.fleet_instance_id != fleet
+        {
+            return Err(AppError::Forbidden);
+        }
+        domain::bug_search_intake::validate_scope(p, &r.owner_subject, r.worker_runtime.agent_id)?;
+        r.worker_runtime.validate(r.worker_runtime.agent_id)?;
+        if let Some(s) = r.outcome.assignment() {
+            self.work_binding(p, fleet, s)?;
+            if s.assignment.owner_subject != r.owner_subject
+                || s.assignment.worker_runtime != r.worker_runtime
+            {
+                return Err(AppError::conflict("Bug work receipt identity differs"));
+            }
+        }
+        if let BugWorkOutcome::Claimed {
+            assignment: Some(assignment),
+            ..
+        }
+        | BugWorkOutcome::Bound { assignment } = &r.outcome
+        {
+            // Recover the original accepted assignment after a lost ACK even
+            // when its human owner has since lost access. Exact machine/scopes,
+            // Fleet UUID and the retained immutable assignment remain required;
+            // this receipt does not grant fresh dispatch or another claim.
+            let retained = state(
+                &self
+                    .work_row(tx, p, assignment.assignment.assignment_id)
+                    .await?,
+            )?;
+            self.work_binding(p, fleet, &retained)?;
+            if retained.assignment != assignment.assignment
+                || retained.assignment_sha256 != assignment.assignment_sha256
+                || matches!(r.outcome, BugWorkOutcome::Bound { .. })
+                    && (assignment.binding.is_none() || retained.binding != assignment.binding)
+            {
+                return Err(AppError::conflict("protective Bug work receipt differs"));
+            }
+        } else if let BugWorkOutcome::Closed { assignment } = &r.outcome {
+            let retained = state(
+                &self
+                    .work_row(tx, p, assignment.assignment.assignment_id)
+                    .await?,
+            )?;
+            self.work_binding(p, fleet, &retained)?;
+            if retained.assignment_sha256 != assignment.assignment_sha256
+                || retained.closure != assignment.closure
+                || retained.capacity_held
+            {
+                return Err(AppError::conflict("protective Bug work receipt differs"));
+            }
+        } else {
+            self.intake_owner(tx, p, &r.owner_subject).await?;
+        }
+        Ok(())
+    }
+}
+
+async fn capacity(tx: &DatabaseTransaction) -> Result<(), AppError> {
+    exec(
+        tx,
+        "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+        vec![],
+    )
+    .await
+}
+fn receipt(
+    p: Uuid,
+    owner: String,
+    runtime: BugIntakeWorkerRuntime,
+    outcome: BugWorkOutcome,
+) -> BugWorkReceipt {
+    BugWorkReceipt {
+        contract_version: 1,
+        operation_id: Uuid::now_v7(),
+        project_id: p,
+        owner_subject: owner,
+        worker_runtime: runtime,
+        outcome,
+        accepted_at: chrono::Utc::now(),
+    }
+}
+async fn record(
+    tx: &DatabaseTransaction,
+    p: Uuid,
+    a: &Principal,
+    key: &str,
+    hash: &str,
+    r: &BugWorkReceipt,
+) -> Result<(), AppError> {
+    save(
+        tx,
+        p,
+        a,
+        key,
+        &r.owner_subject,
+        hash,
+        &BugSearchCommandReceipt::BugWork(r.clone()),
+    )
+    .await
+}
+fn proof_time(
+    s: &BugWorkState,
+    c: &CloseBugWork,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    let g = &s.assignment;
+    let (id, agent, at) = match &c.proof {
+        BugWorkCloseProof::NeverSubmitted(v) => (v.execution_id, v.agent_id, v.observed_at),
+        BugWorkCloseProof::UnboundStopped(v) => (v.execution_id, v.agent_id, v.observed_at),
+        BugWorkCloseProof::ActualTerminal(v) => (
+            v.runtime.execution_id,
+            v.runtime.agent_id,
+            v.runtime.observed_at,
+        ),
+    };
+    if id != g.assignment_id
+        || agent != g.worker_runtime.agent_id
+        || at < g.created_at
+        || now
+            .checked_add_signed(chrono::Duration::seconds(5))
+            .is_none_or(|latest| at > latest)
+    {
+        return Err(AppError::conflict("Bug work custody observation differs"));
+    }
+    match &c.proof {
+        BugWorkCloseProof::ActualTerminal(v) => {
+            custody_hash(&v.runtime_custody)?;
+            if v.journal_ref != g.fleet_journal_ref {
+                return Err(AppError::conflict("actual Bug work journal differs"));
+            }
+            if let Some(b) = &s.binding
+                && (b.session_id != v.runtime.session_id
+                    || b.session_run_id != v.runtime.session_run_id
+                    || b.hermes_run_ref != v.runtime.hermes_run_ref
+                    || Some(b.runtime_context_id) != v.runtime_custody.context_id
+                    || v.runtime_custody
+                        .stop_proof
+                        .as_ref()
+                        .and_then(|p| p.get("generation"))
+                        != Some(&json!(b.runtime_generation)))
+            {
+                return Err(AppError::conflict("actual Bug work terminal run differs"));
+            }
+        }
+        BugWorkCloseProof::NeverSubmitted(v) => {
+            if s.binding.is_some()
+                || v.snapshot_sha256 != s.assignment_sha256
+                || v.journal_ref != g.fleet_journal_ref
+            {
+                return Err(AppError::conflict(
+                    "bound Bug work cannot be never submitted",
+                ));
+            }
+            custody_hash(&v.runtime_custody)?;
+        }
+        BugWorkCloseProof::UnboundStopped(v) => {
+            if s.binding.is_some()
+                || v.snapshot_sha256 != s.assignment_sha256
+                || v.journal_ref != g.fleet_journal_ref
+                || v.native_submission.operation_key == c.idempotency_key
+                || v.native_submission.submitted_at < g.created_at
+            {
+                return Err(AppError::conflict(
+                    "Bug work unknown submission evidence differs",
+                ));
+            }
+            custody_hash(&v.runtime_custody)?;
+        }
+    }
+    Ok(())
+}
+fn custody_hash(c: &domain::bug_search_cancel::BugPreRunRuntimeCustody) -> Result<(), AppError> {
+    if let Some(proof) = &c.stop_proof
+        && Some(app::bug_search::canonical_hash(proof)?).as_deref()
+            != c.stop_proof_sha256.as_deref()
+    {
+        return Err(AppError::validation(
+            "original Bug worker namespace exit digest differs",
+        ));
+    }
+    Ok(())
+}
+
+#[async_trait::async_trait]
+impl BugWorkRepository for PostgresBugSearchRepository {
+    async fn work_origin(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+    ) -> Result<domain::bug_work_origin::BugWorkOriginReadback, AppError> {
+        let fleet = self.work_reader(a)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let s = state(&self.work_row(&tx, p, id).await?)?;
+        self.work_binding(p, fleet, &s)?;
+        self.work_fresh(&tx, &s).await?;
+        let expected = s.assignment.origin.as_ref().ok_or_else(|| {
+            AppError::Unavailable("retained Bug work source context unavailable".into())
+        })?;
+        let (origin, source_context) = self
+            .canonical_work_origin(
+                &tx,
+                p,
+                s.assignment.bug_id,
+                &s.assignment.source_identity,
+                &s.assignment.verification_basis,
+            )
+            .await?;
+        if expected != &origin {
+            return Err(AppError::conflict(
+                "retained Bug work source origin differs",
+            ));
+        }
+        let result = domain::bug_work_origin::BugWorkOriginReadback {
+            contract_version: 1,
+            assignment_id: id,
+            assignment_sha256: s.assignment_sha256,
+            origin,
+            source_context,
+        };
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
+    async fn claim_work(
+        &self,
+        p: Uuid,
+        w: Uuid,
+        a: &Principal,
+        c: ClaimBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        c.validate(p, w)?;
+        let fleet = self.work_machine(a)?;
+        if c.worker_runtime.fleet_instance_id != fleet {
+            return Err(AppError::Forbidden);
+        }
+        let hash = command_hash(
+            "bug_work",
+            p,
+            &json!({"action":"claim","worker_id":w,"owner_subject":c.owner_subject,
+            "expected_preference_revision":c.expected_preference_revision,"worker_runtime":c.worker_runtime,"fleet_journal_ref":c.fleet_journal_ref}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        self.intake_owner(&tx, p, &c.owner_subject).await?;
+        let (owner, _, _) = self.owner_access(&tx, p, &c.owner_subject, true).await?;
+        if let Some(BugSearchCommandReceipt::BugWork(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "bug_work", &hash).await?
+        {
+            self.work_receipt_access(&tx, p, a, &r).await?;
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        let pref=tx.query_one(stmt("SELECT payload,revision,enabled FROM sdlc_bug_intake_preferences WHERE project_id=$1 AND owner_subject=$2 AND fleet_instance_id=$3 AND worker_id=$4 FOR SHARE",vec![p.into(),c.owner_subject.clone().into(),fleet.into(),w.into()])).await.map_err(db_error)?.ok_or_else(||AppError::conflict("Bug intake preference not found"))?;
+        let preference: BugIntakeApplied = decode(&pref, "payload")?;
+        self.intake_receipt(
+            BugSearchCommandReceipt::Intake(preference.clone()),
+            p,
+            fleet,
+        )?;
+        if !preference.enabled
+            || !field::<bool>(&pref, "enabled")?
+            || preference.revision != c.expected_preference_revision
+            || field::<i64>(&pref, "revision")? != c.expected_preference_revision
+            || preference.worker_runtime != c.worker_runtime
+        {
+            return Err(AppError::conflict(
+                "Bug intake preference/configuration changed",
+            ));
+        }
+        // Deterministic bounded pickup from real issues, no new job queue. Never steal a human assignment.
+        let candidate=tx.query_one(stmt("SELECT i.id,s.source_identity,s.source_sha256,s.basis_sha256,r.payload->'report' AS report FROM issues i JOIN statuses st ON st.id=i.status_id JOIN sdlc_bug_sources s ON s.issue_id=i.id AND s.project_id=i.project_id JOIN issue_creation_receipts r ON r.operation_id=s.creation_operation_id AND r.issue_id=i.id AND r.project_id=i.project_id AND r.completed WHERE EXISTS(SELECT 1 FROM sdlc_bug_occurrences occurrence WHERE occurrence.project_id=s.project_id AND occurrence.source_sha256=s.source_sha256) AND i.project_id=$1 AND i.issue_type='bug' AND i.deleted_at IS NULL AND NOT st.is_closed AND (i.assignee_id IS NULL OR i.assignee_id=$2) AND NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=i.id) AND NOT EXISTS(SELECT 1 FROM sdlc_bug_work_assignments b WHERE b.bug_id=i.id AND (b.capacity_held OR (b.fleet_instance_id=$3 AND b.worker_id=$4 AND b.owner_subject=$5 AND b.preference_revision=$6))) ORDER BY i.created_at,i.id LIMIT 1 FOR UPDATE OF i SKIP LOCKED FOR SHARE OF st",vec![p.into(),owner.into(),fleet.into(),w.into(),c.owner_subject.clone().into(),c.expected_preference_revision.into()])).await.map_err(db_error)?;
+        capacity(&tx).await?;
+        let busy=tx.query_one(stmt("SELECT EXISTS(SELECT 1 FROM sdlc_bug_work_assignments WHERE worker_id=$1 AND capacity_held) OR EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE agent_id=$1) OR EXISTS(SELECT 1 FROM sdlc_bug_search_executions WHERE agent_id=$1 AND capacity_held) OR EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE a.payload->>'agent_id'=$1::text AND (t.pm_execution_id IS NULL OR t.pm_admission_state IS DISTINCT FROM 'completed')) AS busy",vec![w.into()])).await.map_err(db_error)?.ok_or_else(||AppError::internal("Bug work capacity observation missing"))?;
+        let outcome = if field::<bool>(&busy, "busy")? {
+            BugWorkOutcome::Claimed {
+                assignment: None,
+                blocked_reasons: vec!["worker_capacity_busy".into()],
+            }
+        } else if let Some(row) = candidate {
+            let id = Uuid::now_v7();
+            let bug: Uuid = field(&row, "id")?;
+            let source: BugSourceIdentity = decode(&row, "source_identity")?;
+            let report: BugFindingReport = decode(&row, "report")?;
+            let basis: String = field(&row, "basis_sha256")?;
+            let source_hash: String = field(&row, "source_sha256")?;
+            source.validate()?;
+            report.validate()?;
+            if app::bug_search::basis_hash(&report)? != basis
+                || app::bug_search::canonical_hash(&source)? != source_hash
+            {
+                return Err(AppError::conflict(
+                    "canonical Bug input source/basis differs",
+                ));
+            }
+            let (origin, _) = self
+                .canonical_work_origin(&tx, p, bug, &source, &report)
+                .await?;
+            let timing = tx
+                .query_one(stmt(
+                    "SELECT nextval('sdlc_bug_work_fence') AS fence,clock_timestamp() AS now",
+                    vec![],
+                ))
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| AppError::internal("Bug work fence allocation missing"))?;
+            let g = BugWorkAssignment {
+                contract_version: 1,
+                assignment_id: id,
+                tracker_instance_id: self.config.tracker_instance_id.clone(),
+                tracker_instance_uuid: self.config.tracker_instance_uuid,
+                project_id: p,
+                bug_id: bug,
+                owner_subject: c.owner_subject.clone(),
+                machine_subject: a.subject.clone(),
+                worker_runtime: c.worker_runtime.clone(),
+                fleet_journal_ref: c.fleet_journal_ref.clone(),
+                preference_revision: c.expected_preference_revision,
+                fence: field(&timing, "fence")?,
+                purpose: BugWorkPurpose::BugFix,
+                role: BugWorkRole::Developer,
+                mode: BugWorkMode::Initial,
+                source_identity: source,
+                source_sha256: source_hash,
+                verification_basis_sha256: app::bug_search::canonical_hash(&report)?,
+                verification_basis: report,
+                canonical_basis_sha256: basis,
+                origin: Some(origin),
+                created_at: field(&timing, "now")?,
+            };
+            g.validate()?;
+            let digest = app::bug_search::canonical_hash(&g)?;
+            exec(&tx,"INSERT INTO sdlc_bug_work_assignments(assignment_id,project_id,bug_id,owner_subject,machine_subject,fleet_instance_id,worker_id,preference_revision,fence,payload,payload_sha256,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",vec![id.into(),p.into(),bug.into(),c.owner_subject.clone().into(),a.subject.clone().into(),fleet.into(),w.into(),g.preference_revision.into(),g.fence.into(),encoded(&g)?.into(),digest.into(),g.created_at.into()]).await?;
+            BugWorkOutcome::Claimed {
+                assignment: Some(Box::new(state(&self.work_row(&tx, p, id).await?)?)),
+                blocked_reasons: vec![],
+            }
+        } else {
+            BugWorkOutcome::Claimed {
+                assignment: None,
+                blocked_reasons: vec!["no_eligible_bug".into()],
+            }
+        };
+        let r = receipt(p, c.owner_subject, c.worker_runtime, outcome);
+        record(&tx, p, a, &c.idempotency_key, &hash, &r).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((r, false))
+    }
+    async fn bind_work(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: BindBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        c.validate()?;
+        let fleet = self.work_machine(a)?;
+        let hash = command_hash(
+            "bug_work",
+            p,
+            &json!({"action":"bind","assignment_id":id,"expected_fence":c.expected_fence,"binding":c.binding}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        let mut s = state(&self.work_row(&tx, p, id).await?)?;
+        self.work_binding(p, fleet, &s)?;
+        self.intake_owner(&tx, p, &s.assignment.owner_subject)
+            .await?;
+        if s.assignment.fence != c.expected_fence {
+            return Err(AppError::conflict("Bug work fence changed"));
+        }
+        if let Some(BugSearchCommandReceipt::BugWork(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "bug_work", &hash).await?
+        {
+            self.work_receipt_access(&tx, p, a, &r).await?;
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        self.work_fresh(&tx, &s).await?;
+        capacity(&tx).await?;
+        exec(
+            &tx,
+            "SELECT assignment_id FROM sdlc_bug_work_assignments WHERE assignment_id=$1 FOR UPDATE",
+            vec![id.into()],
+        )
+        .await?;
+        s = state(&self.work_row(&tx, p, id).await?)?;
+        if !s.capacity_held
+            || s.closure.is_some()
+            || s.binding.as_ref().is_some_and(|b| b != &c.binding)
+        {
+            return Err(AppError::conflict(
+                "Bug work already closed or bound differently",
+            ));
+        }
+        exec(
+            &tx,
+            "UPDATE sdlc_bug_work_assignments SET binding=$2 WHERE assignment_id=$1",
+            vec![id.into(), encoded(&c.binding)?.into()],
+        )
+        .await?;
+        s.binding = Some(c.binding);
+        let r = receipt(
+            p,
+            s.assignment.owner_subject.clone(),
+            s.assignment.worker_runtime.clone(),
+            BugWorkOutcome::Bound {
+                assignment: Box::new(s),
+            },
+        );
+        record(&tx, p, a, &c.idempotency_key, &hash, &r).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((r, false))
+    }
+    async fn close_work(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: CloseBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        c.validate()?;
+        let fleet = self.work_machine(a)?;
+        let hash = command_hash(
+            "bug_work",
+            p,
+            &json!({"action":"close","assignment_id":id,"expected_fence":c.expected_fence,"proof":c.proof}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        capacity(&tx).await?;
+        exec(&tx,"SELECT assignment_id FROM sdlc_bug_work_assignments WHERE assignment_id=$1 AND project_id=$2 FOR UPDATE",vec![id.into(),p.into()]).await?;
+        let row = self.work_row(&tx, p, id).await?;
+        let mut s = state(&row)?;
+        self.work_binding(p, fleet, &s)?;
+        if s.assignment.fence != c.expected_fence {
+            return Err(AppError::conflict("Bug work close fence differs"));
+        }
+        if let Some(BugSearchCommandReceipt::BugWork(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "bug_work", &hash).await?
+        {
+            self.work_receipt_access(&tx, p, a, &r).await?;
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        proof_time(&s, &c, field(&row, "observed_at")?)?;
+        if s.closure.as_ref().is_some_and(|v| v != &c.proof) {
+            return Err(AppError::conflict(
+                "Bug work terminal custody evidence changed",
+            ));
+        }
+        exec(&tx,"UPDATE sdlc_bug_work_assignments SET closure=$2,capacity_held=false WHERE assignment_id=$1",vec![id.into(),encoded(&c.proof)?.into()]).await?;
+        s.closure = Some(c.proof);
+        s.capacity_held = false;
+        let r = receipt(
+            p,
+            s.assignment.owner_subject.clone(),
+            s.assignment.worker_runtime.clone(),
+            BugWorkOutcome::Closed {
+                assignment: Box::new(s),
+            },
+        );
+        record(&tx, p, a, &c.idempotency_key, &hash, &r).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((r, false))
+    }
+    async fn work_assignment(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+    ) -> Result<BugWorkState, AppError> {
+        let fleet = self.work_reader(a)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let s = state(&self.work_row(&tx, p, id).await?)?;
+        self.work_binding(p, fleet, &s)?;
+        self.work_fresh(&tx, &s).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(s)
+    }
+    async fn current_work(
+        &self,
+        p: Uuid,
+        owner: &str,
+        w: Uuid,
+        a: &Principal,
+    ) -> Result<Option<BugWorkState>, AppError> {
+        let fleet = self.work_machine(a)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        self.intake_owner(&tx, p, owner).await?;
+        let row=tx.query_one(stmt("SELECT * FROM sdlc_bug_work_assignments WHERE project_id=$1 AND owner_subject=$2 AND fleet_instance_id=$3 AND worker_id=$4 AND capacity_held LIMIT 1",vec![p.into(),owner.into(),fleet.into(),w.into()])).await.map_err(db_error)?;
+        let s = row.as_ref().map(state).transpose()?;
+        if let Some(s) = &s {
+            self.work_binding(p, fleet, s)?;
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(s)
+    }
+    async fn work_operation(
+        &self,
+        p: Uuid,
+        key: &str,
+        a: &Principal,
+    ) -> Result<BugWorkReceipt, AppError> {
+        self.work_machine(a)?;
+        domain::bug_search_control::validate_key(key)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let row=tx.query_one(stmt("SELECT receipt FROM sdlc_bug_search_commands WHERE actor_subject=$1 AND project_id=$2 AND idempotency_key=$3 AND kind='bug_work'",vec![a.subject.clone().into(),p.into(),key.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_work_operation",key))?;
+        let BugSearchCommandReceipt::BugWork(r) = decode(&row, "receipt")? else {
+            return Err(AppError::conflict("retained Bug work receipt kind differs"));
+        };
+        self.work_receipt_access(&tx, p, a, &r).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(r)
+    }
+}

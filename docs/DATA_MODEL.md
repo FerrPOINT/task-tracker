@@ -1,5 +1,11 @@
 # Дата-модель Task Tracker
 
+Source candidate0099 reuses immutable `sdlc_pm_lease_operations.recovery` for one
+initial terminal/no-enrollment bootstrap retry. Original task/assignment/execution,
+owner, input, lease ID/claimedAt and old keys are retained; only exact expired
+lease version+1 is CAS-renewed with matching trusted evidence in one transaction.
+No table or history rewrite. [Contract and unrun tests](contracts/pm-bootstrap-technical-retry.md).
+
 Source candidate migration 0097 adds immutable policy/selection/enrollment/ref-owner/source
 binding history, without backfilling tasks or editing old migrations. See
 [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md); not installed/live evidence.
@@ -146,8 +152,13 @@ confirmation UUID/operation key and composite FK to exact confirmation
 `(task_id,id,revision,content_hash)` prevent duplicate or unconfirmed pickup.
 Payload CHECK fixes Analysis/Ready, Analyst/hermes-sdlc:analyst/analysis/business, cycle 0
 and pre-admission attempt 0. A filtered outbox unique index prevents a second
-`analysis.intent_created` for the same task/revision. Intent, consent, aggregate,
-issue/status history, idempotency receipt and both events commit together.
+`analysis.intent_created` for the same task/revision. Historical publication
+committed intent, consent, aggregate, issue/status history, idempotency receipt
+and both events together. Current initial PM publication instead stores consent,
+frozen routing/source, Backlog/Ready, receipt and `requirements.confirmed` only;
+no automatic Analysis row/event is inserted. The existing separate exact PM
+completion ledger remains required for accepted PM completion. No schema or
+applied migration changes are needed for this policy change.
 Issue trigger rejects generic status/sprint changes while Analysis is queued;
 current intent must match its exact requirement revision/hash. Existing PM
 reservation/lease guards and immutable history remain intact. No backfill of

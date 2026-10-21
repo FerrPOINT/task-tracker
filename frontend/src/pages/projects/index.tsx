@@ -1,21 +1,14 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
-import {
-  ProjectCardActionItems,
-  ProjectCardLink,
-  ProjectCardState,
-} from '@/widgets/project-actions'
-import { ProjectAvatar, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
-
-import { Plus, Search, MoreHorizontal } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import { useState } from 'react'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState, LoadingState } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
-import { useCreateProject, useDeleteProject } from '@/shared/api/hooks'
-import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
+import { ProjectCardActionItems, ProjectCardLink, ProjectCardState } from '@/widgets/project-actions'
 import {
+  ProjectAvatar,
+  ResourceList,
+  ResourceListRow,
+  Button,
+  ErrorState,
+  LoadingState,
+  Input,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -23,9 +16,19 @@ import {
   AlertDialogDescription,
   AlertDialogHeader,
   AlertDialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
+
+import { Plus, Search, MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
+
+import { useCreateProject, useDeleteProject } from '@/shared/api/hooks'
+import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
+
 import type { Project } from '@/api/project'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@pdlc/ui/ui'
 
 export function ProjectsPage() {
   const { t } = useTranslation()

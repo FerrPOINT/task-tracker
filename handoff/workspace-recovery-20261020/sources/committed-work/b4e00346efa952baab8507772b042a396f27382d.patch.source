@@ -1,0 +1,1607 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 31d2dec..9dade6e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,16 @@
+ 
+ ## [Unreleased]
+ 
++- Корзина проекта использует Base ListPage, общие состояния и controls40/44.
++  HTTP403/404 и неповторяемые ошибки скрывают cached строки; временный сбой
++  сохраняет данные с partial-error и блокирует запись. Pagination/history/reload
++  сохраняют внешний URL context/hash. Restore/purge защищены от двойной отправки;
++  неизвестный результат требует отдельной read-only сверки и явного повтора.
++  Исчезновение строки при сверке не объявляется успешным удалением. Escape/Cancel
++  возвращают фокус инициатору, после удаления используется безопасная область.
++  HTTP statuses и документированный204 acknowledgement проверяются без изменения
++  публичных API, схемы БД, auth или dependency locks.
++
+ - Поиск задач использует Base ListPage/FormField/Select/Tabs и общие resource
+   states без локальных карточек фильтров и размеров controls. URL сохраняет
+   фильтры, сортировку, pagination, историю и внешний context/hash; reset удаляет
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index 19dcc9d..aab2dfc 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -348,3 +348,67 @@ Preflight/corrected browser и failed focused unit reports сохранены о
+ API/OIDC mocked; это не actual-image/SSO/role acceptance и не README gallery.
+ Backend/OpenAPI/locks/Base pin/schema не меняются; native gate не повторяется
+ для frontend-only delta. Полная release приёмка, default и mirror остаются нужны.
++
++## 2026-10-03: Trash Source Checkpoint
++
++Parent: `ee83d2368ff510530bd8eac908048480e4201642`; Base:
++`c3cbb6bfcebfea021720cfe76f42631e1d9854f9`. Изолированный frontend/docs delta;
++backend, OpenAPI, auth, DB, locks и Base pin не изменяются.
++
++Trash использует ListPage/resourceErrorState/ConfirmDialog, Base controls и URL
++helper. Page50/offset семантика сохранена. External query/hash не теряются при
++canonicalization, pagination/history/reload и возврате на board. Повторяемые
++cached read failures остаются partial-error;403/404 и неповторяемые сбои скрывают
++строки и закрывают stale confirmation. Запись запрещена при refresh/error.
++
++Mutation wrappers сохраняют HTTP status. Purge требует документированный204;
++restore проверяет обязательные identifiers ответа, допускает UUID и key,
++включая canonicalization сервером. Буквальное равенство input/output не требуется:
++backend нормализует номер ключа и UUID. Два identifier unit preflight failures
++выявили излишнее frontend ограничение; новые регрессии сохраняют серверный контракт.
++Malformed success не вызывает success toast. Promise/same-tick locks защищают
++запись и закрытие pending dialog. Cancel/Escape возвращают фокус инициатору;
++удалённый или disabled инициатор заменяется именованным focusable region.
++Unknown write outcome требует отдельного GET и явного нового подтверждения.
++Отсутствие строки на одной странице не считается доказательством success;
++неуспешный readback и background recovery сами не разрешают повтор записи.
++
++Preflight unit report:14/21 passed,7 failed (утрата HTTP statuses и неверное
++поведение cached403/404/503). Initial browser:11/15 passed;4 failures из-за
++неверных fixture selectors loading/empty/error. Base использует accessibility
++roles для этих состояний, а не предполагаемый data-page-state. Test selectors
++исправлены по фактическому DOM, production components ради теста не менялись.
++Initial typecheck/build errors и failed reports сохранены, не считаются приёмкой.
++
++Full source smoke после исправления selectors прошёл40/40 без retries,
++0 unexpected/skipped/flaky. Матрица evidence дополнительно исправляет коллизию
++viewport width и content width; между full40 и первым fresh15 production code
++не менялся.
++Отдельный fresh Trash run проверяет корректную матрицу и дополнительные
++first-viewport captures рядом с обязательными full-page375/1920/2560.
++Fresh Trash run прошёл15/15 без retries,0 unexpected/skipped/flaky:60 observations,
++30 PNG (9full-page geometry,9first-viewport и12states/actions). Main axe375/1920
++прошёл во всех3themes. Dark1920, gray2560 и light375 first-viewport кадры открыты
++и просмотрены; весь376-frame объединённый набор не объявляется просмотренным.
++Focused unit regressions первого checkpoint прошли48/48; source gate456/47files
++прошёл12 checks до финальной identifier compatibility correction. Новый source
++gate после этой коррекции прошёл12 checks,458 tests в47files. Fresh Trash
++browser текущего bundle прошёл15/15 без retries,0 unexpected/skipped/flaky,
++60 observations и30 PNG. Остальные runtime функции этой коррекцией не менялись;
++restore wrapper используется только Trash. Current dark1920 и light375
++first-viewport кадры отдельно открыты и просмотрены после финальной сборки.
++
++Fresh commands/results/digests: `task-trash-base-source-commit-ready-verification.json`,
++`task-trash-base-final-browser.json`, `task-trash-base-evidence-browser.json`,
++`task-trash-base-api-final-browser.json`
++и соответствующие PNG directories в workspace
++`audit-artifacts/base-standard-2026-10-01/`. Committed recorder отдельно проверяет
++exact parent/delta, installed Base fingerprint и capture hashes/dimensions.
++Browser scope включает long/big list,3themes x10widths xdirect/reload, targets40/44,
++main axe375/1920, cold/cached403/404/422/503, loading/empty, history/hash, pending
++double-submit, keyboard focus и два возможных unknown-purge readback outcomes.
++
++API/OIDC mocked. Это не immutable-image, operational SSO/roles, README gallery
++или весь16-pattern manifest acceptance. Native backend gate для frontend-only
++delta не повторяется; полный продуктовый выпускной gate остаётся обязательным.
++Canonical runtime/pins, default refs и mirror этим checkpoint не изменяются.
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 2a0198a..f789221 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -132,8 +132,18 @@ notifications page проверены в трёх темах на десяти 
+ прошёл axe на 375/1920, URL history, pending/draft/focus и независимые states.
+ Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+ 
++Корзина проекта мигрирована в source на Base ListPage/ResourceState и controls.
++URL page сохраняет внешний query/hash; пагинация и возврат на board имеют один
++владелец параметров.403/404 и неповторяемые read errors скрывают cached rows и
++закрывают устаревшее confirmation;503 оставляет partial content с блокировкой
++записи. Restore/purge используют Promise lock и read-only reconciliation перед
++явным повтором. После удаления/утраты инициатора фокус получает именованный
++region. Результат записи не выводится из отсутствия строки на одной странице.
++Source evidence: [Trash checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-trash-source-checkpoint).
++Actual-image/role/SSO acceptance этой страницы остаётся обязательной.
++
+ 1. Мигрировать остальные list/form/audit/log compositions: board,
+-   backlog, trash, settings, reports и admin. Для create и search завершить
++   backlog, settings, reports и admin. Для create, search и trash завершить
+    actual-image/role/SSO приёмку после source regression checkpoint.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 4bed1fc..2e94352 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -529,6 +529,455 @@ test.describe('Base search page', () => {
+     })
+ })
+ 
++async function installTrashFixtures(page: Page, count = 53) {
++  await installTrackerMocks(page)
++  const fixture = {
++    issues: Array.from({ length: count }, (_, index) => searchIssue(index + 1)),
++    readStatus: 200,
++    reads: 0,
++    restores: 0,
++    purges: 0,
++    writeStatus: 0,
++    applyWrite: false,
++    readBarrier: undefined as Promise<void> | undefined,
++    writeBarrier: undefined as Promise<void> | undefined,
++  }
++  await page.route('**/api/v1/projects/*/trash**', async (route) => {
++    fixture.reads++
++    await fixture.readBarrier
++    if (fixture.readStatus !== 200)
++      return routeJson(
++        route,
++        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
++        fixture.readStatus,
++      )
++    const query = new URL(route.request().url()).searchParams
++    const offset = Number(query.get('offset') ?? '0')
++    const limit = Number(query.get('limit') ?? '50')
++    return routeJson(route, { issues: fixture.issues.slice(offset, offset + limit) })
++  })
++  async function write(route: Route, kind: 'restore' | 'purge') {
++    if (route.request().method() !== (kind === 'restore' ? 'POST' : 'DELETE'))
++      return route.fallback()
++    if (kind === 'restore') fixture.restores++
++    else fixture.purges++
++    const id = new URL(route.request().url()).pathname.split('/').at(-2)
++    const issue = fixture.issues.find((item) => item.id === id)
++    await fixture.writeBarrier
++    const status = fixture.writeStatus || (kind === 'restore' ? 200 : 204)
++    if (fixture.applyWrite || status < 400)
++      fixture.issues = fixture.issues.filter((item) => item.id !== id)
++    if (status >= 400)
++      return routeJson(
++        route,
++        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
++        status,
++      )
++    if (status === 204) return route.fulfill({ status })
++    return routeJson(route, issue, status)
++  }
++  await page.route('**/api/v1/issues/*/restore', (route) => write(route, 'restore'))
++  await page.route('**/api/v1/issues/*/trash', (route) => write(route, 'purge'))
++  return fixture
++}
++
++test.describe('Base project trash', () => {
++  test('wide list fits long values in all themes and boundaries on direct open and reload', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(240_000)
++    await installTrashFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    const failures: string[] = []
++    const observations: unknown[] = []
++    page.on('pageerror', (error) => failures.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') failures.push(message.text())
++    })
++    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
++    page.on('response', (response) => {
++      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
++    })
++    for (const theme of ['dark', 'gray', 'light']) {
++      await page.goto(`${app}/projects/DEMO/trash`)
++      await expect(page.locator('main article')).toHaveCount(50)
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++        await page.setViewportSize({ width, height: 1080 })
++        for (const entry of ['direct', 'reload']) {
++          if (entry === 'direct') await page.goto(`${app}/projects/DEMO/trash?source=qa#context`)
++          else await page.reload()
++          await expect(page.locator('main article')).toHaveCount(50)
++          await expect(page.locator('main h1')).toHaveText('Корзина · DEMO')
++          await expect(page.locator('main h1')).toHaveCount(1)
++          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++          const layout = page.locator('[data-page-layout]')
++          await expect(layout).toHaveAttribute('data-page-layout', 'wide')
++          const geometry = await layout.evaluate((element) => {
++            const parent = element.parentElement!
++            const style = getComputedStyle(parent)
++            const header = element.querySelector('.base-page-header')!.getBoundingClientRect()
++            const list = element.querySelector('article')!.parentElement!.getBoundingClientRect()
++            const sidebar = document.querySelector('.base-shell-sidebar')!.getBoundingClientRect()
++            const headerSlots = Array.from(document.querySelectorAll('[data-platform-header-slot]'))
++              .map((slot) => slot.getBoundingClientRect())
++              .filter((rect) => rect.width > 0)
++            return {
++              viewportWidth: window.innerWidth,
++              viewportHeight: window.innerHeight,
++              width: element.getBoundingClientRect().width,
++              expectedWidth:
++                parent.clientWidth -
++                Number.parseFloat(style.paddingLeft) -
++                Number.parseFloat(style.paddingRight),
++              gutter: Number.parseFloat(style.paddingLeft),
++              gap: Number.parseFloat(
++                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
++              ),
++              titleSize: Number.parseFloat(getComputedStyle(element.querySelector('h1')!).fontSize),
++              documentFits:
++                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++              localFits: element.scrollWidth <= element.clientWidth,
++              listAfterHeader: list.top >= header.bottom,
++              headerFits: headerSlots.every(
++                (rect, index) => index === 0 || rect.left >= headerSlots[index - 1].right,
++              ),
++              headerHeight: document
++                .querySelector('[data-platform-header]')!
++                .getBoundingClientRect().height,
++              sidebarWidth: sidebar.width,
++            }
++          })
++          expect(geometry.viewportWidth).toBe(width)
++          expect(geometry.viewportHeight).toBe(1080)
++          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
++          expect(Math.abs(geometry.gutter - Math.min(32, Math.max(16, width * 0.02)))).toBeLessThan(
++            1,
++          )
++          expect(geometry.gap).toBe(20)
++          expect(geometry.titleSize).toBe(24)
++          expect(
++            geometry.documentFits &&
++              geometry.localFits &&
++              geometry.listAfterHeader &&
++              geometry.headerFits,
++          ).toBe(true)
++          expect(geometry.headerHeight).toBe(60)
++          expect(geometry.sidebarWidth).toBe(width < 768 ? 0 : width < 1280 ? 72 : 264)
++          const undersized = await page.locator('main button, main a').evaluateAll(
++            (elements, minimum) =>
++              elements.flatMap((element) => {
++                const rect = element.getBoundingClientRect()
++                return rect.width > 0 &&
++                  rect.height > 0 &&
++                  (rect.height + 0.5 < minimum || rect.width + 0.5 < minimum)
++                  ? [{ html: element.outerHTML, width: rect.width, height: rect.height }]
++                  : []
++              }),
++            width < 768 ? 44 : 40,
++          )
++          expect(undersized).toEqual([])
++          observations.push({
++            theme,
++            viewport: { width, height: 1080 },
++            entry,
++            mode: 'wide',
++            ...geometry,
++          })
++        }
++        if (width === 375 || width === 1920)
++          expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([])
++        if ([375, 1920, 2560].includes(width)) {
++          await page.screenshot({
++            path: testInfo.outputPath(`trash-${theme}-${width}.png`),
++            fullPage: true,
++          })
++          await page.evaluate(() => window.scrollTo(0, 0))
++          await page.screenshot({
++            path: testInfo.outputPath(`trash-${theme}-${width}-viewport.png`),
++          })
++        }
++      }
++    }
++    expect(failures).toEqual([])
++    await testInfo.attach('trash-geometry', {
++      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
++      contentType: 'application/json',
++    })
++  })
++
++  test('preserves pagination context through history, reload, canonicalization and board return', async ({
++    page,
++    baseURL,
++  }) => {
++    await installTrashFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await page.goto(`${app}/projects/DEMO/trash?source=qa&page=-3#context`)
++    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa#context`)
++    await expect(page.locator('main article')).toHaveCount(50)
++    await page.getByRole('button', { name: 'Вперёд', exact: true }).click()
++    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa&page=2#context`)
++    await expect(page.locator('main article')).toHaveCount(3)
++    await page.reload()
++    await expect(page.locator('main article')).toHaveCount(3)
++    await page.goBack()
++    await expect(page.locator('main article')).toHaveCount(50)
++    await page.goForward()
++    await expect(page.locator('main article')).toHaveCount(3)
++    const back = page.getByRole('link', { name: 'Вернуться на доску проекта' })
++    await expect(back).toHaveAttribute('href', '/projects/DEMO/board?source=qa#context')
++    await back.click()
++    await expect(page).toHaveURL(`${app}/projects/DEMO/board?source=qa#context`)
++  })
++
++  test('shows loading and then genuine empty without mutation controls', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    const fixture = await installTrashFixtures(page, 0)
++    let release!: () => void
++    fixture.readBarrier = new Promise<void>((resolve) => {
++      release = resolve
++    })
++    await page.goto(`${baseURL}/projects/DEMO/trash`)
++    await expect(
++      page.locator('main').getByRole('status', { name: 'Загрузка…', exact: true }),
++    ).toBeVisible()
++    await expect(page.locator('main article')).toHaveCount(0)
++    release()
++    await expect(page.locator('main').getByRole('status')).toHaveText('Корзина пуста.')
++    await expect(page.getByText('Корзина пуста.', { exact: true })).toBeVisible()
++    expect(fixture.purges + fixture.restores).toBe(0)
++    await page.screenshot({ path: testInfo.outputPath('trash-empty.png'), fullPage: true })
++  })
++
++  for (const status of [403, 404, 422, 503]) {
++    test(`cold HTTP ${status} is not empty or a write surface`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      const fixture = await installTrashFixtures(page, 1)
++      fixture.readStatus = status
++      await page.goto(`${baseURL}/projects/DEMO/trash`)
++      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
++      const main = page.locator('main')
++      if (status === 403 || status === 404)
++        await expect(main.locator('[data-page-state]')).toHaveAttribute(
++          'data-page-state',
++          status === 403 ? 'permission-denied' : 'not-found',
++        )
++      else await expect(main.getByRole('alert')).toHaveText(/Не удалось загрузить корзину\./)
++      await expect(main.locator('article')).toHaveCount(0)
++      await expect(main.getByText('Корзина пуста.', { exact: true })).toHaveCount(0)
++      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
++      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
++        status === 503 ? 1 : 0,
++      )
++      if (status === 403 || status === 404)
++        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
++      expect(fixture.purges + fixture.restores).toBe(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`trash-cold-${status}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  for (const status of [403, 404, 422, 503]) {
++    test(`cached HTTP ${status} preserves only retryable data and invalidates stale confirmation`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      const fixture = await installTrashFixtures(page, 1)
++      await page.goto(`${baseURL}/projects/DEMO/trash`)
++      const trigger = page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' })
++      await trigger.click()
++      fixture.readStatus = status
++      let release!: () => void
++      fixture.readBarrier = new Promise<void>((resolve) => {
++        release = resolve
++      })
++      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++      await expect(page.getByRole('button', { name: 'Подтвердить', exact: true })).toBeDisabled()
++      release()
++      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 6 : 2)
++      const main = page.locator('main')
++      if (status === 422)
++        await expect(main.getByRole('alert')).toHaveText('Не удалось загрузить корзину.')
++      else
++        await expect(main.locator('[data-page-state]')).toHaveAttribute(
++          'data-page-state',
++          status === 503 ? 'partial-error' : status === 403 ? 'permission-denied' : 'not-found',
++        )
++      await expect(main.locator('article')).toHaveCount(status === 503 ? 1 : 0)
++      if (status === 503) {
++        await expect(page.getByRole('alertdialog')).toBeVisible()
++        await expect(page.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
++        await page.keyboard.press('Escape')
++      } else await expect(page.getByRole('alertdialog')).toHaveCount(0)
++      await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
++      fixture.readStatus = 200
++      if (status === 503) await main.getByRole('button', { name: 'Повторить', exact: true }).click()
++      else await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++      await expect(main.locator('article')).toHaveCount(1)
++      await expect(trigger).toBeEnabled()
++      await expect(page.getByRole('alertdialog')).toHaveCount(0)
++      expect(fixture.purges).toBe(0)
++      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`trash-cached-recovered-${status}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  test('restores and purges with same-tick locks, pending close protection and safe focus', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    const fixture = await installTrashFixtures(page, 2)
++    await page.goto(`${baseURL}/projects/DEMO/trash`)
++    let release!: () => void
++    fixture.writeBarrier = new Promise<void>((resolve) => {
++      release = resolve
++    })
++    await page
++      .getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
++      .evaluate((element) => {
++        ;(element as HTMLButtonElement).click()
++        ;(element as HTMLButtonElement).click()
++      })
++    await expect.poll(() => fixture.restores).toBe(1)
++    await expect(page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })).toBeDisabled()
++    release()
++    await expect(page.locator('main article')).toHaveCount(1)
++    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
++    const region = page.getByRole('region', { name: 'Корзина', exact: true })
++    await expect(region).toBeFocused()
++    const trigger = page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })
++    await expect(trigger).toBeEnabled()
++    await trigger.click()
++    const dialog = page.getByRole('alertdialog')
++    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
++    await page.keyboard.press('Shift+Tab')
++    await expect(dialog.getByRole('button', { name: 'Подтвердить', exact: true })).toBeFocused()
++    await page.keyboard.press('Tab')
++    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
++    await page.keyboard.press('Escape')
++    await expect(trigger).toBeFocused()
++    await trigger.click()
++    fixture.writeBarrier = new Promise<void>((resolve) => {
++      release = resolve
++    })
++    await dialog.getByRole('button', { name: 'Подтвердить', exact: true }).evaluate((element) => {
++      ;(element as HTMLButtonElement).click()
++      ;(element as HTMLButtonElement).click()
++    })
++    await expect.poll(() => fixture.purges).toBe(1)
++    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
++    await page.keyboard.press('Escape')
++    await expect(dialog).toBeVisible()
++    release()
++    await expect(dialog).toHaveCount(0)
++    await expect(page.locator('main article')).toHaveCount(0)
++    await expect(region).toBeFocused()
++    await expect(page.getByText('Задача DEMO-2 удалена навсегда.', { exact: true })).toBeVisible()
++    expect(fixture.restores + fixture.purges).toBe(2)
++    await page.screenshot({ path: testInfo.outputPath('trash-write-focus.png'), fullPage: true })
++  })
++
++  for (const applied of [false, true]) {
++    test(`unknown purge applied=${applied} requires readback and never invents success`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      const fixture = await installTrashFixtures(page, 1)
++      fixture.writeStatus = 503
++      fixture.applyWrite = applied
++      await page.goto(`${baseURL}/projects/DEMO/trash`)
++      await page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' }).click()
++      const dialog = page.getByRole('alertdialog')
++      const confirm = dialog.getByRole('button', { name: 'Подтвердить', exact: true })
++      await confirm.click()
++      await expect(
++        page.getByText(
++          'Результат действия с DEMO-1 неизвестен. Проверьте состояние корзины перед повтором.',
++          { exact: true },
++        ),
++      ).toBeVisible()
++      await expect(confirm).toBeDisabled()
++      expect(fixture.purges).toBe(1)
++      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
++      await expect(page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true })).toHaveCount(
++        0,
++      )
++      await dialog.getByRole('button', { name: 'Проверить состояние', exact: true }).click()
++      if (applied) {
++        await expect(dialog).toHaveCount(0)
++        await expect(
++          page.getByText(
++            'DEMO-1 больше не отображается в корзине. Результат предыдущего действия не подтверждён.',
++            { exact: true },
++          ),
++        ).toBeVisible()
++        await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
++        await expect(
++          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
++        ).toHaveCount(0)
++        expect(fixture.purges).toBe(1)
++      } else {
++        await expect(confirm).toBeEnabled()
++        expect(fixture.purges).toBe(1)
++        fixture.writeStatus = 0
++        await confirm.click()
++        await expect(dialog).toHaveCount(0)
++        await expect(
++          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
++        ).toBeVisible()
++        expect(fixture.purges).toBe(2)
++      }
++      await page.screenshot({
++        path: testInfo.outputPath(`trash-unknown-applied-${applied}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  test('failed restore readback stays locked even after a background recovery until explicit reconciliation', async ({
++    page,
++    baseURL,
++  }) => {
++    test.setTimeout(60_000)
++    const fixture = await installTrashFixtures(page, 1)
++    fixture.writeStatus = 503
++    await page.goto(`${baseURL}/projects/DEMO/trash`)
++    const restore = page.getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
++    await restore.click()
++    const recheck = page.getByRole('button', { name: 'Проверить состояние', exact: true })
++    await expect(recheck).toBeVisible()
++    fixture.readStatus = 503
++    await recheck.click()
++    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible({
++      timeout: 30_000,
++    })
++    await expect(restore).toBeDisabled()
++    fixture.readStatus = 200
++    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
++    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
++    await expect(restore).toBeDisabled()
++    fixture.writeStatus = 0
++    await recheck.click()
++    await expect(restore).toBeEnabled()
++    expect(fixture.restores).toBe(1)
++    await restore.click()
++    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
++    expect(fixture.restores).toBe(2)
++  })
++})
++
+ function routeJson(route: Route, body: unknown, status = 200) {
+   return route.fulfill({
+     status,
+diff --git a/frontend/src/api/issue.test.ts b/frontend/src/api/issue.test.ts
+index 51859c7..a85110f 100644
+--- a/frontend/src/api/issue.test.ts
++++ b/frontend/src/api/issue.test.ts
+@@ -1,9 +1,11 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import { getIssue } from './issue'
++import { getIssue, listTrash, restoreIssue, purgeIssue } from './issue'
+ 
+ const GET = vi.hoisted(() => vi.fn())
++const POST = vi.hoisted(() => vi.fn())
++const DELETE = vi.hoisted(() => vi.fn())
+ 
+-vi.mock('./client', () => ({ api: { GET } }))
++vi.mock('./client', () => ({ api: { GET, POST, DELETE } }))
+ 
+ describe('getIssue', () => {
+   beforeEach(() => GET.mockReset())
+@@ -27,3 +29,73 @@ describe('getIssue', () => {
+     await expect(getIssue('i1')).rejects.toThrow('Failed to load issue')
+   })
+ })
++
++describe('listTrash', () => {
++  beforeEach(() => GET.mockReset())
++
++  it.each([403, 404, 422, 503])(
++    'retains the HTTP status %s instead of making it a generic failure',
++    async (status) => {
++      GET.mockResolvedValue({ error: { message: 'Private diagnostic' }, response: { status } })
++      await expect(listTrash('TT')).rejects.toMatchObject({ status })
++    },
++  )
++  it('keeps the bounded project request and actual empty list', async () => {
++    GET.mockResolvedValue({ data: { issues: [] }, response: { status: 200 } })
++    await expect(listTrash('TT', 50, 100)).resolves.toEqual([])
++    expect(GET).toHaveBeenCalledWith('/api/v1/projects/{key}/trash', {
++      params: { path: { key: 'TT' }, query: { limit: 50, offset: 100 } },
++    })
++  })
++  it.each([undefined, {}, { issues: null }, { issues: 'invalid' }])(
++    'rejects malformed success rather than inventing an empty list',
++    async (data) => {
++      GET.mockResolvedValue({ data, response: { status: 200 } })
++      await expect(listTrash('TT')).rejects.toMatchObject({
++        name: 'InvalidResponseError',
++        status: 200,
++      })
++    },
++  )
++})
++
++describe('trash writes', () => {
++  beforeEach(() => {
++    POST.mockReset()
++    DELETE.mockReset()
++  })
++  it.each([403, 404, 422, 503])('retains write failure status %s', async (status) => {
++    const result = { error: { message: 'Private diagnostic' }, response: { status } }
++    POST.mockResolvedValue(result)
++    DELETE.mockResolvedValue(result)
++    await expect(restoreIssue('i1')).rejects.toMatchObject({ status })
++    await expect(purgeIssue('i1')).rejects.toMatchObject({ status })
++  })
++  it('requires the documented purge acknowledgement', async () => {
++    DELETE.mockResolvedValueOnce({ response: { status: 200 } }).mockResolvedValueOnce({
++      response: { status: 204 },
++    })
++    await expect(purgeIssue('i1')).rejects.toMatchObject({ name: 'InvalidResponseError' })
++    await expect(purgeIssue('i1')).resolves.toBeUndefined()
++  })
++  it.each([undefined, null, {}, { id: 'i1', key: 'TT-1' }])(
++    'does not infer restore success from malformed JSON',
++    async (data) => {
++      POST.mockResolvedValue({ data, response: { status: 200 } })
++      await expect(restoreIssue('i1')).rejects.toMatchObject({ name: 'InvalidResponseError' })
++    },
++  )
++  it.each(['i1', 'TT-1'])('accepts a restored entity requested by UUID or key %s', async (id) => {
++    const issue = { id: 'i1', key: 'TT-1', project_key: 'TT' }
++    POST.mockResolvedValue({ data: issue, response: { status: 200 } })
++    await expect(restoreIssue(id)).resolves.toEqual(issue)
++  })
++  it.each(['TT-0001', 'ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB'])(
++    'accepts the server-canonicalized identifier %s',
++    async (id) => {
++      const issue = { id: 'abcdefab-cdef-abcd-efab-cdefabcdefab', key: 'TT-1', project_key: 'TT' }
++      POST.mockResolvedValue({ data: issue, response: { status: 200 } })
++      await expect(restoreIssue(id)).resolves.toEqual(issue)
++    },
++  )
++})
+diff --git a/frontend/src/api/issue.ts b/frontend/src/api/issue.ts
+index e354a55..3cf1355 100644
+--- a/frontend/src/api/issue.ts
++++ b/frontend/src/api/issue.ts
+@@ -1,5 +1,5 @@
+ import { api } from './client'
+-import { ApiError } from '@sdlc/ui/lib'
++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
+@@ -32,24 +32,39 @@ export async function getIssue(id: string): Promise<Issue | null> {
+ }
+ 
+ export async function restoreIssue(id: string): Promise<Issue> {
+-  const { data, error } = await api.POST('/api/v1/issues/{id}/restore', {
++  const { data, error, response } = await api.POST('/api/v1/issues/{id}/restore', {
+     params: { path: { id } },
+   })
+-  if (error || !data) throw new Error('Failed to restore issue')
++  const status = response.status
++  if (error) throw new ApiError(status, 'Failed to restore issue', error)
++  if (
++    !data ||
++    typeof data.id !== 'string' ||
++    !data.id ||
++    typeof data.key !== 'string' ||
++    !data.key ||
++    typeof data.project_key !== 'string' ||
++    !data.project_key
++  )
++    throw new InvalidResponseError(status)
+   return data
+ }
+ 
+ export async function purgeIssue(id: string): Promise<void> {
+-  const { error } = await api.DELETE('/api/v1/issues/{id}/trash', {
++  const { error, response } = await api.DELETE('/api/v1/issues/{id}/trash', {
+     params: { path: { id } },
+   })
+-  if (error) throw new Error('Failed to permanently delete issue')
++  if (error) throw new ApiError(response.status, 'Failed to permanently delete issue', error)
++  const status: number = response.status
++  if (status !== 204) throw new InvalidResponseError(status)
+ }
+ 
+ export async function listTrash(projectKey: string, limit = 50, offset = 0): Promise<Issue[]> {
+-  const { data, error } = await api.GET('/api/v1/projects/{key}/trash', {
++  const { data, error, response } = await api.GET('/api/v1/projects/{key}/trash', {
+     params: { path: { key: projectKey }, query: { limit, offset } },
+   })
+-  if (error || !data) throw new Error('Failed to list trash')
++  const status = response.status
++  if (error) throw new ApiError(status, 'Failed to list trash', error)
++  if (!data || !Array.isArray(data.issues)) throw new InvalidResponseError(status)
+   return data.issues
+ }
+diff --git a/frontend/src/pages/project-trash/index.tsx b/frontend/src/pages/project-trash/index.tsx
+index 16fc80a..c0a67bb 100644
+--- a/frontend/src/pages/project-trash/index.tsx
++++ b/frontend/src/pages/project-trash/index.tsx
+@@ -1,201 +1,308 @@
+-import { useParams, Link, useSearchParams } from 'react-router'
+-import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
++import { useParams, Link, useLocation } from 'react-router'
++import { Trash2, RotateCcw, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { useCallback, useEffect, useState } from 'react'
++import { useCallback, useEffect, useRef, useState } from 'react'
+ import { toast } from 'sonner'
+-import { Button } from '@sdlc/ui/ui'
+-import { ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
++import {
++  Button,
++  ConfirmDialog,
++  ErrorState,
++  ListPage,
++  resourceErrorState,
++  type ResourceState,
++} from '@sdlc/ui/ui'
++import {
++  positiveIntegerQuery,
++  updateQuery,
++  useUrlSearchParams,
++  isUnknownWriteOutcome,
++} from '@sdlc/ui/lib'
+ import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
+ 
+ const TRASH_PAGE_SIZE = 50
++const pageCodec = positiveIntegerQuery()
++type Selection = { id: string; key: string; projectKey: string; page: number }
++type FailedWrite = Selection & { unknown: boolean }
+ 
+ export function ProjectTrashPage() {
+   const { projectKey } = useParams<{ projectKey: string }>()
+   const { t } = useTranslation()
+-  const [searchParams, setSearchParams] = useSearchParams()
+-  const pageParam = searchParams.get('page')
+-  const parsedPage = Number(pageParam)
+-  const hasValidPage =
+-    pageParam !== null &&
+-    Number.isSafeInteger(parsedPage) &&
+-    parsedPage > 0 &&
+-    Number.isSafeInteger((parsedPage - 1) * TRASH_PAGE_SIZE)
+-  const page = hasValidPage ? parsedPage : 1
++  const location = useLocation()
++  const [searchParams, setSearchParams] = useUrlSearchParams()
++  const parsedPage = pageCodec.parse(searchParams.get('page'))
++  const page = Number.isSafeInteger((parsedPage - 1) * TRASH_PAGE_SIZE) ? parsedPage : 1
+   const trashOffset = (page - 1) * TRASH_PAGE_SIZE
+-  const {
+-    data: trashedIssues = [],
+-    isLoading,
+-    error,
+-    refetch,
+-  } = useTrash(projectKey, trashOffset, TRASH_PAGE_SIZE)
++  const query = useTrash(projectKey, trashOffset, TRASH_PAGE_SIZE)
++  const { data: trashedIssues = [], isLoading, isFetching, error, refetch } = query
+   const restoreMutation = useRestoreIssue()
+   const purgeMutation = usePurgeIssue()
+-  const [purgeConfirmIssue, setPurgeConfirmIssue] = useState<{ id: string; key: string } | null>(
+-    null,
++  const [purgeConfirmIssue, setPurgeConfirmIssue] = useState<Selection | null>(null)
++  const [failedWrite, setFailedWrite] = useState<FailedWrite | null>(null)
++  const [verifying, setVerifying] = useState(false)
++  const pageRef = useRef<HTMLDivElement>(null)
++  const returnFocusRef = useRef<HTMLElement | null>(null)
++  const writeLock = useRef(false)
++  const verifyLock = useRef(false)
++  const unverified = failedWrite?.projectKey === projectKey ? failedWrite : null
++  const busy = restoreMutation.isPending || purgeMutation.isPending
++  const canWrite = Boolean(
++    projectKey && !error && !isLoading && !isFetching && !busy && !unverified && !verifying,
+   )
++  const selected =
++    purgeConfirmIssue &&
++    purgeConfirmIssue.projectKey === projectKey &&
++    purgeConfirmIssue.page === page
++      ? trashedIssues.find((issue) => issue.id === purgeConfirmIssue.id)
++      : undefined
++  const failureState = error
++    ? resourceErrorState(error, () => void refetch(), {
++        hasData: query.data !== undefined,
++        message: t('trash.loadError'),
++      })
++    : undefined
++  const terminalFailure =
++    failureState?.kind === 'not-found' ||
++    failureState?.kind === 'permission-denied' ||
++    (failureState?.kind === 'error' && !failureState.onRetry)
+ 
+   const updatePage = useCallback(
+     (nextPage: number, replace = false) => {
+-      setSearchParams(
+-        (current) => {
+-          const next = new URLSearchParams(current)
+-          if (nextPage > 1) next.set('page', String(nextPage))
+-          else next.delete('page')
+-          return next
+-        },
+-        { replace },
+-      )
++      setSearchParams((current) => updateQuery(current, { page: pageCodec.format(nextPage) }), {
++        replace,
++      })
+     },
+     [setSearchParams],
+   )
+-
++  const pageParam = searchParams.get('page')
+   useEffect(() => {
+-    const canonicalPage = hasValidPage && parsedPage > 1 ? String(parsedPage) : null
+-    if (pageParam === canonicalPage) return
+-
+-    setSearchParams(
+-      (current) => {
+-        const next = new URLSearchParams(current)
+-        if (canonicalPage) next.set('page', canonicalPage)
+-        else next.delete('page')
+-        return next
+-      },
+-      { replace: true },
+-    )
+-  }, [hasValidPage, pageParam, parsedPage, setSearchParams])
+-
++    if (pageParam !== pageCodec.format(page)) updatePage(page, true)
++  }, [page, pageParam, updatePage])
+   useEffect(() => {
+-    if (!isLoading && !error && trashedIssues.length === 0 && trashOffset > 0) {
++    if (
++      !isLoading &&
++      !isFetching &&
++      !error &&
++      !unverified &&
++      trashedIssues.length === 0 &&
++      trashOffset > 0
++    )
+       updatePage(1, true)
++  }, [error, isLoading, isFetching, unverified, trashedIssues.length, trashOffset, updatePage])
++  useEffect(() => {
++    if (purgeConfirmIssue && !busy && (terminalFailure || (!selected && !isFetching))) {
++      setPurgeConfirmIssue(null)
++      purgeMutation.reset()
+     }
+-  }, [error, isLoading, trashedIssues.length, trashOffset, updatePage])
+-
+-  if (!projectKey) {
+-    return <div className="text-text-muted">{t('trash.noProject')}</div>
+-  }
++  }, [purgeConfirmIssue, selected, busy, isFetching, terminalFailure, purgeMutation])
+ 
+   const hasPrev = trashOffset > 0
+   const hasNext = trashedIssues.length === TRASH_PAGE_SIZE
+-  const pageFrom = trashedIssues.length > 0 ? trashOffset + 1 : trashOffset
+-  const pageTo = trashOffset + trashedIssues.length
++  let state: ResourceState = { kind: 'ready' }
++  if (!projectKey) state = { kind: 'not-found', message: t('trash.noProject') }
++  else if (failureState) state = failureState
++  else if (isLoading) state = { kind: 'loading', message: t('trash.loading') }
++  else if (trashedIssues.length === 0 && !unverified)
++    state = { kind: 'empty', message: hasPrev ? t('trash.emptyPage') : t('trash.noIssues') }
++  const terminal = state.kind === 'not-found' || state.kind === 'permission-denied'
++  if (state.kind === 'not-found' || state.kind === 'permission-denied')
++    state = {
++      ...state,
++      message: projectKey ? undefined : t('trash.noProject'),
++      back: (
++        <Button variant="outline" asChild>
++          <Link to="/projects">{t('search.backToProjects')}</Link>
++        </Button>
++      ),
++    }
++  const backQuery = updateQuery(searchParams, { page: null }).toString()
+ 
+-  return (
+-    <div className="space-y-4">
+-      <div className="flex items-center gap-3">
+-        <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-10 sm:w-10" asChild>
+-          <Link to={`/projects/${projectKey}/board`} aria-label={t('trash.backToBoard')}>
+-            <ArrowLeft className="h-4 w-4" />
+-          </Link>
++  async function verifyWrite() {
++    if (!unverified || verifyLock.current) return
++    verifyLock.current = true
++    setVerifying(true)
++    try {
++      const result = await refetch()
++      if (result.error || !result.data) return
++      if (!result.data.some((issue) => issue.id === unverified.id)) {
++        // Absence from one page does not prove that the previous write committed.
++        returnFocusRef.current = pageRef.current
++        setPurgeConfirmIssue(null)
++        toast.info(t('trash.stateChanged', { key: unverified.key }))
++      }
++      setFailedWrite((current) => (current === unverified ? null : current))
++      purgeMutation.reset()
++    } catch {
++      toast.error(t('trash.loadError'))
++    } finally {
++      verifyLock.current = false
++      setVerifying(false)
++    }
++  }
++  const verification = unverified && (
++    <div className="base-page-stack">
++      <ErrorState
++        message={t(unverified.unknown ? 'trash.writeUnknown' : 'trash.writeRejected', {
++          key: unverified.key,
++        })}
++      />
++      <div className="base-page-actions">
++        <Button
++          variant="outline"
++          onClick={() => void verifyWrite()}
++          disabled={verifying || isFetching || busy}
++        >
++          <RotateCcw className="h-4 w-4" aria-hidden />
++          {t('trash.recheck')}
+         </Button>
+-        <Trash2 className="h-5 w-5 text-text-muted" />
+-        <h1 className="text-xl font-semibold">
+-          {t('trash.title', 'Trash')} · {projectKey}
+-        </h1>
+       </div>
++    </div>
++  )
+ 
+-      {isLoading && (
+-        <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
+-      )}
+-
+-      {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
+-
+-      {!error && !isLoading && trashedIssues.length === 0 && (
+-        <div className="py-16 text-center text-sm text-text-muted">
+-          {hasPrev ? t('trash.emptyPage') : t('trash.noIssues')}
+-        </div>
+-      )}
++  async function restore(issue: { id: string; key: string }) {
++    if (!canWrite || writeLock.current || !projectKey) return
++    writeLock.current = true
++    try {
++      await restoreMutation.mutateAsync(issue.id)
++      toast.success(t('trash.restored', { key: issue.key }))
++    } catch (failure) {
++      setFailedWrite({
++        ...issue,
++        projectKey,
++        page,
++        unknown: isUnknownWriteOutcome(failure),
++      })
++      toast.error(t('trash.restoreError', { key: issue.key }))
++    } finally {
++      writeLock.current = false
++      pageRef.current?.focus()
++    }
++  }
+ 
+-      {trashedIssues.length > 0 && (
+-        <div className="overflow-hidden rounded-md border border-border bg-surface text-sm">
+-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
+-            <span>{t('trash.key')}</span>
+-            <span>{t('trash.summary')}</span>
+-            <span>{t('trash.type')}</span>
+-            <span>{t('trash.priority')}</span>
+-            <span className="text-right">{t('trash.actions')}</span>
+-          </div>
+-          {trashedIssues.map((issue) => (
+-            <article
+-              key={issue.id}
+-              className="grid gap-2 border-b border-border p-3 last:border-0 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3 lg:px-4"
++  return (
++    <div
++      ref={pageRef}
++      role="region"
++      aria-label={t('trash.title')}
++      tabIndex={-1}
++      aria-busy={Boolean(isFetching || busy || verifying)}
++      className="min-w-0 focus-visible:ring-2 focus-visible:ring-focus"
++    >
++      <ListPage
++        title={projectKey ? `${t('trash.title')} \u00b7 ${projectKey}` : t('trash.title')}
++        state={state}
++        actions={
++          <Button variant="ghost" size="icon" asChild>
++            <Link
++              to={{
++                pathname: `/projects/${encodeURIComponent(projectKey ?? '')}/board`,
++                search: backQuery ? `?${backQuery}` : '',
++                hash: location.hash,
++              }}
++              aria-label={t('trash.backToBoard')}
++              title={t('trash.backToBoard')}
+             >
+-              <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
+-              <div className="min-w-0 break-words font-medium lg:font-normal">{issue.summary}</div>
+-              <div className="text-xs text-text-secondary lg:text-sm">
+-                {t(`issueType.${issue.issue_type.toLowerCase()}`, {
+-                  defaultValue: issue.issue_type,
+-                })}
+-              </div>
+-              <div className="text-xs text-text-secondary lg:text-sm">
+-                {t(`priority.${issue.priority.toLowerCase()}`, { defaultValue: issue.priority })}
+-              </div>
+-              <div className="mt-1 grid grid-cols-2 gap-2 lg:mt-0 lg:flex lg:justify-end">
+-                <Button
+-                  variant="ghost"
+-                  size="sm"
+-                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal sm:min-h-10"
+-                  aria-label={t('trash.restoreIssue', { key: issue.key })}
+-                  disabled={restoreMutation.isPending}
+-                  onClick={() =>
+-                    restoreMutation.mutate(issue.id, {
+-                      onSuccess: () => toast.success(t('trash.restored', { key: issue.key })),
+-                      onError: () => toast.error(t('trash.restoreError', { key: issue.key })),
+-                    })
+-                  }
+-                >
+-                  <RotateCcw className="h-3.5 w-3.5" />
+-                  {t('trash.restore', 'Restore')}
+-                </Button>
+-                <Button
+-                  variant="ghost"
+-                  size="sm"
+-                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal text-danger hover:text-danger sm:min-h-10"
+-                  aria-label={t('trash.purgeIssue', { key: issue.key })}
+-                  disabled={purgeMutation.isPending}
+-                  onClick={() => {
+-                    purgeMutation.reset()
+-                    setPurgeConfirmIssue({ id: issue.id, key: issue.key })
+-                  }}
+-                >
+-                  <Trash2 className="h-3.5 w-3.5" />
+-                  {t('trash.purge', 'Delete forever')}
+-                </Button>
+-              </div>
+-            </article>
+-          ))}
+-        </div>
+-      )}
+-
+-      {(hasPrev || hasNext) && (
+-        <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
+-          <Button
+-            variant="outline"
+-            size="sm"
+-            className="min-h-11 sm:min-h-10"
+-            disabled={!hasPrev || isLoading}
+-            onClick={() => updatePage(page - 1)}
+-          >
+-            {t('trash.prevPage')}
+-          </Button>
+-          <span className="text-sm text-text-muted">
+-            {trashedIssues.length > 0
+-              ? t('trash.pageInfo', { from: pageFrom, to: pageTo })
+-              : t('trash.emptyPage')}
+-          </span>
+-          <Button
+-            variant="outline"
+-            size="sm"
+-            className="min-h-11 sm:min-h-10"
+-            disabled={!hasNext || isLoading}
+-            onClick={() => updatePage(page + 1)}
+-          >
+-            {t('trash.nextPage')}
++              <ArrowLeft className="h-4 w-4" aria-hidden />
++            </Link>
+           </Button>
+-        </div>
+-      )}
+-
++        }
++      >
++        {!purgeConfirmIssue && verification}
++        {trashedIssues.length > 0 && (
++          <div className="min-w-0 overflow-hidden rounded-md border border-border bg-surface text-sm">
++            <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
++              <span>{t('trash.key')}</span>
++              <span>{t('trash.summary')}</span>
++              <span>{t('trash.type')}</span>
++              <span>{t('trash.priority')}</span>
++              <span className="text-right">{t('trash.actions')}</span>
++            </div>
++            {trashedIssues.map((issue) => (
++              <article
++                key={issue.id}
++                aria-label={issue.key}
++                className="grid min-w-0 gap-2 border-b border-border p-3 last:border-0 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3 lg:px-4"
++              >
++                <div className="min-w-0 [overflow-wrap:anywhere] font-mono text-xs text-text-secondary">
++                  {issue.key}
++                </div>
++                <div className="min-w-0 [overflow-wrap:anywhere] font-medium lg:font-normal">
++                  {issue.summary}
++                </div>
++                <div className="min-w-0 [overflow-wrap:anywhere] text-text-secondary">
++                  {t(`issueType.${issue.issue_type.toLowerCase()}`, {
++                    defaultValue: issue.issue_type,
++                  })}
++                </div>
++                <div className="min-w-0 [overflow-wrap:anywhere] text-text-secondary">
++                  {t(`priority.${issue.priority.toLowerCase()}`, { defaultValue: issue.priority })}
++                </div>
++                <div className="base-page-actions lg:justify-end">
++                  <Button
++                    variant="ghost"
++                    size="icon"
++                    aria-label={t('trash.restoreIssue', { key: issue.key })}
++                    title={t('trash.restoreIssue', { key: issue.key })}
++                    disabled={!canWrite}
++                    onClick={() => void restore(issue)}
++                  >
++                    <RotateCcw className="h-4 w-4" aria-hidden />
++                  </Button>
++                  <Button
++                    variant="ghost"
++                    size="icon"
++                    className="text-danger hover:text-danger"
++                    aria-label={t('trash.purgeIssue', { key: issue.key })}
++                    title={t('trash.purgeIssue', { key: issue.key })}
++                    disabled={!canWrite}
++                    onClick={(event) => {
++                      returnFocusRef.current = event.currentTarget
++                      purgeMutation.reset()
++                      setPurgeConfirmIssue({
++                        id: issue.id,
++                        key: issue.key,
++                        projectKey: projectKey!,
++                        page,
++                      })
++                    }}
++                  >
++                    <Trash2 className="h-4 w-4" aria-hidden />
++                  </Button>
++                </div>
++              </article>
++            ))}
++          </div>
++        )}
++        {(hasPrev || hasNext) && (
++          <nav aria-label={t('trash.pagination')} className="base-page-actions justify-between">
++            <Button
++              variant="outline"
++              disabled={!hasPrev || isLoading || isFetching || busy || Boolean(unverified)}
++              onClick={() => updatePage(page - 1)}
++            >
++              <ChevronLeft className="h-4 w-4" aria-hidden />
++              {t('trash.prevPage')}
++            </Button>
++            <span className="text-sm text-text-muted">
++              {trashedIssues.length > 0
++                ? t('trash.pageInfo', {
++                    from: trashOffset + 1,
++                    to: trashOffset + trashedIssues.length,
++                  })
++                : t('trash.emptyPage')}
++            </span>
++            <Button
++              variant="outline"
++              disabled={!hasNext || isLoading || isFetching || busy || Boolean(unverified)}
++              onClick={() => updatePage(page + 1)}
++            >
++              {t('trash.nextPage')}
++              <ChevronRight className="h-4 w-4" aria-hidden />
++            </Button>
++          </nav>
++        )}
++      </ListPage>
+       <ConfirmDialog
+-        open={purgeConfirmIssue !== null}
++        open={purgeConfirmIssue !== null && !terminal}
+         onOpenChange={(open) => {
+           if (!open) {
+             setPurgeConfirmIssue(null)
+@@ -203,21 +310,41 @@ export function ProjectTrashPage() {
+           }
+         }}
+         isPending={purgeMutation.isPending}
++        confirmDisabled={!canWrite || !selected}
++        returnFocusRef={returnFocusRef}
++        fallbackFocusRef={pageRef}
+         error={purgeMutation.error ? t('trash.purgeError') : null}
+-        title={t('trash.purge', 'Delete forever')}
++        title={t('trash.purge')}
+         description={t('trash.purgeConfirm', { key: purgeConfirmIssue?.key })}
+         onConfirm={() => {
+-          if (purgeConfirmIssue) {
+-            const { id, key } = purgeConfirmIssue
+-            purgeMutation.mutate(id, {
+-              onSuccess: () => {
+-                setPurgeConfirmIssue(null)
+-                toast.success(t('trash.purged', { key }))
+-              },
++          if (!canWrite || !selected || !purgeConfirmIssue || writeLock.current) return
++          const selection = purgeConfirmIssue
++          writeLock.current = true
++          return purgeMutation
++            .mutateAsync(selection.id)
++            .then(() => {
++              returnFocusRef.current = pageRef.current
++              setPurgeConfirmIssue((current) =>
++                current?.id === selection.id && current.projectKey === selection.projectKey
++                  ? null
++                  : current,
++              )
++              toast.success(t('trash.purged', { key: selection.key }))
++            })
++            .catch((failure) => {
++              setFailedWrite({
++                ...selection,
++                unknown: isUnknownWriteOutcome(failure),
++              })
++              throw failure
++            })
++            .finally(() => {
++              writeLock.current = false
+             })
+-          }
+         }}
+-      />
++      >
++        {verification}
++      </ConfirmDialog>
+     </div>
+   )
+ }
+diff --git a/frontend/src/pages/project-trash/project-trash.test.tsx b/frontend/src/pages/project-trash/project-trash.test.tsx
+index 1f66aec..6f224a4 100644
+--- a/frontend/src/pages/project-trash/project-trash.test.tsx
++++ b/frontend/src/pages/project-trash/project-trash.test.tsx
+@@ -1,11 +1,12 @@
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+-import { render, screen, waitFor } from '@testing-library/react'
++import { act, render, screen, waitFor } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+ import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
+ import { toast } from 'sonner'
+ 
+ import { ProjectTrashPage } from './'
+ import { ThemeProvider } from '@sdlc/ui/lib'
++import { ApiError } from '@sdlc/ui/lib'
+ 
+ const mockRestore = vi.hoisted(() => vi.fn())
+ const mockPurge = vi.hoisted(() => vi.fn())
+@@ -13,7 +14,7 @@ const mockTrash = vi.hoisted(() => vi.fn())
+ const mockRestoreState = vi.hoisted(() => vi.fn())
+ const mockPurgeState = vi.hoisted(() => vi.fn())
+ 
+-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
++vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+ 
+ vi.mock('@/shared/api/hooks', () => ({
+   useTrash: (...args: unknown[]) => mockTrash(...args),
+@@ -27,7 +28,7 @@ function LocationProbe() {
+ 
+   return (
+     <>
+-      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
++      <output aria-label="current location">{`${location.pathname}${location.search}${location.hash}`}</output>
+       <button type="button" onClick={() => navigate(-1)}>
+         Back in history
+       </button>
+@@ -75,9 +76,11 @@ function trashIssue(index: number) {
+ describe('ProjectTrashPage', () => {
+   beforeEach(() => {
+     vi.clearAllMocks()
+-    mockRestoreState.mockReturnValue({ mutate: mockRestore, isPending: false })
++    mockRestore.mockResolvedValue(trashIssue(1))
++    mockPurge.mockResolvedValue(undefined)
++    mockRestoreState.mockReturnValue({ mutateAsync: mockRestore, isPending: false })
+     mockPurgeState.mockReturnValue({
+-      mutate: mockPurge,
++      mutateAsync: mockPurge,
+       reset: vi.fn(),
+       isPending: false,
+       error: null,
+@@ -119,24 +122,50 @@ describe('ProjectTrashPage', () => {
+     expect(screen.getByText('TT-1')).toBeInTheDocument()
+   })
+ 
++  it.each([403, 404])('hides cached rows and mutation controls after a terminal %s', (status) => {
++    mockTrash.mockReturnValue({
++      data: [trashIssue(1)],
++      isLoading: false,
++      error: new ApiError(status, 'Private diagnostic'),
++      refetch: vi.fn(),
++    })
++    render(wrapper(<ProjectTrashPage />))
++    expect(screen.queryByText('Deleted task')).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: 'Восстановить TT-1' })).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /повторить/i })).not.toBeInTheDocument()
++  })
++
++  it('keeps retryable cached rows but disables writes until the source recovers', () => {
++    mockTrash.mockReturnValue({
++      data: [trashIssue(1)],
++      isLoading: false,
++      error: new ApiError(503, 'Private diagnostic'),
++      refetch: vi.fn(),
++    })
++    render(wrapper(<ProjectTrashPage />))
++    expect(screen.getByText('Deleted task')).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Восстановить TT-1' })).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' })).toBeDisabled()
++  })
++
+   it('restores an issue', async () => {
+     render(wrapper(<ProjectTrashPage />))
+     await waitFor(() => expect(screen.getByText('Deleted task')).toBeInTheDocument())
+     const restoreButton = screen.getByRole('button', { name: /восстановить/i })
+     await userEvent.click(restoreButton)
+-    expect(mockRestore).toHaveBeenCalledWith(
+-      'i1',
+-      expect.objectContaining({ onSuccess: expect.any(Function) }),
+-    )
+-    mockRestore.mock.calls[0]?.[1].onSuccess()
+-    expect(toast.success).toHaveBeenCalledWith('Задача TT-1 восстановлена.')
++    expect(mockRestore).toHaveBeenCalledWith('i1')
++    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Задача TT-1 восстановлена.'))
+   })
+ 
+   it('explains a failed restore without exposing the API error', async () => {
++    mockRestore.mockRejectedValue(new ApiError(503, 'Private diagnostic'))
+     render(wrapper(<ProjectTrashPage />))
+     await userEvent.setup().click(screen.getByRole('button', { name: 'Восстановить TT-1' }))
+-    mockRestore.mock.calls[0]?.[1].onError(new Error('500: failed to restore'))
+-    expect(toast.error).toHaveBeenCalledWith('Не удалось восстановить TT-1. Повторите попытку.')
++    await waitFor(() =>
++      expect(toast.error).toHaveBeenCalledWith('Не удалось подтвердить восстановление TT-1.'),
++    )
++    expect(screen.queryByText('Private diagnostic')).not.toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Восстановить TT-1' })).toBeDisabled()
+   })
+ 
+   it('purges an issue', async () => {
+@@ -149,18 +178,15 @@ describe('ProjectTrashPage', () => {
+     ).toBeInTheDocument()
+     const confirmButton = screen.getByRole('button', { name: /подтвердить/i })
+     await userEvent.click(confirmButton)
+-    expect(mockPurge).toHaveBeenCalledWith(
+-      'i1',
+-      expect.objectContaining({ onSuccess: expect.any(Function) }),
+-    )
+-    mockPurge.mock.calls[0]?.[1].onSuccess()
+-    expect(toast.success).toHaveBeenCalledWith('Задача TT-1 удалена навсегда.')
++    expect(mockPurge).toHaveBeenCalledWith('i1')
++    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Задача TT-1 удалена навсегда.'))
++    await waitFor(() => expect(screen.getByRole('region', { name: 'Корзина' })).toHaveFocus())
+   })
+ 
+   it('keeps a failed purge open with a localized error and clears it on close', async () => {
+     const reset = vi.fn()
+     mockPurgeState.mockReturnValue({
+-      mutate: mockPurge,
++      mutateAsync: mockPurge,
+       reset,
+       isPending: false,
+       error: new Error('500: failed to purge'),
+@@ -171,7 +197,7 @@ describe('ProjectTrashPage', () => {
+     await user.click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
+     expect(reset).toHaveBeenCalledOnce()
+     expect(screen.getByRole('alert')).toHaveTextContent(
+-      'Не удалось удалить задачу навсегда. Повторите попытку.',
++      'Не удалось подтвердить удаление задачи навсегда.',
+     )
+     await user.click(screen.getByRole('button', { name: /отмена/i }))
+     expect(reset).toHaveBeenCalledTimes(2)
+@@ -259,4 +285,162 @@ describe('ProjectTrashPage', () => {
+       .filter((offset, index, offsets) => index === 0 || offset !== offsets[index - 1])
+     expect(offsetTransitions).toEqual([49900, 0])
+   })
++
++  it('preserves the fragment during canonicalization, pagination and the project return link', async () => {
++    mockTrash.mockReturnValue({
++      data: Array.from({ length: 50 }, (_, index) => trashIssue(index + 1)),
++      isLoading: false,
++      error: null,
++    })
++    render(wrapper(<ProjectTrashPage />, '/projects/TT/trash?source=qa&page=-3#context'))
++    await waitFor(() =>
++      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
++        '/projects/TT/trash?source=qa#context',
++      ),
++    )
++    expect(screen.getByRole('link', { name: 'Вернуться на доску проекта' })).toHaveAttribute(
++      'href',
++      '/projects/TT/board?source=qa#context',
++    )
++    await userEvent.setup().click(screen.getByRole('button', { name: 'Вперёд' }))
++    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
++      '/projects/TT/trash?source=qa&page=2#context',
++    )
++  })
++
++  it('returns focus to the initiator on Escape', async () => {
++    render(wrapper(<ProjectTrashPage />))
++    const trigger = screen.getByRole('button', { name: 'Удалить TT-1 навсегда' })
++    await userEvent.setup().click(trigger)
++    await userEvent.setup().keyboard('{Escape}')
++    await waitFor(() => expect(trigger).toHaveFocus())
++  })
++
++  it.each([403, 404, 422])(
++    'closes a stale confirmation after HTTP %s and does not reopen it on recovery',
++    async (status) => {
++      const view = render(wrapper(<ProjectTrashPage />))
++      await userEvent.setup().click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
++      mockTrash.mockReturnValue({
++        data: [trashIssue(1)],
++        isLoading: false,
++        error: new ApiError(status, 'Private diagnostic'),
++      })
++      view.rerender(wrapper(<ProjectTrashPage />))
++      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++      expect(mockPurge).not.toHaveBeenCalled()
++      expect(screen.queryByText('Deleted task')).not.toBeInTheDocument()
++      mockTrash.mockReturnValue({ data: [trashIssue(1)], isLoading: false, error: null })
++      view.rerender(wrapper(<ProjectTrashPage />))
++      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
++    },
++  )
++
++  it('keeps cancellation available while refresh pauses confirmation', async () => {
++    const view = render(wrapper(<ProjectTrashPage />))
++    await userEvent.setup().click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
++    mockTrash.mockReturnValue({
++      data: [trashIssue(1)],
++      isLoading: false,
++      isFetching: true,
++      error: null,
++    })
++    view.rerender(wrapper(<ProjectTrashPage />))
++    expect(screen.getByRole('button', { name: 'Подтвердить' })).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Отмена' })).toBeEnabled()
++    await userEvent.setup().click(screen.getByRole('button', { name: 'Отмена' }))
++    expect(mockPurge).not.toHaveBeenCalled()
++    await waitFor(() => expect(screen.getByRole('region', { name: 'Корзина' })).toHaveFocus())
++  })
++
++  it('holds the Promise lock against duplicate confirmation and Escape until success', async () => {
++    let finish!: () => void
++    mockPurge.mockReturnValue(
++      new Promise<void>((resolve) => {
++        finish = resolve
++      }),
++    )
++    render(wrapper(<ProjectTrashPage />))
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
++    const confirm = screen.getByRole('button', { name: 'Подтвердить' })
++    act(() => {
++      confirm.click()
++      confirm.click()
++    })
++    expect(mockPurge).toHaveBeenCalledOnce()
++    expect(confirm).toBeDisabled()
++    await user.keyboard('{Escape}')
++    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
++    await act(async () => finish())
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    await waitFor(() => expect(screen.getByRole('region', { name: 'Корзина' })).toHaveFocus())
++  })
++
++  it('does not repeat an unknown purge until a read-only check and an explicit second confirmation', async () => {
++    mockPurge.mockRejectedValueOnce(new ApiError(503, 'Private diagnostic'))
++    const refetch = vi.fn().mockResolvedValue({ data: [trashIssue(1)], error: null })
++    mockTrash.mockReturnValue({ data: [trashIssue(1)], isLoading: false, error: null, refetch })
++    render(wrapper(<ProjectTrashPage />))
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
++    await user.click(screen.getByRole('button', { name: 'Подтвердить' }))
++    await waitFor(() => expect(screen.getByRole('button', { name: 'Подтвердить' })).toBeDisabled())
++    await user.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(refetch).toHaveBeenCalledOnce()
++    expect(mockPurge).toHaveBeenCalledOnce()
++    await waitFor(() => expect(screen.getByRole('button', { name: 'Подтвердить' })).toBeEnabled())
++    await user.click(screen.getByRole('button', { name: 'Подтвердить' }))
++    await waitFor(() => expect(mockPurge).toHaveBeenCalledTimes(2))
++  })
++
++  it('does not claim success when readback no longer contains an uncertain target', async () => {
++    mockPurge.mockRejectedValue(new ApiError(503, 'Private diagnostic'))
++    const refetch = vi.fn().mockImplementation(async () => {
++      mockTrash.mockReturnValue({ data: [], isLoading: false, error: null, refetch })
++      return { data: [], error: null }
++    })
++    mockTrash.mockReturnValue({ data: [trashIssue(1)], isLoading: false, error: null, refetch })
++    render(wrapper(<ProjectTrashPage />))
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Удалить TT-1 навсегда' }))
++    await user.click(screen.getByRole('button', { name: 'Подтвердить' }))
++    await waitFor(() =>
++      expect(screen.getByRole('button', { name: 'Проверить состояние' })).toBeVisible(),
++    )
++    await user.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(toast.success).not.toHaveBeenCalled()
++    expect(toast.info).toHaveBeenCalledOnce()
++    expect(mockPurge).toHaveBeenCalledOnce()
++    await waitFor(() => expect(screen.getByRole('region', { name: 'Корзина' })).toHaveFocus())
++  })
++
++  it('keeps an unknown restore blocked when readback fails', async () => {
++    mockRestore.mockRejectedValue(new ApiError(503, 'Private diagnostic'))
++    const refetch = vi
++      .fn()
++      .mockResolvedValue({ data: [trashIssue(1)], error: new ApiError(503, 'Readback failure') })
++    mockTrash.mockReturnValue({ data: [trashIssue(1)], isLoading: false, error: null, refetch })
++    render(wrapper(<ProjectTrashPage />))
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Восстановить TT-1' }))
++    await waitFor(() =>
++      expect(screen.getByRole('button', { name: 'Проверить состояние' })).toBeVisible(),
++    )
++    await user.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(screen.getByRole('button', { name: 'Восстановить TT-1' })).toBeDisabled()
++    expect(mockRestore).toHaveBeenCalledOnce()
++  })
++
++  it('guards the restore handler before the mutation hook can rerender', () => {
++    mockRestore.mockReturnValue(new Promise(() => {}))
++    render(wrapper(<ProjectTrashPage />))
++    const restore = screen.getByRole('button', { name: 'Восстановить TT-1' })
++    act(() => {
++      restore.click()
++      restore.click()
++    })
++    expect(mockRestore).toHaveBeenCalledOnce()
++  })
+ })
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index 4297048..e912beb 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -648,11 +648,17 @@
+     "restore": "Restore",
+     "restoreIssue": "Restore {{key}}",
+     "restored": "{{key}} was restored.",
+-    "restoreError": "Could not restore {{key}}. Please try again.",
++    "restoreError": "Could not confirm that {{key}} was restored.",
+     "purge": "Delete permanently",
+     "purgeIssue": "Delete {{key}} permanently",
+     "purged": "{{key}} was permanently deleted.",
+-    "purgeError": "Could not permanently delete the issue. Please try again.",
++    "purgeError": "Could not confirm permanent deletion of the issue.",
++    "loadError": "Could not load the trash.",
++    "pagination": "Trash pages",
++    "writeUnknown": "The outcome for {{key}} is unknown. Check the trash before repeating the action.",
++    "writeRejected": "The action for {{key}} was rejected. Check that the issue is still available before repeating it.",
++    "stateChanged": "{{key}} is no longer on this trash page. The previous action's outcome has not been confirmed.",
++    "recheck": "Check current state",
+     "key": "Key",
+     "summary": "Summary",
+     "type": "Type",
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index da0781c..bd09a4b 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -648,11 +648,17 @@
+     "restore": "Восстановить",
+     "restoreIssue": "Восстановить {{key}}",
+     "restored": "Задача {{key}} восстановлена.",
+-    "restoreError": "Не удалось восстановить {{key}}. Повторите попытку.",
++    "restoreError": "Не удалось подтвердить восстановление {{key}}.",
+     "purge": "Удалить навсегда",
+     "purgeIssue": "Удалить {{key}} навсегда",
+     "purged": "Задача {{key}} удалена навсегда.",
+-    "purgeError": "Не удалось удалить задачу навсегда. Повторите попытку.",
++    "purgeError": "Не удалось подтвердить удаление задачи навсегда.",
++    "loadError": "Не удалось загрузить корзину.",
++    "pagination": "Страницы корзины",
++    "writeUnknown": "Результат действия с {{key}} неизвестен. Проверьте состояние корзины перед повтором.",
++    "writeRejected": "Действие с {{key}} отклонено. Проверьте доступность задачи перед повтором.",
++    "stateChanged": "{{key}} больше не отображается в корзине. Результат предыдущего действия не подтверждён.",
++    "recheck": "Проверить состояние",
+     "key": "Ключ",
+     "summary": "Название",
+     "type": "Тип",

@@ -1,0 +1,2489 @@
+diff --git a/backend/api/src/dto/mod.rs b/backend/api/src/dto/mod.rs
+index 3d61bdf..b6a3110 100644
+--- a/backend/api/src/dto/mod.rs
++++ b/backend/api/src/dto/mod.rs
+@@ -388,6 +388,8 @@ pub struct AttachmentResponse {
+     pub content_type: String,
+     pub size_bytes: i64,
+     pub created_at: String,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub artifact: Option<domain::attachment_artifact::AttachmentArtifact>,
+ }
+ 
+ #[derive(Debug, Clone, Serialize, ToSchema)]
+diff --git a/backend/api/src/middleware/attachment_auth.rs b/backend/api/src/middleware/attachment_auth.rs
+new file mode 100644
+index 0000000..cdb8db3
+--- /dev/null
++++ b/backend/api/src/middleware/attachment_auth.rs
+@@ -0,0 +1,75 @@
++//! Mount only on existing attachment upload/list/download, outside generic bearer_auth.
++use axum::{
++    extract::{OriginalUri, Request, State},
++    http::StatusCode,
++    middleware::Next,
++    response::Response,
++};
++use shared::AppError;
++use std::sync::Arc;
++
++pub async fn attachment_auth(
++    State(ctx): State<Arc<app::AppContext>>,
++    mut request: Request,
++    next: Next,
++) -> Result<Response, AppError> {
++    let token = request
++        .headers()
++        .get("authorization")
++        .and_then(|v| v.to_str().ok())
++        .and_then(|v| {
++            v.strip_prefix("Bearer ")
++                .or_else(|| v.strip_prefix("bearer "))
++        })
++        .ok_or(AppError::Unauthorized)?;
++    match super::central_auth::check_token(token).await {
++        super::central_auth::CentralCheck::Validated(central, _) => {
++            if app::sdlc::has_pm_grant(&central.scopes) {
++                return Err(AppError::Forbidden);
++            }
++            let machine = app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
++                || central.role.as_deref() == Some("service_account")
++                || crate::routes::namespace::human_route_machine(&central.user_id);
++            if machine {
++                if crate::routes::namespace::registered_machine(&central.user_id)
++                    || !central.allows_service("task-tracker", request.method().as_str())
++                {
++                    return Err(AppError::Forbidden);
++                }
++                let actor = domain::sdlc::Principal {
++                    subject: central.user_id,
++                    human_session: central.session_id.is_some(),
++                    trusted_human: false,
++                    scopes: central.scopes,
++                };
++                let path = request
++                    .extensions()
++                    .get::<OriginalUri>()
++                    .map_or_else(|| request.uri().path(), |uri| uri.0.path());
++                ctx.services.attachment.authorize_artifact_route(
++                    &actor,
++                    request.method().as_str(),
++                    path,
++                )?;
++                request.extensions_mut().insert(actor);
++                return Ok(next.run(request).await);
++            }
++        }
++        super::central_auth::CentralCheck::Unavailable => {
++            return Err(AppError::Unavailable("Central Auth unavailable".into()));
++        }
++        super::central_auth::CentralCheck::Expired => return Err(AppError::Unauthorized),
++        super::central_auth::CentralCheck::FallThrough => (),
++    }
++    // Preserve existing human/legacy authentication. No machine-to-UserClaims materialization.
++    super::auth::bearer_auth(State(ctx), request, next)
++        .await
++        .map_err(|status| match status {
++            StatusCode::UNAUTHORIZED => AppError::Unauthorized,
++            StatusCode::FORBIDDEN => AppError::Forbidden,
++            StatusCode::SERVICE_UNAVAILABLE => {
++                AppError::Unavailable("authentication unavailable".into())
++            }
++            _ => AppError::internal("attachment authentication failed"),
++        })
++}
+diff --git a/backend/api/src/routes/attachments.rs b/backend/api/src/routes/attachments.rs
+index 84874c8..d342295 100644
+--- a/backend/api/src/routes/attachments.rs
++++ b/backend/api/src/routes/attachments.rs
+@@ -26,18 +26,25 @@ use shared::{AppError, AttachmentId, IssueId, UserId};
+ )]
+ pub async fn list_attachments(
+     State(ctx): State<Arc<AppContext>>,
+-    Extension(claims): Extension<UserClaims>,
++    actor: Option<Extension<domain::sdlc::Principal>>,
++    claims: Option<Extension<UserClaims>>,
+     Path(issue_id): Path<String>,
+ ) -> Result<axum::Json<AttachmentListResponse>, AppError> {
+     let issue_id = issue_id
+         .parse::<IssueId>()
+         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
+-    let requester = parse_user_id(&claims)?;
+-    let items = ctx
+-        .services
+-        .attachment
+-        .list_by_issue(issue_id, requester)
+-        .await?;
++    let items = if let Some(Extension(actor)) = actor {
++        ctx.services
++            .attachment
++            .list_artifacts(issue_id, &actor)
++            .await?
++    } else {
++        let claims = claims.ok_or(AppError::Unauthorized)?;
++        ctx.services
++            .attachment
++            .list_by_issue(issue_id, parse_user_id(&claims)?)
++            .await?
++    };
+     Ok(axum::Json(AttachmentListResponse {
+         attachments: items
+             .into_iter()
+@@ -49,6 +56,7 @@ pub async fn list_attachments(
+                 content_type: a.content_type,
+                 size_bytes: a.size_bytes,
+                 created_at: a.created_at,
++                artifact: a.artifact,
+             })
+             .collect(),
+     }))
+@@ -70,20 +78,14 @@ pub async fn list_attachments(
+ )]
+ pub async fn upload_attachment(
+     State(ctx): State<Arc<AppContext>>,
+-    Extension(claims): Extension<UserClaims>,
++    actor: Option<Extension<domain::sdlc::Principal>>,
++    claims: Option<Extension<UserClaims>>,
+     Path(issue_id): Path<String>,
+     mut multipart: Multipart,
+ ) -> Result<(StatusCode, axum::Json<AttachmentResponse>), AppError> {
+     let issue_id = issue_id
+         .parse::<IssueId>()
+         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
+-    let author_id = UserId::from_uuid(
+-        claims
+-            .sub
+-            .parse()
+-            .map_err(|_| AppError::invalid_input("invalid user id"))?,
+-    );
+-
+     let mut file_name: Option<String> = None;
+     let mut content_type: Option<String> = None;
+     let mut bytes: Option<Vec<u8>> = None;
+@@ -110,11 +112,24 @@ pub async fn upload_attachment(
+     let file_name = file_name.unwrap_or_else(|| "upload.bin".to_string());
+     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+ 
+-    let a = ctx
+-        .services
+-        .attachment
+-        .upload(issue_id, author_id, &file_name, &content_type, bytes)
+-        .await?;
++    let a = if let Some(Extension(actor)) = actor {
++        ctx.services
++            .attachment
++            .upload_artifact(issue_id, &actor, &file_name, &content_type, bytes)
++            .await?
++    } else {
++        let claims = claims.ok_or(AppError::Unauthorized)?;
++        ctx.services
++            .attachment
++            .upload(
++                issue_id,
++                parse_user_id(&claims)?,
++                &file_name,
++                &content_type,
++                bytes,
++            )
++            .await?
++    };
+     Ok((
+         StatusCode::CREATED,
+         axum::Json(AttachmentResponse {
+@@ -125,6 +140,7 @@ pub async fn upload_attachment(
+             content_type: a.content_type,
+             size_bytes: a.size_bytes,
+             created_at: a.created_at,
++            artifact: a.artifact,
+         }),
+     ))
+ }
+@@ -143,14 +159,25 @@ pub async fn upload_attachment(
+ )]
+ pub async fn download_attachment(
+     State(ctx): State<Arc<AppContext>>,
+-    Extension(claims): Extension<UserClaims>,
++    actor: Option<Extension<domain::sdlc::Principal>>,
++    claims: Option<Extension<UserClaims>>,
+     Path(id): Path<String>,
+ ) -> Result<Response, AppError> {
+     let id = id
+         .parse::<AttachmentId>()
+         .map_err(|_| AppError::invalid_input("invalid attachment id"))?;
+-    let requester = parse_user_id(&claims)?;
+-    let (meta, bytes) = ctx.services.attachment.download(id, requester).await?;
++    let (meta, bytes) = if let Some(Extension(actor)) = actor {
++        ctx.services
++            .attachment
++            .download_artifact(id, &actor)
++            .await?
++    } else {
++        let claims = claims.ok_or(AppError::Unauthorized)?;
++        ctx.services
++            .attachment
++            .download(id, parse_user_id(&claims)?)
++            .await?
++    };
+ 
+     let mut resp = Response::new(Body::from(bytes));
+     resp.headers_mut().insert(
+@@ -206,3 +233,42 @@ fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+         .map(UserId::from_uuid)
+         .map_err(|_| AppError::invalid_input("invalid user id in token"))
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn additive_artifact_response_is_omitted_for_legacy() {
++        let mut response = AttachmentResponse {
++            id: uuid::Uuid::new_v4().to_string(),
++            issue_id: uuid::Uuid::new_v4().to_string(),
++            author_id: uuid::Uuid::new_v4().to_string(),
++            file_name: "analysis.json".into(),
++            content_type: "application/json".into(),
++            size_bytes: 2,
++            created_at: "2026-10-14T00:00:00Z".into(),
++            artifact: None,
++        };
++        assert!(
++            serde_json::to_value(&response)
++                .unwrap()
++                .get("artifact")
++                .is_none()
++        );
++        response.artifact = Some(domain::attachment_artifact::AttachmentArtifact {
++            receipt: domain::sdlc_lifecycle::ArtifactReceipt {
++                reference: format!("tracker-attachment:{}", response.id),
++                sha256: "a".repeat(64),
++            },
++            binding: domain::attachment_artifact::ArtifactBinding {
++                assignment_id: uuid::Uuid::new_v4(),
++                execution_id: uuid::Uuid::new_v4(),
++                role: domain::sdlc_lifecycle::DeliveryRole::DevOps,
++            },
++        });
++        let value = serde_json::to_value(response).unwrap();
++        assert_eq!(value["artifact"]["binding"]["role"], "devops");
++        assert_eq!(value["artifact"].as_object().unwrap().len(), 2);
++        assert_eq!(value["artifact"]["binding"].as_object().unwrap().len(), 3);
++    }
++}
+diff --git a/backend/app/src/attachment_artifacts.rs b/backend/app/src/attachment_artifacts.rs
+new file mode 100644
+index 0000000..71b2288
+--- /dev/null
++++ b/backend/app/src/attachment_artifacts.rs
+@@ -0,0 +1,139 @@
++use domain::attachment_artifact::{Seal, is_sealed};
++use domain::sdlc::Principal;
++use sha2::{Digest, Sha256};
++use shared::AppError;
++
++pub fn raw_sha256(bytes: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(bytes))
++}
++
++pub fn verify_bytes(attachment: &domain::Attachment, bytes: &[u8]) -> Result<(), AppError> {
++    let seal = Seal::parse(attachment.storage_key.as_ref())?.ok_or(AppError::Forbidden)?;
++    seal.validate_attachment(attachment)?;
++    if attachment.size_bytes != bytes.len() as i64 || seal.sha256 != raw_sha256(bytes) {
++        return Err(AppError::conflict("sealed artifact checksum mismatch"));
++    }
++    Ok(())
++}
++
++pub fn deny_sealed_delete(key: &str) -> Result<(), AppError> {
++    if is_sealed(key) {
++        return Err(AppError::conflict("sealed role artifact is immutable"));
++    }
++    Ok(())
++}
++
++/// The download path has no task identifier. Metadata authorization is mandatory after dispatch.
++pub fn delivery_attachment_route(
++    actor: &Principal,
++    method: &str,
++    path: &str,
++) -> Result<bool, AppError> {
++    let Some(grant) = crate::sdlc_lifecycle::delivery_grant(actor)? else {
++        return Ok(false);
++    };
++    let task_route = format!("/api/v1/issues/{}/attachments", grant.task_id);
++    let download = is_download_path(path);
++    let write = method == "POST" && path == task_route;
++    let read = method == "GET" && (path == task_route || download);
++    if !write && !read {
++        return Err(AppError::Forbidden);
++    }
++    crate::sdlc_lifecycle::producer(actor, write)?;
++    Ok(true)
++}
++
++pub fn is_download_path(path: &str) -> bool {
++    path.strip_prefix("/api/v1/attachments/")
++        .and_then(|part| part.strip_suffix("/download"))
++        .is_some_and(|id| crate::sdlc::canonical_pm_uuid(id).is_some())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn delivery_routes_are_canonical_exact_and_method_scoped() {
++        let task = uuid::Uuid::new_v4();
++        let mut actor = Principal {
++            subject: "actual-role".into(),
++            human_session: false,
++            trusted_human: false,
++            scopes: [
++                format!(
++                    "task-tracker:sdlc:delivery:{task}:{}:{}:{}:1",
++                    uuid::Uuid::new_v4(),
++                    uuid::Uuid::new_v4(),
++                    uuid::Uuid::new_v4()
++                ),
++                "task-tracker:read".into(),
++            ]
++            .into(),
++        };
++        let path = format!("/api/v1/issues/{task}/attachments");
++        assert!(delivery_attachment_route(&actor, "GET", &path).unwrap());
++        assert!(delivery_attachment_route(&actor, "POST", &path).is_err());
++        actor.scopes.insert("task-tracker:write".into());
++        assert!(delivery_attachment_route(&actor, "POST", &path).unwrap());
++        let download = format!("/api/v1/attachments/{}/download", uuid::Uuid::new_v4());
++        assert!(delivery_attachment_route(&actor, "GET", &download).unwrap());
++        for path in [
++            format!("{path}/"),
++            format!("/api/v1/issues/{}/attachments", uuid::Uuid::new_v4()),
++            download.to_uppercase(),
++            format!("{download}/"),
++            "/api/v1/attachments/not-uuid/download".into(),
++            format!("/api/v1/issues/{task}"),
++        ] {
++            assert!(delivery_attachment_route(&actor, "GET", &path).is_err());
++        }
++        for method in ["HEAD", "PUT", "PATCH", "DELETE"] {
++            assert!(delivery_attachment_route(&actor, method, &download).is_err());
++        }
++        actor.human_session = true;
++        assert!(delivery_attachment_route(&actor, "GET", &download).is_err());
++    }
++    #[test]
++    fn checksum_is_of_raw_bytes_not_reserialized_json() {
++        assert_ne!(raw_sha256(b"{\"a\":1}"), raw_sha256(b"{ \"a\": 1 }"));
++        assert!(deny_sealed_delete("sdlc-artifact-v1_malformed").is_err());
++        assert!(deny_sealed_delete("legacy-report").is_ok());
++    }
++    #[test]
++    fn raw_bytes_metadata_and_foreign_identity_are_checked() {
++        use domain::attachment_artifact::{ArtifactBinding, Seal};
++        use uuid::Uuid;
++        let task = Uuid::new_v4();
++        let bytes = b"{ \"analysis\": true }";
++        let seal = Seal::new(
++            task,
++            ArtifactBinding {
++                assignment_id: Uuid::new_v4(),
++                execution_id: Uuid::new_v4(),
++                role: domain::sdlc_lifecycle::DeliveryRole::Analyst,
++            },
++            Uuid::new_v4(),
++            "analysis.json",
++            "application/json",
++            raw_sha256(bytes),
++        )
++        .unwrap();
++        let mut item = domain::Attachment {
++            id: shared::AttachmentId::from_uuid(seal.artifact_id),
++            issue_id: shared::IssueId::from_uuid(task),
++            author_id: shared::UserId::new(),
++            file_name: "analysis.json".into(),
++            content_type: "application/json".into(),
++            size_bytes: bytes.len() as i64,
++            storage_key: seal.key().into(),
++            created_at: shared::now(),
++        };
++        verify_bytes(&item, bytes).unwrap();
++        assert!(verify_bytes(&item, b"{\"analysis\":true}").is_err());
++        item.size_bytes += 1;
++        assert!(verify_bytes(&item, bytes).is_err());
++        item.size_bytes -= 1;
++        item.issue_id = shared::IssueId::new();
++        assert!(verify_bytes(&item, bytes).is_err());
++    }
++}
+diff --git a/backend/app/src/context/dtos.rs b/backend/app/src/context/dtos.rs
+index f740ff6..c32afdc 100644
+--- a/backend/app/src/context/dtos.rs
++++ b/backend/app/src/context/dtos.rs
+@@ -7,6 +7,8 @@ pub struct AttachmentDto {
+     pub content_type: String,
+     pub size_bytes: i64,
+     pub created_at: String,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub artifact: Option<domain::attachment_artifact::AttachmentArtifact>,
+ }
+ 
+ #[derive(Debug, Clone, serde::Serialize)]
+diff --git a/backend/app/src/context/traits.rs b/backend/app/src/context/traits.rs
+index 2b8f872..59152e9 100644
+--- a/backend/app/src/context/traits.rs
++++ b/backend/app/src/context/traits.rs
+@@ -240,6 +240,46 @@ pub trait DashboardService: Send + Sync {
+ 
+ #[async_trait]
+ pub trait AttachmentService: Send + Sync {
++    fn authorize_artifact_route(
++        &self,
++        _actor: &domain::sdlc::Principal,
++        _method: &str,
++        _path: &str,
++    ) -> Result<(), AppError> {
++        Err(AppError::Unavailable(
++            "role artifact policy not configured".into(),
++        ))
++    }
++    async fn upload_artifact(
++        &self,
++        _issue: IssueId,
++        _actor: &domain::sdlc::Principal,
++        _file_name: &str,
++        _content_type: &str,
++        _bytes: Vec<u8>,
++    ) -> Result<crate::context::AttachmentDto, AppError> {
++        Err(AppError::Unavailable(
++            "role artifact publisher not configured".into(),
++        ))
++    }
++    async fn list_artifacts(
++        &self,
++        _issue: IssueId,
++        _actor: &domain::sdlc::Principal,
++    ) -> Result<Vec<crate::context::AttachmentDto>, AppError> {
++        Err(AppError::Unavailable(
++            "role artifact reader not configured".into(),
++        ))
++    }
++    async fn download_artifact(
++        &self,
++        _id: AttachmentId,
++        _actor: &domain::sdlc::Principal,
++    ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
++        Err(AppError::Unavailable(
++            "role artifact reader not configured".into(),
++        ))
++    }
+     async fn upload(
+         &self,
+         issue_id: IssueId,
+diff --git a/backend/app/src/services/attachment.rs b/backend/app/src/services/attachment.rs
+index 7226b49..a7d61e6 100644
+--- a/backend/app/src/services/attachment.rs
++++ b/backend/app/src/services/attachment.rs
+@@ -37,6 +37,7 @@ pub struct AttachmentServiceImpl {
+     notifications: Arc<dyn domain::NotificationRepository>,
+     notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
+     authz: Authz,
++    artifact_config: Option<domain::sdlc::SdlcConfig>,
+ }
+ 
+ impl AttachmentServiceImpl {
+@@ -60,11 +61,28 @@ impl AttachmentServiceImpl {
+             notifications,
+             notification_settings,
+             authz,
++            artifact_config: None,
+         }
+     }
+ 
+-    fn to_dto(a: &domain::Attachment) -> crate::context::AttachmentDto {
+-        crate::context::AttachmentDto {
++    /// Main wires the same validated deployment config used by the existing SDLC repository.
++    pub fn with_artifact_config(mut self, config: domain::sdlc::SdlcConfig) -> Self {
++        self.artifact_config = Some(config);
++        self
++    }
++
++    fn artifact_config(&self) -> Result<&domain::sdlc::SdlcConfig, AppError> {
++        self.artifact_config
++            .as_ref()
++            .ok_or_else(|| AppError::Unavailable("role artifact policy not configured".into()))
++    }
++
++    fn to_dto(a: &domain::Attachment) -> Result<crate::context::AttachmentDto, AppError> {
++        let seal = domain::attachment_artifact::Seal::parse(a.storage_key.as_ref())?;
++        if let Some(seal) = &seal {
++            seal.validate_attachment(a)?;
++        }
++        Ok(crate::context::AttachmentDto {
+             id: a.id.to_string(),
+             issue_id: a.issue_id.to_string(),
+             author_id: a.author_id.to_string(),
+@@ -72,7 +90,8 @@ impl AttachmentServiceImpl {
+             content_type: a.content_type.as_ref().to_string(),
+             size_bytes: a.size_bytes,
+             created_at: a.created_at.to_rfc3339(),
+-        }
++            artifact: seal.map(|seal| seal.artifact()),
++        })
+     }
+ }
+ 
+@@ -118,6 +137,74 @@ fn validate_content_type(content_type: &str) -> Result<String, AppError> {
+ 
+ #[async_trait]
+ impl crate::context::AttachmentService for AttachmentServiceImpl {
++    fn authorize_artifact_route(
++        &self,
++        actor: &domain::sdlc::Principal,
++        method: &str,
++        path: &str,
++    ) -> Result<(), AppError> {
++        let config = self.artifact_config()?;
++        if crate::attachment_artifacts::delivery_attachment_route(actor, method, path)? {
++            return Ok(());
++        }
++        crate::sdlc_lifecycle::scheduler_read(actor, config)?;
++        if method == "GET" && crate::attachment_artifacts::is_download_path(path) {
++            return Ok(());
++        }
++        Err(AppError::Forbidden)
++    }
++    async fn upload_artifact(
++        &self,
++        issue: IssueId,
++        actor: &domain::sdlc::Principal,
++        file_name: &str,
++        content_type: &str,
++        bytes: Vec<u8>,
++    ) -> Result<crate::context::AttachmentDto, AppError> {
++        crate::sdlc_lifecycle::producer(actor, true)?;
++        let upload = domain::attachment_artifact::ArtifactUpload {
++            file_name: sanitize_file_name(file_name),
++            content_type: validate_content_type(content_type)?,
++            bytes,
++        };
++        let attachment = self
++            .attachments
++            .publish_artifact(
++                self.artifact_config()?,
++                actor,
++                issue,
++                upload,
++                self.storage.as_ref(),
++            )
++            .await?;
++        Self::to_dto(&attachment)
++    }
++
++    async fn list_artifacts(
++        &self,
++        issue: IssueId,
++        actor: &domain::sdlc::Principal,
++    ) -> Result<Vec<crate::context::AttachmentDto>, AppError> {
++        let items = self
++            .attachments
++            .list_artifacts(self.artifact_config()?, actor, issue)
++            .await?;
++        items.iter().map(Self::to_dto).collect()
++    }
++
++    async fn download_artifact(
++        &self,
++        id: shared::AttachmentId,
++        actor: &domain::sdlc::Principal,
++    ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
++        let (attachment, bytes) = self
++            .attachments
++            .download_artifact(self.artifact_config()?, actor, id, self.storage.as_ref())
++            .await?;
++        crate::attachment_artifacts::verify_bytes(&attachment, &bytes)?;
++        Ok((Self::to_dto(&attachment)?, bytes))
++    }
++
+     async fn upload(
+         &self,
+         issue_id: IssueId,
+@@ -174,7 +261,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+             }),
+         )
+         .await;
+-        Ok(Self::to_dto(&attachment))
++        Self::to_dto(&attachment)
+     }
+ 
+     async fn list_by_issue(
+@@ -187,7 +274,15 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+             .require_project_access(issue.project_id, requester)
+             .await?;
+         let items = self.attachments.list_by_issue(issue_id).await?;
+-        Ok(items.iter().map(Self::to_dto).collect())
++        if items
++            .iter()
++            .any(|item| domain::attachment_artifact::is_sealed(item.storage_key.as_ref()))
++        {
++            self.attachments
++                .authorize_sealed_human_read(issue_id, requester)
++                .await?;
++        }
++        items.iter().map(Self::to_dto).collect()
+     }
+ 
+     async fn download(
+@@ -196,6 +291,11 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+         requester: UserId,
+     ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
+         let a = self.attachments.get_by_id(attachment_id).await?;
++        if domain::attachment_artifact::is_sealed(a.storage_key.as_ref()) {
++            self.attachments
++                .authorize_sealed_human_read(a.issue_id, requester)
++                .await?;
++        }
+         let issue = self.issues.get_by_id(a.issue_id).await?;
+         self.authz
+             .require_project_access(issue.project_id, requester)
+@@ -204,7 +304,10 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+             .storage
+             .get(&a.issue_id.to_string(), a.storage_key.as_ref())
+             .await?;
+-        Ok((Self::to_dto(&a), bytes))
++        if domain::attachment_artifact::is_sealed(a.storage_key.as_ref()) {
++            crate::attachment_artifacts::verify_bytes(&a, &bytes)?;
++        }
++        Ok((Self::to_dto(&a)?, bytes))
+     }
+ 
+     async fn delete(
+@@ -213,6 +316,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+         requester: UserId,
+     ) -> Result<(), AppError> {
+         let a = self.attachments.get_by_id(attachment_id).await?;
++        crate::attachment_artifacts::deny_sealed_delete(a.storage_key.as_ref())?;
+         let issue = self.issues.get_by_id(a.issue_id).await?;
+         self.authz
+             .require_project_edit(issue.project_id, requester)
+@@ -242,6 +346,89 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use crate::context::AttachmentService;
++
++    #[test]
++    fn artifact_policy_is_opt_in_and_scheduler_is_read_download_only() {
++        let repos = domain::Repositories::default();
++        let service = AttachmentServiceImpl::new(
++            repos.attachments,
++            repos.issues,
++            Arc::new(domain::InMemoryStorage::default()),
++            repos.watchers,
++            crate::context::EventBus::default(),
++            repos.notifications,
++            repos.notification_settings,
++            Authz::new(repos.members, repos.projects),
++        );
++        let mut scheduler = domain::sdlc::Principal {
++            subject: "scheduler".into(),
++            human_session: false,
++            trusted_human: false,
++            scopes: ["task-tracker:read".into()].into(),
++        };
++        let download = format!("/api/v1/attachments/{}/download", uuid::Uuid::new_v4());
++        assert!(matches!(
++            service.authorize_artifact_route(&scheduler, "GET", &download),
++            Err(AppError::Unavailable(_))
++        ));
++        let service = service.with_artifact_config(domain::sdlc::SdlcConfig {
++            instance_id: "test".into(),
++            orchestrator_subject: "pm".into(),
++            verifier_subject: "verifier".into(),
++            reservation_scheduler_subject: "scheduler".into(),
++            single_task_project_ids: Default::default(),
++        });
++        service
++            .authorize_artifact_route(&scheduler, "GET", &download)
++            .unwrap();
++        for method in ["POST", "HEAD", "PUT", "PATCH", "DELETE"] {
++            assert!(
++                service
++                    .authorize_artifact_route(&scheduler, method, &download)
++                    .is_err()
++            );
++        }
++        assert!(
++            service
++                .authorize_artifact_route(
++                    &scheduler,
++                    "GET",
++                    &format!("/api/v1/issues/{}/attachments", uuid::Uuid::new_v4())
++                )
++                .is_err()
++        );
++        scheduler.subject = "foreign-machine".into();
++        assert!(
++            service
++                .authorize_artifact_route(&scheduler, "GET", &download)
++                .is_err()
++        );
++        scheduler.subject = "scheduler".into();
++        scheduler.human_session = true;
++        assert!(
++            service
++                .authorize_artifact_route(&scheduler, "GET", &download)
++                .is_err()
++        );
++    }
++
++    #[test]
++    fn legacy_attachment_dto_omits_artifact_and_never_fabricates_receipt() {
++        let item = domain::Attachment {
++            id: shared::AttachmentId::new(),
++            issue_id: IssueId::new(),
++            author_id: UserId::new(),
++            file_name: "legacy.json".into(),
++            content_type: "application/json".into(),
++            size_bytes: 2,
++            storage_key: "old-legacy.json".into(),
++            created_at: shared::now(),
++        };
++        let dto = AttachmentServiceImpl::to_dto(&item).unwrap();
++        let value = serde_json::to_value(dto).unwrap();
++        assert!(value.get("artifact").is_none());
++    }
+ 
+     #[test]
+     fn sanitize_file_name_replaces_path_and_control_chars() {
+diff --git a/backend/cli/src/commands.rs b/backend/cli/src/commands.rs
+index aa98ae2..19888c4 100644
+--- a/backend/cli/src/commands.rs
++++ b/backend/cli/src/commands.rs
+@@ -385,6 +385,38 @@ pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
+         .to_owned())
+ }
+ 
++// Attachment machine grants do not authorize generic issue GET. Keys retain normal lookup.
++async fn attachment_issue_id(api: &Api, identifier: &str) -> Result<String> {
++    if let Some(id) = canonical_attachment_issue_id(identifier) {
++        return Ok(id);
++    }
++    issue_id(api, identifier).await
++}
++
++fn canonical_attachment_issue_id(identifier: &str) -> Option<String> {
++    let id: uuid::Uuid = identifier.parse().ok()?;
++    (!id.is_nil() && id.to_string() == identifier).then(|| id.to_string())
++}
++
++#[cfg(test)]
++mod attachment_tests {
++    use super::*;
++    #[test]
++    fn only_canonical_non_nil_uuid_bypasses_generic_issue_lookup() {
++        let id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
++        assert_eq!(canonical_attachment_issue_id(id), Some(id.into()));
++        for identifier in [
++            "SDLC-7",
++            "not-a-uuid",
++            "00000000-0000-0000-0000-000000000000",
++            "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
++            "aaaaaaaabbbb4ccc8dddeeeeeeeeeeee",
++        ] {
++            assert_eq!(canonical_attachment_issue_id(identifier), None);
++        }
++    }
++}
++
+ fn sdlc_path(task: Uuid, suffix: &str) -> String {
+     format!("/api/v1/issues/{task}/sdlc{suffix}")
+ }
+@@ -513,7 +545,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
+             LinkCommand::Delete { id } => api.delete(&format!("/api/v1/issue-links/{}",enc(&id))).await,
+         },
+         WorkCommand::Attachment { command } => match command {
+-            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&issue_id(api,&issue).await?))).await,
++            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&attachment_issue_id(api,&issue).await?))).await,
+             AttachmentCommand::Delete { id } => api.delete(&format!("/api/v1/attachments/{}",enc(&id))).await,
+             AttachmentCommand::Download { id, out, overwrite } => {
+                 support::check_destination(&out,overwrite)?;
+@@ -522,7 +554,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
+                 Ok(json!({"status":"ok","path":out,"size_bytes":data.len()}))
+             }
+             AttachmentCommand::Upload { issue, file, content_type } => {
+-                let id = issue_id(api,&issue).await?;
++                let id = attachment_issue_id(api,&issue).await?;
+                 let content_type=content_type.unwrap_or_else(||mime_guess::from_path(&file).first_or_octet_stream().to_string());
+                 let part = multipart::Part::bytes(std::fs::read(&file)?).file_name(file.file_name().context("Нет имени файла")?.to_string_lossy().into_owned()).mime_str(&content_type)?;
+                 support::json_response(request(api,Method::POST,&format!("/api/v1/issues/{}/attachments",enc(&id)))?.multipart(multipart::Form::new().part("file",part)),&api.secrets).await
+diff --git a/backend/domain/src/attachment_artifact.rs b/backend/domain/src/attachment_artifact.rs
+new file mode 100644
+index 0000000..a8c8e74
+--- /dev/null
++++ b/backend/domain/src/attachment_artifact.rs
+@@ -0,0 +1,253 @@
++//! Sealed role artifacts use existing attachment metadata, never caller filenames as authority.
++use crate::sdlc_lifecycle::{ArtifactReceipt, DeliveryRole};
++use serde::{Deserialize, Serialize};
++use shared::{AppError, AttachmentId};
++use uuid::Uuid;
++
++pub const SEALED_PREFIX: &str = "sdlc-artifact-v1_";
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct ArtifactBinding {
++    pub assignment_id: Uuid,
++    pub execution_id: Uuid,
++    pub role: DeliveryRole,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct AttachmentArtifact {
++    pub receipt: ArtifactReceipt,
++    pub binding: ArtifactBinding,
++}
++
++pub struct ArtifactUpload {
++    pub file_name: String,
++    pub content_type: String,
++    pub bytes: Vec<u8>,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct Seal {
++    pub binding: ArtifactBinding,
++    pub run_id: Uuid,
++    pub sha256: String,
++    pub artifact_id: Uuid,
++}
++
++pub fn is_sealed(key: &str) -> bool {
++    key.starts_with(SEALED_PREFIX)
++}
++
++impl Seal {
++    pub fn new(
++        task: Uuid,
++        binding: ArtifactBinding,
++        run_id: Uuid,
++        file_name: &str,
++        content_type: &str,
++        sha256: String,
++    ) -> Result<Self, AppError> {
++        let identity = serde_json::to_vec(&(
++            "tracker-role-artifact-v1",
++            task,
++            &binding,
++            run_id,
++            file_name,
++            content_type,
++            &sha256,
++        ))
++        .map_err(AppError::internal)?;
++        let seal = Self {
++            binding,
++            run_id,
++            sha256,
++            artifact_id: Uuid::new_v5(&Uuid::NAMESPACE_URL, &identity),
++        };
++        Self::parse(&seal.key())?.ok_or_else(|| AppError::conflict("invalid artifact seal"))
++    }
++
++    pub fn key(&self) -> String {
++        format!(
++            "{SEALED_PREFIX}{}_{}_{}_{}_{}_{}",
++            self.binding.assignment_id,
++            self.binding.execution_id,
++            self.run_id,
++            self.binding.role.key(),
++            self.sha256,
++            self.artifact_id
++        )
++    }
++
++    pub fn parse(key: &str) -> Result<Option<Self>, AppError> {
++        let Some(rest) = key.strip_prefix(SEALED_PREFIX) else {
++            return Ok(None);
++        };
++        let bad = || AppError::conflict("sealed attachment metadata invalid");
++        let parts: Vec<_> = rest.split('_').collect();
++        if parts.len() != 6
++            || parts[4].len() != 64
++            || !parts[4]
++                .bytes()
++                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++        {
++            return Err(bad());
++        }
++        let uuid = |raw: &str| -> Result<Uuid, AppError> {
++            let id: Uuid = raw.parse().map_err(|_| bad())?;
++            if id.is_nil() || id.to_string() != raw {
++                return Err(bad());
++            }
++            Ok(id)
++        };
++        let role = match parts[3] {
++            "analyst" => DeliveryRole::Analyst,
++            "architect" => DeliveryRole::Architect,
++            "developer" => DeliveryRole::Developer,
++            "reviewer" => DeliveryRole::Reviewer,
++            "tester" => DeliveryRole::Tester,
++            "devops" => DeliveryRole::DevOps,
++            _ => return Err(bad()),
++        };
++        Ok(Some(Self {
++            binding: ArtifactBinding {
++                assignment_id: uuid(parts[0])?,
++                execution_id: uuid(parts[1])?,
++                role,
++            },
++            run_id: uuid(parts[2])?,
++            sha256: parts[4].into(),
++            artifact_id: uuid(parts[5])?,
++        }))
++    }
++
++    pub fn artifact(&self) -> AttachmentArtifact {
++        AttachmentArtifact {
++            receipt: ArtifactReceipt {
++                reference: format!("tracker-attachment:{}", self.artifact_id),
++                sha256: self.sha256.clone(),
++            },
++            binding: self.binding.clone(),
++        }
++    }
++
++    pub fn validate_attachment(&self, attachment: &crate::Attachment) -> Result<(), AppError> {
++        let expected = Self::new(
++            attachment.issue_id.as_uuid(),
++            self.binding.clone(),
++            self.run_id,
++            attachment.file_name.as_ref(),
++            attachment.content_type.as_ref(),
++            self.sha256.clone(),
++        )?;
++        if &expected != self || attachment.id != AttachmentId::from_uuid(self.artifact_id) {
++            return Err(AppError::conflict("sealed attachment identity mismatch"));
++        }
++        Ok(())
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn all_six_delivery_roles_round_trip_and_run_identity_is_bound() {
++        let task = Uuid::new_v4();
++        let assignment = Uuid::new_v4();
++        let execution = Uuid::new_v4();
++        for role in [
++            DeliveryRole::Analyst,
++            DeliveryRole::Architect,
++            DeliveryRole::Developer,
++            DeliveryRole::Reviewer,
++            DeliveryRole::Tester,
++            DeliveryRole::DevOps,
++        ] {
++            let binding = ArtifactBinding {
++                assignment_id: assignment,
++                execution_id: execution,
++                role,
++            };
++            let seal = Seal::new(
++                task,
++                binding.clone(),
++                Uuid::new_v4(),
++                "result.json",
++                "application/json",
++                "a".repeat(64),
++            )
++            .unwrap();
++            assert_eq!(Seal::parse(&seal.key()).unwrap(), Some(seal.clone()));
++            let other_run = Seal::new(
++                task,
++                binding,
++                Uuid::new_v4(),
++                "result.json",
++                "application/json",
++                "a".repeat(64),
++            )
++            .unwrap();
++            assert_ne!(seal.artifact_id, other_run.artifact_id);
++        }
++    }
++    #[test]
++    fn exact_replay_has_stable_identity_and_closed_binding() {
++        let task = Uuid::new_v4();
++        let binding = ArtifactBinding {
++            assignment_id: Uuid::new_v4(),
++            execution_id: Uuid::new_v4(),
++            role: DeliveryRole::Reviewer,
++        };
++        let run = Uuid::new_v4();
++        let seal = Seal::new(
++            task,
++            binding.clone(),
++            run,
++            "report.json",
++            "application/json",
++            "a".repeat(64),
++        )
++        .unwrap();
++        assert_eq!(Seal::parse(&seal.key()).unwrap(), Some(seal.clone()));
++        assert_eq!(
++            seal,
++            Seal::new(
++                task,
++                binding.clone(),
++                run,
++                "report.json",
++                "application/json",
++                "a".repeat(64)
++            )
++            .unwrap()
++        );
++        for other in [
++            Seal::new(
++                task,
++                binding.clone(),
++                run,
++                "other.json",
++                "application/json",
++                "a".repeat(64),
++            )
++            .unwrap(),
++            Seal::new(
++                task,
++                binding,
++                run,
++                "report.json",
++                "application/json",
++                "b".repeat(64),
++            )
++            .unwrap(),
++        ] {
++            assert_ne!(seal.artifact_id, other.artifact_id);
++        }
++        assert!(seal.key().len() < 255);
++        assert!(!seal.key().contains(['/', '\\', ':']));
++        assert_eq!(Seal::parse("old-attachment-report.json").unwrap(), None);
++        assert!(Seal::parse(SEALED_PREFIX).is_err());
++        assert!(Seal::parse(&seal.key().replace(&seal.sha256, &"G".repeat(64))).is_err());
++        assert!(serde_json::from_value::<AttachmentArtifact>(serde_json::json!({"receipt":seal.artifact().receipt,"binding":seal.binding,"extra":true})).is_err());
++    }
++}
+diff --git a/backend/domain/src/repositories.rs b/backend/domain/src/repositories.rs
+index 8255acf..65a711f 100644
+--- a/backend/domain/src/repositories.rs
++++ b/backend/domain/src/repositories.rs
+@@ -550,6 +550,46 @@ pub trait WorklogRepository: Send + Sync {
+ 
+ #[async_trait]
+ pub trait AttachmentRepository: Send + Sync {
++    async fn publish_artifact(
++        &self,
++        _config: &crate::sdlc::SdlcConfig,
++        _actor: &crate::sdlc::Principal,
++        _issue: IssueId,
++        _upload: crate::attachment_artifact::ArtifactUpload,
++        _storage: &dyn FileStorage,
++    ) -> Result<crate::Attachment, AppError> {
++        Err(AppError::Unavailable(
++            "role artifact publisher not configured".into(),
++        ))
++    }
++    async fn list_artifacts(
++        &self,
++        _config: &crate::sdlc::SdlcConfig,
++        _actor: &crate::sdlc::Principal,
++        _issue: IssueId,
++    ) -> Result<Vec<crate::Attachment>, AppError> {
++        Err(AppError::Unavailable(
++            "role artifact reader not configured".into(),
++        ))
++    }
++    async fn download_artifact(
++        &self,
++        _config: &crate::sdlc::SdlcConfig,
++        _actor: &crate::sdlc::Principal,
++        _id: AttachmentId,
++        _storage: &dyn FileStorage,
++    ) -> Result<(crate::Attachment, Vec<u8>), AppError> {
++        Err(AppError::Unavailable(
++            "role artifact reader not configured".into(),
++        ))
++    }
++    async fn authorize_sealed_human_read(
++        &self,
++        _issue: IssueId,
++        _requester: UserId,
++    ) -> Result<(), AppError> {
++        Err(AppError::Forbidden)
++    }
+     async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
+     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
+     async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
+@@ -1077,10 +1117,19 @@ impl FileStorage for InMemoryStorage {
+         if bytes.is_empty() {
+             return Err(AppError::invalid_input("file is empty"));
+         }
+-        self.files
+-            .lock()
+-            .unwrap()
+-            .insert((issue_id.to_string(), key.to_string()), bytes);
++        let mut files = self.files.lock().unwrap();
++        let identity = (issue_id.to_string(), key.to_string());
++        if crate::attachment_artifact::Seal::parse(key)?.is_some() {
++            if let Some(retained) = files.get(&identity) {
++                if retained != &bytes {
++                    return Err(AppError::conflict(
++                        "sealed artifact immutable replay differs",
++                    ));
++                }
++                return Ok(());
++            }
++        }
++        files.insert(identity, bytes);
+         Ok(())
+     }
+     async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
+@@ -1092,6 +1141,9 @@ impl FileStorage for InMemoryStorage {
+             .ok_or_else(|| AppError::not_found("attachment file", key))
+     }
+     async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
++        if crate::attachment_artifact::is_sealed(key) {
++            return Err(AppError::conflict("sealed role artifact is immutable"));
++        }
+         self.files
+             .lock()
+             .unwrap()
+diff --git a/backend/infra/src/attachment_artifacts.rs b/backend/infra/src/attachment_artifacts.rs
+new file mode 100644
+index 0000000..e51d869
+--- /dev/null
++++ b/backend/infra/src/attachment_artifacts.rs
+@@ -0,0 +1,505 @@
++//! Child module of `sdlc`: existing attachment rows/blobs and owner transaction only.
++use super::*;
++use crate::entities::attachment;
++use domain::attachment_artifact::{ArtifactBinding, ArtifactUpload, Seal};
++use domain::sdlc_lifecycle::*;
++use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
++use shared::{AttachmentId, IssueId, UserId};
++
++fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult, field: &str) -> Result<T, AppError> {
++    serde_json::from_value(row.try_get::<Json>("", field).map_err(map_db)?)
++        .map_err(|_| AppError::conflict("artifact owner history invalid"))
++}
++
++pub(crate) async fn human_access(
++    db: &DatabaseConnection,
++    issue: IssueId,
++    user: UserId,
++) -> Result<(), AppError> {
++    let tx = db.begin().await.map_err(map_db)?;
++    let row = tx
++        .query_one(statement(
++            "SELECT project_id FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
++            vec![issue.as_uuid().into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    local_access(
++        &tx,
++        row.try_get("", "project_id").map_err(map_db)?,
++        user.as_uuid(),
++    )
++    .await?;
++    tx.commit().await.map_err(map_db)
++}
++
++async fn local_access(tx: &DatabaseTransaction, project: Uuid, user: Uuid) -> Result<(), AppError> {
++    tx.query_one(statement(
++        "SELECT id FROM users WHERE id=$1 AND is_active FOR SHARE",
++        vec![user.into()],
++    ))
++    .await
++    .map_err(map_db)?
++    .ok_or(AppError::Forbidden)?;
++    let row = tx
++        .query_one(statement(
++            "SELECT owner_id FROM projects WHERE id=$1 FOR SHARE",
++            vec![project.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user {
++        tx.query_one(statement(
++            "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
++            vec![project.into(), user.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    }
++    Ok(())
++}
++
++struct Authority {
++    user: Uuid,
++    head: LifecycleReceipt,
++    scheduler: bool,
++}
++
++async fn authority(
++    tx: &DatabaseTransaction,
++    config: &SdlcConfig,
++    task: Uuid,
++    actor: &Principal,
++    write: bool,
++) -> Result<Authority, AppError> {
++    let grant = if write {
++        Some(app::sdlc_lifecycle::producer(actor, true)?)
++    } else if let Some(grant) = app::sdlc_lifecycle::delivery_grant(actor)? {
++        app::sdlc_lifecycle::producer(actor, false)?;
++        Some(grant)
++    } else {
++        app::sdlc_lifecycle::scheduler_read(actor, config)?;
++        None
++    };
++    if grant.as_ref().is_some_and(|grant| grant.task_id != task) {
++        return Err(AppError::Forbidden);
++    }
++    let issue = tx
++        .query_one(statement(
++            "SELECT project_id,status_id FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
++            vec![task.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    let project: Uuid = issue.try_get("", "project_id").map_err(map_db)?;
++    let user = tx
++        .query_one(statement(
++            "SELECT id FROM users WHERE central_sub=$1 AND is_active FOR SHARE",
++            vec![actor.subject.clone().into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?
++        .try_get::<Uuid>("", "id")
++        .map_err(map_db)?;
++    local_access(tx, project, user).await?;
++    if !config.single_task_project_ids.contains(&project) {
++        return Err(AppError::Unavailable(
++            "single-task artifact policy disabled".into(),
++        ));
++    }
++    let state: TaskState = decode(
++        &tx.query_one(statement(
++            "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
++            vec![task.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "state",
++    )?;
++    state.require_root()?;
++    if state.task_id != task
++        || state.project_id != project
++        || state.tracker_instance_id != config.instance_id
++        || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
++    {
++        return Err(AppError::Forbidden);
++    }
++    let head: LifecycleReceipt = decode(
++        &tx.query_one(statement(
++            "SELECT receipt FROM sdlc_delivery_tasks WHERE task_id=$1 FOR UPDATE",
++            vec![task.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "receipt",
++    )?;
++    super::lifecycle::exact_revision(&state, &head)?;
++    if head.task.routing.contract_version != 2 {
++        return Err(AppError::conflict("single-task artifact routing required"));
++    }
++    app::sdlc_routing::validate_routes(&head.task.routing.policy.routes)
++        .map_err(|_| AppError::conflict("artifact routing history invalid"))?;
++    if issue.try_get::<Uuid>("", "status_id").map_err(map_db)?
++        != super::lifecycle::mapped_issue_status(tx, head.task.stage.canonical(), head.task.status)
++            .await?
++    {
++        return Err(AppError::conflict("artifact lifecycle projection drift"));
++    }
++    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
++    let binding = head.binding.as_ref().ok_or(AppError::Forbidden)?;
++    if assignment.task_id != task
++        || assignment.owner_subject != head.task.owner_subject
++        || assignment.stage != head.task.stage
++        || assignment.cycle != head.task.cycle
++        || assignment.routing != head.task.routing
++        || assignment.stage.role() != Some(assignment.role)
++        || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(assignment)?
++    {
++        return Err(AppError::conflict("artifact assignment drift"));
++    }
++    let saved: DeliveryAssignment = decode(
++        &tx.query_one(statement(
++            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",
++            vec![assignment.assignment_id.into(), task.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "payload",
++    )?;
++    let run: RunBinding = decode(
++        &tx.query_one(statement(
++            "SELECT payload FROM sdlc_delivery_run_bindings WHERE assignment_id=$1 AND run_id=$2",
++            vec![assignment.assignment_id.into(), binding.run_id.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "payload",
++    )?;
++    if &saved != assignment || &run != binding {
++        return Err(AppError::conflict("artifact binding history drift"));
++    }
++    if let Some(grant) = &grant {
++        app::sdlc_lifecycle::authorize_delivery_assignment(grant, assignment)?;
++        if binding.machine_subject != actor.subject {
++            return Err(AppError::Forbidden);
++        }
++    }
++    if write {
++        if head
++            .lease
++            .as_ref()
++            .is_none_or(|lease| lease.holder_subject != config.reservation_scheduler_subject)
++        {
++            return Err(AppError::Forbidden);
++        }
++        ensure_live(tx, &head).await?;
++    }
++    Ok(Authority {
++        user,
++        head,
++        scheduler: grant.is_none(),
++    })
++}
++
++async fn ensure_live(tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Result<(), AppError> {
++    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
++    let lease = head.lease.as_ref().ok_or(AppError::Forbidden)?;
++    let now: chrono::DateTime<chrono::Utc> = tx
++        .query_one(statement("SELECT clock_timestamp() AS now", vec![]))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?
++        .try_get("", "now")
++        .map_err(map_db)?;
++    if head.task.runtime != RuntimeState::Running
++        || head.task.status != LifecycleStatus::InProgress
++        || lease.lease_id != assignment.lease_id
++        || lease.version < 1
++        || lease.expires_at <= now
++    {
++        return Err(AppError::conflict(
++            "artifact publisher not running or lease expired",
++        ));
++    }
++    // The scheduler owns this lease. Agent identity is the run binding, never lease.holder_subject.
++    Ok(())
++}
++
++async fn provenance(
++    tx: &DatabaseTransaction,
++    attachment: &domain::Attachment,
++    seal: &Seal,
++) -> Result<(), AppError> {
++    seal.validate_attachment(attachment)?;
++    let assignment: DeliveryAssignment = decode(
++        &tx.query_one(statement(
++            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",
++            vec![
++                seal.binding.assignment_id.into(),
++                attachment.issue_id.as_uuid().into(),
++            ],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "payload",
++    )?;
++    let binding: RunBinding = decode(
++        &tx.query_one(statement(
++            "SELECT payload FROM sdlc_delivery_run_bindings WHERE assignment_id=$1 AND run_id=$2",
++            vec![seal.binding.assignment_id.into(), seal.run_id.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?,
++        "payload",
++    )?;
++    if assignment.execution_id != seal.binding.execution_id
++        || assignment.assignment_id != seal.binding.assignment_id
++        || assignment.role != seal.binding.role
++        || assignment.task_id != attachment.issue_id.as_uuid()
++        || binding.run_id != seal.run_id
++        || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(&assignment)?
++    {
++        return Err(AppError::conflict("artifact provenance mismatch"));
++    }
++    tx.query_one(statement(
++        "SELECT id FROM users WHERE id=$1 AND central_sub=$2",
++        vec![
++            attachment.author_id.as_uuid().into(),
++            binding.machine_subject.into(),
++        ],
++    ))
++    .await
++    .map_err(map_db)?
++    .ok_or_else(|| AppError::conflict("artifact author differs from actual producer"))?;
++    Ok(())
++}
++
++async fn allowed(
++    tx: &DatabaseTransaction,
++    auth: &Authority,
++    attachment: &domain::Attachment,
++) -> Result<bool, AppError> {
++    let Some(seal) = Seal::parse(attachment.storage_key.as_ref())? else {
++        return Ok(false);
++    };
++    provenance(tx, attachment, &seal).await?;
++    let current = auth.head.assignment.as_ref().ok_or(AppError::Forbidden)?;
++    if !auth.scheduler && current.assignment_id == seal.binding.assignment_id {
++        return Ok(true);
++    }
++    let wanted = seal.artifact().receipt;
++    if auth.scheduler {
++        if current.assignment_id != seal.binding.assignment_id
++            || current.execution_id != seal.binding.execution_id
++            || current.role != seal.binding.role
++        {
++            return Ok(false);
++        }
++        let Some(row) = tx
++            .query_one(statement(
++                "SELECT payload FROM sdlc_delivery_proposals WHERE assignment_id=$1 AND task_id=$2",
++                vec![current.assignment_id.into(), current.task_id.into()],
++            ))
++            .await
++            .map_err(map_db)?
++        else {
++            return Ok(false);
++        };
++        let proposal: DeliveryProposalReceipt = decode(&row, "payload")?;
++        return Ok(proposal.task_id == current.task_id
++            && proposal.assignment_id == current.assignment_id
++            && proposal.execution_id == current.execution_id
++            && proposal.agent_id == current.agent_id
++            && auth
++                .head
++                .binding
++                .as_ref()
++                .is_some_and(|binding| binding.machine_subject == proposal.producer_subject)
++            && proposal.result.role() == current.role
++            && proposal.result.artifacts().contains(&&wanted));
++    }
++    let mut previous = current.previous_result_id;
++    let mut visited = std::collections::HashSet::new();
++    while let Some(id) = previous {
++        if !visited.insert(id) || visited.len() > 128 {
++            return Err(AppError::conflict("artifact predecessor history invalid"));
++        }
++        let Some(row) = tx
++            .query_one(statement(
++                "SELECT payload FROM sdlc_delivery_results WHERE result_id=$1 AND task_id=$2",
++                vec![id.into(), current.task_id.into()],
++            ))
++            .await
++            .map_err(map_db)?
++        else {
++            return Ok(false);
++        }; // Legacy Analysis is not retroactively a sealed artifact.
++        let result: AcceptedDeliveryResult = decode(&row, "payload")?;
++        let assignment: DeliveryAssignment = decode(&tx.query_one(statement("SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",vec![result.assignment_id.into(),current.task_id.into()]))
++            .await.map_err(map_db)?.ok_or(AppError::Forbidden)?,"payload")?;
++        if result.result_id != id
++            || result.task_id != current.task_id
++            || assignment.assignment_id != result.assignment_id
++            || assignment.task_id != current.task_id
++            || result.output.role() != assignment.role
++            || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(&assignment)?
++        {
++            return Err(AppError::conflict("artifact accepted history drift"));
++        }
++        if result.assignment_id == seal.binding.assignment_id
++            && result.output.artifacts().contains(&&wanted)
++        {
++            return Ok(true);
++        }
++        previous = assignment.previous_result_id;
++    }
++    Ok(false)
++}
++
++pub(crate) async fn publish(
++    db: &DatabaseConnection,
++    config: &SdlcConfig,
++    actor: &Principal,
++    issue: IssueId,
++    upload: ArtifactUpload,
++    storage: &dyn domain::FileStorage,
++) -> Result<domain::Attachment, AppError> {
++    if upload.bytes.is_empty() {
++        return Err(AppError::invalid_input("file is empty"));
++    }
++    let tx = db.begin().await.map_err(map_db)?;
++    let auth = authority(&tx, config, issue.as_uuid(), actor, true).await?;
++    let assignment = auth.head.assignment.as_ref().ok_or(AppError::Forbidden)?;
++    let seal = Seal::new(
++        issue.as_uuid(),
++        ArtifactBinding {
++            assignment_id: assignment.assignment_id,
++            execution_id: assignment.execution_id,
++            role: assignment.role,
++        },
++        auth.head
++            .binding
++            .as_ref()
++            .ok_or(AppError::Forbidden)?
++            .run_id,
++        &upload.file_name,
++        &upload.content_type,
++        app::attachment_artifacts::raw_sha256(&upload.bytes),
++    )?;
++    if let Some(model) = attachment::Entity::find_by_id(seal.artifact_id)
++        .one(&tx)
++        .await
++        .map_err(map_db)?
++    {
++        let attachment = crate::repos::map_attachment(model);
++        provenance(&tx, &attachment, &seal).await?;
++        if attachment.author_id.as_uuid() != auth.user
++            || attachment.storage_key.as_ref() != seal.key()
++        {
++            return Err(AppError::conflict("artifact replay identity conflict"));
++        }
++        let bytes = storage.get(&issue.to_string(), &seal.key()).await?;
++        app::attachment_artifacts::verify_bytes(&attachment, &bytes)?;
++        tx.commit().await.map_err(map_db)?;
++        return Ok(attachment);
++    }
++    let size_bytes = upload.bytes.len() as i64;
++    storage
++        .put(&issue.to_string(), &seal.key(), upload.bytes)
++        .await?;
++    let item = domain::Attachment {
++        id: AttachmentId::from_uuid(seal.artifact_id),
++        issue_id: issue,
++        author_id: UserId::from_uuid(auth.user),
++        file_name: upload.file_name.into(),
++        content_type: upload.content_type.into(),
++        size_bytes,
++        storage_key: seal.key().into(),
++        created_at: shared::now(),
++    };
++    let retained = storage
++        .get(&issue.to_string(), item.storage_key.as_ref())
++        .await?;
++    app::attachment_artifacts::verify_bytes(&item, &retained)?;
++    // Locks retain assignment/ACL throughout I/O; check the actual clock again before metadata commit.
++    ensure_live(&tx, &auth.head).await?;
++    attachment::ActiveModel {
++        id: Set(item.id.as_uuid()),
++        issue_id: Set(issue.as_uuid()),
++        author_id: Set(auth.user),
++        file_name: Set(item.file_name.to_string()),
++        content_type: Set(item.content_type.to_string()),
++        size_bytes: Set(item.size_bytes),
++        storage_key: Set(item.storage_key.to_string()),
++        created_at: Set(item.created_at),
++    }
++    .insert(&tx)
++    .await
++    .map_err(map_db)?;
++    tx.commit().await.map_err(map_db)?;
++    // Never delete a sealed blob on DB error: exact retry safely adopts the same bytes; no loser deletes a winner.
++    Ok(item)
++}
++
++pub(crate) async fn list(
++    db: &DatabaseConnection,
++    config: &SdlcConfig,
++    actor: &Principal,
++    issue: IssueId,
++) -> Result<Vec<domain::Attachment>, AppError> {
++    app::sdlc_lifecycle::producer(actor, false)?;
++    let tx = db.begin().await.map_err(map_db)?;
++    let auth = authority(&tx, config, issue.as_uuid(), actor, false).await?;
++    let models = attachment::Entity::find()
++        .filter(attachment::Column::IssueId.eq(issue.as_uuid()))
++        .all(&tx)
++        .await
++        .map_err(map_db)?;
++    let mut items = Vec::new();
++    for model in models {
++        let item = crate::repos::map_attachment(model);
++        if allowed(&tx, &auth, &item).await? {
++            items.push(item);
++        }
++    }
++    items.sort_by_key(|item| item.id.as_uuid());
++    tx.commit().await.map_err(map_db)?;
++    Ok(items)
++}
++
++pub(crate) async fn download(
++    db: &DatabaseConnection,
++    config: &SdlcConfig,
++    actor: &Principal,
++    id: AttachmentId,
++    storage: &dyn domain::FileStorage,
++) -> Result<(domain::Attachment, Vec<u8>), AppError> {
++    let tx = db.begin().await.map_err(map_db)?;
++    let model = attachment::Entity::find_by_id(id.as_uuid())
++        .one(&tx)
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    let item = crate::repos::map_attachment(model);
++    let auth = authority(&tx, config, item.issue_id.as_uuid(), actor, false).await?;
++    if !allowed(&tx, &auth, &item).await? {
++        return Err(AppError::Forbidden);
++    }
++    let bytes = storage
++        .get(&item.issue_id.to_string(), item.storage_key.as_ref())
++        .await?;
++    app::attachment_artifacts::verify_bytes(&item, &bytes)?;
++    tx.commit().await.map_err(map_db)?;
++    Ok((item, bytes))
++}
+diff --git a/backend/infra/src/attachment_artifacts_pg_tests.rs b/backend/infra/src/attachment_artifacts_pg_tests.rs
+new file mode 100644
+index 0000000..1d29b21
+--- /dev/null
++++ b/backend/infra/src/attachment_artifacts_pg_tests.rs
+@@ -0,0 +1,392 @@
++//! Register as a child of the existing candidates PG fixture; no new runner/database setup.
++//! All Fleet/native/Workflow terminal observations here are explicitly synthetic.
++use super::*;
++use crate::sdlc::attachment_artifacts as artifacts;
++use domain::attachment_artifact::{ArtifactUpload, Seal};
++
++fn upload(bytes: &[u8], name: &str) -> ArtifactUpload {
++    ArtifactUpload {
++        file_name: name.into(),
++        content_type: "application/json".into(),
++        bytes: bytes.to_vec(),
++    }
++}
++fn delivery_fence(receipt: &LifecycleReceipt) -> DeliveryFence {
++    let assignment = receipt.assignment.as_ref().unwrap();
++    DeliveryFence {
++        assignment_id: assignment.assignment_id,
++        execution_id: assignment.execution_id,
++        fencing_token: assignment.fencing_token,
++        lease_id: assignment.lease_id,
++        expected_lease_version: receipt.lease.as_ref().unwrap().version,
++    }
++}
++
++async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
++    let receipt = f
++        .repo
++        .lifecycle_read(task, &f.reader)
++        .await
++        .unwrap()
++        .receipt;
++    let (reserved, _) = f
++        .repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::Reserve {
++                expected_task_version: receipt.task.version,
++                idempotency_key: format!("reserve-{key}"),
++            },
++        )
++        .await
++        .unwrap();
++    let (bound, _) = f
++        .repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::BindRun {
++                fence: delivery_fence(&reserved),
++                binding: RunBinding {
++                    chat_id: Uuid::new_v4(),
++                    run_id: Uuid::new_v4(),
++                    machine_subject: "artifact-agent".into(),
++                    dispatch_receipt: ArtifactReceipt {
++                        reference: "fixture://synthetic-fleet-dispatch".into(),
++                        sha256: "c".repeat(64),
++                    },
++                },
++                idempotency_key: format!("bind-{key}"),
++            },
++        )
++        .await
++        .unwrap();
++    bound
++}
++
++#[tokio::test]
++#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime observations"]
++async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immutable() {
++    let f = Fixture::new().await;
++    let agent_id = Uuid::new_v4();
++    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'artifact-agent@example.test','artifact-agent','artifact-agent','!','artifact-agent',true)",vec![agent_id.into()]).await.unwrap();
++    exec(
++        &f.db,
++        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
++        vec![f.project.into(), agent_id.into()],
++    )
++    .await
++    .unwrap();
++    let task = f.confirmed("artifact-task", true).await;
++    f.repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::EnsureQueued {
++                idempotency_key: "queue".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let bound = bind(&f, task, "analyst").await;
++    assert_eq!(bound.lease.as_ref().unwrap().holder_subject, "scheduler");
++    let assignment = bound.assignment.as_ref().unwrap();
++    let producer = actor(
++        "artifact-agent",
++        false,
++        &[
++            "task-tracker:read",
++            "task-tracker:write",
++            &assignment.scope(),
++        ],
++    );
++    let storage = domain::InMemoryStorage::default();
++    let issue = shared::IssueId::from_uuid(task);
++    let config = &f.repo.config;
++    let bytes = b"{ \"actual\": \"analysis\" }";
++    let (one, two) = tokio::join!(
++        artifacts::publish(
++            &f.db,
++            config,
++            &producer,
++            issue,
++            upload(bytes, "analysis.json"),
++            &storage
++        ),
++        artifacts::publish(
++            &f.db,
++            config,
++            &producer,
++            issue,
++            upload(bytes, "analysis.json"),
++            &storage
++        )
++    );
++    let one = one.unwrap();
++    let two = two.unwrap();
++    assert_eq!(one.id, two.id);
++    assert_eq!(one.created_at, two.created_at);
++    assert_eq!(one.author_id.as_uuid(), agent_id);
++    let seal = Seal::parse(one.storage_key.as_ref()).unwrap().unwrap();
++    assert_eq!(seal.run_id, bound.binding.as_ref().unwrap().run_id);
++    let (_, actual) = artifacts::download(&f.db, config, &producer, one.id, &storage)
++        .await
++        .unwrap();
++    assert_eq!(actual, bytes);
++    assert!(matches!(
++        artifacts::download(&f.db, config, &f.reader, one.id, &storage).await,
++        Err(AppError::Forbidden)
++    ));
++    let foreign = actor(
++        "foreign",
++        false,
++        &["task-tracker:read", &assignment.scope()],
++    );
++    assert!(matches!(
++        artifacts::download(&f.db, config, &foreign, one.id, &storage).await,
++        Err(AppError::Forbidden)
++    ));
++    let owner_impersonation = actor(
++        "owner",
++        false,
++        &[
++            "task-tracker:read",
++            "task-tracker:write",
++            &assignment.scope(),
++        ],
++    );
++    assert!(matches!(
++        artifacts::publish(
++            &f.db,
++            config,
++            &owner_impersonation,
++            issue,
++            upload(bytes, "owner.json"),
++            &storage
++        )
++        .await,
++        Err(AppError::Forbidden)
++    ));
++    let wrong_fence = actor(
++        "artifact-agent",
++        false,
++        &[
++            "task-tracker:read",
++            "task-tracker:write",
++            &format!(
++                "task-tracker:sdlc:delivery:{}:{}:{}:{}:{}",
++                task,
++                assignment.assignment_id,
++                assignment.execution_id,
++                assignment.agent_id,
++                assignment.fencing_token + 1
++            ),
++        ],
++    );
++    assert!(matches!(
++        artifacts::publish(
++            &f.db,
++            config,
++            &wrong_fence,
++            issue,
++            upload(bytes, "wrong-fence.json"),
++            &storage
++        )
++        .await,
++        Err(AppError::Forbidden)
++    ));
++    let original = one.storage_key.to_string();
++    exec(
++        &f.db,
++        "UPDATE attachments SET size_bytes=size_bytes+1 WHERE id=$1",
++        vec![one.id.as_uuid().into()],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        artifacts::download(&f.db, config, &producer, one.id, &storage).await,
++        Err(AppError::Conflict(_))
++    ));
++    exec(
++        &f.db,
++        "UPDATE attachments SET size_bytes=size_bytes-1 WHERE id=$1",
++        vec![one.id.as_uuid().into()],
++    )
++    .await
++    .unwrap();
++    assert!(
++        domain::FileStorage::delete(&storage, &task.to_string(), &original)
++            .await
++            .is_err()
++    );
++    let omitted = artifacts::publish(
++        &f.db,
++        config,
++        &producer,
++        issue,
++        upload(b"{}", "unaccepted.json"),
++        &storage,
++    )
++    .await
++    .unwrap();
++    let result = DeliveryResult::Analyst {
++        analysis: seal.artifact().receipt,
++    };
++    let workflow_receipt = ArtifactReceipt {
++        reference: "fixture://synthetic-workflow-terminal".into(),
++        sha256: "d".repeat(64),
++    };
++    let (proposal, _) = f
++        .repo
++        .submit_delivery_proposal(
++            task,
++            &producer,
++            SubmitDeliveryProposal {
++                fence: delivery_fence(&bound),
++                workflow_receipt: workflow_receipt.clone(),
++                result: result.clone(),
++                idempotency_key: "proposal".into(),
++            },
++        )
++        .await
++        .unwrap();
++    assert_eq!(
++        artifacts::download(&f.db, config, &f.reader, one.id, &storage)
++            .await
++            .unwrap()
++            .1,
++        bytes
++    );
++    assert!(matches!(
++        artifacts::download(&f.db, config, &f.reader, omitted.id, &storage).await,
++        Err(AppError::Forbidden)
++    ));
++    let binding = bound.binding.as_ref().unwrap();
++    f.repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::Complete {
++                fence: delivery_fence(&bound),
++                result,
++                terminal: TerminalReceipt {
++                    chat_id: binding.chat_id,
++                    run_id: binding.run_id,
++                    workflow_receipt,
++                    fleet_receipt: ArtifactReceipt {
++                        reference: "fixture://synthetic-native-terminal".into(),
++                        sha256: "e".repeat(64),
++                    },
++                    output_sha256: proposal.output_sha256,
++                },
++                idempotency_key: "complete".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let architect = bind(&f, task, "architect").await;
++    let consumer = actor(
++        "artifact-agent",
++        false,
++        &[
++            "task-tracker:read",
++            "task-tracker:write",
++            &architect.assignment.as_ref().unwrap().scope(),
++        ],
++    );
++    assert_eq!(
++        artifacts::download(&f.db, config, &consumer, one.id, &storage)
++            .await
++            .unwrap()
++            .1,
++        bytes
++    );
++    assert!(matches!(
++        artifacts::download(&f.db, config, &consumer, omitted.id, &storage).await,
++        Err(AppError::Forbidden)
++    ));
++    assert_eq!(
++        artifacts::list(&f.db, config, &consumer, issue)
++            .await
++            .unwrap()
++            .len(),
++        1
++    );
++    assert!(
++        artifacts::publish(
++            &f.db,
++            config,
++            &producer,
++            issue,
++            upload(bytes, "analysis.json"),
++            &storage
++        )
++        .await
++        .is_err()
++    );
++    // Actual database clock, no trigger disabling or protected ledger edits.
++    f.db.execute_unprepared("SELECT pg_sleep(31)")
++        .await
++        .unwrap();
++    assert!(matches!(
++        artifacts::publish(
++            &f.db,
++            config,
++            &consumer,
++            issue,
++            upload(b"{}", "expired.json"),
++            &storage
++        )
++        .await,
++        Err(AppError::Conflict(_))
++    ));
++    exec(
++        &f.db,
++        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
++        vec![f.project.into(), agent_id.into()],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        artifacts::download(&f.db, config, &consumer, one.id, &storage).await,
++        Err(AppError::Forbidden)
++    ));
++    let owner_id: Uuid =
++        f.db.query_one(statement(
++            "SELECT id FROM users WHERE central_sub='owner'",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "id")
++        .unwrap();
++    let foreign_id: Uuid =
++        f.db.query_one(statement(
++            "SELECT id FROM users WHERE central_sub='foreign'",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "id")
++        .unwrap();
++    // Transfer the existing fixture connection, never clone it or create another pool.
++    let attachments = crate::repos::SeaOrmRepositories::new(f.db).attachments;
++    attachments
++        .authorize_sealed_human_read(issue, shared::UserId::from_uuid(owner_id))
++        .await
++        .unwrap();
++    assert!(matches!(
++        attachments
++            .authorize_sealed_human_read(issue, shared::UserId::from_uuid(foreign_id))
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        attachments.delete(one.id).await,
++        Err(AppError::Conflict(_))
++    ));
++    assert_eq!(attachments.get_by_id(one.id).await.unwrap().id, one.id);
++}
+diff --git a/backend/infra/src/repos.rs b/backend/infra/src/repos.rs
+index 20f0fe5..a514d6a 100644
+--- a/backend/infra/src/repos.rs
++++ b/backend/infra/src/repos.rs
+@@ -1793,6 +1793,41 @@ struct AttachmentRepo {
+ 
+ #[async_trait]
+ impl AttachmentRepository for AttachmentRepo {
++    async fn publish_artifact(
++        &self,
++        config: &domain::sdlc::SdlcConfig,
++        actor: &domain::sdlc::Principal,
++        issue: IssueId,
++        upload: domain::attachment_artifact::ArtifactUpload,
++        storage: &dyn domain::FileStorage,
++    ) -> Result<Attachment, AppError> {
++        crate::sdlc::attachment_artifacts::publish(&self.db, config, actor, issue, upload, storage)
++            .await
++    }
++    async fn list_artifacts(
++        &self,
++        config: &domain::sdlc::SdlcConfig,
++        actor: &domain::sdlc::Principal,
++        issue: IssueId,
++    ) -> Result<Vec<Attachment>, AppError> {
++        crate::sdlc::attachment_artifacts::list(&self.db, config, actor, issue).await
++    }
++    async fn download_artifact(
++        &self,
++        config: &domain::sdlc::SdlcConfig,
++        actor: &domain::sdlc::Principal,
++        id: AttachmentId,
++        storage: &dyn domain::FileStorage,
++    ) -> Result<(Attachment, Vec<u8>), AppError> {
++        crate::sdlc::attachment_artifacts::download(&self.db, config, actor, id, storage).await
++    }
++    async fn authorize_sealed_human_read(
++        &self,
++        issue: IssueId,
++        requester: UserId,
++    ) -> Result<(), AppError> {
++        crate::sdlc::attachment_artifacts::human_access(&self.db, issue, requester).await
++    }
+     async fn get_by_id(&self, id: AttachmentId) -> Result<Attachment, AppError> {
+         let model = attachment::Entity::find_by_id(id.as_uuid())
+             .one(&*self.db)
+@@ -1814,6 +1849,9 @@ impl AttachmentRepository for AttachmentRepo {
+     }
+ 
+     async fn save(&self, attachment: &Attachment) -> Result<AttachmentId, AppError> {
++        if domain::attachment_artifact::is_sealed(attachment.storage_key.as_ref()) {
++            return Err(AppError::Forbidden);
++        }
+         let active = attachment::ActiveModel {
+             id: Set(attachment.id.as_uuid()),
+             issue_id: Set(attachment.issue_id.as_uuid()),
+@@ -1829,6 +1867,13 @@ impl AttachmentRepository for AttachmentRepo {
+     }
+ 
+     async fn delete(&self, id: AttachmentId) -> Result<(), AppError> {
++        if let Some(item) = attachment::Entity::find_by_id(id.as_uuid())
++            .one(&*self.db)
++            .await
++            .map_err(AppError::database)?
++        {
++            app::attachment_artifacts::deny_sealed_delete(&item.storage_key)?;
++        }
+         attachment::Entity::delete_by_id(id.as_uuid())
+             .exec(&*self.db)
+             .await
+@@ -1837,7 +1882,7 @@ impl AttachmentRepository for AttachmentRepo {
+     }
+ }
+ 
+-fn map_attachment(m: attachment::Model) -> Attachment {
++pub(crate) fn map_attachment(m: attachment::Model) -> Attachment {
+     Attachment {
+         id: AttachmentId::from_uuid(m.id),
+         issue_id: IssueId::from_uuid(m.issue_id),
+diff --git a/backend/infra/src/storage.rs b/backend/infra/src/storage.rs
+index 71ef0fc..a59d02a 100644
+--- a/backend/infra/src/storage.rs
++++ b/backend/infra/src/storage.rs
+@@ -1,5 +1,6 @@
+ use shared::{AppError, StorageConfig};
+ use std::path::PathBuf;
++use tokio::io::{AsyncReadExt, AsyncWriteExt};
+ 
+ #[async_trait::async_trait]
+ impl domain::FileStorage for FileStorage {
+@@ -53,6 +54,14 @@ impl FileStorage {
+         if bytes.is_empty() {
+             return Err(AppError::invalid_input("file is empty"));
+         }
++        if let Some(seal) = domain::attachment_artifact::Seal::parse(key)? {
++            if app::sdlc::canonical_pm_uuid(issue_id).is_none()
++                || seal.sha256 != app::attachment_artifacts::raw_sha256(&bytes)
++            {
++                return Err(AppError::conflict("sealed artifact bytes or task invalid"));
++            }
++            return self.put_sealed(issue_id, key, &bytes).await;
++        }
+         let path = self.path_for(issue_id, key);
+         if let Some(parent) = path.parent() {
+             tokio::fs::create_dir_all(parent)
+@@ -67,12 +76,30 @@ impl FileStorage {
+ 
+     pub async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
+         let path = self.path_for(issue_id, key);
++        if let Some(seal) = domain::attachment_artifact::Seal::parse(key)? {
++            let file = tokio::fs::File::open(&path)
++                .await
++                .map_err(|_| AppError::not_found("attachment file", key))?;
++            let mut bytes = Vec::new();
++            file.take(self.max_upload_bytes as u64 + 1)
++                .read_to_end(&mut bytes)
++                .await
++                .map_err(|_| AppError::conflict("sealed artifact read failed"))?;
++            if bytes.is_empty()
++                || bytes.len() > self.max_upload_bytes
++                || app::attachment_artifacts::raw_sha256(&bytes) != seal.sha256
++            {
++                return Err(AppError::conflict("sealed artifact checksum mismatch"));
++            }
++            return Ok(bytes);
++        }
+         tokio::fs::read(&path)
+             .await
+             .map_err(|_| AppError::not_found("attachment file", key))
+     }
+ 
+     pub async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
++        app::attachment_artifacts::deny_sealed_delete(key)?;
+         let path = self.path_for(issue_id, key);
+         match tokio::fs::remove_file(&path).await {
+             Ok(()) => {
+@@ -87,6 +114,51 @@ impl FileStorage {
+         }
+     }
+ 
++    async fn put_sealed(&self, issue: &str, key: &str, bytes: &[u8]) -> Result<String, AppError> {
++        let path = self.path_for(issue, key);
++        let parent = path
++            .parent()
++            .ok_or_else(|| AppError::internal("artifact path invalid"))?;
++        tokio::fs::create_dir_all(parent)
++            .await
++            .map_err(|_| AppError::internal("artifact directory unavailable"))?;
++        let temporary = parent.join(format!(".artifact-{}.tmp", uuid::Uuid::new_v4()));
++        // Publish a complete inode atomically without replacing an existing sealed destination.
++        let outcome = async {
++            let mut file = tokio::fs::OpenOptions::new()
++                .write(true)
++                .create_new(true)
++                .open(&temporary)
++                .await
++                .map_err(|_| AppError::internal("artifact staging unavailable"))?;
++            file.write_all(bytes)
++                .await
++                .map_err(|_| AppError::internal("artifact staging write failed"))?;
++            file.sync_all()
++                .await
++                .map_err(|_| AppError::internal("artifact staging sync failed"))?;
++            drop(file);
++            match tokio::fs::hard_link(&temporary, &path).await {
++                Ok(()) => (),
++                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
++                Err(_) => return Err(AppError::internal("artifact immutable publication failed")),
++            }
++            let retained = self.get(issue, key).await?;
++            if retained.as_slice() != bytes {
++                return Err(AppError::conflict("artifact immutable replay differs"));
++            }
++            Ok(key.to_owned())
++        }
++        .await;
++        // Only this invocation's staging file; never unlink the sealed destination on error.
++        match tokio::fs::remove_file(&temporary).await {
++            Ok(()) => (),
++            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
++            Err(_) => tracing::warn!("artifact staging cleanup failed"),
++        }
++        outcome
++    }
++
+     async fn remove_empty_issue_dir(&self, path: &std::path::Path) {
+         let Some(parent) = path.parent() else {
+             return;
+@@ -136,4 +208,58 @@ mod tests {
+         assert!(!issue_dir.exists());
+         let _ = tokio::fs::remove_dir_all(root).await;
+     }
++
++    #[tokio::test]
++    async fn sealed_bytes_concurrent_replay_tamper_and_delete() {
++        use domain::attachment_artifact::{ArtifactBinding, Seal};
++        let (storage, root) = temp_storage();
++        let issue = uuid::Uuid::new_v4().to_string();
++        let bytes = b"{ \"actual\": true }".to_vec();
++        let seal = Seal::new(
++            issue.parse().unwrap(),
++            ArtifactBinding {
++                assignment_id: uuid::Uuid::new_v4(),
++                execution_id: uuid::Uuid::new_v4(),
++                role: domain::sdlc_lifecycle::DeliveryRole::Analyst,
++            },
++            uuid::Uuid::new_v4(),
++            "analysis.json",
++            "application/json",
++            app::attachment_artifacts::raw_sha256(&bytes),
++        )
++        .unwrap();
++        let key = seal.key();
++        let (a, b) = tokio::join!(
++            storage.put(&issue, &key, bytes.clone()),
++            storage.put(&issue, &key, bytes.clone())
++        );
++        assert_eq!(a.unwrap(), key);
++        assert_eq!(b.unwrap(), key);
++        assert_eq!(storage.get(&issue, &key).await.unwrap(), bytes);
++        assert!(
++            storage
++                .put(&issue, &key, b"different".to_vec())
++                .await
++                .is_err()
++        );
++        assert!(storage.delete(&issue, &key).await.is_err());
++        let mut entries = tokio::fs::read_dir(root.join(&issue)).await.unwrap();
++        let mut names = Vec::new();
++        while let Some(entry) = entries.next_entry().await.unwrap() {
++            names.push(entry.file_name());
++        }
++        assert_eq!(names, vec![std::ffi::OsString::from(&key)]);
++        tokio::fs::write(storage.path_for(&issue, &key), b"external-tamper")
++            .await
++            .unwrap();
++        assert!(storage.get(&issue, &key).await.is_err());
++        assert!(storage.put(&issue, &key, bytes).await.is_err());
++        assert_eq!(
++            tokio::fs::read(storage.path_for(&issue, &key))
++                .await
++                .unwrap(),
++            b"external-tamper"
++        );
++        tokio::fs::remove_dir_all(root).await.unwrap();
++    }
+ }
+diff --git a/docs/ROLE_ATTACHMENT_ARTIFACTS.md b/docs/ROLE_ATTACHMENT_ARTIFACTS.md
+new file mode 100644
+index 0000000..8661f06
+--- /dev/null
++++ b/docs/ROLE_ATTACHMENT_ARTIFACTS.md
+@@ -0,0 +1,165 @@
++# Role Attachment Artifacts
++
++Source packet based on integration a17e8f70382f2a01b5bc1bf35be4bfd23833b0dd.
++Existing attachment routes, metadata table, repository, disk storage and CLI are
++reused. No lifecycle/candidate wire, migration, dependency, scope, planner,
++controller, artifact table or separate store is introduced. Main owns the
++registrations/DI below and generated OpenAPI; this packet alone is not live.
++
++## Wire And Commands
++
++- POST `/api/v1/issues/{task_id}/attachments`: multipart `file`, existing 201 response.
++- GET `/api/v1/issues/{task_id}/attachments`: existing `{attachments:[...]}` response.
++- GET `/api/v1/attachments/{attachment_id}/download`: verified raw bytes.
++
++The existing AttachmentResponse gains only an optional field, omitted on legacy:
++
++```json
++{"artifact":{"receipt":{"reference":"tracker-attachment:<UUID>","sha256":"<raw-byte SHA256>"},"binding":{"assignment_id":"<UUID>","execution_id":"<UUID>","role":"analyst"}}}
++```
++
++`issue_id` is the real task=root. ArtifactReceipt and DeliveryResult are unchanged.
++No execution token, secret credential, owner impersonation or caller-selected
++lease/role is added. The opaque reference resolves only against the configured
++Tracker owner, never against a caller-supplied URL. Consumers download bytes and
++compare their raw SHA with the receipt. This is not a Workflow terminal receipt.
++Binding roles are `analyst`, `architect`, `developer` (including Rework), `reviewer`,
++`tester`, `devops`; Fleet's `dev_ops` mapping remains outside this Tracker wire.
++
++```text
++task-tracker attachment upload --issue UUID --file PATH --content-type application/json
++task-tracker attachment list --issue UUID
++task-tracker attachment download UUID --out PATH
++```
++
++Upload/list bypass generic issue GET only for canonical non-nil UUID input.
++Human issue keys retain their existing lookup. Upload prints the actual server
++AttachmentResponse, including artifact receipt; download's existing output is
++unchanged. Fleet uses the actual upload receipt in the role-specific DeliveryResult
++and obtains Workflow terminal evidence separately. Forge job artifacts remain
++DevOps-only and require actual Forge job/attempt identity.
++
++## Authorization And Integrity
++
++- Central-authenticated delivery Principal retains the existing exact grant
++  `task-tracker:sdlc:delivery:<task>:<assignment>:<execution>:<agent>:<fence>`.
++  POST requires existing `task-tracker:write`; GET requires existing read scope.
++- Only exact upload/list/download resources are machine-routed. PM grants, nil or
++  noncanonical IDs, other methods/resources and generic service accounts are denied.
++  Existing generic bearer middleware still rejects delivery grants everywhere else.
++- Configured SchedulerRead is a separate existing authority: GET download only,
++  fresh local project ACL, and only artifacts of the current assignment explicitly
++  referenced by its retained current proposal. No scheduler upload/list permission.
++- The actual local machine user is author. Active local ownership/membership is
++  checked under locks without Central/global-admin bypass. Task flow/root/instance,
++  exact confirmed routing, current immutable assignment and run-binding ledgers,
++  grant, running status and actual lease are checked. Lease holder is the configured
++  scheduler; agent subject must match run binding, never lease holder.
++- Writes retain the issue/task/head/ACL locks through byte publication and metadata
++  insert, checking the server clock again before insertion. Exact upload replay is
++  stable while the current running fence/lease remains valid. Stale/expired writes,
++  including upload retries after assignment advancement, fail closed.
++- Producer reads its own current-assignment sealed artifacts plus exact refs from
++  the accepted predecessor chain. Unaccepted other-run uploads, ordinary attachments
++  and unrelated same-project artifacts are not readable with a delivery grant.
++  Traversal rejects cycles and is bounded to 128 records. Legacy Analysis is not
++  retroactively converted to a sealed attachment artifact.
++- Existing human reads retain legacy authentication but sealed reads/list metadata
++  require fresh active local owner/member ACL, including under Central mode.
++- Reserved filename-safe storage keys retain assignment/execution/run/role/raw SHA.
++  Stable UUIDv5 identity also binds task, normalized filename and MIME. Server derives
++  all authority from actual ledgers. Legacy random-key attachments remain unsealed.
++- Disk publication stages a complete file, syncs it and atomically hard-links it
++  without replacement. Concurrent exact replay verifies the winner's bytes. A
++  checksum mismatch is an error, never permission to overwrite or delete evidence.
++  Sealed downloads are bounded by the existing upload limit and verify SHA/size.
++- Sealed delete is denied at service, repository and FileStorage boundaries for all
++  callers, including admin. Generic metadata save cannot create a sealed attachment.
++
++The filesystem and PostgreSQL are not one atomic resource. Metadata commits only
++after successful immutable byte readback. If DB commit fails, a sealed blob may
++remain without a metadata row; exact authorized retry adopts those same bytes.
++No error cleanup deletes the sealed destination or a concurrent winner. A process
++crash may leave its private staging file. No new cleanup registry or broad purge is
++introduced; existing owner retention procedures must handle confirmed orphan data.
++
++## Main Registration Handoff
++
++1. `backend/domain/src/lib.rs`: `pub mod attachment_artifact;`
++2. `backend/app/src/lib.rs`: `pub mod attachment_artifacts;`
++3. `backend/infra/src/sdlc.rs`:
++
++   ```rust
++   #[path = "attachment_artifacts.rs"]
++   pub(crate) mod attachment_artifacts;
++   ```
++
++4. `backend/api/src/middleware/mod.rs`: `pub mod attachment_auth;`
++5. In `backend/api/src/lib.rs`, move only the existing upload/list/download routes
++   to an attachment router using `attachment_auth`, outside the generic bearer
++   layer. Preserve the existing upload `DefaultBodyLimit`. DELETE stays protected
++   by generic bearer auth. Do not stack generic bearer/strict SDLC auth on the three
++   attachment routes: both intentionally reject delivery attachment capabilities.
++6. In existing AppContext/server DI, construct AttachmentServiceImpl with
++   `.with_artifact_config(sdlc_config.clone())` using the SAME validated config and
++   existing FileStorage Arc used by SDLC/deployment. Do not re-read or invent a
++   second config selector/pool. Its existing constructor defaults to disabled
++   artifact policy, leaving legacy callers unchanged until main wires it.
++7. Add AttachmentArtifact/ArtifactBinding to existing API schema registration if
++   not included by schema traversal, and regenerate the existing OpenAPI export.
++8. For PG test reuse, append ONLY this child registration to
++   `backend/infra/src/sdlc_candidates_pg_tests.rs`:
++
++   ```rust
++   #[path = "attachment_artifacts_pg_tests.rs"]
++   mod artifact_tests;
++   ```
++
++The PG test uses the existing Fixture, actual owner commands, locks, history and
++attachment rows. Fleet/native/Workflow observations are explicitly synthetic.
++It does not create a database, pool, runner or Docker project. It transfers the
++existing fixture connection for the final real AttachmentRepository delete check.
++
++## Focused QA Requests
++
++These are requests for main QA, not claimed executed tests. From `backend`, first
++collect each selector using `-- --list` and assert nonzero, then execute:
++
++```text
++cargo test -p domain attachment_artifact::tests::
++cargo test -p app attachment_artifacts::tests::
++cargo test -p app services::attachment::tests::
++cargo test -p api routes::attachments::tests::
++cargo test -p task-tracker-cli attachment_tests::
++cargo test -p infra storage::tests::sealed_bytes_concurrent_replay_tamper_and_delete
++cargo test -p infra sdlc::candidates::tests::artifact_tests::actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immutable -- --ignored --exact
++```
++
++PG env: `TT_CANDIDATES_TEST_DATABASE_URL`, fresh disposable DB name ending
++`_candidates_test`, as required by the existing fixture. Do not run its two fresh-DB
++tests together against one database. This artifact PG selector includes an actual
++31-second server-clock expiry check; no trigger or protected-ledger weakening.
++
++After registration, main should also run its existing Central-auth route harness
++for these three routes (delivery grants, PM denial, configured SchedulerRead,
++foreign-project and global-admin hints), source OpenAPI and all-target Clippy.
++
++## Changed Source Paths
++
++```text
++backend/domain/src/attachment_artifact.rs
++backend/domain/src/repositories.rs
++backend/app/src/attachment_artifacts.rs
++backend/app/src/context/dtos.rs
++backend/app/src/context/traits.rs
++backend/app/src/services/attachment.rs
++backend/infra/src/attachment_artifacts.rs
++backend/infra/src/attachment_artifacts_pg_tests.rs
++backend/infra/src/repos.rs
++backend/infra/src/storage.rs
++backend/api/src/dto/mod.rs
++backend/api/src/middleware/attachment_auth.rs
++backend/api/src/routes/attachments.rs
++backend/cli/src/commands.rs
++docs/ROLE_ATTACHMENT_ARTIFACTS.md
++```

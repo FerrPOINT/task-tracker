@@ -1,0 +1,1466 @@
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 55bc6c7..c78264b 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -318,6 +318,216 @@ async function installTrackerMocks(page: Page) {
+ }
+ 
+ test.describe('smoke', () => {
++  test('distinguishes cached catalog refresh failures from revoked access without losing a retained draft', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(120_000)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    await page.goto(`${app}/projects`)
++    const trigger = page.getByRole('button', { name: `Действия с проектом ${mockUser.name}` })
++    await trigger.click()
++    await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
++    const dialog = page.getByRole('dialog')
++    const name = dialog.locator('#project-form-name')
++    await name.fill('Retained draft during refresh')
++    let status = 503
++    await page.route('**/api/v1/projects', (route) =>
++      routeJson(
++        route,
++        { error: { code: 'QA_CATALOG_FAILURE', message: 'Controlled catalog failure' } },
++        status,
++      ),
++    )
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect(page.locator('[data-page-state="partial-error"]')).toBeVisible({ timeout: 45_000 })
++    await expect(name).toHaveValue('Retained draft during refresh')
++    await expect(name).toBeDisabled()
++    await expect(dialog.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled()
++    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
++    await page.screenshot({
++      path: testInfo.outputPath('project-refresh-partial-draft.png'),
++      fullPage: true,
++    })
++    await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
++    await page
++      .getByRole('alertdialog')
++      .getByRole('button', { name: 'Подтвердить', exact: true })
++      .click()
++    await expect(dialog).toBeHidden()
++    await expect(trigger).toBeDisabled()
++    await expect(
++      page.locator('main').getByRole('link', { name: new RegExp(mockUser.name) }),
++    ).toBeVisible()
++    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
++    status = 403
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect(page.locator('[data-page-state="permission-denied"]')).toBeVisible()
++    await expect(
++      page.locator('main').getByRole('link', { name: new RegExp(mockUser.name) }),
++    ).toHaveCount(0)
++    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
++    await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(0)
++    await page.screenshot({
++      path: testInfo.outputPath('project-cached-access-revoked.png'),
++      fullPage: true,
++    })
++    status = 404
++    await page.reload()
++    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
++    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
++    await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(0)
++    await page.screenshot({
++      path: testInfo.outputPath('project-cold-not-found.png'),
++      fullPage: true,
++    })
++  })
++
++  test('preserves project URL history, dirty drafts, pending focus and successful creation', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(120_000)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    await page.goto(`${app}/projects?q=DEMO&page=4&view=compact#context`)
++    const search = page.getByRole('textbox', { name: 'Поиск проектов...' })
++    await expect(search).toHaveValue('DEMO')
++    await search.fill('No matching project')
++    await page.getByRole('button', { name: 'Поиск проектов...' }).click()
++    await expect(page.getByText('По вашему запросу проекты не найдены.')).toBeVisible()
++    expect(new URL(page.url()).searchParams.has('page')).toBe(false)
++    expect(new URL(page.url()).searchParams.get('view')).toBe('compact')
++    expect(new URL(page.url()).hash).toBe('#context')
++    await page.reload()
++    await expect(search).toHaveValue('No matching project')
++    await page.goBack()
++    await expect(search).toHaveValue('DEMO')
++    const trigger = page.getByRole('button', { name: 'Создать проект', exact: true })
++    await trigger.click()
++    const dialog = page.getByRole('dialog')
++    const key = dialog.locator('#project-form-key')
++    const name = dialog.locator('#project-form-name')
++    await key.fill('qa-2026')
++    await name.fill('Safe isolated project draft')
++    await name.focus()
++    await page.keyboard.press('Escape')
++    const discard = page.getByRole('alertdialog')
++    await expect(discard).toBeVisible()
++    await discard.getByRole('button', { name: 'Отмена', exact: true }).click()
++    await expect(name).toHaveValue('Safe isolated project draft')
++    await expect(name).toBeFocused()
++    let submissions = 0
++    let release!: () => void
++    const pending = new Promise<void>((resolve) => {
++      release = resolve
++    })
++    await page.route('**/api/v1/projects', async (route) => {
++      if (route.request().method() !== 'POST') return route.fallback()
++      submissions++
++      await pending
++      return routeJson(
++        route,
++        { error: { code: 'UNAVAILABLE', message: 'Controlled create failure' } },
++        503,
++      )
++    })
++    await dialog.getByRole('button', { name: 'Создать проект', exact: true }).click()
++    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
++    await expect(dialog.getByRole('button', { name: 'Закрыть', exact: true })).toBeDisabled()
++    await name.evaluate((element) => element.closest('form')!.requestSubmit())
++    await page.keyboard.press('Escape')
++    expect(submissions).toBe(1)
++    await expect(dialog).toBeVisible()
++    release()
++    await expect(dialog.getByRole('alert')).toBeVisible()
++    await expect(name).toHaveValue('Safe isolated project draft')
++    await expect(key).toHaveValue('QA-2026')
++    await page.screenshot({
++      path: testInfo.outputPath('project-create-failure.png'),
++      fullPage: true,
++    })
++    await page.route('**/api/v1/projects', (route) => {
++      if (route.request().method() !== 'POST') return route.fallback()
++      submissions++
++      return routeJson(
++        route,
++        {
++          id: 'created-project',
++          key: 'DEMO',
++          name: 'Safe isolated project draft',
++          owner_id: mockUser.id,
++          todo_count: 0,
++          in_progress_count: 0,
++          done_count: 0,
++        },
++        201,
++      )
++    })
++    await dialog.getByRole('button', { name: 'Создать проект', exact: true }).click()
++    await expect(page).toHaveURL(`${app}/projects/DEMO/board`)
++    await expect(discard).toBeHidden()
++    expect(submissions).toBe(2)
++    await expect(page.getByText('Smoke issue').first()).toBeVisible()
++  })
++
++  test('keeps the project edit draft and modal controls usable across themes and breakpoints', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(180_000)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.goto(`${app}/projects`)
++    const trigger = page.getByRole('button', { name: `Действия с проектом ${mockUser.name}` })
++    for (const theme of ['gray', 'dark', 'light']) {
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      await page.reload()
++      await page.setViewportSize({ width: 1920, height: 1080 })
++      await trigger.click()
++      await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
++      const dialog = page.getByRole('dialog')
++      const name = dialog.locator('#project-form-name')
++      const draft = `Draft ${'LongProjectName'.repeat(15)}`
++      await name.fill(draft)
++      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++        await page.setViewportSize({ width, height: 1080 })
++        await expect(name).toHaveValue(draft)
++        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++        const geometry = await dialog.evaluate(
++          (element, minimum) => {
++            const rect = element.getBoundingClientRect()
++            const targets = [...element.querySelectorAll('button,input,textarea')]
++              .map((control) => control.getBoundingClientRect())
++              .filter((control) => control.width > 0 && control.height > 0)
++            return {
++              fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++              within: rect.left >= 0 && rect.right <= innerWidth,
++              targets: targets.every((control) => control.height + 0.5 >= minimum),
++            }
++          },
++          width < 768 ? 44 : 40,
++        )
++        expect(geometry).toEqual({ fits: true, within: true, targets: true })
++        await page.screenshot({
++          path: testInfo.outputPath(`project-edit-${theme}-${width}.png`),
++          fullPage: true,
++        })
++      }
++      await page.setViewportSize({ width: 1920, height: 1080 })
++      await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
++      await page
++        .getByRole('alertdialog')
++        .getByRole('button', { name: 'Подтвердить', exact: true })
++        .click()
++      await expect(dialog).toBeHidden()
++      await expect(trigger).toBeFocused()
++    }
++  })
++
+   test('preserves an unknown address through SSO and reload and restores mobile drawer focus', async ({
+     page,
+     baseURL,
+diff --git a/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx b/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
+index a81a089..613382f 100644
+--- a/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
++++ b/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
+@@ -1,86 +1,165 @@
+-import { describe, it, expect, vi, beforeAll } from 'vitest'
+-import { render, screen, fireEvent } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router'
++import { createContext, useContext, useState, type ReactNode } from 'react'
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
++import { createMemoryRouter, RouterProvider } from 'react-router'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+ import i18n from '@/shared/i18n/config'
+ import { ProjectFormDialog } from './ProjectFormDialog'
+ import type { Project } from '@/api/project'
+ 
+-beforeAll(() => {
+-  i18n.changeLanguage('en')
++beforeEach(async () => {
++  await i18n.changeLanguage('en')
+ })
+ 
+-function wrapper(children: React.ReactNode) {
++const content = createContext<ReactNode>(null)
++function RouteContent() {
++  return useContext(content)
++}
++function Wrapper({ children }: { children: ReactNode }) {
++  const [router] = useState(() => createMemoryRouter([{ path: '/', element: <RouteContent /> }]))
+   return (
+     <ThemeProvider>
+-      <MemoryRouter>{children}</MemoryRouter>
++      <content.Provider value={children}>
++        <RouterProvider router={router} />
++      </content.Provider>
+     </ThemeProvider>
+   )
+ }
+ 
++const project: Project = {
++  id: 'p1',
++  key: 'TT',
++  name: 'Task Tracker',
++  owner_id: 'u1',
++  owner_name: 'Owner',
++  todo_count: 0,
++  in_progress_count: 0,
++  done_count: 0,
++  description: 'A tracker',
++}
++function renderForm(props: Partial<React.ComponentProps<typeof ProjectFormDialog>> = {}) {
++  const base = { open: true, onOpenChange: vi.fn(), onSubmit: vi.fn(), isPending: false, ...props }
++  const view = render(<ProjectFormDialog {...base} />, { wrapper: Wrapper })
++  return {
++    ...view,
++    props: base,
++    update: (next: Partial<typeof base>) =>
++      view.rerender(<ProjectFormDialog {...base} {...next} />),
++  }
++}
++function changeName(value: string) {
++  fireEvent.change(screen.getByPlaceholderText(/e\.g\. Task Tracker/i), { target: { value } })
++}
++function cancel() {
++  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
++}
++
+ describe('ProjectFormDialog', () => {
+-  it('renders form fields when open', () => {
+-    render(
+-      wrapper(
+-        <ProjectFormDialog
+-          open={true}
+-          onOpenChange={vi.fn()}
+-          onSubmit={vi.fn()}
+-          isPending={false}
+-        />,
+-      ),
+-    )
+-    expect(screen.getByPlaceholderText(/e\.g\. TT/i)).toBeInTheDocument()
+-    expect(screen.getByPlaceholderText(/e\.g\. Task Tracker/i)).toBeInTheDocument()
++  it('links labels and applies the existing project-key API bounds', () => {
++    renderForm()
++    const key = screen.getByPlaceholderText(/e\.g\. TT/i)
++    expect(key).toHaveAccessibleName(/key/i)
++    expect(key).toHaveAttribute('minlength', '1')
++    expect(key).toHaveAttribute('maxlength', '10')
++    expect(key).toHaveAttribute('pattern', '[A-Z0-9-]{1,10}')
++    expect(key).toBeRequired()
++    expect(screen.getByPlaceholderText(/e\.g\. Task Tracker/i)).toBeRequired()
++    changeName('   ')
++    expect(screen.getByRole('button', { name: /create project/i })).toBeDisabled()
+   })
+ 
+-  it('submits form with entered values', () => {
++  it('submits trimmed values with an uppercase key and an optional description', async () => {
+     const onSubmit = vi.fn()
+-    render(
+-      wrapper(
+-        <ProjectFormDialog
+-          open={true}
+-          onOpenChange={vi.fn()}
+-          onSubmit={onSubmit}
+-          isPending={false}
+-        />,
+-      ),
+-    )
++    renderForm({ onSubmit })
+     fireEvent.change(screen.getByPlaceholderText(/e\.g\. TT/i), { target: { value: 'tt' } })
+-    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Task Tracker/i), {
+-      target: { value: 'Test Project' },
++    changeName(' Test Project ')
++    fireEvent.change(screen.getByPlaceholderText('Short project description'), {
++      target: { value: ' Notes ' },
+     })
+     fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+-    expect(onSubmit).toHaveBeenCalled()
+-    const arg = onSubmit.mock.calls[0]![0]
+-    expect(arg.key).toBe('TT')
+-    expect(arg.name).toBe('Test Project')
++    await waitFor(() =>
++      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
++        key: 'TT',
++        name: 'Test Project',
++        description: 'Notes',
++      }),
++    )
+   })
+ 
+-  it('shows edit title when project is provided', () => {
+-    const project: Project = {
+-      id: 'p1',
+-      key: 'TT',
+-      name: 'Task Tracker',
+-      owner_id: 'u1',
+-      owner_name: 'Owner',
+-      todo_count: 0,
+-      in_progress_count: 0,
+-      done_count: 0,
+-      description: 'A tracker',
+-    }
+-    render(
+-      wrapper(
+-        <ProjectFormDialog
+-          open={true}
+-          project={project}
+-          onOpenChange={vi.fn()}
+-          onSubmit={vi.fn()}
+-          isPending={false}
+-        />,
+-      ),
+-    )
+-    expect(screen.getByText(/edit project/i)).toBeInTheDocument()
++  it('retains a dirty edit when the same project refetches', () => {
++    const view = renderForm({ project })
++    expect(screen.getByRole('heading', { name: 'Edit project' })).toBeInTheDocument()
+     expect(screen.getByDisplayValue('TT')).toBeDisabled()
++    changeName('My unsaved name')
++    view.update({
++      project: {
++        ...project,
++        name: 'Concurrent server name',
++        description: 'New server description',
++      },
++    })
++    expect(screen.getByDisplayValue('My unsaved name')).toBeInTheDocument()
++    expect(screen.getByDisplayValue('A tracker')).toBeInTheDocument()
++  })
++
++  it('asks before closing a draft and retains it if discard is cancelled', async () => {
++    const view = renderForm({ project })
++    changeName('Draft')
++    cancel()
++    const confirmation = await screen.findByRole('alertdialog')
++    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
++    expect(view.props.onOpenChange).not.toHaveBeenCalled()
++    cancel()
++    fireEvent.click(
++      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
++    )
++    expect(view.props.onOpenChange).toHaveBeenCalledExactlyOnceWith(false)
++  })
++
++  it('locks async submission and closing, then retains failed values and error', async () => {
++    let reject!: (error: Error) => void
++    const pending = new Promise<void>((_, fail) => {
++      reject = fail
++    })
++    const onSubmit = vi.fn(() => pending)
++    const view = renderForm({ project, onSubmit })
++    changeName('Draft')
++    const form = screen.getByDisplayValue('Draft').closest('form')!
++    fireEvent.submit(form)
++    fireEvent.submit(form)
++    expect(onSubmit).toHaveBeenCalledTimes(1)
++    expect(screen.getByDisplayValue('Draft')).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
++    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
++    expect(view.props.onOpenChange).not.toHaveBeenCalled()
++    await act(async () => reject(new Error('Save failed')))
++    view.update({ error: new Error('Save failed') })
++    expect(screen.getByRole('alert')).toHaveTextContent('Save failed')
++    expect(screen.getByDisplayValue('Draft')).not.toBeDisabled()
++  })
++
++  it('preserves a draft in read-only refresh-error mode without locking cancellation', async () => {
++    const view = renderForm({ project })
++    changeName('Draft')
++    view.update({ readOnly: true, error: new Error('Catalog unavailable') })
++    expect(screen.getByDisplayValue('Draft')).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled()
++    fireEvent.submit(screen.getByDisplayValue('Draft').closest('form')!)
++    await act(async () => {})
++    expect(view.props.onSubmit).not.toHaveBeenCalled()
++    cancel()
++    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
++  })
++
++  it('reinitializes from current server values only for a newly opened session', () => {
++    const view = renderForm({ project })
++    changeName('Draft')
++    view.update({ open: false })
++    view.update({ open: true, project: { ...project, name: 'Latest server name' } })
++    expect(screen.getByDisplayValue('Latest server name')).toBeInTheDocument()
++    expect(screen.queryByDisplayValue('Draft')).not.toBeInTheDocument()
+   })
+ })
+diff --git a/frontend/src/features/projects/ui/ProjectFormDialog.tsx b/frontend/src/features/projects/ui/ProjectFormDialog.tsx
+index 159ff1d..1a19799 100644
+--- a/frontend/src/features/projects/ui/ProjectFormDialog.tsx
++++ b/frontend/src/features/projects/ui/ProjectFormDialog.tsx
+@@ -1,106 +1,141 @@
+-import { useState, useEffect } from 'react'
++import { useState, useEffect, useRef, type RefObject } from 'react'
+ import { useTranslation } from 'react-i18next'
+-import { Button } from '@sdlc/ui/ui'
+-import { Input } from '@sdlc/ui/ui'
+-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
++import { Button, FormDialog, FormField, Input, Textarea, UnsavedChangesGuard } from '@sdlc/ui/ui'
+ import type { Project, CreateProjectRequest, UpdateProjectRequest } from '@/api/project'
+ 
+ interface ProjectFormDialogProps {
+   open: boolean
+   project?: Project | null
+   onOpenChange: (open: boolean) => void
+-  onSubmit: (values: CreateProjectRequest | UpdateProjectRequest) => void
++  onSubmit: (values: CreateProjectRequest | UpdateProjectRequest) => void | Promise<unknown>
+   isPending: boolean
++  readOnly?: boolean
+   error?: Error | null
++  returnFocusRef?: RefObject<HTMLElement | null>
++  fallbackFocusRef?: RefObject<HTMLElement | null>
+ }
+ 
++const emptyValues = { key: '', name: '', description: '' }
++
+ export function ProjectFormDialog({
+   open,
+   project,
+   onOpenChange,
+   onSubmit,
+   isPending,
++  readOnly = false,
+   error,
++  returnFocusRef,
++  fallbackFocusRef,
+ }: ProjectFormDialogProps) {
+   const { t } = useTranslation()
+-  const [key, setKey] = useState('')
+-  const [name, setName] = useState('')
+-  const [description, setDescription] = useState('')
+-  const isEdit = !!project
++  const [values, setValues] = useState(emptyValues)
++  const [initial, setInitial] = useState(emptyValues)
++  const session = useRef<string | null>(null)
++  const isEdit = Boolean(project)
++  const dirty =
++    values.key !== initial.key ||
++    values.name !== initial.name ||
++    values.description !== initial.description
+ 
+   useEffect(() => {
+-    if (open) {
+-      setKey(project?.key ?? '')
+-      setName(project?.name ?? '')
+-      setDescription(project?.description ?? '')
++    if (!open) {
++      session.current = null
++      return
++    }
++    const identity = project?.id ?? 'create'
++    if (session.current === identity) return
++    session.current = identity
++    const next = {
++      key: project?.key ?? '',
++      name: project?.name ?? '',
++      description: project?.description ?? '',
+     }
++    setInitial(next)
++    setValues(next)
+   }, [open, project])
+ 
+-  function handleSubmit(e: React.FormEvent) {
+-    e.preventDefault()
+-    const payload = isEdit
+-      ? ({ name, description: description || null } as UpdateProjectRequest)
+-      : ({ key: key.toUpperCase(), name, description: description || null } as CreateProjectRequest)
+-    onSubmit(payload)
+-  }
+-
+   return (
+-    <Dialog open={open} onOpenChange={onOpenChange}>
+-      <DialogContent>
+-        <DialogHeader>
+-          <DialogTitle>
+-            {isEdit ? t('projects.editProject') : t('projects.createProject')}
+-          </DialogTitle>
+-        </DialogHeader>
+-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
+-          <div className="space-y-2">
+-            <label htmlFor="project-form-key" className="text-sm font-medium">
+-              {t('projects.key')} *
+-            </label>
++    <>
++      <UnsavedChangesGuard when={open && dirty} />
++      <FormDialog
++        open={open}
++        onOpenChange={onOpenChange}
++        title={isEdit ? t('projects.editProject') : t('projects.createProject')}
++        dirty={dirty}
++        pending={isPending}
++        error={error?.message}
++        returnFocusRef={returnFocusRef}
++        fallbackFocusRef={fallbackFocusRef}
++        onSubmit={async () => {
++          if (
++            readOnly ||
++            isPending ||
++            !values.name.trim() ||
++            (!isEdit && !/^[A-Z0-9-]{1,10}$/.test(values.key))
++          )
++            return
++          const payload = isEdit
++            ? { name: values.name.trim(), description: values.description.trim() || null }
++            : {
++                key: values.key.toUpperCase(),
++                name: values.name.trim(),
++                description: values.description.trim() || null,
++              }
++          await onSubmit(payload)
++        }}
++        actions={
++          <Button
++            type="submit"
++            disabled={
++              readOnly ||
++              isPending ||
++              !values.name.trim() ||
++              (!isEdit && !/^[A-Z0-9-]{1,10}$/.test(values.key))
++            }
++          >
++            {isPending ? t('common.saving') : isEdit ? t('common.save') : t('projects.create')}
++          </Button>
++        }
++      >
++        <FormField id="project-form-key" label={t('projects.key')} required>
++          {(attrs) => (
+             <Input
+-              id="project-form-key"
+-              value={key}
+-              onChange={(e) => setKey(e.target.value.toUpperCase())}
++              {...attrs}
++              value={values.key}
++              onChange={(event) => setValues({ ...values, key: event.target.value.toUpperCase() })}
+               placeholder={t('projects.keyPlaceholder')}
+-              disabled={isEdit}
+-              required
++              disabled={isEdit || readOnly}
++              minLength={1}
++              maxLength={10}
++              pattern="[A-Z0-9-]{1,10}"
+             />
+-          </div>
+-          <div className="space-y-2">
+-            <label htmlFor="project-form-name" className="text-sm font-medium">
+-              {t('projects.name')} *
+-            </label>
++          )}
++        </FormField>
++        <FormField id="project-form-name" label={t('projects.name')} required>
++          {(attrs) => (
+             <Input
+-              id="project-form-name"
+-              value={name}
+-              onChange={(e) => setName(e.target.value)}
++              {...attrs}
++              value={values.name}
++              onChange={(event) => setValues({ ...values, name: event.target.value })}
+               placeholder={t('projects.namePlaceholder')}
+-              required
++              disabled={readOnly}
+             />
+-          </div>
+-          <div className="space-y-2">
+-            <label htmlFor="project-form-description" className="text-sm font-medium">
+-              {t('projects.description')}
+-            </label>
+-            <textarea
+-              id="project-form-description"
+-              className="min-h-[100px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
+-              value={description}
+-              onChange={(e) => setDescription(e.target.value)}
++          )}
++        </FormField>
++        <FormField id="project-form-description" label={t('projects.description')}>
++          {(attrs) => (
++            <Textarea
++              {...attrs}
++              rows={4}
++              value={values.description}
++              onChange={(event) => setValues({ ...values, description: event.target.value })}
+               placeholder={t('projects.descriptionPlaceholder')}
++              disabled={readOnly}
+             />
+-          </div>
+-          <div className="flex justify-end gap-2 pt-2">
+-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+-              {t('common.cancel')}
+-            </Button>
+-            <Button type="submit" disabled={isPending}>
+-              {isPending ? t('common.saving') : isEdit ? t('common.save') : t('projects.create')}
+-            </Button>
+-          </div>
+-        </form>
+-      </DialogContent>
+-    </Dialog>
++          )}
++        </FormField>
++      </FormDialog>
++    </>
+   )
+ }
+diff --git a/frontend/src/pages/login/index.tsx b/frontend/src/pages/login/index.tsx
+index 0980191..512f560 100644
+--- a/frontend/src/pages/login/index.tsx
++++ b/frontend/src/pages/login/index.tsx
+@@ -9,9 +9,12 @@ export function LoginPage() {
+   const { t } = useTranslation()
+   const location = useLocation()
+   const token = useAuthStore((state) => state.token)
+-  const destination = (location.state as { from?: { pathname?: string; search?: string } } | null)
+-    ?.from
+-  const returnTo = destination ? `${destination.pathname ?? '/'}${destination.search ?? ''}` : '/'
++  const destination = (
++    location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null
++  )?.from
++  const returnTo = destination
++    ? `${destination.pathname ?? '/'}${destination.search ?? ''}${destination.hash ?? ''}`
++    : '/'
+   const loggedOut = new URLSearchParams(location.search).has('logged_out')
+   const [loginState, setLoginState] = useState<'ready' | 'redirecting' | 'error'>(
+     loggedOut ? 'ready' : 'redirecting',
+diff --git a/frontend/src/pages/login/login.test.tsx b/frontend/src/pages/login/login.test.tsx
+index f0fa44b..8457a79 100644
+--- a/frontend/src/pages/login/login.test.tsx
++++ b/frontend/src/pages/login/login.test.tsx
+@@ -10,7 +10,14 @@ import i18n from '@/shared/i18n/config'
+ const beginSso = vi.hoisted(() => vi.fn(async () => {}))
+ vi.mock('@sdlc/ui/sso', () => ({ beginSso }))
+ 
+-function renderLogin(path = '/login') {
++function renderLogin(
++  path:
++    | string
++    | {
++        pathname: string
++        state: { from: { pathname: string; search: string; hash: string } }
++      } = '/login',
++) {
+   return render(
+     <ThemeProvider>
+       <MemoryRouter initialEntries={[path]}>
+@@ -51,6 +58,18 @@ describe('LoginPage', () => {
+     expect(beginSso).toHaveBeenCalledTimes(1)
+     expect(screen.getByRole('button', { name: 'Войти через SDLC' })).toBeDisabled()
+   })
++  it('passes the complete protected address including query and hash to Base SSO', async () => {
++    renderLogin({
++      pathname: '/login',
++      state: { from: { pathname: '/projects', search: '?q=DEMO', hash: '#context' } },
++    })
++    await waitFor(() =>
++      expect(beginSso).toHaveBeenCalledExactlyOnceWith(
++        expect.objectContaining({ clientId: 'task-tracker' }),
++        '/projects?q=DEMO#context',
++      ),
++    )
++  })
+ 
+   it('clears an error while retrying and disables repeat clicks', async () => {
+     beginSso.mockRejectedValueOnce(new Error('private auth details'))
+diff --git a/frontend/src/pages/projects/index.tsx b/frontend/src/pages/projects/index.tsx
+index d58f0d8..7509b12 100644
+--- a/frontend/src/pages/projects/index.tsx
++++ b/frontend/src/pages/projects/index.tsx
+@@ -1,9 +1,16 @@
+-import { Link } from 'react-router'
++import { Link, useSearchParams, useLocation, useNavigate } from 'react-router'
+ import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { useState } from 'react'
++import { useState, useRef, useEffect } from 'react'
+ import { Button } from '@sdlc/ui/ui'
+-import { ErrorState, LoadingState } from '@sdlc/ui/ui'
++import {
++  ConfirmDialog,
++  EmptyState,
++  ListPage,
++  resourceErrorState,
++  type ResourceState,
++} from '@sdlc/ui/ui'
++import { textQuery, updateQuery } from '@sdlc/ui/lib'
+ import { Input } from '@sdlc/ui/ui'
+ import {
+   useProjects,
+@@ -12,15 +19,6 @@ import {
+   useDeleteProject,
+ } from '@/shared/api/hooks'
+ import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
+-import {
+-  AlertDialog,
+-  AlertDialogAction,
+-  AlertDialogCancel,
+-  AlertDialogContent,
+-  AlertDialogDescription,
+-  AlertDialogHeader,
+-  AlertDialogTitle,
+-} from '@sdlc/ui/ui'
+ import type { Project } from '@/api/project'
+ import {
+   DropdownMenu,
+@@ -52,14 +50,33 @@ export function ProjectsPage() {
+   const [formOpen, setFormOpen] = useState(false)
+   const [editingProject, setEditingProject] = useState<Project | null>(null)
+   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
+-  const [search, setSearch] = useState('')
++  const [createdProjectKey, setCreatedProjectKey] = useState<string | null>(null)
++  const [searchParams] = useSearchParams()
++  const location = useLocation()
++  const navigate = useNavigate()
++  const search = textQuery().parse(searchParams.get('q'))
++  const [searchDraft, setSearchDraft] = useState(search)
++  const initiator = useRef<HTMLElement>(null)
++  const fallback = useRef<HTMLDivElement>(null)
++  useEffect(() => setSearchDraft(search), [search])
++  useEffect(() => {
++    if (!formOpen && createdProjectKey) {
++      void navigate(`/projects/${encodeURIComponent(createdProjectKey)}/board`)
++      setCreatedProjectKey(null)
++    }
++  }, [createdProjectKey, formOpen, navigate])
+ 
+   const create = useCreateProject()
+   const update = useUpdateProject(editingProject?.key ?? '')
+   const remove = useDeleteProject()
+ 
+-  if (isLoading) return <LoadingState message={t('issue.loading')} />
+-  if (error) return <ErrorState message={error.message} onRetry={() => void refetch()} />
++  const state: ResourceState = error
++    ? resourceErrorState(error, () => void refetch(), { hasData: projects !== undefined })
++    : isLoading
++      ? { kind: 'loading', message: t('issue.loading') }
++      : { kind: 'ready' }
++  const hasProjects = state.kind === 'ready' || state.kind === 'partial-error'
++  const canManage = state.kind === 'ready'
+ 
+   const isFormPending = create.isPending || update.isPending
+   const formError = create.error ?? update.error
+@@ -69,178 +86,220 @@ export function ProjectsPage() {
+   )
+ 
+   return (
+-    <div className="space-y-4">
+-      <ProjectFormDialog
+-        open={formOpen}
+-        project={editingProject}
+-        onOpenChange={(open) => {
+-          setFormOpen(open)
+-          if (!open) setEditingProject(null)
+-        }}
+-        onSubmit={(values) => {
+-          if (editingProject) {
+-            update.mutate(values as import('@/api/project').UpdateProjectRequest, {
+-              onSuccess: () => setFormOpen(false),
+-            })
+-          } else {
+-            create.mutate(values as import('@/api/project').CreateProjectRequest, {
+-              onSuccess: () => setFormOpen(false),
+-            })
+-          }
+-        }}
+-        isPending={isFormPending}
+-        error={formError as Error | null}
+-      />
+-
+-      <AlertDialog
+-        open={!!deletingProject}
+-        onOpenChange={(open) => {
+-          if (!open && !remove.isPending) {
+-            setDeletingProject(null)
+-            remove.reset()
+-          }
+-        }}
+-      >
+-        <AlertDialogContent>
+-          <AlertDialogHeader>
+-            <AlertDialogTitle>{t('projects.deleteTitle')}</AlertDialogTitle>
+-            <AlertDialogDescription>
+-              {t('projects.deleteDescription', { name: deletingProject?.name })}
+-            </AlertDialogDescription>
+-          </AlertDialogHeader>
+-          {remove.error && (
+-            <p role="alert" className="text-sm text-danger">
+-              {t('projects.deleteError')}
+-            </p>
+-          )}
+-          <div className="flex justify-end gap-2 pt-2">
+-            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
+-            <AlertDialogAction
++    <div ref={fallback} tabIndex={-1} className="min-w-0">
++      {hasProjects && (
++        <>
++          <ProjectFormDialog
++            open={formOpen}
++            project={editingProject}
++            onOpenChange={(open) => {
++              setFormOpen(open)
++              if (!open) {
++                setEditingProject(null)
++                create.reset()
++                update.reset()
++              }
++            }}
++            onSubmit={async (values) => {
++              if (!canManage) return
++              if (editingProject) {
++                await update.mutateAsync(values as import('@/api/project').UpdateProjectRequest)
++              } else {
++                const created = await create.mutateAsync(
++                  values as import('@/api/project').CreateProjectRequest,
++                )
++                setCreatedProjectKey(created.key)
++              }
++              setFormOpen(false)
++            }}
++            isPending={isFormPending}
++            readOnly={!canManage}
++            error={(formError ?? error) as Error | null}
++            returnFocusRef={initiator}
++            fallbackFocusRef={fallback}
++          />
++          <ConfirmDialog
++            open={!!deletingProject}
++            onOpenChange={(open) => {
++              if (!open) {
++                setDeletingProject(null)
++                remove.reset()
++              }
++            }}
++            title={t('projects.deleteTitle')}
++            description={t('projects.deleteDescription', { name: deletingProject?.name })}
++            confirmLabel={t('common.delete')}
++            isPending={remove.isPending}
++            confirmDisabled={!canManage}
++            error={
++              remove.error
++                ? t('projects.deleteError')
++                : error instanceof Error
++                  ? error.message
++                  : null
++            }
++            returnFocusRef={initiator}
++            fallbackFocusRef={fallback}
++            onConfirm={() => {
++              if (deletingProject && canManage && !remove.isPending) {
++                remove.mutate(deletingProject.key, {
++                  onSuccess: () => setDeletingProject(null),
++                })
++              }
++            }}
++          />
++        </>
++      )}
++      <ListPage
++        title={t('projects.title')}
++        state={state}
++        actions={
++          canManage && (
++            <Button
++              size="sm"
++              className="gap-1"
++              aria-label={t('projects.create')}
+               onClick={(event) => {
+-                event.preventDefault()
+-                if (deletingProject) {
+-                  remove.mutate(deletingProject.key, {
+-                    onSuccess: () => setDeletingProject(null),
+-                  })
+-                }
++                initiator.current = event.currentTarget
++                create.reset()
++                setEditingProject(null)
++                setFormOpen(true)
+               }}
+-              disabled={remove.isPending}
+             >
+-              {remove.isPending ? t('common.loading') : t('common.delete')}
+-            </AlertDialogAction>
+-          </div>
+-        </AlertDialogContent>
+-      </AlertDialog>
+-
+-      <div className="flex flex-wrap items-center justify-between gap-3">
+-        <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
+-        <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
+-          <Plus className="h-4 w-4" />
+-          <span className="hidden sm:inline">{t('projects.create')}</span>
+-          <span className="sm:hidden">{t('navigation.create')}</span>
+-        </Button>
+-      </div>
+-
+-      <div className="flex flex-wrap items-center gap-3">
+-        <div className="relative flex-1 basis-full sm:basis-auto">
+-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+-          <Input
+-            type="text"
+-            aria-label={t('projects.search')}
+-            placeholder={t('projects.search')}
+-            className="h-9 w-full pl-9 sm:w-64"
+-            value={search}
+-            onChange={(e) => setSearch(e.target.value)}
+-          />
+-        </div>
+-      </div>
+-
+-      {projects?.length === 0 ? (
+-        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
+-          {t('projects.empty')}
+-        </div>
+-      ) : filteredProjects?.length === 0 ? (
+-        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
+-          {t('projects.noMatches')}
+-        </div>
+-      ) : (
+-        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
+-          {filteredProjects?.map((project) => (
+-            <li
+-              key={project.id}
+-              className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-surface-raised sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]"
++              <Plus className="h-4 w-4" />
++              <span className="hidden sm:inline">{t('projects.create')}</span>
++              <span className="sm:hidden">{t('navigation.create')}</span>
++            </Button>
++          )
++        }
++        filters={
++          <form
++            className="flex min-w-0 flex-wrap items-center gap-2"
++            onSubmit={(event) => {
++              event.preventDefault()
++              void navigate({
++                pathname: location.pathname,
++                search: updateQuery(
++                  searchParams,
++                  { q: textQuery().format(searchDraft) },
++                  true,
++                ).toString(),
++                hash: location.hash,
++              })
++            }}
++          >
++            <div className="relative flex-1 basis-full sm:basis-auto">
++              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
++              <Input
++                type="text"
++                aria-label={t('projects.search')}
++                placeholder={t('projects.search')}
++                className="w-full pl-9 sm:w-64"
++                value={searchDraft}
++                onChange={(e) => setSearchDraft(e.target.value)}
++              />
++            </div>
++            <Button
++              type="submit"
++              variant="secondary"
++              size="icon"
++              aria-label={t('projects.search')}
++              title={t('projects.search')}
+             >
+-              <Link
+-                to={`/projects/${project.key}/board`}
+-                className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++              <Search className="h-4 w-4" aria-hidden />
++            </Button>
++          </form>
++        }
++      >
++        {projects?.length === 0 ? (
++          <EmptyState message={t('projects.empty')} />
++        ) : filteredProjects?.length === 0 ? (
++          <EmptyState message={t('projects.noMatches')} />
++        ) : (
++          <ul className="divide-y divide-border border-y border-border">
++            {filteredProjects?.map((project) => (
++              <li
++                key={project.id}
++                className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-surface-raised sm:grid-cols-[minmax(0,1fr)_16rem_44px]"
+               >
+-                <ProjectAvatar projectKey={project.key} />
+-                <span className="min-w-0">
+-                  <span
+-                    className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
+-                    title={project.name}
+-                  >
+-                    {project.name}
+-                  </span>
+-                  <span className="block truncate text-xs text-text-muted">
+-                    {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
++                <Link
++                  to={`/projects/${encodeURIComponent(project.key)}/board`}
++                  className="base-control row-start-1 flex min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++                >
++                  <ProjectAvatar projectKey={project.key} />
++                  <span className="min-w-0">
++                    <span
++                      className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
++                      title={project.name}
++                    >
++                      {project.name}
++                    </span>
++                    <span className="block truncate text-xs text-text-muted">
++                      {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
++                    </span>
+                   </span>
+-                </span>
+-              </Link>
+-              <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
+-                <div className="min-w-0">
+-                  <span className="block truncate text-text-muted">{t('projects.todo')}</span>
+-                  <span className="font-medium">{project.todo_count}</span>
++                </Link>
++                <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
++                  <div className="min-w-0">
++                    <span className="block truncate text-text-muted">{t('projects.todo')}</span>
++                    <span className="font-medium">{project.todo_count}</span>
++                  </div>
++                  <div className="min-w-0">
++                    <span className="block truncate text-text-muted">
++                      {t('projects.inProgress')}
++                    </span>
++                    <span className="font-medium">{project.in_progress_count}</span>
++                  </div>
++                  <div className="min-w-0">
++                    <span className="block truncate text-text-muted">{t('projects.done')}</span>
++                    <span className="font-medium">{project.done_count}</span>
++                  </div>
+                 </div>
+-                <div className="min-w-0">
+-                  <span className="block truncate text-text-muted">{t('projects.inProgress')}</span>
+-                  <span className="font-medium">{project.in_progress_count}</span>
++                <div className="col-start-2 row-start-1 sm:col-start-3">
++                  <DropdownMenu modal={false}>
++                    <DropdownMenuTrigger asChild>
++                      <Button
++                        variant="ghost"
++                        size="icon"
++                        disabled={!canManage}
++                        onClick={(event) => {
++                          initiator.current = event.currentTarget
++                        }}
++                        aria-label={t('projects.moreActionsFor', { name: project.name })}
++                      >
++                        <MoreHorizontal className="h-4 w-4" />
++                      </Button>
++                    </DropdownMenuTrigger>
++                    <DropdownMenuContent align="end">
++                      <DropdownMenuItem
++                        onClick={() => {
++                          update.reset()
++                          setEditingProject(project)
++                          setFormOpen(true)
++                        }}
++                        className="gap-2"
++                      >
++                        <Pencil className="h-4 w-4" />
++                        {t('common.edit')}
++                      </DropdownMenuItem>
++                      <DropdownMenuItem
++                        onClick={() => {
++                          remove.reset()
++                          setDeletingProject(project)
++                        }}
++                        className="gap-2 text-danger"
++                      >
++                        <Trash2 className="h-4 w-4" />
++                        {t('common.delete')}
++                      </DropdownMenuItem>
++                    </DropdownMenuContent>
++                  </DropdownMenu>
+                 </div>
+-                <div className="min-w-0">
+-                  <span className="block truncate text-text-muted">{t('projects.done')}</span>
+-                  <span className="font-medium">{project.done_count}</span>
+-                </div>
+-              </div>
+-              <div className="col-start-2 row-start-1 sm:col-start-3">
+-                <DropdownMenu modal={false}>
+-                  <DropdownMenuTrigger asChild>
+-                    <Button
+-                      variant="ghost"
+-                      size="icon"
+-                      className="h-10 w-10"
+-                      aria-label={t('projects.moreActionsFor', { name: project.name })}
+-                    >
+-                      <MoreHorizontal className="h-4 w-4" />
+-                    </Button>
+-                  </DropdownMenuTrigger>
+-                  <DropdownMenuContent align="end">
+-                    <DropdownMenuItem
+-                      onClick={() => {
+-                        setEditingProject(project)
+-                        setFormOpen(true)
+-                      }}
+-                      className="gap-2"
+-                    >
+-                      <Pencil className="h-4 w-4" />
+-                      {t('common.edit')}
+-                    </DropdownMenuItem>
+-                    <DropdownMenuItem
+-                      onClick={() => {
+-                        remove.reset()
+-                        setDeletingProject(project)
+-                      }}
+-                      className="gap-2 text-danger"
+-                    >
+-                      <Trash2 className="h-4 w-4" />
+-                      {t('common.delete')}
+-                    </DropdownMenuItem>
+-                  </DropdownMenuContent>
+-                </DropdownMenu>
+-              </div>
+-            </li>
+-          ))}
+-        </ul>
+-      )}
++              </li>
++            ))}
++          </ul>
++        )}
++      </ListPage>
+     </div>
+   )
+ }
+diff --git a/frontend/src/pages/projects/projects.test.tsx b/frontend/src/pages/projects/projects.test.tsx
+index 4ec2405..a337c52 100644
+--- a/frontend/src/pages/projects/projects.test.tsx
++++ b/frontend/src/pages/projects/projects.test.tsx
+@@ -1,7 +1,8 @@
+ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
+-import { act, fireEvent, render, screen } from '@testing-library/react'
++import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+-import { MemoryRouter } from 'react-router'
++import { RouterProvider, createMemoryRouter } from 'react-router'
++import { useState } from 'react'
+ 
+ import { ProjectsPage } from './'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+@@ -40,20 +41,47 @@ const projects = [
+   },
+ ]
+ 
+-function renderPage() {
+-  return render(
++function renderPage(initialEntry = '/projects') {
++  let refresh!: () => void
++  function Fixture() {
++    const [, setRevision] = useState(0)
++    refresh = () => setRevision((value) => value + 1)
++    return <ProjectsPage />
++  }
++  const router = createMemoryRouter(
++    [
++      { path: '/projects', element: <Fixture /> },
++      { path: '/projects/:key/board', element: <h1>Project board destination</h1> },
++      { path: '/elsewhere', element: <h1>Elsewhere</h1> },
++    ],
++    {
++      initialEntries: [initialEntry],
++    },
++  )
++  const view = render(
+     <ThemeProvider>
+-      <MemoryRouter>
+-        <ProjectsPage />
+-      </MemoryRouter>
++      <RouterProvider router={router} />
+     </ThemeProvider>,
+   )
++  return { ...view, router, refresh: () => act(refresh) }
+ }
+ 
+ beforeEach(() => {
+   useProjects.mockReturnValue({ data: projects, isLoading: false, error: null, refetch: vi.fn() })
+-  useCreateProject.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
+-  useUpdateProject.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
++  useCreateProject.mockReturnValue({
++    mutate: vi.fn(),
++    mutateAsync: vi.fn(),
++    reset: vi.fn(),
++    isPending: false,
++    error: null,
++  })
++  useUpdateProject.mockReturnValue({
++    mutate: vi.fn(),
++    mutateAsync: vi.fn(),
++    reset: vi.fn(),
++    isPending: false,
++    error: null,
++  })
+   useDeleteProject.mockReturnValue({
+     mutate: vi.fn(),
+     reset: vi.fn(),
+@@ -94,6 +122,7 @@ describe('ProjectsPage', () => {
+     fireEvent.change(screen.getByRole('textbox', { name: /search projects/i }), {
+       target: { value: 'not found' },
+     })
++    fireEvent.click(screen.getByRole('button', { name: /search projects/i }))
+     expect(screen.getByText('No projects match your search.')).toBeInTheDocument()
+     expect(screen.queryByRole('list')).not.toBeInTheDocument()
+   })
+@@ -134,26 +163,137 @@ describe('ProjectsPage', () => {
+     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+ 
+     remove.isPending = true
+-    view.rerender(
+-      <ThemeProvider>
+-        <MemoryRouter>
+-          <ProjectsPage />
+-        </MemoryRouter>
+-      </ThemeProvider>,
+-    )
++    view.refresh()
+     expect(screen.getByRole('button', { name: 'Отмена' })).toBeDisabled()
+-    expect(screen.getByRole('button', { name: /загрузка/i })).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Удалить' })).toBeDisabled()
+ 
+     remove.isPending = false
+     remove.error = new Error('Удаление не удалось')
+-    view.rerender(
+-      <ThemeProvider>
+-        <MemoryRouter>
+-          <ProjectsPage />
+-        </MemoryRouter>
+-      </ThemeProvider>,
+-    )
++    view.refresh()
+     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось удалить проект')
+     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+   })
++
++  it('restores a direct URL filter and stores submitted searches in history', async () => {
++    const { router } = renderPage('/projects?q=DOC&page=4&view=compact#context')
++    expect(screen.getByRole('textbox', { name: 'Поиск проектов...' })).toHaveValue('DOC')
++    expect(screen.getByRole('list').querySelectorAll('li')).toHaveLength(1)
++    fireEvent.change(screen.getByRole('textbox', { name: 'Поиск проектов...' }), {
++      target: { value: 'TT' },
++    })
++    fireEvent.click(screen.getByRole('button', { name: 'Поиск проектов...' }))
++    expect(new URLSearchParams(router.state.location.search).get('q')).toBe('TT')
++    expect(new URLSearchParams(router.state.location.search).has('page')).toBe(false)
++    expect(new URLSearchParams(router.state.location.search).get('view')).toBe('compact')
++    expect(router.state.location.hash).toBe('#context')
++    await act(async () => {
++      await router.navigate(-1)
++    })
++    expect(screen.getByRole('textbox', { name: 'Поиск проектов...' })).toHaveValue('DOC')
++    expect(screen.getByRole('link', { name: /Knowledge Base/ })).toBeInTheDocument()
++    expect(screen.queryByRole('link', { name: /Task Tracker/ })).not.toBeInTheDocument()
++  })
++
++  it.each([403, 404])('hides cached projects and CRUD without retry after HTTP %s', (status) => {
++    useProjects.mockReturnValue({
++      data: projects,
++      error: { status },
++      isLoading: false,
++      refetch: vi.fn(),
++    })
++    const { container } = renderPage()
++    expect(
++      container.querySelector(
++        `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++      ),
++    ).toBeInTheDocument()
++    expect(screen.queryByRole('list')).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /создать/i })).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /повторить/i })).not.toBeInTheDocument()
++  })
++
++  it('retains cached rows during a retryable refresh without stale CRUD', () => {
++    useProjects.mockReturnValue({
++      data: projects,
++      error: { status: 503 },
++      isLoading: false,
++      refetch: vi.fn(),
++    })
++    const { container } = renderPage()
++    expect(container.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByRole('link', { name: /Task Tracker/ })).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' })).toBeDisabled()
++    expect(screen.queryByRole('button', { name: /создать/i })).not.toBeInTheDocument()
++  })
++
++  it('returns focus to the row menu after cancelling deletion', async () => {
++    renderPage()
++    const user = userEvent.setup()
++    const trigger = screen.getByRole('button', { name: 'Действия с проектом Task Tracker' })
++    await user.click(trigger)
++    await user.click(screen.getByRole('menuitem', { name: 'Удалить' }))
++    await user.click(screen.getByRole('button', { name: 'Отмена' }))
++    await waitFor(() => expect(trigger).toHaveFocus())
++  })
++  it('allows cancelling an open delete dialog when catalog refresh disables writes', async () => {
++    const view = renderPage()
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Действия с проектом Task Tracker' }))
++    await user.click(screen.getByRole('menuitem', { name: 'Удалить' }))
++    useProjects.mockReturnValue({
++      data: projects,
++      error: Object.assign(new Error('Catalog unavailable'), { status: 503 }),
++      isLoading: false,
++      refetch: vi.fn(),
++    })
++    view.refresh()
++    expect(screen.getByRole('button', { name: 'Удалить' })).toBeDisabled()
++    expect(screen.getByRole('button', { name: 'Отмена' })).not.toBeDisabled()
++    await user.click(screen.getByRole('button', { name: 'Отмена' }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++  })
++  it('closes a saved create draft before navigating to its board', async () => {
++    const save = vi.fn().mockResolvedValue(projects[0])
++    useCreateProject.mockReturnValue({
++      mutateAsync: save,
++      reset: vi.fn(),
++      isPending: false,
++      error: null,
++    })
++    const { router } = renderPage()
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
++    fireEvent.change(screen.getByPlaceholderText('Например, TT'), { target: { value: 'tt' } })
++    fireEvent.change(screen.getByPlaceholderText('Например, Task Tracker'), {
++      target: { value: 'Safe project' },
++    })
++    fireEvent.submit(screen.getByPlaceholderText('Например, TT').closest('form')!)
++    await screen.findByRole('heading', { name: 'Project board destination' })
++    expect(save).toHaveBeenCalledExactlyOnceWith({
++      key: 'TT',
++      name: 'Safe project',
++      description: null,
++    })
++    expect(router.state.location.pathname).toBe('/projects/TT/board')
++    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
++  })
++  it('protects a dirty project draft during navigation and reload', async () => {
++    const { router } = renderPage()
++    const user = userEvent.setup()
++    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
++    fireEvent.change(screen.getByPlaceholderText('Например, Task Tracker'), {
++      target: { value: 'Draft' },
++    })
++    const unload = new Event('beforeunload', { cancelable: true })
++    fireEvent(window, unload)
++    expect(unload.defaultPrevented).toBe(true)
++    await act(async () => {
++      await router.navigate('/elsewhere')
++    })
++    expect(router.state.location.pathname).toBe('/projects')
++    const confirmation = await screen.findByRole('alertdialog')
++    fireEvent.click(within(confirmation).getByRole('button', { name: 'Отмена' }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
++  })
+ })
+diff --git a/frontend/src/shared/api/hooks.test.tsx b/frontend/src/shared/api/hooks.test.tsx
+index c5d6c19..989990b 100644
+--- a/frontend/src/shared/api/hooks.test.tsx
++++ b/frontend/src/shared/api/hooks.test.tsx
+@@ -313,6 +313,6 @@ describe('shared api hooks', () => {
+     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+-    expect(navigate).toHaveBeenCalledWith('/projects')
++    expect(navigate).not.toHaveBeenCalled()
+   })
+ })
+diff --git a/frontend/src/shared/api/hooks.ts b/frontend/src/shared/api/hooks.ts
+index 5f7955a..e44921c 100644
+--- a/frontend/src/shared/api/hooks.ts
++++ b/frontend/src/shared/api/hooks.ts
+@@ -459,12 +459,10 @@ export function useLogout() {
+ 
+ export function useCreateProject() {
+   const qc = useQueryClient()
+-  const navigate = useNavigate()
+   return useMutation({
+     mutationFn: createProject,
+-    onSuccess: (data) => {
++    onSuccess: () => {
+       qc.invalidateQueries({ queryKey: projectKeys.all })
+-      navigate(`/projects/${data.key}/board`)
+     },
+   })
+ }
+@@ -482,7 +480,6 @@ export function useUpdateProject(key: string) {
+ 
+ export function useDeleteProject() {
+   const qc = useQueryClient()
+-  const navigate = useNavigate()
+   return useMutation({
+     mutationFn: deleteProject,
+     onSuccess: (_data, key) => {
+@@ -497,7 +494,6 @@ export function useDeleteProject() {
+       qc.invalidateQueries({ queryKey: ['dashboard'] })
+       qc.invalidateQueries({ queryKey: ['search'] })
+       qc.invalidateQueries({ queryKey: ['reports'] })
+-      navigate('/projects')
+     },
+   })
+ }

@@ -1,0 +1,39 @@
+import { describe, expect, it } from 'vitest'
+import { notificationTarget } from './notification-target'
+
+const id = 'cfc6e4cc-2b1e-4d31-9d0f-75159a6c5645'
+
+describe('notificationTarget', () => {
+  it.each(['TT', 'lower', '1', 'QA-TEST'])(
+    'resolves supported project key %s to the UUID detail route without a request',
+    (key) => {
+      expect(
+        notificationTarget({
+          action_url: `/issues/${key}-12`,
+          entity_type: 'issue',
+          entity_id: id,
+        }),
+      ).toBe('/issues/' + id)
+    },
+  )
+
+  it('preserves query and fragment on historical issue links', () => {
+    expect(
+      notificationTarget({
+        action_url: '/issues/TT-12?tab=comments#comment',
+        entity_type: 'issue',
+        entity_id: id,
+      }),
+    ).toBe('/issues/' + id + '?tab=comments#comment')
+  })
+
+  it.each([
+    { action_url: '/issues/' + id, entity_type: 'issue', entity_id: id },
+    { action_url: '/projects/TT', entity_type: 'issue', entity_id: id },
+    { action_url: '/issues/TT-12', entity_type: 'project', entity_id: id },
+    { action_url: '/issues/TT-12', entity_type: 'issue', entity_id: 'invalid' },
+    { action_url: null, entity_type: 'issue', entity_id: id },
+  ])('does not reinterpret unrelated, current or incomplete links: $action_url', (notification) => {
+    expect(notificationTarget(notification)).toBe(notification.action_url)
+  })
+})

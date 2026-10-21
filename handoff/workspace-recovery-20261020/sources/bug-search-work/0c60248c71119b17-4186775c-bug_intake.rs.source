@@ -1,0 +1,60 @@
+//! Narrow trusted Fleet delegation of an already accepted own-human preference.
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    routing::get,
+};
+use domain::{bug_search_intake::*, sdlc::Principal};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+pub(super) fn router() -> Router<Arc<app::AppContext>> {
+    Router::new()
+        .route("/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/preferences/{owner_subject}", get(read).put(apply))
+        .route("/projects/{project_id}/sdlc/bug-intake/operations/{idempotency_key}", get(operation))
+        .layer(axum::extract::DefaultBodyLimit::max(8192))
+}
+fn service(ctx: &app::AppContext) -> Result<&app::bug_search_intake::BugIntakeService, AppError> {
+    ctx.bug_intake
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Tracker Bug intake is not configured".into()))
+}
+fn no_store() -> HeaderMap {
+    let mut h = HeaderMap::new();
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h
+}
+#[utoipa::path(put,path="/api/v1/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/preferences/{owner_subject}",tag="bug-search",params(("project_id"=Uuid,Path),("worker_id"=Uuid,Path),("owner_subject"=String,Path)),request_body=ApplyBugIntake,responses((status=200,body=BugIntakeApplied),(status=401),(status=403),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn apply(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((p, w, owner)): Path<(Uuid, Uuid, String)>,
+    Json(command): Json<ApplyBugIntake>,
+) -> Result<(StatusCode, HeaderMap, Json<BugIntakeApplied>), AppError> {
+    let (receipt, _) = service(&ctx)?.apply(p, &owner, w, &actor, command).await?;
+    Ok((StatusCode::OK, no_store(), Json(receipt)))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/preferences/{owner_subject}",tag="bug-search",params(("project_id"=Uuid,Path),("worker_id"=Uuid,Path),("owner_subject"=String,Path)),responses((status=200,body=BugIntakeApplied),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn read(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((p, w, owner)): Path<(Uuid, Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugIntakeApplied>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.read(p, &owner, w, &actor).await?),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/operations/{idempotency_key}",tag="bug-search",params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=BugIntakeApplied),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((p, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugIntakeApplied>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.operation(p, &key, &actor).await?),
+    ))
+}

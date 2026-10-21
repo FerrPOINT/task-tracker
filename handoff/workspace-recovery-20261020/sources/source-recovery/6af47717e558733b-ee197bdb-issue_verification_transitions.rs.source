@@ -1,0 +1,62 @@
+//! Actual authenticated GET; no seeded verdict or business transition.
+use super::*;
+pub(super) async fn verify(
+    client: &Client,
+    base: &str,
+    db: &DatabaseConnection,
+    project: Uuid,
+    owner: &str,
+    bug: Uuid,
+) {
+    let url = format!("{base}/api/v1/issues/{bug}/verification-transitions");
+    let r = client.get(&url).bearer_auth(owner).send().await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["cache-control"], "no-store");
+    let value: Value = r.json().await.unwrap();
+    assert_eq!(value["project_id"], json!(project));
+    assert_eq!(value["bug_id"], json!(bug));
+    for token in [
+        "sdlc_pat_bugs_fleet",
+        "sdlc_pat_bugs_workflow",
+        "sdlc_pat_bugs_ci",
+    ] {
+        assert_eq!(
+            client
+                .get(&url)
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+    }
+    assert_eq!(client.get(&url).send().await.unwrap().status(), 401);
+    // A real non-Bug in the same authorized project cannot acquire this projection.
+    let id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,reporter_id,priority,labels,position,time_spent_seconds) SELECT $1,project_id,$2,'task',status_id,'Synthetic non Bug',reporter_id,'medium','[]',0,0 FROM issues WHERE id=$3",
+        [id.into(),format!("BUGCHOICE-{}",id.simple()).into(),bug.into()])).await.unwrap();
+    assert_eq!(
+        client
+            .get(format!(
+                "{base}/api/v1/issues/{id}/verification-transitions"
+            ))
+            .bearer_auth(owner)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM issues WHERE id=$1",
+        [id.into()],
+    ))
+    .await
+    .unwrap();
+    println!(
+        "BUG_VERIFICATION_TRANSITIONS actual HTTP scoped Bug/no-store/401/machine403/nonBug404 passed"
+    );
+}

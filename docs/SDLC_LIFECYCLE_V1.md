@@ -16,7 +16,7 @@ agent UUID и immutable task publication snapshot с config/package/Workflow ref
 Версии/hash/CAS/idempotency управляются backend; authority — существующий project
 owner с Central human session. Exact confirmation явно выбирает current policy
 через `expected_routing_policy_version`, snapshot сохраняется в той же транзакции
-с consent/Analysis intent/outbox. Изменение policy влияет только на новые явные
+с consent/Backlog publication/outbox. Изменение policy влияет только на новые явные
 snapshots. Исторические PM data/consent hashes и unenrolled legacy сохраняются.
 Readback доступен по existing service-read/project ACL без compound grants.
 Текущий UI confirmation передаёт `expected_routing_policy_version` только после
@@ -44,20 +44,22 @@ pending 000034 в default отсутствует. Текущая owner-ветк�
 Существующий `POST /api/v1/issues/{id}/sdlc/requirements/{revision}/confirm`
 сохраняет прежний `Confirmation` с `stage: Backlog` как receipt публикации.
 После exact owner-session consent и независимого readiness evidence одна
-PostgreSQL-транзакция сохраняет consent, единственный immutable Analysis intent,
-aggregate `Analysis`, issue status `SDLC Analysis` (category todo), status history,
-command receipt и события `requirements.confirmed`, `analysis.intent_created`.
-Последнее событие имеет `event_id = intent_id`; его sequence задаёт durable order.
-Analysis intent содержит `status: Ready`, backend routing `Analyst / hermes-sdlc:analyst /
-analysis / business`, cycle 0 и attempt 0 (до первого admission).
+PostgreSQL-транзакция сохраняет consent, frozen routing/source snapshot,
+aggregate `Backlog`/Ready, issue projection/status history, command receipt
+и только `requirements.confirmed`. Analysis intent/event не создаётся.
+Для принятого завершения PM дополнительно нужен отдельный существующий
+completion receipt с exact terminal/Workflow refs, execution/lease/revision/hash.
+Сам Backlog receipt не доказывает завершение PM. Миграции/API DTO не меняются.
 
 В рамках среза `Clarification` остаётся совместимым внутренним состоянием
-существующей PM foundation. После Analysis новые PM business commands запрещены;
+существующей PM foundation. После exact consent новые PM business commands запрещены;
 исторические replay того же key/payload возвращают прежний результат с новой
 проверкой owner/project ACL. Другой payload или второй ключ подтверждения дают
-409. Stale revision/hash не создаёт intent. Pending миграция 000034 расширена,
-вторая миграция не добавлена. Reserved PM admission gates сохранены: reservation
-сама по себе не позволяет PM дойти до consent или поставить Analysis в очередь.
+409. Stale revision/hash не создаёт consent. Текущая смена initial PM policy
+не требует миграции: existing Backlog projection/resume уже поддержаны SQL.
+Reserved PM admission gates сохранены; reservation не заменяет owner consent
+или trusted terminal completion. Исторические intent/readback и отдельные
+critical-review generations остаются без изменений.
 
 `GET /api/v1/issues/{id}/sdlc/analysis-intent` возвращает frozen intent только
 после fresh Central service-read/project ACL; PM grant не разрешает этот ресурс.
@@ -68,7 +70,7 @@ intent. GET сверяет intent с текущим aggregate, exact confirmatio
 
 | Область | Source статус / следующий интерфейс |
 | --- | --- |
-| Exact consent → Analysis/Ready + outbox | Реализован backend-срез; scoped проверки ниже |
+| Exact consent → Backlog/Ready + outbox | Текущий initial PM producer; без автоматического Analysis |
 | Owner UI / typed intent и metadata consumer | Реализован B-SDLC-05; [контракт, файлы и scoped evidence](SDLC_UI_V1.md), без assignment/runtime |
 | PM admission нового reserved execution | Не реализован; нужен trusted Fleet/config/Workflow binding и quiescence |
 | Prepared Analysis reservation | Реализован Tracker-only ledger/API: root1/agent1/pool2, immutable identity/hash, CAS/lease/outbox; [контракт](SDLC_RESERVATION_V1.md) |
@@ -299,8 +301,8 @@ operation key и проверка role permission обязательны. Existi
 
 `publishDraft` принимает только confirmation exact requirement/Task revision.
 В одной транзакции Draft → Backlog, default neutral status, audit и outbox.
-Backend автоматически создаёт единственный Analysis intent и переход
-Backlog → Analysis/Ready; PM не dispatch-ит агента. Redelivery/restart не удваивают
+Initial PM producer не создаёт Analysis intent или переход
+Backlog → Analysis/Ready. Redelivery/restart не удваивают
 assignment или публикацию. Stale confirmation отвергается и требует нового показа.
 
 Analyst сохраняет requirements/criteria. Architect materialize-ит настоящие children

@@ -1,0 +1,142 @@
+//! Candidate acceptance and explicit business verification, separate from custody.
+use crate::{bug_search_control::validate_key, bug_work_delivery::*, sdlc::MAX_SAFE_VERSION};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PinBugWorkCandidate {
+    pub contract_version: u8,
+    pub idempotency_key: String,
+    pub expected_candidate_revision: i64,
+    pub target_ref: String,
+    pub locator: BugWorkDeliveryLocator,
+}
+impl PinBugWorkCandidate {
+    pub fn validate(&self, assignment: Uuid) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.locator.validate()?;
+        if self.contract_version != 1
+            || assignment != self.locator.assignment_id
+            || !(0..MAX_SAFE_VERSION).contains(&self.expected_candidate_revision)
+            || self.target_ref.trim().is_empty()
+            || self.target_ref.len() > 512
+            || self.target_ref.chars().any(char::is_control)
+        {
+            return Err(AppError::validation("invalid Bug candidate command"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkCandidate {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub project_id: Uuid,
+    pub bug_id: Uuid,
+    pub assignment_id: Uuid,
+    pub revision: i64,
+    pub locator: BugWorkDeliveryLocator,
+    pub target_ref: String,
+    /// Original CI Accepted observation. Null artifact/delivery never means delivered.
+    pub accepted_proof: BugWorkDeliveryProof,
+    pub accepted_at: DateTime<Utc>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyBugWorkVerification {
+    pub contract_version: u8,
+    pub idempotency_key: String,
+    pub expected_candidate_revision: i64,
+    pub verification_execution_id: Uuid,
+    pub expected_status_id: Uuid,
+    pub expected_updated_at: DateTime<Utc>,
+    pub target_status_id: Uuid,
+}
+impl ApplyBugWorkVerification {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        if self.contract_version != 1
+            || !(1..=MAX_SAFE_VERSION).contains(&self.expected_candidate_revision)
+            || [
+                self.verification_execution_id,
+                self.expected_status_id,
+                self.target_status_id,
+            ]
+            .iter()
+            .any(Uuid::is_nil)
+            || self.expected_status_id == self.target_status_id
+        {
+            return Err(AppError::validation(
+                "invalid explicit Bug verification transition",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(
+    tag = "kind",
+    content = "result",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum BugBusinessOutcome {
+    CandidatePinned(BugWorkCandidate),
+    VerificationApplied {
+        candidate_revision: i64,
+        candidate_sha256: String,
+        verification_execution_id: Uuid,
+        result_sha256: String,
+        from_status_id: Uuid,
+        target_status_id: Uuid,
+        updated_at: DateTime<Utc>,
+        delivery_proof: BugWorkDeliveryProof,
+    },
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugBusinessReceipt {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub project_id: Uuid,
+    pub bug_id: Uuid,
+    pub assignment_id: Uuid,
+    pub fleet_instance_id: Uuid,
+    pub machine_subject: String,
+    pub owner_subject: String,
+    pub assignment_sha256: String,
+    pub accepted_at: DateTime<Utc>,
+    pub outcome: BugBusinessOutcome,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn candidate_command_rejects_caller_proof_and_ambiguous_revision_or_path() {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/bug-work-delivery-v1.json"))
+                .unwrap();
+        let c = PinBugWorkCandidate {
+            contract_version: 1,
+            idempotency_key: "business:test".into(),
+            expected_candidate_revision: 0,
+            target_ref: "qa:portal".into(),
+            locator: serde_json::from_value(f["locator"].clone()).unwrap(),
+        };
+        c.validate(c.locator.assignment_id).unwrap();
+        assert!(c.validate(Uuid::new_v4()).is_err());
+        let mut extra = serde_json::to_value(&c).unwrap();
+        extra["proof"] = serde_json::json!({"verified":true});
+        assert!(serde_json::from_value::<PinBugWorkCandidate>(extra).is_err());
+        for revision in [-1, MAX_SAFE_VERSION] {
+            let mut bad = c.clone();
+            bad.expected_candidate_revision = revision;
+            assert!(bad.validate(c.locator.assignment_id).is_err());
+        }
+    }
+}

@@ -1,9 +1,17 @@
-import { ProjectAvatar } from '@pdlc/ui/ui'
+import {
+  ProjectAvatar,
+  Button,
+  Input,
+  ErrorState,
+  Textarea,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@pdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@pdlc/ui/ui'
-import { Input, ErrorState, Textarea } from '@pdlc/ui/ui'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@pdlc/ui/ui'
+
 import type { Project, CreateProjectRequest, UpdateProjectRequest } from '@/api/project'
 
 interface ProjectFormDialogProps {

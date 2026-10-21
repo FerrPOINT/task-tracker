@@ -1,0 +1,319 @@
+//! Exact original scenario and explicit verdict; native completion is not a verdict.
+use domain::{
+    bug_search::BugSearchPurpose,
+    bug_search_control::BugSearchSnapshot,
+    bug_search_terminal::{BugSearchTechnicalResult, BugTechnicalCoverage},
+};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    Passed,
+    Failed,
+    Inconclusive,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Verification {
+    bug_id: Uuid,
+    basis_sha256: String,
+    delivery_ref: String,
+    verdict: Verdict,
+    actual: String,
+    evidence_refs: Vec<String>,
+}
+pub fn require_basis(snapshot: &BugSearchSnapshot) -> Result<(), AppError> {
+    snapshot.validate()?;
+    if snapshot.kind == BugSearchPurpose::Search {
+        return Ok(());
+    }
+    if snapshot.targets.len() != 1 {
+        return Err(AppError::validation(
+            "verification requires one original-repository delivered target",
+        ));
+    }
+    let basis = snapshot.verification_basis.as_ref().ok_or_else(|| {
+        AppError::validation("verification requires original producer-qualified scenario")
+    })?;
+    basis.validate()?;
+    if super::bug_search::canonical_hash(&basis.source)? != basis.source_identity {
+        return Err(AppError::validation("verification source hash differs"));
+    }
+    let has_source_pins = snapshot
+        .targets
+        .iter()
+        .any(|target| target.source.is_some());
+    let same_repository = match basis.source.repository_id {
+        Some(repository_id) => snapshot.targets.iter().any(|target| {
+            target.source.as_ref().is_some_and(|source| {
+                source.repository_id == repository_id
+                    && source.project.project_id == snapshot.project.project_id
+            })
+        }),
+        None => !has_source_pins,
+    };
+    if !same_repository {
+        return Err(AppError::validation(
+            "verification target differs from original Bug repository",
+        ));
+    }
+    Ok(())
+}
+
+/// Returns the actual explicit verdict so the repository can additionally
+/// require before/after owner delivery observations for a conclusive result.
+pub fn require_result(
+    snapshot: &BugSearchSnapshot,
+    result: &BugSearchTechnicalResult,
+) -> Result<Option<Verdict>, AppError> {
+    require_basis(snapshot)?;
+    result.validate()?;
+    if snapshot.kind == BugSearchPurpose::Search {
+        if result.verification.is_some() {
+            return Err(AppError::validation("search result cannot verify a Bug"));
+        }
+        return Ok(None);
+    }
+    let raw = result.verification.as_ref().ok_or_else(|| {
+        AppError::validation("verification requires an explicit scenario verdict")
+    })?;
+    let verification: Verification = serde_json::from_value(raw.clone())
+        .map_err(|_| AppError::validation("invalid typed scenario verdict"))?;
+    let basis = snapshot.verification_basis.as_ref().ok_or_else(|| {
+        AppError::validation("verification requires original producer-qualified scenario")
+    })?;
+    if Some(verification.bug_id) != snapshot.bug_id
+        || verification.basis_sha256 != super::bug_search::canonical_hash(basis)?
+        || Some(&verification.delivery_ref) != snapshot.expected_fixed_deployment_ref.as_ref()
+        || verification.actual.trim().is_empty()
+        || verification.actual.len() > 8192
+        || verification.actual.contains('\0')
+        || verification.evidence_refs.len() > 32
+        || verification.evidence_refs.iter().any(|reference| {
+            reference.trim().is_empty() || reference.len() > 512 || reference.contains('\0')
+        })
+        || (verification.verdict != Verdict::Inconclusive
+            && result.coverage != BugTechnicalCoverage::Complete)
+    {
+        return Err(AppError::validation(
+            "verification verdict differs from original scenario or checked delivery",
+        ));
+    }
+    Ok(Some(verification.verdict))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain::{
+        bug_search_control::BugSearchMode,
+        bug_search_source::{BugTargetSourceIdentity, BugTargetSourceProject},
+        bug_search_terminal::BugProducedFindingReport,
+    };
+    use serde_json::{Value, json};
+
+    fn historical_search() -> (BugSearchSnapshot, Value) {
+        let vectors: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/bug_search_v1.json")).unwrap();
+        let value = vectors["vectors"][1]["value"].clone();
+        (serde_json::from_value(value.clone()).unwrap(), value)
+    }
+    fn verification() -> BugSearchSnapshot {
+        let (mut snapshot, _) = historical_search();
+        let repository_id = Uuid::new_v4();
+        snapshot.kind = BugSearchPurpose::Verification;
+        snapshot.mode = BugSearchMode::Qa;
+        snapshot.bug_id = Some(Uuid::new_v4());
+        snapshot.expected_fixed_deployment_ref = Some("forge:delivered:fixed-b".into());
+        let target = &mut snapshot.targets[0];
+        target.commit_sha = "b".repeat(40);
+        target.target_ref = Some("qa:portal".into());
+        target.deployment_ref = snapshot.expected_fixed_deployment_ref.clone();
+        target.source = Some(BugTargetSourceIdentity {
+            contract_version: 1,
+            schema: "forge/source-snapshot/v1".into(),
+            producer_version: "test-owner-v1".into(),
+            project: BugTargetSourceProject {
+                tracker_instance_id: snapshot.project.tracker_instance_id.parse().unwrap(),
+                project_id: snapshot.project.project_id,
+            },
+            configuration_id: Uuid::new_v4(),
+            repository_id,
+            branch_ref: "refs/heads/main".into(),
+            observed_head_sha: "b".repeat(40),
+            clone_url_sha256: "d".repeat(64),
+        });
+        let source = domain::bug_search::BugSourceIdentity {
+            schema_version: 1,
+            producer: "bug-searcher:v1".into(),
+            rule_key: "portal:save".into(),
+            stable_defect_key: "save-fails".into(),
+            repository_id: Some(repository_id),
+        };
+        snapshot.verification_basis = Some(BugProducedFindingReport {
+            source_identity: super::super::bug_search::canonical_hash(&source).unwrap(),
+            source,
+            title: "Saving fails".into(),
+            basis: "Existing save contract".into(),
+            expected: "Save succeeds".into(),
+            actual: "Save returns an error".into(),
+            reproducer: "Open the form and save valid input".into(),
+            checked_version: "a".repeat(40),
+            evidence_refs: vec!["evidence:original".into()],
+        });
+        snapshot
+    }
+    fn result(snapshot: &BugSearchSnapshot) -> BugSearchTechnicalResult {
+        BugSearchTechnicalResult {
+            coverage: BugTechnicalCoverage::Complete,
+            findings: vec![],
+            verification: Some(json!({
+                "bug_id": snapshot.bug_id,
+                "basis_sha256": super::super::bug_search::canonical_hash(
+                    snapshot.verification_basis.as_ref().unwrap()).unwrap(),
+                "delivery_ref": snapshot.expected_fixed_deployment_ref,
+                "verdict": "passed",
+                "actual": "The original save scenario succeeds on the delivered version",
+                "evidence_refs": ["evidence:fixed-version"]
+            })),
+        }
+    }
+    #[test]
+    fn canonical_basis_matches_fleet_shared_utf8_wire_vector() {
+        let raw: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/bug_verification_basis_v1.json"
+        ))
+        .unwrap();
+        let basis: domain::bug_search_verification::BugVerificationBasis =
+            serde_json::from_value(raw.clone()).unwrap();
+        basis.report.validate().unwrap();
+        assert_eq!(
+            super::super::bug_search::canonical_hash(&basis.report.source).unwrap(),
+            basis.report.source_identity
+        );
+        assert_eq!(
+            super::super::bug_search::canonical_hash(&basis.report).unwrap(),
+            basis.report_sha256
+        );
+        assert_eq!(
+            basis.report_sha256,
+            "208b6edf4f128d45a73a9de9ae831c6402202af770aaab4e954e7e694aa200c0"
+        );
+        assert_eq!(serde_json::to_value(basis).unwrap(), raw);
+    }
+    #[test]
+    fn historical_search_wire_and_hash_are_unchanged() {
+        let (snapshot, old) = historical_search();
+        require_basis(&snapshot).unwrap();
+        assert_eq!(serde_json::to_value(&snapshot).unwrap(), old);
+        assert_eq!(
+            super::super::bug_search::canonical_hash(&snapshot).unwrap(),
+            "b9265f60ae74ee0be74c820ea9d25744f0dc021c0874411858d0df3f9bbff996"
+        );
+        assert_eq!(
+            require_result(
+                &snapshot,
+                &BugSearchTechnicalResult {
+                    coverage: BugTechnicalCoverage::Complete,
+                    findings: vec![],
+                    verification: None
+                }
+            )
+            .unwrap(),
+            None
+        );
+    }
+    #[test]
+    fn original_repository_accepts_a_new_fixed_commit_and_explicit_verdict() {
+        let snapshot = verification();
+        assert_ne!(
+            snapshot.targets[0].commit_sha,
+            snapshot
+                .verification_basis
+                .as_ref()
+                .unwrap()
+                .checked_version
+        );
+        assert_eq!(
+            require_result(&snapshot, &result(&snapshot)).unwrap(),
+            Some(Verdict::Passed)
+        );
+    }
+    #[test]
+    fn multiple_delivered_targets_do_not_expand_verification_authority() {
+        let mut snapshot = verification();
+        snapshot.targets.push(snapshot.targets[0].clone());
+        // Historical shape remains readable; new effect authority is narrower.
+        snapshot.validate().unwrap();
+        assert!(require_basis(&snapshot).is_err());
+    }
+    #[test]
+    fn foreign_repository_cannot_verify_an_existing_bug() {
+        let mut snapshot = verification();
+        snapshot.targets[0].source.as_mut().unwrap().repository_id = Uuid::new_v4();
+        assert!(require_basis(&snapshot).is_err());
+    }
+    #[test]
+    fn missing_repository_cannot_bypass_pinned_targets() {
+        let mut snapshot = verification();
+        let basis = snapshot.verification_basis.as_mut().unwrap();
+        basis.source.repository_id = None;
+        basis.source_identity = super::super::bug_search::canonical_hash(&basis.source).unwrap();
+        assert!(require_basis(&snapshot).is_err());
+    }
+    #[test]
+    fn missing_or_altered_original_basis_is_rejected() {
+        let mut snapshot = verification();
+        snapshot
+            .verification_basis
+            .as_mut()
+            .unwrap()
+            .source_identity = "e".repeat(64);
+        assert!(require_basis(&snapshot).is_err());
+        snapshot.verification_basis = None;
+        // Retained legacy snapshots are readable but cannot authorize new verification.
+        snapshot.validate().unwrap();
+        assert!(require_basis(&snapshot).is_err());
+    }
+    #[test]
+    fn verdict_is_bound_to_exact_bug_scenario_and_delivery() {
+        let snapshot = verification();
+        for (field, value) in [
+            ("bug_id", json!(Uuid::new_v4())),
+            ("basis_sha256", json!("f".repeat(64))),
+            ("delivery_ref", json!("forge:delivered:unrelated")),
+            ("actual", json!(" ")),
+            ("unknown_authority", json!(true)),
+        ] {
+            let mut changed = result(&snapshot);
+            changed.verification.as_mut().unwrap()[field] = value;
+            assert!(require_result(&snapshot, &changed).is_err(), "{field}");
+        }
+    }
+    #[test]
+    fn partial_coverage_cannot_pass_or_fail_but_can_be_inconclusive() {
+        let snapshot = verification();
+        let mut partial = result(&snapshot);
+        partial.coverage = BugTechnicalCoverage::Partial;
+        assert!(require_result(&snapshot, &partial).is_err());
+        partial.verification.as_mut().unwrap()["verdict"] = json!("failed");
+        assert!(require_result(&snapshot, &partial).is_err());
+        partial.verification.as_mut().unwrap()["verdict"] = json!("inconclusive");
+        assert_eq!(
+            require_result(&snapshot, &partial).unwrap(),
+            Some(Verdict::Inconclusive)
+        );
+    }
+    #[test]
+    fn completion_and_empty_findings_do_not_imply_verification() {
+        let snapshot = verification();
+        let mut no_verdict = result(&snapshot);
+        no_verdict.verification = None;
+        assert!(require_result(&snapshot, &no_verdict).is_err());
+        let (search, _) = historical_search();
+        assert!(require_result(&search, &result(&snapshot)).is_err());
+    }
+}

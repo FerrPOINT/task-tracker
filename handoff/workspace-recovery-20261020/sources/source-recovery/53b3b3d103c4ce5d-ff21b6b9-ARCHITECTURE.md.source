@@ -1,0 +1,821 @@
+# Архитектура Task Tracker
+
+## 1. Контекст
+
+Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.
+
+Связь frontend ↔ backend реализована через OpenAPI-first: `openapi/openapi.json` генерируется из Rust-кода, TypeScript-клиент `frontend/src/api/generated.ts` обновляется командой `pnpm generate:api`, запросы идут через `openapi-fetch`, состояния кешируются через `@tanstack/react-query`.
+
+## 2. Технологический стек
+
+### Backend
+
+| Компонент | Библиотека | Версия |
+|---|---|---|
+| Язык | Rust | 1.97.1 |
+| Web framework | axum | 0.8.3 |
+| Async runtime | tokio | 1.44 |
+| DB ORM | sea-orm | 1.1 |
+| Raw SQL | sqlx | 0.8 |
+| Migrations | sea-orm-migration | 1.1 |
+| Config | config | 0.15 |
+| Auth | jsonwebtoken + argon2 | 9.3 / 0.5 |
+| Validation | validator | 0.19 |
+| HTTP middleware | tower-http | 0.6 |
+| OpenAPI | utoipa + utoipa-axum + utoipa-swagger-ui | 5.0 / 0.2 / 9.0 |
+| IDs | uuid | 1.16 |
+| Time | chrono | 0.4 |
+| Optional cache | moka + redis | 0.12 / 0.29 |
+| CLI | clap | 4.5 |
+| Testing | tokio-test + reqwest | 0.4 / 0.12 |
+
+### Frontend
+
+| Компонент | Библиотека | Версия |
+|---|---|---|
+| Framework | react + react-dom | 19.1.0 |
+| Build | vite | 6.2.0 |
+| Styling | tailwindcss + @tailwindcss/vite | 4.1.0 |
+| Components | shadcn/ui | — |
+| Router | react-router | 8.1.0 |
+| Server state | @tanstack/react-query | 5.74.4 |
+| Client state | zustand | 5.0.3 |
+| Forms | react-hook-form + zod | 7.55.0 / 3.25.60 |
+| i18n | i18next + react-i18next | 25.1.0 / 15.5.0 |
+| Unit tests | vitest + @testing-library/react | 4.1.10 / 16.x |
+| E2E tests | @playwright/test | 1.61.1 |
+| Types | typescript | 5.9.3 |
+
+### Infrastructure
+
+- PostgreSQL 17
+- Docker + Docker Compose
+- Backend порт: `3456`
+- Frontend dev порт: `5173`
+- Env prefix: `TASKTRACKER_`
+
+## 3. Структура монорепозитория
+
+```
+task-tracker/
+├── backend/
+│   ├── Cargo.toml          # workspace
+│   ├── api/                # axum routes + DTO
+│   ├── app/                # сервисы / use cases
+│   ├── domain/             # entities + repository traits
+│   ├── infra/              # postgres repos + event bus
+│   ├── shared/             # config, errors, id utils
+│   ├── server/             # entrypoint
+│   ├── cli/                # утилиты командной строки
+│   ├── migration/          # sea-orm migrations
+│   └── scripts/
+│       └── run-e2e-tests.sh # coverage gate
+├── frontend/
+│   ├── src/
+│   │   ├── api/            # openapi-fetch client + ручные API
+│   │   ├── app/            # router, providers
+│   │   ├── entities/       # dto/types
+│   │   ├── features/       # feature slices
+│   │   ├── pages/          # страницы
+│   │   ├── shared/         # ui-kit, lib, i18n
+│   │   └── widgets/        # app-shell
+│   ├── e2e/                # Playwright specs
+│   └── src/**/*.test.tsx   # Vitest unit tests
+├── docker-compose.yml
+├── .env.example
+├── justfile                # unified dev commands
+├── lefthook.yml            # git hooks
+└── docs/
+    ├── ADR.md
+    ├── AGENTS.md
+    ├── API.md
+    ├── API_EDGE_CASES.md
+    ├── API_STANDARDS.md
+    ├── API_VERSIONING.md
+    ├── ARCHITECTURE.md
+    ├── BACKUP_RESTORE.md
+    ├── CACHING.md
+    ├── CI_CD.md
+    ├── CLI.md
+    ├── CODE_REVIEW.md
+    ├── CODE_STYLE.md
+    ├── DATABASE_INDEXES.md
+    ├── DATABASE_STANDARDS.md
+    ├── DATA_MODEL.md
+    ├── DEPLOYMENT.md
+    ├── DOMAIN_MODEL.md
+    ├── ERROR_HANDLING.md
+    ├── EVENTS.md
+    ├── FRONTEND_ARCHITECTURE.md
+    ├── FRONTEND_STANDARDS.md
+    ├── I18N.md
+    ├── LIBRARIES.md
+    ├── LOCAL_SETUP.md
+    ├── LOGGING_STANDARDS.md
+    ├── MIGRATIONS.md
+    ├── MONITORING.md
+    ├── NOTIFICATIONS.md
+    ├── OPS_RUNBOOK.md
+    ├── PAGINATION.md
+    ├── PERFORMANCE.md
+    ├── PROJECT_ADMIN.md
+    ├── RELEASE.md
+    ├── REPORTS.md
+    ├── RESILIENCE.md
+    ├── REVIEW.md
+    ├── ROADMAP.md
+    ├── ROUTING.md
+    ├── RUNTIME.md
+    ├── SECURITY.md
+    ├── STORAGE.md
+    ├── SYSTEM_ADMIN.md
+    ├── TESTING.md
+    ├── TROUBLESHOOTING.md
+    ├── TZ.md
+    ├── UI_UX.md
+    ├── WORKFLOW.md
+    └── adr/0001-rust-axum.md ... adr/0010-apalis.md
+```
+
+## 4. Backend: слоистая архитектура
+
+### 4.1 Presentation layer (`api/`)
+
+Тонкий HTTP-адаптер. Отвечает за:
+- извлечение path/query/body/auth state
+- route-уровневую валидацию (`ProjectKey::is_valid`, UUID parse)
+- вызов сервисных функций из `app/`
+- маппинг `AppError` → HTTP статус через `IntoResponse`
+
+Все защищённые маршруты проходят через JWT-middleware (`api/src/middleware/auth.rs`).
+
+### 4.2 Application layer (`app/`)
+
+Сервисы содержат бизнес-операции:
+- `auth.rs` — регистрация/логин, хеширование, JWT
+- `services.rs` — CRUD проектов, задач, дашборд, поиск, board move
+
+Общая логика маппинга и счётчиков вынесена в `app/src/services/helpers.rs`.
+
+### 4.3 Domain layer (`domain/`)
+
+- Entities: `Issue`, `Project`, `User`, `Board`, `Sprint`, `Worklog`
+- Repository traits: async, без `delete()` (soft-архивирование не реализовано в MVP)
+- In-memory stubs для тестов: `domain/src/stubs/memory.rs`
+
+### 4.4 Infrastructure layer (`infra/`)
+
+- `repos.rs` — SeaORM Postgres-реализации repository traits
+- `entities/` — SeaORM models
+- `storage.rs` — file attachment storage (local filesystem / S3-compatible)
+
+## 5. Конфигурация
+
+Конфиг загружается через `config` crate с префиксом `TASKTRACKER_`.
+
+```rust
+pub struct AppConfig {
+    pub database: DatabaseConfig,
+    pub server: ServerConfig,
+    pub auth: AuthConfig,
+    pub storage: StorageConfig,
+    pub email: EmailConfig,
+}
+```
+
+Основные env vars:
+- `TASKTRACKER_DATABASE__URL`
+- `TASKTRACKER_SERVER__PORT`
+- `TASKTRACKER_JWT_SECRET`
+- `TASKTRACKER_DATABASE_PASSWORD`
+- `TASKTRACKER_AUTH__REFRESH_COOKIE_SECURE`
+- `TASKTRACKER_STORAGE__MAX_UPLOAD_BYTES`
+
+Fallback: если `auth.jwt_secret` не задан, используется `TASKTRACKER_JWT_SECRET`.
+
+## 6. Middleware stack
+
+```rust
+Router::new()
+    .merge(api_routes())
+    .layer(TraceLayer::new_for_http())
+    .layer(CorsLayer::new())
+    .layer(CompressionLayer::new())
+```
+
+CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию используется явный whitelist localhost-источников (`http://localhost:19877,http://localhost:5173`); wildcard `*` включается только при явном указании `*`.",
+
+## 7. Security
+
+- **AuthN**: JWT access token (`Authorization: Bearer`), refresh token в `httpOnly` cookie на `/api/v1/auth`
+- **Hashing**: argon2id
+- **Input validation**: `validator` derive на Request DTO + route-уровневые проверки
+- **CORS**: wildcard без credentials либо explicit whitelist с `Access-Control-Allow-Credentials`
+
+## 8. Frontend архитектура
+
+- **Pages** — экраны: login, register, dashboard, projects, project-board, project-backlog, search, issue-create, issue-detail
+- **Features** — time-tracking и будущие бизнес-модули
+- **Shared** — ui-kit, i18n, auth store, theme, API hooks
+- **App** — роутер (`react-router`), провайдеры QueryClient + ThemeProvider
+- **Widgets** — `AppShell` с sidebar + header, адаптивный под mobile
+
+## 9. API, документация и тестирование
+
+- OpenAPI-схема — `openapi/openapi.json`
+- Детали REST API — `docs/API.md`
+- UI/UX — `docs/UI_UX.md`
+- Дата-модель — `docs/DATA_MODEL.md`
+- Тестирование — `docs/TESTING.md`
+
+## 10. Dev workflow
+
+Управляется через `justfile`:
+
+```bash
+just setup       # установка зависимостей
+just dev         # backend + frontend
+just gate        # fmt + clippy + typecheck + tests
+just build       # production build
+just e2e         # Playwright tests
+```
+
+Git hooks через `lefthook`:
+- `pre-commit`: rust fmt check, clippy, frontend typecheck + test + lint
+- `pre-push`: backend tests, frontend build, e2e smoke
+- `commit-msg`: conventional commits
+
+## 11. Deployment
+
+Подробности — `docs/DEPLOYMENT.md`.
+
+## 12. Бэклог И Задачи Вне Спринта
+
+`GET /projects/{key}/backlog` разделяет задачи по двум существующим полям:
+`backlog_issues` содержит начальный статус без спринта, а `sprint_issues` также
+содержит задачи в другом статусе без `sprint_id`. Последние выводятся отдельно
+как «Задачи вне спринта», с тем же меню назначения в спринт. Смена статуса не
+должна делать задачу недоступной для планирования. Счётчик и пагинация бэклога
+по-прежнему относятся только к `backlog_issues`; контракт API не меняется.
+Меню редактирования спринта немодальное, как меню проекта: модальность и focus
+trap принадлежат следующему диалогу. Наложение двух modal layers оставляло
+`body` с `pointer-events: none` после закрытия формы; поведение покрыто
+компонентным тестом и проверкой реального браузера.
+
+## 13. Представление Отчётов
+
+Velocity использует существующие API-счётчики задач в закрытых спринтах,
+не story points. Дневные buckets burndown форматируются через `Intl` в UTC,
+чтобы часовой пояс браузера не переносил точку на соседнюю дату. Кумулятивный
+поток показывает время события с явным UTC, а не выдуманную дневную агрегацию;
+ступенчатые области не интерполируют промежуточные количества задач. Числа
+и даты в осях, tooltip и таблицах для screen reader используют язык интерфейса.
+
+Графики используют общие семантические цвета Base, непрозрачные tooltip и
+обычный цвет текста легенды независимо от цвета серии. Recharts SVG скрыты
+от axe, поэтому браузерный QA отдельно измеряет контраст текста и marks
+через цветовые utilities axe: 4.5:1 для текста, 3:1 для графических данных.
+Backend-контракт и вычисления отчётов этим UI-изменением не меняются.
+
+## 14. Сверка И Ошибки Вложений
+
+AttachmentPanel сохраняет полученные строки при ошибке refetch, но явно
+показывает, что список не обновлён, и предоставляет повтор. Начальная ошибка
+не подменяется пустым списком. Download имеет состояние для каждого файла;
+повтор того же запроса блокируется до завершения, другой файл не блокируется.
+Success означает передачу файла браузеру, не подтверждение сохранения на диске.
+
+При загрузке нескольких файлов hook инвалидирует список без немедленного
+refetch, а панель сверяет его после завершения всей пачки. SSE по-прежнему
+может независимо обновить список при событиях других клиентов. Неудачный POST
+не повторяется автоматически: неизвестный исход требует сверки с сервером.
+Выбранные File сохраняются в памяти по независимому id очереди, не имени файла.
+Успешная запись освобождает File; отказ и неизвестный исход сохраняют его для
+явного повтора. HTTP 400/401/403/404/413/415/422/429 означают отказ до записи;
+5xx, transport error/abort/timeout и невалидный success response остаются
+неподтверждёнными. Полный success очищает очередь, смешанная пачка показывает
+отдельные uploaded/rejected/unknown и их счётчики. Другие выбранные файлы не
+перезаписывают старые черновики и не повторяют успешные POST.
+
+Неизвестный исход не определяется автоматически по имени или размеру: для
+этого нет надёжного idempotency-контракта. После успешного GET повтор требует
+отдельного предупреждения о возможной копии и явного подтверждения; ошибка GET
+блокирует такой повтор до сверки. Удаление локального черновика подтверждается
+и не удаляет файлы на сервере. Черновики не попадают в URL или localStorage.
+Загрузка и скачивание имеют предел 120 секунд; истечение upload остаётся
+unknown и не вызывает автоматический повтор. Только явный 401 допускает один
+существующий refresh/retry авторизации.
+
+Панель сообщает dirty/pending единственному guard страницы задачи. Pending
+upload/download/delete защищён от ухода; Cancel dirty navigation возвращает
+фокус в регион вложений, а не на активирующуюся вкладку. Delete confirmation
+сохраняется при ошибке, блокирует повтор/закрытие и после удаления последней
+строки возвращает фокус в тот же регион. API и backend-схема не меняются.
+
+## 15. Записи Времени И Таймер
+
+Форма проверяет тот же предел, что backend: 1–86400 секунд на одну запись,
+и корректную календарную дату. Дата формы сохраняет существующий контракт
+UTC midnight. Форматирование длительности сохраняет секунды, чтобы повторное
+редактирование не округляло ранее записанное время. Краткий display formatter
+`formatDurationShort` по-прежнему округляет минуты и не используется формой.
+
+Таймер измеряет elapsed через `performance.now()`, а interval обновляет только
+отображение. Остановка и submit берут актуальное elapsed, включая задержанные
+ticks; submit переносит его в черновик до валидации и останавливает таймер.
+Закрытие/unmount очищает interval. Ошибка сохраняет дату, описание и длительность;
+pending блокирует fields, повтор, таймер, Escape и outside/close. Родитель
+закрывает диалог только после подтверждённого успеха и сбрасывает старые ошибки
+при открытии новой формы. Dirty-dismiss требует явного подтверждения; Cancel
+сохраняет дату, длительность и комментарий и возвращает фокус к duration input.
+Попытка закрытия останавливает работающий таймер в draft до подтверждения.
+Confirm отбрасывает ввод без POST, чистая форма закрывается без предупреждения.
+Submit ожидает Promise родителя, включая API mutation/refetch; async rejection
+не закрывает форму и не допускает повторного submit в промежутке validation/API.
+
+Журнал не показывает выдуманную remaining estimate отдельной записи: API
+содержит только длительность, а оценка принадлежит задаче. Отсутствующая оценка
+задачи не заменяется затраченным временем или выдуманным progress; явно заданный
+ноль остаётся нулевой оценкой. Подтверждение удаления
+сохраняется при ошибке и при опустевшем списке, пока mutation не закончилась.
+После удаления инициатора фокус возвращается к подписанному региону журнала.
+Правила авторства API/UI этим изменением не расширяются и не заменяются ролями.
+Ошибка начальной загрузки не подменяется пустым журналом. Ошибка refetch
+показывает явное предупреждение с retry, но сохраняет полученные строки и
+открытое подтверждение удаления. Manual refresh использует тот же query cache.
+
+## 16. Черновики И Операции Комментариев
+
+Форма валидирует trimmed текст в пределах 1–100000 Unicode code points,
+как backend и существующий API client. Pending блокирует поле, cancel,
+повторную отправку, переключение редактора и операции строк. Atomic submit
+guard действует до окончания асинхронной validation/mutation; ошибка
+локализована и не сбрасывает текст. Success показывается после ответа API,
+а мутации ожидают refetch списка через возвращаемый Promise invalidateQueries.
+Refetch failure сохраняет ранее полученные строки и draft; manual refresh/retry
+не маскирует ошибку под empty.
+
+Редактор имеет key выбранного comment id. Смена комментария или отмена dirty
+edit требует ConfirmDialog; Cancel сохраняет draft, подтверждение явно
+отбрасывает его. Return-focus направлен на текущий textarea, даже когда прежнее
+поле уже unmounted. После удаления редактируемого комментария показывается
+чистая форма создания, а не редактор отсутствующего id. Delete confirm остаётся
+на экране при pending/error; удаление инициатора возвращает focus к региону.
+
+Единственный UnsavedChangesGuard принадлежит Base: он защищает SPA navigation
+и beforeunload. На странице задачи owner находится в IssueDetailPage: CommentsPanel,
+LogWorkDialog и AttachmentPanel передают dirty/pending, чтобы одновременно открытые формы не
+регистрировали несколько router blockers. Standalone CommentsPanel сохраняет
+собственный guard при отсутствии callback. Удаление worklog также защищает pending.
+Optional isPending блокирует уход до ответа и не следует
+автоматически ранее заблокированной ссылке после сохранения. Это additive
+UI-контракт; isPending по умолчанию false. Когда protected state отключается,
+заблокированный переход сбрасывается без автоматического ухода.
+Dirty policy других форм этим подключением не закрывается. Черновик не
+попадает в URL/localStorage; авторские ограничения API/UI не расширяются.
+Выбранная вкладка обновляется только после принятого перехода. Cancel в guard
+не меняет запрошенную вкладку заранее и позволяет повторить тот же переход.
+Owner передаёт returnFocusRef текущего редактора: невыбранный TabsTrigger
+не подходит для возврата фокуса, поскольку Radix может снова активировать его
+и повторно открыть предупреждение. Для открытой формы времени используется
+duration input, для комментариев — textarea; standalone guard применяет тот
+же принцип. Это additive optional ref, а не изменение router/API-контракта.
+
+## 17. Черновик Темы И Описания
+
+IssueDescriptionEditor проверяет backend bounds до PATCH: непустая trimmed тема,
+не более 500 Unicode code points в теме и 100000 в описании. Сама тема не
+обрезается; описание сохраняет прежнее trim/null преобразование. Ошибка
+локализована, сохраняет оба поля; refetch не перезаписывает открытый черновик.
+Atomic submit guard действует с начала validation; pending блокирует поля,
+отмену и повтор, включая программный submit/Enter. Disabled нельзя обойти
+кликом по заголовку. Поля имеют labels, связанные ошибки и aria-invalid.
+
+Dirty отмена требует подтверждения; Cancel возвращает фокус к теме, Confirm
+сбрасывает форму к серверной записи и возвращает фокус к Edit. Чистая отмена
+не требует подтверждения. Success закрывает редактор только после API Promise
+и очищает dirty baseline. Компонент обязательно передаёт dirty/pending owner
+страницы; отдельного router blocker не регистрирует. Owner защищает reload,
+SPA-переходы и pending вместе с comments/time/attachments. Открытый time dialog
+имеет приоритет возврата фокуса, затем dirty/pending description editor.
+
+Редактор keyed по issue id и location key: после явно подтверждённого перехода
+между вкладками той же задачи он remount с серверными значениями. Иначе guard
+обещал бы потерю черновика, но оставлял его в продолжающем жить компоненте.
+Отмена перехода не меняет key или draft; breakpoint и refetch также не меняют
+key. Законченный pending не следует ранее заблокированному переходу.
+Return-focus ref разрешается после DOM commit: исчезнувшее сохранённое поле
+заменяется именованным focusable регионом задачи. Иначе ConfirmDialog вернул бы
+focus к инициатору TabsTrigger, и Radix снова активировал бы прежний переход,
+хотя blocker его сбросил. Поле, которое осталось в DOM, сохраняет приоритет;
+disabled/hidden/inert field не используется. Это ответственность page owner,
+не новый общий UI/API контракт.
+
+## 18. Черновик И Подтверждение Связей
+
+LinkEditor использует RHF/Zod и сообщает dirty/pending тому же page owner;
+своего router blocker не создаёт. Key по issue id/location key сбрасывает
+черновик только после принятой SPA/tab navigation. Отмена перехода, refetch
+и breakpoint ввод не сбрасывают. Локальная dirty отмена подтверждается;
+сохранение/проверка исхода блокирует fields, cancel и handler повторного submit.
+Общие dialogs возвращают focus в поле либо именованный безопасный регион.
+
+Пустой ключ и self-link не отправляются; нормализация числовой части при
+сравнении учитывает ведущие нули, но не вводит новый backend/API parser.
+API возвращает существующие статусы: 404 означает отсутствие исходной ИЛИ
+целевой задачи, 409 — существующую связь, 400/422 — неверные данные.
+Другие гарантированно отклонённые запросы имеют отдельное сообщение.
+HTTP status сохраняется доменной IssueLinkMutationError; server diagnostics
+не выводятся. DELETE проверяет response.ok, включая ответы без JSON body.
+
+500, потеря ответа и отсутствующее тело успешного POST имеют неизвестный
+исход. Повторное действие сначала выполняет только GET списка: найденная
+связь подтверждает создание; отсутствие удаляемого id подтверждает удаление.
+Иначе форма/диалог остаются и требуется новое явное подтверждение POST/DELETE.
+Неуспешный GET не разрешает повторную мутацию. Relates учитывается в обоих
+направлениях, blocks/duplicates остаются направленными. Черновик при неизвестном
+исходе фиксирован до проверки или явно подтверждённого отказа от формы;
+отказ не обещает отката изменения на сервере.
+
+Удаление требует confirmation и сохраняет диалог при ошибке; обе задачи
+сохраняются. Подтверждённый ответ обновляет уже загруженный React Query cache
+обоих endpoint, затем инвалидирует его. Ошибка не удаляет строку и не создаёт
+success. Список различает loading/empty/error, показывает ранее загруженные
+строки при refetch failure, отключает мутации до успешного чтения и даёт retry.
+Это UI/API-client correction без изменения backend схем или прав.
+
+## 19. Метки: Создание, Прикрепление И Отсоединение
+
+LabelEditor различает два GET списка: каталог проекта и метки задачи. Ошибка
+или loading не подменяются empty, refetch failure сохраняет строки и черновик,
+retry использует тот же query cache. До успешного чтения мутации отключены.
+Поля подписаны, trimmed whitespace не отправляется; pending имеет синхронный
+ref guard до RHF/Zod validation, блокирует поля, повтор и остальные операции.
+Dirty/pending сообщаются единственному page owner; beforeunload и SPA/tab
+navigation защищены также для direct attach без открытой формы. Принятая
+навигация сбрасывает editor по location key. Cancel сохраняет draft/focus;
+explicit discard не обещает отмены серверного изменения.
+
+Создание в проекте и прикрепление к задаче — два отдельных запроса. Полный
+подтверждённый create response сохраняется до завершения attach: неудачное
+прикрепление не запускает повторное создание той же метки. Exact совпадение
+имени в каталоге использует существующий id. Partial success виден отдельно;
+success формы показывается только после подтверждённого attach.
+
+LabelMutationError сохраняет статус, не показывает server diagnostics.
+500, потеря ответа и пустое тело успешного create имеют неизвестный исход.
+При таком исходе повторное действие выполняет только GET: project list для
+create, issue labels для attach/detach. Found create не прикрепляет автоматически:
+нужен отдельный explicit submit. Отсутствие create/attach или сохранившийся
+detach также требуют нового явного write. Failed GET не разрешает повтор.
+Подтверждённый attach/detach reconciliation обновляет доменные query caches.
+Bodyless attach/delete проверяют response.ok, включая ошибку без JSON.
+
+Отсоединение требует confirmation, оставляет метку в проекте и сохраняет
+диалог при pending/error. Удалённый initiator возвращает focus в labels region.
+Local discard выбирает возвращаемое поле/кнопку после DOM commit, чтобы не
+фокусировать unmounted/disabled input. Targets 44px mobile/40px desktop,
+длинные названия переносятся, foreground выбирается по реальному цвету.
+Backend API, права и схема БД не меняются.
+
+## 20. Кастомные Поля: Явная Запись И Проверка Исхода
+
+Каталог проекта и значения задачи читаются отдельными типизированными GET.
+Loading/error не заменяются пустым списком; refetch сохраняет известные строки
+и локальный черновик, блокируя запись до успешного чтения. Редактор значения
+имеет явный submit, RHF/Zod validation и снимок определения поля: изменённый
+тип/required/options либо удалённое определение не сбрасывают черновик и не
+разрешают запись по устаревшему контракту. Числовой raw draft сохраняется как
+строка до validation, включая промежуточный `1e`; optional empty отправляется
+как null, число как finite JSON number, дата как date-only. IssueCreate сохраняет
+свой change-mode input. Backend API, права и миграции не изменены.
+
+CustomFieldMutationError различает явное отклонение и неизвестный исход.
+Bodyless PUT/DELETE проверяют HTTP status, а create/update требуют response body.
+После неизвестного PUT кнопка проверки делает только GET определения и значений;
+успех требует совместимого определения и точно совпавшего typed value. После
+неизвестного create учитываются только новые id относительно pre-submit списка;
+несколько совпадений не подтверждают успех. Delete сначала сверяет отсутствие id.
+Failed GET удерживает frozen draft; несовпадение требует отдельного явного write,
+автоматического повтора нет. Discard предупреждает, что не откатывает сервер.
+
+Подтверждённая запись обновляет только уже загруженный query cache; DELETE поля
+удаляет его association во всех загруженных задачах, сохраняя другие значения и
+проекты. Error не меняет cache и не даёт success. Синхронный ref lock охватывает
+validation/HTTP, pending блокирует поля и повтор. В detail dirty/pending включены
+в единственный page guard вместе с другими формами; принятый SPA/tab переход
+сбрасывает редактор по location key, cancel сохраняет draft и connected focus.
+Project settings имеют собственный page guard и delete/discard confirmation.
+
+## 21. Владелец Учёта Времени И Завершение Удаления Задачи
+
+Открытая create/edit форма времени принадлежит конкретному issue/location key.
+Cancel навигации сохраняет форму и работающий таймер; accepted same-issue POP
+закрывает форму, сбрасывает editing target и размонтирует timer interval. Новый
+create не наследует edit, duration/comment или running state. Единственный page
+guard учитывает dirty формы и непосредственно pending create/update/delete hooks.
+
+URL-backed вкладки detail используют manual activation: pointer добавляет ровно
+одну history запись, стрелки перемещают focus без навигации, Enter/Space открывают
+вкладку. Automatic mouse-down+focus activation при deferred router render могла
+создавать две одинаковые записи и возвращать accepted Back к тому же URL.
+Regression проверяет число записей browser history, cancel/accepted POP и таймер;
+живой protocol явно владеет comments→worklog history и ждёт exact destination.
+
+Удаление задачи имеет синхронный lock, pending защиты dialog/native/SPA и снимок
+подтверждённой задачи. Снимок удерживает page owner, если SSE refetch возвращает
+отсутствие до завершения HTTP. Hook не удаляет active query и не перенаправляет
+из onSuccess: page owner сначала принимает подтверждённое завершение и снимает
+guard, отмечает подтверждённое отсутствие в cache и переходит на dashboard.
+До unmount очищаются только inactive queries: удаление активной записи во время
+ожидания destination loader не должно создавать повторный GET. Неудача не следует
+ранее заблокированному маршруту и сохраняет dialog/drafts.
+
+SSE `issue_deleted` обновляет collections и отмечает задачу отсутствующей, но не вызывает refetch
+её labels/links/custom-fields/attachments/votes/watchers: после удаления эти
+endpoints уже недоступны. Authenticated event отменяет прежний detail query и
+записывает `null`, не запрашивая удалённый endpoint даже после завершения DELETE.
+Это не отключает refetch следующих create/update/move событий. При этом
+snapshot удерживает owner локального pending DELETE до подтверждения результата.
+Обычные create/update/move события продолжают обновлять дочерние queries.
+Подтверждение исхода собственного DELETE и переход принадлежат HTTP-owner;
+событие SSE не обходит pending/unknown guard. Отсутствие записывается независимо
+от pending другого id или завершённой mutation, без длительного suppression.
+
+Bodyless DELETE проверяет HTTP status. Явные 4xx rejection не дают success;
+404/5xx/network failure имеют неизвестный исход. Проверка отправляет только GET
+того же id: отсутствующая задача завершает flow, существующая требует нового
+explicit DELETE; чужой id/failed GET не разрешают повтор. Неизвестный результат
+сохраняется после dismissal, остальные issue controls read-only до проверки.
+Подтверждённый GET обновляет query cache. Cancel не обещает отмены server write,
+а description удаления предупреждает о потере локальных несохранённых drafts.
+Backend API, soft-delete/restore контракт и права не изменены.
+
+## 22. Владелец Операций Корзины
+
+Restore и purge разделяют один синхронный lock и pending-owner. Пока операция
+или GET-проверка выполняется, оба действия и пагинация недоступны; общий Base
+guard защищает SPA/native navigation. Подтверждённое завершение сбрасывает
+ранее заблокированный переход, а не выполняет его автоматически. Ошибка GET
+оставляет ранее загруженные строки видимыми, но read-only, с отдельным retry.
+
+API wrapper проверяет HTTP status для обеих мутаций; restore дополнительно
+требует body того же id. Явные rejection и неизвестный результат различаются,
+неидемпотентные запросы автоматически не повторяются. Unknown сохраняется
+после закрытия диалога и защищает переход до явного подтверждения ухода.
+Кнопка проверки отправляет только GET: active issue подтверждает restore;
+точное присутствие id в свежей странице корзины разрешает отдельный explicit
+retry. Отсутствие на странице не доказывает purge, поэтому не даёт success и
+не повторяет DELETE. Failed GET или чужой id/project сохраняют unknown.
+
+Confirmed success удаляет id только из загруженных trash caches текущего
+проекта; проверенный restore обновляет detail cache и инвалидирует коллекции.
+При исчезновении инициирующей строки focus возвращается к именованному региону
+корзины. Accepted same-component navigation сбрасывает прежний local owner.
+Эти UI/source guards не заменяют сериализацию конкурентных операций backend.
+Purge блокирует trashed issue через SELECT FOR UPDATE до удаления children и
+держит lock до commit. Если restore успел первым, purge не удаляет children;
+если purge начал первым, restore ждёт и затем получает not found. Финальный
+DELETE обязан затронуть ровно одну строку, иначе транзакция явно откатывается.
+
+PostgreSQL regression удерживает comment row, наблюдает реальную SQL-блокировку
+purge через pg_stat_activity, затем запускает restore. Старый backend оставлял
+восстановленный parent без comment; исправленный сериализует операции. Отдельный
+тест проверяет сохранность comment, когда restore завершился первым. Тесты идут
+в disposable DB последовательно, без доступа к runtime volumes. API, права и
+миграции не меняются. Live HTTP/UI gate новой корзины прошёл на закреплённых
+frontend/backend кандидатах в отдельном QA Compose-проекте: реальные500/404,
+pending locks, конкурентный purge/restore, child rollback/integrity, GET-only
+проверка, explicit retry,51 запись и stale read-only rows.109 page cases,
+три темы и375/768/1280/1920/2560, без API mocks. Это не приёмка всех продуктов
+или установка кандидатов в постоянные группы.
+
+### Проверка HTTP-ответов уведомлений
+
+Notifications API wrappers требуют успешный HTTP response для списка,
+настроек, их сохранения и обеих отметок прочтения. Пустой ответ500/503 не
+считается success даже при отсутствии error body; data без успешного статуса
+также отвергается. Вместо raw server diagnostics возвращается нейтральная
+ошибка. Контракт backend не меняется, автоматические retries мутаций не добавлены.
+API regression12/12 прошёл; эта source-правка не включена в Trash candidate09.
+Страница использует единый synchronous mutation-owner для settings/read-one/
+read-all и общий Base guard для dirty/pending SPA/native navigation. Pending
+защищает поля, повторные handlers, фильтры и pagination; после подтверждённого
+save ранее заблокированный переход сбрасывается. Ошибка сохраняет черновик.
+Stale GET оставляет settings/list видимыми, но read-only, с отдельным retry;
+empty-page recovery не выполняется при ошибке или защищённом черновике.
+Offset проверяется на safe integer. Переход по ссылке уведомления не запускает
+скрытую mark-read мутацию: отметка является отдельным явным действием.
+
+Page regression7 RED до fix ->23 GREEN; полный frontend564/55 files,
+typecheck/lint/semantic/OpenAPI/Prettier и frozen production candidate10 build
+прошли. Live receipt относится только к конкретным source/image pins.
+В page-only candidate10 shell bell оставался отдельным открытым UX-пунктом:
+локальные hook instances не разделяли pending-owner со страницей, а item
+navigation вызывал mark-read без сохранения контекста ошибки. Page-only receipt
+не доказывает работу страницы и верхней панели совместно.
+
+Отдельный page live gate прошёл11 scenarios/122 full-page cases на candidate10
+(source839f46996b66/image3a497bbb4c56),375/768/1280/1920/2560 и3 темы,
+без API mocks. Реальное назначение задачи создаёт уведомление;25 объёмных
+строк добавляются только в owned disposable DB, потому что публичного create
+notification endpoint нет. Реальные500 для PATCH settings/read-one и POST
+read-all сохраняют draft/rows/page/unread count; каждый retry явный. PG row
+locks подтверждают single owner и pending guards. По5 настоящих GET errors
+проверяют stale settings/list и восстановление после Retry. Own project/issue
+удаляются API, seed rows удаляются адресно, QA resources убраны через Compose
+finally. Рабочие runtime images не изменены; этот proof не закрывает shell,
+локализацию backend-generated titles или финальную платформенную приёмку.
+
+Следующий owner привязан к QueryClient и разделяется всеми notification hooks.
+WeakSet защищает mutationFn синхронно до HTTP и удерживается до cache refresh;
+конкурентный write отклоняется, не ставится в очередь. retry:false применяется
+к каждой из трёх мутаций, независимо от defaults. В finally owner освобождается;
+отказ конкурентного hook не снимает чужой lock. useIsMutating передаёт pending
+между страницей и bell, отдельные QueryClient не блокируют друг друга.
+Bell сохраняет target и menu error/retry/success до подтверждения, блокирует
+дубли, закрытие pending и native reload. Переход по target не выполняет write.
+GET loading/error различаются с empty, cached data остаются read-only.
+
+Live candidate11 выявил critical aria-required-children: alert/status нельзя
+помещать внутрь menu. Видимые сообщения теперь являются menu labels, live
+announcements находятся снаружи menu. Исторические action_url с issue key давали
+400, поскольку detail API принимает UUID. Общий Task adapter использует
+валидный entity_id для legacy issue link, сохраняет suffix и не меняет прочие
+URL; поддерживает весь существующий ProjectKey grammar (1..10 ASCII alnum/dash).
+Backend, DTO и миграции не меняются; user content не переводится.
+Полный frontend583/56 files PASS, target regression10. Candidate12 live02 прошёл
+15 scenarios/168 page cases без API mocks: page + bell real500/200/204, shared
+pending/duplicate locks, native bell guard вне страницы, Escape/focus и touch
+UUID target без hidden write,3 темы/5 widths,0 errors/critical-serious axe.
+Candidate13 содержит только grammar correction и её tests; его новый цельный
+live03 тоже прошёл15/168 на проекте `qa-<hex>`: lower-case/dash key разрешается
+в настоящий UUID detail, heading задачи загружен без400. Source manifest
+`2ac5f78383a9`, Task web image `c7701c7bb403`, остальные15 image pins прежние.
+Own QA project удалён, per-phase permanent freeze PASS. Bell stale-GET live
+proof, generated-title localization и full platform/release gates остаются
+открыты. Кандидаты не применяются к постоянным runtime группам во время QA.
+
+## Notification System Titles
+
+Page и bell используют один Task-only `notificationTitle`: переводятся только
+десять известных backend-шаблонов при совпадении event/entity/title и валидном
+metadata.issue_key. Для moved используется общий statusLabel, для links нужны
+linked_issue_key. Неизвестные события, неполная metadata и произвольные заголовки
+сохраняются без изменения. Body, summary, filename, work description и custom
+status остаются пользовательским текстом; backend/DTO/migrations не меняются.
+Переведённый заголовок также используется в доступном имени mark-read.
+
+Два component regression были RED до подключения formatter; после fix pure
+formatter25, полный frontend610/57 files, typecheck/lint/semantic/OpenAPI
+check+compat и scoped Prettier PASS. Frozen candidate14 содержит8 explicit
+overlays поверх13, source `f7212ceff71b`, web image `3b76322df98e`,888 files;
+production build72.19s PASS. Остальные15 image pins сохранены, applied=false.
+
+Новый live harness создаёт все десять событий штатными API и проверяет page,
+bell, сохранность user content и stale bell после пяти реальных GET500 без
+повтора write. Полный новый live-gate пока НЕ прошёл. Receipt01 содержит
+5 прошедших business checks/76 page cases, включая реальное локализованное
+назначение; затем harness ошибочно запросил limit100 при API max50 и получил400.
+Запрос исправлен на50; этот RED сохранён. Повтор02 не дошёл до браузера из-за
+исчерпания default Docker address pools. Base browser harness теперь использует
+существующий allocator малых QA-подсетей с дополнительным строгим guard;
+13 Python harness tests и8 branding tests PASS. Повтор03 не прошёл PostgreSQL
+readiness, повтор04 превысил Docker command deadline во время инициализации.
+Source PASS и старый candidate13 live PASS не заменяют приёмку candidate14.
+Постоянные группы не обновляются до конца общего QA; release gates открыты.
+
+## Board Move Notification Delivery
+
+No-mock Notifications live05 обнаружил реальный пропуск `issue_moved`: API доски
+сохранял статус/history и публиковал SSE, но не вызывал общий механизм доставки.
+BoardService теперь получает watcher/notification/settings repositories и после
+успешного атомарного перехода вызывает существующий `notify_issue_recipients`.
+Canonical status name берётся из status repository; metadata и title используют
+тот же контракт, что detail transition. API/schema/migrations не меняются.
+No-op и отказ WIP/transition не создают уведомлений; общая доставка сохраняет
+dedup получателей и настройки own changes/disabled events.
+
+Три regression tests: reporter+assignee+watcher dedup с SSE/URL/metadata,
+own-change/event preferences, WIP rejection без write/history/notification.
+RED02 подтвердил две отсутствующие доставки. Финальный offline Compose GREEN04
+проверил все217 source hashes внутри image и прошёл7 board tests, полный app179
+и Clippy. Source `f608841afce6`, test image `6c7b68aafcdb`; cleanup/freeze PASS.
+GREEN02 имел зелёные behavior tests, но manifest расходился с inherited tests
+после форматирования: он НЕ принят для runtime. У GREEN03 есть зелёные логи,
+но нет итогового receipt и живого процесса; он не используется как полный QA PASS.
+
+Production candidate15 собран из принятой PG-tested базы и только этих трёх
+overlays, с повторной SHA-проверкой исходников внутри release builder. Backend
+image `29a0097e7999`, frontend14 `3b76322df98e` сохранён, остальные14 pins прежние.
+Build/freeze PASS, applied=false. Это не установка в постоянный стенд и не
+завершение release gate: общая приёмка всех продуктов остаётся обязательной.
+
+Новый цельный no-mock Notifications live06 на candidate15 PASS18 business
+scenarios/213 page states, три темы/375..2560. Проверены все10 событий через
+реальные API (включая board move), RU titles/ARIA, неизменённые user bodies,
+page/bell write ownership, pending/duplicate guards, write500 и explicit retry,
+пять реальных stale bell GET500 с cached read-only context и GET recovery без
+повтора PATCH. 0 unexpected errors/page failures/overflow/serious-critical axe
+и неожиданных scrollers. UUID touch navigation не выполняет скрытый mark-read.
+Fixtures очищены API и точечным SQL только собственной БД. Outer receipt
+passed/cleaned/permanent_runtime_unchanged=true, applied/api_mocks/production
+data access=false. Exact Compose project `sdlc-qa-browser-platform-e59468ef4599`
+имеет0 containers/networks/volumes; mobile titles/stale-error и desktop titles
+screenshots просмотрены. Это Notifications gate, не общий финальный release.
+
+## Dashboard Creation Action
+
+Визуальная проверка candidate15 выявила две соседние ссылки «Создать» на
+Dashboard: собственную и общую shell. Dashboard больше не дублирует shell action;
+одна общая ссылка сохраняет переход на issue create. Новый page regression
+RED -> GREEN, focused Dashboard/shell22, полный frontend611/57, typecheck,
+lint/semantic/OpenAPI check+compat/scoped Prettier PASS. Main platform harness
+дополнительно проверяет ровно одну видимую create link и её href на Dashboard
+во всех15 theme/viewport состояниях.
+
+Предыдущий platform01 на candidate15 PASS855 pages/90 menus/30 transitions/
+6 global logout,0 errors/page failures; все36 protected API checks после logout
+вернули401, шесть приложений потребовали новый вход. Его2 harness hashes и16
+image pins сверены, own project `d85f4bb0f089` имеет0 ресурсов, cleanup/freeze
+PASS. Эта автоматическая проверка ещё не ловила визуальный create-дубль.
+
+Candidate16 source `998aabc31d9d`,888 files/2 explicit overlays над frontend14;
+web image `7b7038592704`, build38.78s PASS. Backend15 `29a0097e7999` и остальные14
+pins прежние, applied=false/freeze PASS. Новый platform02 начат с явным create
+assertion. Новый цельный platform02 на input16 PASS855/90 menus/30 transitions/
+6 logout,0 errors/page failures. Single-create assertion выполнен на15 Dashboard
+states; mobile screenshot просмотрен. Все16 image pins/2 harness hashes совпали,
+own project `9d915a5912a2`0 resources, cleanup/per-phase freeze PASS. Это не
+повтор Notifications18/213 на16 и не полный release из main.
+
+Strict cross-phase comparison с baseline live05 обнаружил35 перезапусков
+постоянных контейнеров всех3 групп около09:11..09:13 Moscow. Container/image IDs
+и running flags сохранены, но StartedAt изменились; общий window freeze FAILED.
+Причина не установлена. Platform02 выполнялся после этих перезапусков и его
+собственный before/after freeze PASS. Эти разные границы проверки не смешиваются.
+
+## Dashboard Personal Events
+
+Dashboard использует существующий `useNotifications` с `includeRead=true`,
+`limit=5`, `offset=0`, без нового endpoint, DTO или отдельного cache. Порядок
+сервера по `(created_at DESC, id DESC)` сохраняется; дополнительной сортировки
+по `updated_at` или запросов истории каждой задачи нет. Это полученные
+персональные события, а не глобальный activity stream. Общие notification
+title/target helpers сохраняют пользовательский текст и UUID deep-links.
+Dashboard не вызывает mark-read ни при загрузке, ни при переходе по записи.
+При refetch error валидные cached rows остаются видимыми, retry повторяет GET;
+loading/empty/error независимы от назначенных задач и проектов.
+
+Focused Dashboard11 и полный frontend617/58, typecheck/lint/semantic,
+OpenAPI check+compat/scoped Prettier PASS. Шесть reviewed frontend overlays
+над candidate16 дают source890/hash`7c9a6abe5b9d`, image`84f437e69acc` (candidate18);
+остальные15 image pins, включая backend15, сохранены. Candidate17 до ограничения
+длинного текста имел browser PASS5/60, но это не proof финального18.
+
+Новый цельный no-mock Dashboard live03 на18 PASS5 scenarios/60 states:
+empty/received/cached GET500/recovered,3 themes и375/768/1280/1920/2560 widths.
+Реальные assignment/update API создают7 событий; пять показаны после read-all,
+tie-break UUID подтверждён при одинаковом created_at. Проверены custom title/body,
+запись без target, UUID keyboard/touch navigation, переход к полному списку,
+пять реальных GET500 и explicit GET retry без скрытых mark-read/повтора writes.
+0 unexpected errors/overflow/broken images/serious-critical axe/unexpected
+scrollers. Mobile received/error и desktop screenshots просмотрены.
+Первый run01 остановился на неверном email_frequency QA fixture (`none` вместо
+`never`), а не product error; его RED и cleanup/freeze сохранены.
+
+Independent `.local/task-dashboard-activity-browser-qa-20261005-03/verified-report.json`
+PASS18 checks: source/current six overlays, exact image/config/harness, closed
+proxy, full matrix, receipts, cleanup и strict StartedAt freeze. Exact own project
+`9aef9c7e24ec`0 containers/networks/volumes, applied=false. Это отдельный
+Dashboard gate, не повтор общего platform855 или полного business/security на18,
+не rollout/main-image proof. Human freeze сохраняется.
+
+## Актуальное Центральное Имя
+
+Central Auth остаётся источником отображаемого имени. API middleware и
+legacy bridge используют общий `try_token_with_name`: JWT получает имя из
+проверки `/auth/me` с совпадающим `id/sub`, PAT — из интроспекции. Scope check
+выполняется до привязки пользователя. Репозиторий обновляет имя только записи
+с соответствующим `central_sub`; email не является ключом связывания.
+Комментарии и worklogs читают это имя через прежний локальный user ID.
+
+Неизменившийся активный профиль читается без upsert: обычные защищённые
+запросы не должны ждать write-lock на строке пользователя. Это чтение не
+заменяет проверку сессии и имени в Central Auth. Создание и изменение имени
+сохраняют прежний путь записи; PostgreSQL-регрессия удерживает отдельный
+`FOR UPDATE` и проверяет завершение чтения без изменения `updated_at`.
+
+Отсутствие подтверждённого имени даёт API 503 без изменения профиля. Если
+Central Auth настроен, ошибка центрального входа или метаданных не открывает
+вход по историческому локальному паролю. Автономный режим без центральной
+конфигурации сохраняется. Поставка требует сначала нового auth-server для
+PAT display_name, затем Task Tracker; живой QA и выпуск из main остаются
+отдельными gates, unit/PG-проверки не заменяют их.
+
+## References
+
+- `README.md`
+- `AGENTS.md`
+- `docs/DEPLOYMENT.md`
+- `docs/TESTING.md`

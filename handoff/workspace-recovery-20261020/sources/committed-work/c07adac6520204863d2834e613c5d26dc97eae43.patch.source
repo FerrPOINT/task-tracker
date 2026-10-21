@@ -1,0 +1,102 @@
+diff --git a/backend/infra/src/sdlc_critical_pm_lifecycle.rs b/backend/infra/src/sdlc_critical_pm_lifecycle.rs
+index 89f6a56..467c63a 100644
+--- a/backend/infra/src/sdlc_critical_pm_lifecycle.rs
++++ b/backend/infra/src/sdlc_critical_pm_lifecycle.rs
+@@ -702,6 +702,17 @@ async fn write_outbox(
+ #[cfg(test)]
+ mod tests {
+     const SQL: &str = include_str!("../../migration/src/critical_pm_review_lifecycle.sql");
++    #[test]
++    fn confirmation_sql_qualifies_column_and_local_revision() {
++        assert!(SQL.contains("<<review_lifecycle>>"));
++        assert!(SQL.contains("FROM sdlc_confirmations c WHERE c.task_id=t.task_id AND c.revision=(NEW.result->>'revision')::bigint"));
++        assert!(SQL.contains("c.revision=(review_lifecycle.revision->>'revision')::bigint"));
++        assert!(SQL.contains("c.content_hash=review_lifecycle.revision->>'content_hash'"));
++        assert!(!SQL.contains("AND revision=(NEW.result->>'revision')::bigint"));
++        assert!(!SQL.contains("c.revision=(revision->>'revision')::bigint"));
++        assert!(!SQL.contains("#variable_conflict"));
++    }
++
+     #[test]
+     fn generation_family_has_both_exact_fk_and_closed_null_rules() {
+         for required in [
+diff --git a/backend/infra/src/sdlc_critical_pm_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_critical_pm_lifecycle_pg_tests.rs
+index e292bb5..2d15f38 100644
+--- a/backend/infra/src/sdlc_critical_pm_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_critical_pm_lifecycle_pg_tests.rs
+@@ -317,21 +317,30 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
+         )
+         .await;
+     }
+-    let confirmation: Confirmation = parse(
+-        command(
+-            r,
+-            &r.f.owner,
+-            SdlcCommand::Confirm {
+-                revision: 2,
+-                command: ConfirmCommand {
+-                    content_hash: revision.content_hash.clone(),
+-                    idempotency_key: "review-confirm".into(),
+-                    expected_routing_policy_version: Some(1),
+-                },
+-            },
+-        )
+-        .await,
++    let confirm = SdlcCommand::Confirm {
++        revision: 2,
++        command: ConfirmCommand {
++            content_hash: revision.content_hash.clone(),
++            idempotency_key: "review-confirm".into(),
++            expected_routing_policy_version: Some(1),
++        },
++    };
++    let confirmation: Confirmation = parse(command(r, &r.f.owner, confirm.clone()).await);
++    assert_eq!(command(r, &r.f.owner, confirm).await, json!(confirmation));
++    let confirmed = r.f.db.query_one(statement(
++        "SELECT c.payload,
++            (SELECT count(*) FROM sdlc_confirmations WHERE task_id=$1 AND revision=2) AS confirmations,
++            (SELECT count(*) FROM sdlc_critical_pm_lifecycle_operations
++                WHERE task_id=$1 AND execution_id=$2 AND kind='command' AND idempotency_key='review-confirm') AS journals
++         FROM sdlc_confirmations c WHERE c.task_id=$1 AND c.revision=2",
++        vec![r.task.into(), r.lease.fence.execution_id.into()],
++    )).await.unwrap().unwrap();
++    assert_eq!(
++        confirmed.try_get::<Json>("", "payload").unwrap(),
++        json!(confirmation)
+     );
++    assert_eq!(confirmed.try_get::<i64>("", "confirmations").unwrap(), 1);
++    assert_eq!(confirmed.try_get::<i64>("", "journals").unwrap(), 1);
+     let before_resume = frozen_history(&r.f, r.task).await;
+     let (renewed, replay) = Box::pin(r.f.repo.resume_pm_execution_lease(
+         r.task,
+diff --git a/backend/migration/src/critical_pm_review_lifecycle.sql b/backend/migration/src/critical_pm_review_lifecycle.sql
+index 7675874..e905626 100644
+--- a/backend/migration/src/critical_pm_review_lifecycle.sql
++++ b/backend/migration/src/critical_pm_review_lifecycle.sql
+@@ -139,6 +139,7 @@ BEGIN
+ END $$;
+ 
+ CREATE FUNCTION sdlc_critical_pm_lifecycle_insert_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++<<review_lifecycle>>
+ DECLARE t sdlc_tasks%ROWTYPE; v sdlc_critical_pm_reviews%ROWTYPE; l sdlc_pm_execution_leases%ROWTYPE;
+     head jsonb; detail jsonb; expected jsonb; next_task jsonb; expected_blocker jsonb; body jsonb;
+     op text; questions jsonb; q jsonb; prior jsonb; revision jsonb; confirmation jsonb;
+@@ -288,7 +289,7 @@ BEGIN
+                 OR body->'revision' IS DISTINCT FROM revision->'revision'
+                 OR body->'command'->'content_hash' IS DISTINCT FROM revision->'content_hash'
+                 OR (revision->>'revision')::bigint <= (v.result->'context'->'requirements'->>'revision')::bigint
+-                OR EXISTS(SELECT 1 FROM sdlc_confirmations WHERE task_id=t.task_id AND revision=(NEW.result->>'revision')::bigint) THEN
++                OR EXISTS(SELECT 1 FROM sdlc_confirmations c WHERE c.task_id=t.task_id AND c.revision=(NEW.result->>'revision')::bigint) THEN
+                 RAISE EXCEPTION 'SDLC new exact owner confirmation required' USING ERRCODE='23514';
+             END IF;
+             expected:=jsonb_set(expected,'{confirmations}',(expected->'confirmations')||jsonb_build_array(NEW.result));
+@@ -301,7 +302,8 @@ BEGIN
+             RAISE EXCEPTION 'SDLC current review completion already exists' USING ERRCODE='23514';
+         END IF;
+         SELECT c.payload INTO confirmation FROM sdlc_confirmations c WHERE c.task_id=t.task_id
+-            AND c.revision=(revision->>'revision')::bigint AND c.content_hash=revision->>'content_hash';
++            AND c.revision=(review_lifecycle.revision->>'revision')::bigint
++            AND c.content_hash=review_lifecycle.revision->>'content_hash';
+         IF confirmation IS NULL OR confirmation->>'owner_subject' IS DISTINCT FROM t.owner_subject
+             OR t.state->'confirmation_revision' IS DISTINCT FROM revision->'revision'
+             OR t.state->'lifecycle'->>'waiting_reason' IS DISTINCT FROM 'critical_pm_awaiting_finalization'

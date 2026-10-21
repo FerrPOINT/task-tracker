@@ -1,0 +1,406 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import { toast } from 'sonner'
+import i18n from '@/shared/i18n/config'
+import { CustomFieldMutationError, type CustomField } from '@/api/custom-fields'
+import { CustomFieldsPanel, CustomFieldValueInput } from './CustomFieldsPanel'
+
+const mocks = vi.hoisted(() => ({
+  fields: vi.fn(),
+  values: vi.fn(),
+  save: vi.fn(),
+  refreshFields: vi.fn(),
+  refreshValues: vi.fn(),
+}))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/shared/api/hooks', () => ({
+  useProjectCustomFields: mocks.fields,
+  useIssueCustomFieldValues: mocks.values,
+  useSetIssueCustomFieldValue: () => ({ mutateAsync: mocks.save, isPending: false }),
+}))
+const field: CustomField = {
+  id: 'f1',
+  project_id: 'p1',
+  name: 'Customer',
+  field_type: 'text',
+  options: [],
+  is_required: false,
+  created_at: '2026-10-04T00:00:00Z',
+}
+const directory = (fields = [field], extra = {}) => ({
+  data: fields,
+  isLoading: false,
+  isFetching: false,
+  error: null,
+  refetch: mocks.refreshFields,
+  ...extra,
+})
+const values = (data: { field_id: string; value: unknown }[] = [], extra = {}) => ({
+  data,
+  isLoading: false,
+  isFetching: false,
+  error: null,
+  refetch: mocks.refreshValues,
+  ...extra,
+})
+const panel = (onProtectionChange = vi.fn()) => (
+  <ThemeProvider>
+    <CustomFieldsPanel issueId="i1" projectKey="TT" onProtectionChange={onProtectionChange} />
+  </ThemeProvider>
+)
+const editor = () => screen.getByTestId('custom-field-value-form')
+const save = () => within(editor()).getByRole('button', { name: 'Save' })
+async function edit(name = 'Customer') {
+  await userEvent.click(screen.getByRole('button', { name: `Edit value of ${name}` }))
+}
+beforeEach(async () => {
+  await i18n.changeLanguage('en')
+  vi.resetAllMocks()
+  mocks.fields.mockReturnValue(directory())
+  mocks.values.mockReturnValue(values())
+  mocks.save.mockResolvedValue(undefined)
+  mocks.refreshFields.mockResolvedValue({ data: [field] })
+  mocks.refreshValues.mockResolvedValue({ data: [] })
+})
+
+describe('custom field issue editing', () => {
+  it('uses valid description-list pairs with edit buttons outside the definition list', () => {
+    mocks.fields.mockReturnValue(
+      directory([field, { ...field, id: 'unknown', field_type: 'future' }]),
+    )
+    const { container } = render(panel())
+    const rows = container.querySelectorAll('li[data-custom-field]')
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      const definition = row.querySelector('dl')!
+      expect([...definition.children].map((element) => element.tagName)).toEqual(['DT', 'DD'])
+      expect(definition.querySelector('button')).toBeNull()
+      expect(row.querySelector('button')?.parentElement).toBe(row)
+    }
+  })
+  it('distinguishes loading, directory/value errors and confirmed empty', () => {
+    mocks.fields.mockReturnValue(directory([], { isLoading: true, data: undefined }))
+    const view = render(panel())
+    expect(screen.queryByText('No custom fields configured.')).not.toBeInTheDocument()
+    mocks.fields.mockReturnValue(directory([], { error: new Error('private') }))
+    view.rerender(panel())
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load fields')
+    expect(screen.queryByText('No custom fields configured.')).not.toBeInTheDocument()
+    mocks.fields.mockReturnValue(directory([]))
+    view.rerender(panel())
+    expect(screen.getByText('No custom fields configured.')).toBeInTheDocument()
+    mocks.fields.mockReturnValue(directory())
+    mocks.values.mockReturnValue(values([], { error: new Error('private'), data: undefined }))
+    view.rerender(panel())
+    expect(screen.getByText('Value not loaded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit value of Customer' })).toBeDisabled()
+    expect(screen.getByRole('alert')).not.toHaveTextContent('private')
+  })
+  it('preserves stale values and dirty draft across refetch errors and removed definitions', async () => {
+    mocks.values.mockReturnValue(values([{ field_id: 'f1', value: 'old' }]))
+    const view = render(panel())
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    mocks.values.mockReturnValue(
+      values([{ field_id: 'f1', value: 'server changed' }], { error: new Error('private') }),
+    )
+    view.rerender(panel())
+    expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+    expect(save()).toBeDisabled()
+    expect(screen.getByText('server changed')).toBeInTheDocument()
+    mocks.fields.mockReturnValue(directory([]))
+    mocks.values.mockReturnValue(values())
+    view.rerender(panel())
+    expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+    expect(screen.getByText(/field was removed/)).toBeInTheDocument()
+    expect(save()).toBeDisabled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+  it.each(['field_type', 'is_required', 'options'] as const)(
+    'blocks saving after %s changes without losing draft',
+    async (key) => {
+      const view = render(panel())
+      await edit()
+      fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+      mocks.fields.mockReturnValue(
+        directory([
+          {
+            ...field,
+            [key]: key === 'options' ? ['new'] : key === 'is_required' ? true : 'number',
+          },
+        ]),
+      )
+      view.rerender(panel())
+      expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+      expect(save()).toBeDisabled()
+      expect(screen.getByText(/settings have changed/)).toBeInTheDocument()
+    },
+  )
+  it.each([
+    ['text', 'new text', 'new text'],
+    ['number', '0', 0],
+    ['number', '-1.5', -1.5],
+    ['date', '2027-01-02', '2027-01-02'],
+    ['text', ' ', null],
+  ])('saves %s value explicitly as %j', async (type, draft, expected) => {
+    mocks.fields.mockReturnValue(directory([{ ...field, field_type: type as string }]))
+    render(panel())
+    await edit()
+    const input = screen.getByLabelText('Customer')
+    fireEvent.change(input, { target: { value: draft } })
+    fireEvent.blur(input)
+    expect(mocks.save).not.toHaveBeenCalled()
+    await userEvent.click(save())
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith({ fieldId: 'f1', value: expected }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+    expect(toast.success).toHaveBeenCalledWith('Saved')
+  })
+  it.each(['1e', 'Infinity', 'NaN'])(
+    'retains invalid number %s without clearing the value',
+    async (draft) => {
+      mocks.fields.mockReturnValue(directory([{ ...field, field_type: 'number' }]))
+      render(panel())
+      await edit()
+      fireEvent.change(screen.getByLabelText('Customer'), { target: { value: draft } })
+      await userEvent.click(save())
+      expect(screen.getByLabelText('Customer')).toHaveValue(draft)
+      expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid value')
+      expect(mocks.save).not.toHaveBeenCalled()
+    },
+  )
+  it('rejects required whitespace and preserves the form', async () => {
+    mocks.fields.mockReturnValue(directory([{ ...field, is_required: true }]))
+    render(panel())
+    await edit()
+    fireEvent.change(within(editor()).getByLabelText(/Customer/), { target: { value: ' ' } })
+    await userEvent.click(save())
+    expect(screen.getByRole('alert')).toHaveTextContent('Customer is required')
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it('retains native invalid date input state even when the controlled DOM value sanitizes to empty', async () => {
+    mocks.fields.mockReturnValue(directory([{ ...field, field_type: 'date' }]))
+    const protection = vi.fn()
+    render(panel(protection))
+    await edit()
+    const input = screen.getByLabelText('Customer') as HTMLInputElement
+    let badInput = true
+    Object.defineProperty(input, 'validity', { get: () => ({ badInput }) })
+    fireEvent.input(input)
+    await waitFor(() =>
+      expect(protection).toHaveBeenLastCalledWith({ dirty: true, pending: false }),
+    )
+    badInput = false
+    await userEvent.click(save())
+    expect(mocks.save).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid value')
+    fireEvent.input(input)
+    await userEvent.click(save())
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith({ fieldId: 'f1', value: null }))
+  })
+  it.each(['text', 'number', 'date', 'select', 'multi-select'])(
+    'does not silently coerce invalid historical %s values',
+    async (type) => {
+      mocks.fields.mockReturnValue(directory([{ ...field, field_type: type, options: ['valid'] }]))
+      mocks.values.mockReturnValue(
+        values([
+          {
+            field_id: 'f1',
+            value:
+              type === 'text'
+                ? { invalid: true }
+                : type === 'number'
+                  ? true
+                  : type === 'multi-select'
+                    ? ['old']
+                    : 'old',
+          },
+        ]),
+      )
+      render(panel())
+      await edit()
+      await userEvent.click(save())
+      expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid value')
+      expect(mocks.save).not.toHaveBeenCalled()
+    },
+  )
+  it('supports selects and multiple selection through explicit save', async () => {
+    mocks.fields.mockReturnValue(
+      directory([{ ...field, field_type: 'multi-select', options: ['One', 'Two'] }]),
+    )
+    render(panel())
+    await edit()
+    await userEvent.selectOptions(screen.getByRole('listbox'), ['One', 'Two'])
+    expect(mocks.save).not.toHaveBeenCalled()
+    await userEvent.click(save())
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith({ fieldId: 'f1', value: ['One', 'Two'] }),
+    )
+  })
+  it('keeps unsupported types read-only without leaking the enum', () => {
+    mocks.fields.mockReturnValue(directory([{ ...field, field_type: 'private-new-type' }]))
+    render(panel())
+    expect(screen.getByText('Unsupported field type')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit value of Customer' })).toBeDisabled()
+    expect(screen.queryByText('private-new-type')).not.toBeInTheDocument()
+  })
+  it('locks submission/cancel/refresh while pending and exposes protection', async () => {
+    let resolve!: () => void
+    mocks.save.mockImplementation(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done
+        }),
+    )
+    const protection = vi.fn()
+    render(panel(protection))
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    fireEvent.submit(editor())
+    fireEvent.submit(editor())
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce())
+    expect(screen.getByLabelText('Customer')).toBeDisabled()
+    expect(within(editor()).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Refresh custom fields' })).toBeDisabled()
+    expect(protection).toHaveBeenLastCalledWith({ dirty: true, pending: true })
+    await act(async () => resolve())
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+  })
+  it('preserves an editable draft after known rejection and confirms only retry success', async () => {
+    mocks.save.mockRejectedValueOnce(new CustomFieldMutationError(422))
+    render(panel())
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    await userEvent.click(save())
+    expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+    expect(screen.getByLabelText('Customer')).not.toBeDisabled()
+    expect(toast.success).not.toHaveBeenCalled()
+    await userEvent.click(save())
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+  })
+  it('checks uncertain writes via GET only, freezes on GET failure and requires explicit retry after absence', async () => {
+    mocks.save.mockRejectedValueOnce(new CustomFieldMutationError(500))
+    render(panel())
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    await userEvent.click(save())
+    expect(screen.getByLabelText('Customer')).toBeDisabled()
+    mocks.refreshFields.mockResolvedValueOnce({ error: new Error('private') })
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    expect(screen.getByLabelText('Customer')).toBeDisabled()
+    expect(mocks.refreshValues).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+    expect(screen.getByLabelText('Customer')).not.toBeDisabled()
+    expect(mocks.save).toHaveBeenCalledOnce()
+    await userEvent.click(save())
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(2))
+  })
+  it('confirms an uncertain value only after matching directory and values GETs', async () => {
+    mocks.save.mockRejectedValueOnce(new CustomFieldMutationError())
+    mocks.refreshValues.mockResolvedValue({ data: [{ field_id: 'f1', value: 'draft' }] })
+    render(panel())
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    await userEvent.click(save())
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+    expect(mocks.save).toHaveBeenCalledOnce()
+    expect(toast.success).toHaveBeenCalledOnce()
+  })
+  it.each(['missing', 'changed', 'values-error', 'legacy-string'])(
+    'does not misconfirm uncertain clear/number after %s GET',
+    async (kind) => {
+      const numeric = { ...field, field_type: 'number' }
+      mocks.fields.mockReturnValue(directory([numeric]))
+      mocks.save.mockRejectedValueOnce(new CustomFieldMutationError(500))
+      mocks.refreshFields.mockResolvedValue({
+        data:
+          kind === 'missing' ? [] : [{ ...numeric, options: kind === 'changed' ? ['new'] : [] }],
+      })
+      mocks.refreshValues.mockResolvedValue(
+        kind === 'values-error'
+          ? { error: new Error('private') }
+          : { data: [{ field_id: 'f1', value: '7' }] },
+      )
+      render(panel())
+      await edit()
+      fireEvent.change(screen.getByLabelText('Customer'), {
+        target: { value: kind === 'legacy-string' ? '7' : '' },
+      })
+      await userEvent.click(save())
+      await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+      expect(screen.getByTestId('custom-field-value-form')).toBeInTheDocument()
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(mocks.save).toHaveBeenCalledOnce()
+    },
+  )
+  it('requires discard confirmation, performs no write and restores edit focus', async () => {
+    render(panel())
+    await edit()
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'draft' } })
+    await userEvent.click(within(editor()).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Discard field changes?')
+    await userEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
+    )
+    await waitFor(() => expect(screen.getByLabelText('Customer')).toHaveFocus())
+    expect(screen.getByLabelText('Customer')).toHaveValue('draft')
+    await userEvent.click(within(editor()).getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('custom-field-value-form')).not.toBeInTheDocument(),
+    )
+    expect(mocks.save).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Custom fields' })).toHaveFocus())
+  })
+})
+
+describe('shared issue-create field input', () => {
+  it('receives server values in blur mode and commits on blur only', () => {
+    const onSave = vi.fn()
+    const view = render(<CustomFieldValueInput field={field} value={undefined} onSave={onSave} />)
+    view.rerender(<CustomFieldValueInput field={field} value="server" onSave={onSave} />)
+    expect(screen.getByRole('textbox')).toHaveValue('server')
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'draft' } })
+    expect(onSave).not.toHaveBeenCalled()
+    fireEvent.blur(screen.getByRole('textbox'))
+    expect(onSave).toHaveBeenCalledWith('draft')
+  })
+  it('keeps change mode numeric/date behavior for issue creation', () => {
+    const onSave = vi.fn()
+    const view = render(
+      <CustomFieldValueInput
+        field={{ ...field, field_type: 'number' }}
+        value={0}
+        onSave={onSave}
+        commit="change"
+      />,
+    )
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '-1.5' } })
+    expect(onSave).toHaveBeenLastCalledWith(-1.5)
+    view.rerender(
+      <CustomFieldValueInput
+        field={{ ...field, field_type: 'date' }}
+        value="2026-12-31T00:00:00Z"
+        onSave={onSave}
+        commit="change"
+      />,
+    )
+    fireEvent.change(screen.getByDisplayValue('2026-12-31'), { target: { value: '2027-01-02' } })
+    expect(onSave).toHaveBeenLastCalledWith('2027-01-02')
+  })
+})

@@ -1,0 +1,144 @@
+# Исправление существующего Bug: source candidate 000103
+
+Контракт назначает реальный открытый issue типа `bug` обычному Developer. Это
+отдельное разрешение на исправление, а не PM/Analysis lease и не поиск до создания
+Bug. `can_take_bugs` остаётся false: Workflow issue-backed consumer, Fleet fresh
+configuration preflight и actual-runtime wiring ещё не квалифицированы. Source103
+не входит в frozen102 export, пока не компилировался и не включён на стендах.
+
+## Claim и authority
+
+Все пути имеют prefix `/api/v1/projects/{project_id}/sdlc/bug-intake`:
+
+- `POST /workers/{worker_id}/claim` — `ClaimBugWork`.
+- `GET /workers/{worker_id}/current?owner_subject=...` — текущая own reservation
+  либо null; отзыв предпочтения не скрывает ещё удерживаемую custody.
+- `GET /assignments/{assignment_id}/grant` — свежая выдача точного binding.
+- `POST /assignments/{assignment_id}/bind` — сохранение actual refs.
+- `POST /assignments/{assignment_id}/close` — protective release с доказательством.
+- `GET /work-operations/{idempotency_key}` — исходный immutable receipt.
+
+Потерянный ACK успешного claim восстанавливается по этому исходному ключу даже
+после деактивации владельца. Защитное чтение требует fresh exact Fleet machine
+с обоими scopes, неизменного configured Fleet UUID, project/key namespace и
+полного совпадения retained assignment/hash. Оно возвращает исторический receipt,
+включая исходную custody, а не свежий grant; `claim`, `current`, `grant` и `bind`
+по-прежнему проверяют текущие права. Пустой claim без assignment не даёт такого
+исключения. Generic original-operation GET применяет те же проверки.
+
+Producer — только configured Fleet machine subject с точными
+`task-tracker:read` и `task-tracker:write`, без human flags. Configured canonical
+Fleet UUID обязателен и должен совпадать с preference/runtime. Для grant GET
+допускается отдельно configured Workflow reader с единственным Tracker read
+scope. Это не делегирует PM, generic issue mutation или human admin права.
+
+Claim содержит `contract_version:1`, `idempotency_key`, `owner_subject`,
+`expected_preference_revision`, `worker_runtime {fleet_instance_id,agent_id,
+agent_config_revision}` и `fleet_journal_ref`. Owner — из уже проверенной Fleet
+human-команды, не HTTP boolean. Tracker заново проверяет active пользователя,
+project membership и active Namespace; preference не выдаёт дополнительных
+management прав. Используется existing Tracker member write model, без admin
+обхода. Preference head должен быть enabled
+с exact revision/config/runtime. Tracker не проверяет удалённую Fleet config:
+fresh attestation остаётся отдельным обязательным gate до dispatch.
+
+Fresh auth предшествует original actor/key replay; original body replay идёт до
+текущего preference CAS. Hash включает action, ProjectRef/path, owner, runtime,
+consent revision и original Fleet journal, но не transport idempotency key.
+Иной body с тем же actor/key конфликтует. Head/assignment и receipt сохраняются
+в одной транзакции; HTTP под DB locks отсутствует.
+
+## Выбор и неизменяемый binding
+
+Одно bounded SQL-чтение выбирает самый ранний `created_at,id` из actual issues:
+live open Bug, human assignee отсутствует либо равен owner, есть canonical typed
+source, исходный completed creation receipt/report и retained occurrence.
+Issue с существующим SDLC task или активным BugWork не перехватывается. Поля
+`assignee_id`, статус Bug и existing task/outbox не меняются. Если кандидата или
+ёмкости нет, сохраняется исходный empty outcome с reason; повторение этого key
+не начинает новую попытку. Новый claim требует нового key и нового свежего чтения.
+
+Claim блокирует issue, затем существующий singleton capacity. Одна активная
+assignment допускается на worker и на Bug. Reciprocal guards для Search,
+Analysis и feature assignments используют тот же singleton и сохраняют прежние
+guards. Истёкшая/неизвестная Search custody также занята. Обе Namespace drained
+проекции учитывают BugWork capacity, включая состояние без actual run.
+
+Tracker выпускает assignment UUID/fence. Immutable grant фиксирует actual Bug,
+owner/machine, canonical Tracker instance UUID и locator, exact Fleet/worker/config,
+preference revision, original Fleet journal, `purpose:bug_fix`, `role:developer`,
+`mode:initial`, typed source + hash и полный original verification report с отдельным
+full-report SHA256. Legacy dedup basis hash сохраняется отдельно. Новое rework не
+принимается из caller flag: оно потребует реального verification verdict и отдельной
+authority. Historical unique Bug+Fleet+worker+owner+preference revision не допускает
+немедленного повторного claim после fail/cancel; пользователь должен явно обновить
+предпочтение/согласие. Retry queue не создаётся.
+
+Bind содержит `idempotency_key`, `expected_fence`, `binding` с actual context UUID,
+runtime generation, Fleet session/run UUID, Hermes run ref и actual Workflow task,
+assignment revision, operation key, binding ref. Binding неизменяем. Это producer
+attestation фактических ссылок, а не успешное завершение Workflow. До bind заново
+проверяются preference/config и открытый Bug; grant не является вечным доступом.
+
+## Protective close и unknown
+
+Close содержит `idempotency_key`, `expected_fence`, closed proof union
+`{kind,observation}`:
+
+- `never_submitted`: durable submission fence + positive never-provisioned witness
+  либо actual namespace exit из контракта100. После retained binding запрещён.
+- `unbound_stopped`: original sealed unknown native attempt/key/body SHA256,
+  `actual_run_ref:null`, durable bind-and-handoff-never-submitted и actual namespace
+  exit из контракта101. Отсутствие run/readback или TTL не доказательство.
+- `actual_terminal`: actual runtime observation, original `journal_ref` и actual
+  SDK namespace-exit custody/proof/hash. Terminal сообщение агента не принимается
+  за runtime authority. После retained binding session/run/Hermes/context/generation
+  должны совпасть точно. После настоящего failed Workflow bind допустим реальный
+  native terminal + exited namespace без выдуманного Workflow binding.
+
+Во всех reused observation DTO `execution_id` означает actual assignment UUID,
+`snapshot_sha256` — SHA256 exact assignment JSON. Времена не раньше создания
+assignment и не позже DB now+5s. SDK stop proof должен иметь exact worker resource,
+`namespace_exited`, original generation и canonical digest. Fleet обязан брать
+его из действительного Base readback, а terminal — из actual Hermes journal.
+
+Closed receipt и снятие capacity атомарны; closure и binding retained. Exact
+configured Fleet может выполнить protective close и прочитать original close
+после owner revoke/Namespace archive. Это не разрешает новые claim/bind, не меняет
+Bug status, не утверждает fix/verification success и не регистрирует findings.
+Actual unknown без положительной custody остаётся held. TTL-release отсутствует.
+
+## Хранение и проверка
+
+Additive103 добавляет одну `sdlc_bug_work_assignments`, индексы candidate/owner и
+reciprocal guards. Existing `sdlc_bug_search_commands` получает strict `bug_work`
+variant; original generic readback применяет тот же access gate. Новая очередь,
+outbox или scheduler не создаются. Down не удаляет retained history.
+
+Написаны, но не запускались: domain closed DTO test; PG atomic rollback/replay/
+concurrent claim/no-repick, revoked protective actual-exit/failed-bind, reciprocal
+Search capacity и обе Namespace drained projections; actual HTTP claim/current/
+grant/bind/close/original replay и negative producer cases. PG opt-in marker
+проверяется до connect; внешний Base ComposeHelper v2 удаляет весь собственный
+synthetic DB volume даже при panic. Никаких ручных DB/live-runtime тестов нет.
+
+## Origin v1: additive candidate 000104
+
+New assignments pin optional `origin:{contract_version:1,execution_id,finding_id,snapshot_sha256,source_context_sha256}`. Missing origin on retained 000103 assignments is omitted when serialized, preserving their original canonical body/hash; it does not authorize inferred checkout.
+
+`GET /api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/origin` returns `{contract_version:1,assignment_id,assignment_sha256,origin,source_context:{contract_version:1,project:{tracker_instance_id,project_id},mode,targets,scope,excluded_paths}}`. Targets retain exact `repository_ref,commit_sha,target_ref,deployment_ref`, including null fields, at most16; the complete projection is bounded by64KiB. Its mode describes the original search; initial Developer fix execution remains source-only. Repository resolution belongs to the configured owner catalogue, never finding text or a reproducer URL.
+
+The source is the canonical `created` occurrence and its same-project retained execution. Creation receipt/report/source/full snapshot hashes and project/owner/agent/policy pins must agree. A partial unique index makes this a bounded point lookup. The new reference pins both the full snapshot hash and exact source projection hash; the full snapshot, original owner, session transcript, instructions and credentials are not returned.
+
+The configured Fleet machine or exact Workflow read-only machine uses the same fresh assignment authorization as grant read: active owner, Namespace, project membership, own current preference/config pin and eligible real Bug. Foreign machine/project, missing legacy origin or incompatible retained input fail closed. No runtime capability is enabled. Source tests are written; Rust/PG/HTTP qualification of104 is pending.
+
+### Исходная идентичность target.source
+
+`BugResolvedTarget.source` — optional closed object, `None` не сериализуется: `{contract_version:1,schema:"forge/source-snapshot/v1",producer_version,project:{tracker_instance_id:<UUID>,project_id:<UUID>},configuration_id:<UUID>,repository_id:<UUID>,branch_ref:<canonical refs/heads/...>,observed_head_sha,clone_url_sha256}`. Никаких timestamps или raw Git URLs; данные выводятся из trusted CI source readback, а не из текста Bug. Policy branch после нормализации должна совпадать с исходной веткой. Project совпадает с outer snapshot, Tracker resource UUID проверяется по конфигурации при reserve и при чтении canonical origin, без преобразования alias в UUID.
+
+В исходном SourceOnly snapshot observed HEAD равен checked commit; в QA checked A может отличаться от наблюдавшегося HEAD B. Это проверка первоначального snapshot, не требование остановить исторический checkout при последующем продвижении HEAD. Future consumer сравнивает доверенное текущее Git binding с исходными project/config/repo/branch/URL hash, сохраняя checked commit. Исторический source=None не дополняется догадками и не даёт полномочий на файловые эффекты. Поле автоматически входит в существующие full snapshot/source-context hashes; новый endpoint или журнал не добавляется.
+
+
+## Оригинальная Bound-квитанция после отзыва владельца
+
+Source-коррекция: точная исходная Fleet machine с текущими read+write scopes и прежним configured Fleet UUID может восстановить неизменную `Bound` квитанцию через original work-operation после lost ACK и отзыва human owner. Сверяются retained assignment ID/body hash и точный фактический runtime binding; другая машина, read-only scope и remapped Fleet UUID запрещены. Новые claim/bind, current и fresh grant сохраняют прежние проверки владельца. Квитанция чтения не выдаёт новое разрешение dispatch. PG regression расширен, проверки Rust/PG пока UNRUN; исторические source freezes не меняются.

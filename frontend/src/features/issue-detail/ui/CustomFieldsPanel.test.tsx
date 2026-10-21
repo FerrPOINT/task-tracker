@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { chooseValue } from '@/test/choice'
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -28,6 +30,39 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('CustomFieldsPanel', () => {
+  it('saves the full multi-selection through the shared Base menu', async () => {
+    const onSave = vi.fn()
+    function Harness() {
+      const [values, setValues] = useState(['Low', 'High'])
+      return wrapper(
+        <label>
+          Priority
+          <CustomFieldValueInput
+            field={{
+              id: 'multi',
+              project_id: 'p1',
+              name: 'Priority',
+              field_type: 'multi-select',
+              options: ['Low', 'Medium', 'High'],
+              is_required: false,
+              created_at: '2026-08-01T00:00:00Z',
+            }}
+            value={values}
+            onSave={(next) => {
+              onSave(next)
+              setValues(next as string[])
+            }}
+          />
+        </label>,
+      )
+    }
+    render(<Harness />)
+    const select = screen.getByRole('button', { name: 'Priority' })
+    expect(select.textContent).toContain('Low, High')
+    await chooseValue(select, ['Medium', 'High'])
+    expect(onSave).toHaveBeenLastCalledWith(['Medium', 'High'])
+  })
+
   afterEach(() => {
     mockFields.mockReset()
     mockValues.mockReset()

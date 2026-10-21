@@ -1,0 +1,73 @@
+//! A fixed, bounded projection; never infer a repository from finding text.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, field, stmt};
+use domain::{bug_search::*, bug_search_control::BugSearchSnapshot, bug_work_origin::*};
+use sea_orm::{ConnectionTrait, DatabaseTransaction};
+use shared::AppError;
+use uuid::Uuid;
+
+impl PostgresBugSearchRepository {
+    pub(super) async fn canonical_work_origin(
+        &self,
+        tx: &DatabaseTransaction,
+        project: Uuid,
+        bug: Uuid,
+        source: &BugSourceIdentity,
+        report: &BugFindingReport,
+    ) -> Result<(BugWorkOriginRef, BugWorkSourceContext), AppError> {
+        let source_hash = app::bug_search::canonical_hash(source)?;
+        let report_hash = app::bug_search::canonical_hash(report)?;
+        // Registration stores the source+report envelope hash in occurrences;
+        // the plain report hash remains the assignment's verification basis.
+        let occurrence_hash = app::bug_search::canonical_hash(&serde_json::json!({
+            "source_identity": source, "report": report,
+        }))?;
+        // 000104's partial unique index makes this a point lookup, not a history scan.
+        let row = tx.query_one(stmt("SELECT o.execution_id,o.finding_id,o.report,o.report_sha256,o.receipt,e.snapshot,e.snapshot_sha256,e.tracker_instance_id,e.tracker_instance_uuid,e.owner_subject,e.agent_id,e.policy_revision FROM sdlc_bug_occurrences o JOIN sdlc_bug_search_executions e ON e.execution_id=o.execution_id AND e.project_id=o.project_id WHERE o.project_id=$1 AND o.source_sha256=$2 AND o.receipt->>'outcome'='created'",vec![project.into(),source_hash.into()]))
+            .await.map_err(db_error)?.ok_or_else(||AppError::Unavailable("canonical Bug source context unavailable".into()))?;
+        let receipt: BugFindingReceipt = decode(&row, "receipt")?;
+        let original_report: BugFindingReport = decode(&row, "report")?;
+        let snapshot_json: serde_json::Value = field(&row, "snapshot")?;
+        let snapshot: BugSearchSnapshot = serde_json::from_value(snapshot_json.clone())
+            .map_err(|_| AppError::conflict("canonical Bug snapshot is incompatible"))?;
+        snapshot.validate()?;
+        snapshot.require_source_registry(self.config.tracker_instance_uuid)?;
+        original_report.validate()?;
+        let snapshot_hash: String = field(&row, "snapshot_sha256")?;
+        let execution_id: Uuid = field(&row, "execution_id")?;
+        let finding_id: Uuid = field(&row, "finding_id")?;
+        if receipt.contract_version != 1
+            || receipt.outcome != BugFindingOutcome::Created
+            || receipt.tracker_instance_id != self.config.tracker_instance_id
+            || receipt.issue_id != bug
+            || receipt.project_id != project
+            || receipt.execution_id != execution_id
+            || receipt.finding_id != finding_id
+            || receipt.source_identity != *source
+            || original_report != *report
+            || app::bug_search::canonical_hash(&original_report)? != report_hash
+            || field::<String>(&row, "report_sha256")? != occurrence_hash
+            || app::bug_search::canonical_hash(&snapshot_json)? != snapshot_hash
+            || snapshot.project.project_id != project
+            || snapshot.project.tracker_instance_id != self.config.tracker_instance_id
+            || field::<String>(&row, "tracker_instance_id")? != self.config.tracker_instance_id
+            || field::<Uuid>(&row, "tracker_instance_uuid")? != self.config.tracker_instance_uuid
+            || snapshot.owner_subject != field::<String>(&row, "owner_subject")?
+            || snapshot.agent_id != field::<Uuid>(&row, "agent_id")?
+            || snapshot.policy_revision != field::<i64>(&row, "policy_revision")?
+        {
+            return Err(AppError::conflict(
+                "canonical Bug source occurrence differs",
+            ));
+        }
+        let source_context = BugWorkSourceContext::from_snapshot(&snapshot)?;
+        let origin = BugWorkOriginRef {
+            contract_version: 1,
+            execution_id,
+            finding_id,
+            snapshot_sha256: snapshot_hash,
+            source_context_sha256: app::bug_search::canonical_hash(&source_context)?,
+        };
+        origin.validate()?;
+        Ok((origin, source_context))
+    }
+}

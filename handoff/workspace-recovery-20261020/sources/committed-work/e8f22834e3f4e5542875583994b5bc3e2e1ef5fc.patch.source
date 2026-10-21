@@ -1,0 +1,572 @@
+diff --git a/.base-revision b/.base-revision
+index 54440c9..70dd184 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-348abab9889ed10607c93fcebc42bd3b5a992100
++fb7e4a42ba7cc7cff063aa345038bc51bba2f656
+diff --git a/.gitignore b/.gitignore
+index 9428863..803b31b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -19,3 +19,9 @@ cli/target
+ frontend/src/api/generated.ts
+ backend/target-cache*/
+ .pnpm-store/
++
++.local/
++
++__pycache__/
++
++*.py[cod]
+diff --git a/AGENTS.md b/AGENTS.md
+index f34bb97..db92de4 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -21,7 +21,7 @@
+ - DI через `AppContext`.
+ - Все публичные API покрыты OpenAPI через `utoipa-axum`.
+ - Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
+-- Все endpoint тестируются интеграционно через testcontainers.
++- Endpoint проверяются интеграционно; PostgreSQL запускается только в собственном временном Compose-проекте с явным Docker context.
+ - Frontend: компоненты на `shadcn/ui` + Tailwind.
+ - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
+ - Формы — `react-hook-form` + `zod`.
+@@ -35,7 +35,7 @@
+ 
+ ### 4. Тестирование
+ 
+-- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
++- Backend: `cargo test`, интеграционные тесты с PostgreSQL 17.6 через `backend/scripts/run_postgres_tests.py`; существующие БД не используются.
+ - Frontend: Vitest + Playwright.
+ - После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
+ - Все новые endpoint — curl-проверка.
+@@ -61,11 +61,11 @@
+ 
+ ### 8. Проверка перед завершением
+ 
+-- [x] Все тесты проходят.
+-- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
+-- [x] Документация актуальна.
+-- [x] Коммиты запушены в `origin/main`.
+-- [x] Пользователь увидел результат (скриншот / curl / лог).
++- [ ] Все тесты проходят.
++- [ ] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
++- [ ] Документация актуальна.
++- [ ] Task-коммиты запушены в отдельную ветку и PR подготовлен, если это авторизовано. Merge в `main` выполняется отдельно.
++- [ ] Пользователь увидел результат (скриншот / curl / лог).
+ 
+ ## Контакты
+ 
+diff --git a/backend/scripts/coverage_gate.sh b/backend/scripts/coverage_gate.sh
+new file mode 100644
+index 0000000..5acbd60
+--- /dev/null
++++ b/backend/scripts/coverage_gate.sh
+@@ -0,0 +1,37 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++EXCLUDE_REGEX="server/src/main\.rs|api/src/bin/gen_openapi\.rs|cli/src/main\.rs|migration/.*|shared/src/id\.rs"
++
++cargo +1.88.0 llvm-cov --locked --workspace \
++    --ignore-filename-regex "$EXCLUDE_REGEX" \
++    --json \
++    --output-path target/coverage.json \
++    -- --include-ignored --test-threads=1
++
++echo ""
++echo "=== Coverage summary ==="
++cargo +1.88.0 llvm-cov report --summary-only --ignore-filename-regex "$EXCLUDE_REGEX"
++
++echo ""
++echo "=== Coverage gate ==="
++python3 - <<'PY'
++import json
++import sys
++with open('target/coverage.json') as f:
++    totals = json.load(f)['data'][0]['totals']
++lines = totals['lines']['percent']
++regions = totals['regions']['percent']
++functions = totals['functions']['percent']
++print(f"lines: {lines:.2f}%")
++print(f"regions: {regions:.2f}%")
++print(f"functions: {functions:.2f}%")
++# These thresholds include the real Postgres repositories and server entry
++# point. They intentionally match the measured pinned-Rust workspace baseline
++# rather than silently omitting ignored production tests.
++ok = lines >= 75.0 and regions >= 65.0 and functions >= 60.0
++if not ok:
++    print("Gate FAILED")
++    sys.exit(1)
++print("Gate passed")
++PY
+diff --git a/backend/scripts/run-e2e-tests.sh b/backend/scripts/run-e2e-tests.sh
+index 2bccad1..802194a 100755
+--- a/backend/scripts/run-e2e-tests.sh
++++ b/backend/scripts/run-e2e-tests.sh
+@@ -1,144 +1,9 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+ 
+-export PATH="${HOME}/.cargo/bin:${PATH}"
+-
+-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+-cd "$ROOT"
+-
+-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
+-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-backend}"
+-DB_HOST="${TASKTRACKER_TEST_DB_HOST:-127.0.0.1}"
+-DB_PORT="${TASKTRACKER_TEST_DB_PORT:-3458}"
+-DB_USER="${TASKTRACKER_TEST_DB_USER:-tasktracker}"
+-DB_NAME="${TASKTRACKER_TEST_DB_NAME:-tasktracker_test}"
+-INFRA_DB_NAME="${TASKTRACKER_INFRA_TEST_DB_NAME:-tasktracker_infra_test}"
+-# Reuse an already-running local test stack when its published port is ready;
+-# otherwise provision an isolated compose project and clean it up on exit.
+-MANAGE_STACK=false
+-# The test compose enables local trust authentication. A password is neither
+-# required nor read from host files, avoiding secret handling in this runner.
+-export TASKTRACKER_DATABASE_URL="postgres://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+-export TT_TEST_DATABASE_URL="postgres://${DB_USER}@${DB_HOST}:${DB_PORT}/${INFRA_DB_NAME}"
+-export RUST_LOG="${RUST_LOG:-warn}"
+-# Coverage links large test binaries; serialize by default to keep the disposable
+-# gate reproducible on the standard local runner. Callers may opt in to more jobs.
+-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+-
+-validate_db_name() {
+-    case "$1" in
+-        "" | *[!A-Za-z0-9_]*)
+-            echo "Invalid database name: $1" >&2
+-            exit 1
+-            ;;
+-    esac
+-}
+-
+-compose() {
+-    docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+-}
+-
+-postgres_service_running() {
+-    compose ps --status running --services | grep -qx postgres-test
+-}
+-
+-cleanup() {
+-    if [ "$MANAGE_STACK" = true ]; then
+-        compose down -v --remove-orphans >/dev/null 2>&1 || true
+-    fi
+-}
+-trap cleanup EXIT
+-
+-if timeout 1 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null && postgres_service_running; then
+-    # A local test compose project is already up; preserve it and use its port.
+-    :
+-else
+-    MANAGE_STACK=true
+-    compose up -d postgres-test redis-test
+-fi
+-for _ in $(seq 1 60); do
+-    if timeout 1 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null; then
+-        break
+-    fi
+-    sleep 1
+-done
+-timeout 1 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null
+-
+-for _ in $(seq 1 60); do
+-    if compose exec -T postgres-test pg_isready -U "${DB_USER}" -d postgres >/dev/null 2>&1; then
+-        break
+-    fi
+-    sleep 1
+-done
+-compose exec -T postgres-test pg_isready -U "${DB_USER}" -d postgres >/dev/null
+-
+-validate_db_name "$DB_NAME"
+-validate_db_name "$INFRA_DB_NAME"
+-
+-if [ "$MANAGE_STACK" = true ] && [ "$DB_NAME" = "tasktracker_test" ]; then
+-    for _ in $(seq 1 60); do
+-        if compose exec -T postgres-test psql -U "${DB_USER}" -d postgres -Atqc \
+-            "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -q 1; then
+-            break
+-        fi
+-        sleep 1
+-    done
++SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
++if [ "$#" -eq 0 ]; then
++  echo "Usage: $0 --docker-context <selected-context> [--base-directory <pinned-Base>]" >&2
++  exit 2
+ fi
+-
+-reset_database() {
+-    local name="$1"
+-    compose exec -T postgres-test psql -v ON_ERROR_STOP=1 -U "${DB_USER}" -d postgres \
+-        -c "DROP DATABASE IF EXISTS \"${name}\" WITH (FORCE);" \
+-        -c "CREATE DATABASE \"${name}\";" >/dev/null
+-}
+-
+-wait_for_host_port() {
+-    for _ in $(seq 1 60); do
+-        if timeout 1 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null; then
+-            return
+-        fi
+-        sleep 1
+-    done
+-    timeout 1 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" 2>/dev/null
+-}
+-
+-# Reset the test databases so stale migration history (e.g. removed seed
+-# migrations recorded by older code) cannot wedge `Migrator::up`.
+-reset_database "$DB_NAME"
+-reset_database "$INFRA_DB_NAME"
+-wait_for_host_port
+-
+-EXCLUDE_REGEX="server/src/main\.rs|api/src/bin/gen_openapi\.rs|cli/src/main\.rs|migration/.*|shared/src/id\.rs"
+-
+-cargo llvm-cov --workspace \
+-    --ignore-filename-regex "$EXCLUDE_REGEX" \
+-    --json \
+-    --output-path target/coverage.json \
+-    -- --include-ignored --test-threads=1
+-
+-echo ""
+-echo "=== Coverage summary ==="
+-cargo llvm-cov report --summary-only --ignore-filename-regex "$EXCLUDE_REGEX"
+-
+-echo ""
+-echo "=== Coverage gate ==="
+-python3 - <<'PY'
+-import json
+-import sys
+-with open('target/coverage.json') as f:
+-    totals = json.load(f)['data'][0]['totals']
+-lines = totals['lines']['percent']
+-regions = totals['regions']['percent']
+-functions = totals['functions']['percent']
+-print(f"lines: {lines:.2f}%")
+-print(f"regions: {regions:.2f}%")
+-print(f"functions: {functions:.2f}%")
+-# These thresholds include the real Postgres repositories and server entry
+-# point. They intentionally match the measured stable-Rust workspace baseline
+-# rather than silently omitting ignored production tests.
+-ok = lines >= 75.0 and regions >= 65.0 and functions >= 60.0
+-if not ok:
+-    print("Gate FAILED")
+-    sys.exit(1)
+-print("Gate passed")
+-PY
++exec python3 "$SCRIPT_DIR/run_postgres_tests.py" "$@" -- bash "$SCRIPT_DIR/coverage_gate.sh"
+diff --git a/backend/scripts/run_postgres_tests.py b/backend/scripts/run_postgres_tests.py
+new file mode 100644
+index 0000000..36a98c7
+--- /dev/null
++++ b/backend/scripts/run_postgres_tests.py
+@@ -0,0 +1,144 @@
++#!/usr/bin/env python3
++"""Run PostgreSQL tests with disposable Compose storage, never an existing DB."""
++from __future__ import annotations
++
++import argparse
++import importlib.util
++import json
++import os
++from pathlib import Path
++import re
++import secrets
++import signal
++import subprocess
++import sys
++import uuid
++
++
++ROOT = Path(__file__).resolve().parents[2]
++LABELS = {'sdlc.task': 'task-tracker-tests', 'sdlc.purpose': 'postgres-integration'}
++
++
++def endpoint(helpers, command, service, port):
++    address = helpers.checked(command + ['port', service, str(port)], text=True).strip()
++    if not re.fullmatch(r'127\.0\.0\.1:[0-9]+', address):
++        raise RuntimeError('Unexpected disposable test endpoint')
++    return address
++
++
++def assert_owned_storage(helpers, helper, volume):
++    """Check storage before Compose down, which also removes owned networks."""
++    if helpers.checked(helper.docker + ['info', '--format', '{{.ID}}'], text=True).strip() != helper.identity:
++        raise RuntimeError('Daemon changed; automatic cleanup refused')
++    for kind in ('network', 'volume'):
++        names = helpers.checked(helper.docker + [kind, 'ls', '--format', '{{.Name}}',
++            '--filter', 'label=com.docker.compose.project=' + helper.project], text=True).splitlines()
++        for name in names:
++            data = json.loads(helpers.checked(helper.docker + [kind, 'inspect', name], text=True))[0]
++            labels = data.get('Labels') or {}
++            expected = helper.project + '_test' if kind == 'network' else volume
++            if name != expected or labels.get('com.docker.compose.project') != helper.project or any(
++                    labels.get(key) != value for key, value in LABELS.items()):
++                raise RuntimeError('Foreign test storage; automatic cleanup refused')
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--docker-context', required=True)
++    parser.add_argument('--base-directory', type=Path)
++    parser.add_argument('command', nargs=argparse.REMAINDER)
++    args = parser.parse_args(argv)
++    command = args.command[1:] if args.command[:1] == ['--'] else args.command
++    if not command:
++        parser.error('An explicit test command is required after --')
++    base = (args.base_directory or ROOT.parent / 'services-base').resolve()
++    pin = (ROOT / '.base-revision').read_text(encoding='utf-8').strip()
++    revision = subprocess.check_output(['git', '-C', str(base), 'rev-parse', 'HEAD'], text=True).strip()
++    if not re.fullmatch(r'[a-f0-9]{40}', pin) or revision != pin:
++        raise RuntimeError('Base checkout differs from the pinned revision')
++    spec = importlib.util.spec_from_file_location('owned_compose', base / 'scripts/compose_helpers.py')
++    helpers = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(helpers)
++    project = 'sdlc-qa-task-postgres-' + uuid.uuid4().hex[:12]
++    docker = ['docker', '--context', args.docker_context]
++    for image in ('postgres:17.6-alpine', 'redis:7-alpine'):
++        cached = subprocess.run(docker + ['image', 'inspect', image], capture_output=True)
++        if cached.returncode:
++            helpers.checked(docker + ['pull', image], timeout=300)
++    helper = helpers.ComposeHelper(project=project, task=LABELS['sdlc.task'],
++        purpose=LABELS['sdlc.purpose'], docker=docker, directory=ROOT / '.local' / project)
++    volume = project + '_postgres-data'
++    password = secrets.token_hex(24)
++    created = False
++    failed = True
++
++    def interrupted(*_):
++        raise KeyboardInterrupt
++
++    previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
++    try:
++        if volume in helpers.checked(docker + ['volume', 'ls', '--format', '{{.Name}}'], text=True).splitlines():
++            raise RuntimeError('Disposable storage already exists; refusing reuse')
++        networks = helpers.disposable_subnets(docker, {'test': {'labels': LABELS}})
++        helper.write({
++            'postgres-test': {'image': 'postgres:17.6-alpine', 'networks': ['test'],
++                'environment': {'POSTGRES_USER': 'tasktracker', 'POSTGRES_PASSWORD': password,
++                                'POSTGRES_DB': 'tasktracker_test'},
++                'ports': [{'target': 5432, 'published': '0', 'host_ip': '127.0.0.1'}],
++                'volumes': [{'type': 'volume', 'source': 'postgres-data', 'target': '/var/lib/postgresql/data'}],
++                'healthcheck': {'test': ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'tasktracker', '-d', 'tasktracker_test'],
++                    'interval': '1s', 'timeout': '3s', 'retries': 30}},
++            'redis-test': {'image': 'redis:7-alpine', 'networks': ['test'],
++                'tmpfs': ['/data'],
++                'ports': [{'target': 6379, 'published': '0', 'host_ip': '127.0.0.1'}],
++                'healthcheck': {'test': ['CMD', 'redis-cli', 'ping'], 'interval': '1s', 'timeout': '3s', 'retries': 30}},
++        }, volumes={'postgres-data': {'labels': LABELS}}, networks=networks)
++        created = True
++        helper.run('postgres-test')
++        startup_log = helper.directory / 'startup.private.log'
++        try:
++            startup = subprocess.run(helper.command + ['up', '-d', '--wait', '--wait-timeout', '60'],
++                stdin=subprocess.DEVNULL, capture_output=True, timeout=90)
++        except subprocess.TimeoutExpired as error:
++            startup_log.write_bytes((error.stdout or b'') + (error.stderr or b''))
++            helpers.restrict(startup_log)
++            raise RuntimeError('Disposable test startup timed out; inspect the protected startup log') from error
++        startup_log.write_bytes(startup.stdout + startup.stderr)
++        helpers.restrict(startup_log)
++        if startup.returncode:
++            raise RuntimeError('Disposable test startup failed; inspect the protected startup log')
++        version = helpers.checked(helper.command + ['exec', '-T', 'postgres-test', 'psql', '-XqAt',
++            '-v', 'ON_ERROR_STOP=1', '-U', 'tasktracker', '-d', 'postgres', '-c', 'SHOW server_version'], text=True)
++        if not re.match(r'^17\.6(?:\s|$)', version.strip()):
++            raise RuntimeError('Unexpected PostgreSQL test version')
++        helpers.checked(helper.command + ['exec', '-T', 'postgres-test', 'createdb', '-U', 'tasktracker',
++                                         'tasktracker_infra_test'])
++        pg = endpoint(helpers, helper.command, 'postgres-test', 5432)
++        redis = endpoint(helpers, helper.command, 'redis-test', 6379)
++        environment = dict(os.environ,
++            TASKTRACKER_DATABASE_URL=f'postgres://tasktracker:{password}@{pg}/tasktracker_test',
++            TT_TEST_DATABASE_URL=f'postgres://tasktracker:{password}@{pg}/tasktracker_infra_test',
++            TASKTRACKER_REDIS_URL='redis://' + redis,
++            SDLC_TEST_COMPOSE_PROJECT=project,
++            CARGO_BUILD_JOBS=os.environ.get('CARGO_BUILD_JOBS', '1'), RUST_LOG=os.environ.get('RUST_LOG', 'warn'))
++        result = subprocess.run(command, cwd=ROOT / 'backend', env=environment)
++        failed = result.returncode != 0
++        return result.returncode
++    finally:
++        try:
++            assert_owned_storage(helpers, helper, volume)
++            helper.close()
++            if created and volume in helpers.checked(docker + ['volume', 'ls', '--format', '{{.Name}}'], text=True).splitlines():
++                helpers.checked(docker + ['volume', 'rm', volume])
++        except Exception:
++            helper.record('cleanup-required')
++            if not failed:
++                raise
++            print('Test cleanup requires reconciliation; protected journal retained', file=sys.stderr)
++        finally:
++            for sig, handler in previous.items():
++                signal.signal(sig, handler)
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 7f4625d..97f8f5e 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -15,7 +15,7 @@ Self-hosted таск-трекер (Jira-like). MVP покрывает проек
+ 
+ | Компонент | Библиотека | Версия |
+ |---|---|---|
+-| Язык | Rust | 1.97.1 |
++| Язык / pinned build | Rust | 1.88.0 |
+ | Web framework | axum | 0.8.3 |
+ | Async runtime | tokio | 1.44 |
+ | DB ORM | sea-orm | 1.1 |
+diff --git a/docs/TESTING.md b/docs/TESTING.md
+index 65f3aef..3781143 100644
+--- a/docs/TESTING.md
++++ b/docs/TESTING.md
+@@ -6,7 +6,7 @@
+ - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
+ - Frontend: unit-тесты на Vitest; E2E на Playwright.
+ - После изменений UI — скриншоты в 375×812, 1920×1080, 2560×1440.
+-- Coverage gate в CI: ≥60% (`cargo-llvm-cov`, job `coverage`); локальный полный прогон — `just test-backend-coverage`.
++- Локальный coverage gate: lines ≥75%, regions ≥65%, functions ≥60%; полный прогон — `just test-backend-coverage <docker-context>`.
+ 
+ ## 2. Backend тесты
+ 
+@@ -38,20 +38,27 @@ cargo test -p api --test failing_repos -- --test-threads=1
+ - `infra/tests/fk_regression.rs` — FK-констрейнты миграции m20260827_0000028 (orphan-вставки отклоняются, все констрейнты validated).
+ 
+ ```bash
+-# подготовить тест-БД и запустить
+-cd backend && cargo test -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
++# Собственные PostgreSQL 17.6 и Redis; endpoint и пароли передаются дочернему тесту.
++python3 backend/scripts/run_postgres_tests.py --docker-context <selected-context> --base-directory ../services-base -- cargo test --locked -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
+ ```
+ 
++Тестовый harness требует выбранный context и pinned Base, создаёт уникальный
++`sdlc-qa-task-postgres-*` с task/purpose labels и удаляет только собственные
++контейнеры, сеть и disposable volume в `finally`. Existing test stacks, host URLs
++и `COMPOSE_PROJECT_NAME` не используются для выбора БД. Код завершения теста сохраняется.
++
+ ### Coverage gate
+ 
+ ```bash
+ # Требуются Rust 1.88, cargo-llvm-cov и Docker Compose; disposable test stack
+-# использует local trust authentication и по умолчанию serial Cargo build, чтобы
++# использует случайный пароль, ephemeral loopback-порты и serial Cargo build, чтобы
+ # не исчерпать память runner-а. Пароль из host files не читается.
+-cd backend && ./scripts/run-e2e-tests.sh
++cd backend && ./scripts/run-e2e-tests.sh --docker-context <selected-context> --base-directory ../../services-base
+ ```
+ 
+-CI-порог покрытия — 60% (`coverage` job); цель по слоям ниже — ориентир, не гейт.
++Локальный gate сохраняет пороги lines 75%, regions 65% и functions 60%.
++CI backend выполняет locked workspace tests и отдельную PostgreSQL-регрессию;
++отдельного job `coverage` в текущем workflow нет. Цели по слоям ниже — ориентиры.
+ 
+ ## 3. Frontend тесты
+ 
+@@ -141,7 +148,7 @@ API не перехватываются; собственный QA-проект
+ just gate          # fmt-check + clippy + typecheck + tests
+ just test          # backend + frontend tests
+ just e2e           # Playwright
+-just test-backend-coverage  # coverage gate
++just test-backend-coverage <docker-context>  # собственный Compose, coverage gate
+ ```
+ 
+ ## 5. Git hooks
+@@ -161,7 +168,7 @@ Lefthook (`lefthook.yml`):
+ | Application | ≥90% |
+ | Infra (docker-тесты) | ≥85% |
+ | API routes | ≥85% |
+-| **CI gate (всё workspace)** | **≥60%** |
++| **Локальный gate (workspace)** | **lines ≥75%, regions ≥65%, functions ≥60%** |
+ 
+ ### Frontend
+ 
+diff --git a/justfile b/justfile
+index 64a2bee..416fe76 100644
+--- a/justfile
++++ b/justfile
+@@ -90,8 +90,8 @@ test-backend:
+     cd backend && cargo test --workspace -- --test-threads=1
+ 
+ # Run backend coverage gate (Rust 1.88, cargo-llvm-cov and Docker Compose required).
+-test-backend-coverage:
+-    cd backend && ./scripts/run-e2e-tests.sh
++test-backend-coverage docker_context:
++    cd backend && ./scripts/run-e2e-tests.sh --docker-context {{quote(docker_context)}}
+ 
+ # Run all fast tests
+ @test: test-backend test-frontend
+diff --git a/scripts/tests/test_postgres_harness.py b/scripts/tests/test_postgres_harness.py
+new file mode 100644
+index 0000000..e0bf4ca
+--- /dev/null
++++ b/scripts/tests/test_postgres_harness.py
+@@ -0,0 +1,67 @@
++"""Database tests must never adopt an existing local stack or foreign storage."""
++import importlib.util
++import json
++from pathlib import Path
++from types import SimpleNamespace
++import unittest
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parents[2]
++SPEC = importlib.util.spec_from_file_location('task_postgres_harness', ROOT / 'backend/scripts/run_postgres_tests.py')
++harness = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(harness)
++
++
++class PostgresHarnessTests(unittest.TestCase):
++    def test_context_and_command_are_required_before_docker(self):
++        with patch.object(harness.subprocess, 'run') as run, patch.object(harness.subprocess, 'check_output') as output:
++            for args in ([], ['--docker-context', 'selected']):
++                with self.assertRaises(SystemExit) as result:
++                    harness.main(args)
++                self.assertEqual(result.exception.code, 2)
++            run.assert_not_called()
++            output.assert_not_called()
++
++    def test_incompatible_base_is_rejected_before_docker(self):
++        with patch.object(harness.subprocess, 'check_output', return_value='0' * 40), \
++                patch.object(harness.subprocess, 'run') as run:
++            with self.assertRaisesRegex(RuntimeError, 'pinned revision'):
++                harness.main(['--docker-context', 'selected', '--base-directory', str(ROOT), '--', 'test-command'])
++            run.assert_not_called()
++
++    def test_endpoint_never_falls_back_to_host_or_default_database(self):
++        for address in ('0.0.0.0:5432', '127.0.0.1:5432\n127.0.0.1:5433', 'localhost:5432', ''):
++            helper = SimpleNamespace(checked=lambda *a, **kw: address)
++            with self.assertRaisesRegex(RuntimeError, 'endpoint'):
++                harness.endpoint(helper, ['owned-compose'], 'postgres-test', 5432)
++        helper = SimpleNamespace(checked=lambda *a, **kw: '127.0.0.1:49152\n')
++        self.assertEqual(harness.endpoint(helper, ['owned-compose'], 'postgres-test', 5432), '127.0.0.1:49152')
++
++    def test_foreign_storage_and_wrong_daemon_are_refused_read_only(self):
++        project = 'sdlc-qa-task-postgres-123456abcdef'
++        owner = SimpleNamespace(project=project, identity='daemon', docker=['docker', '--context', 'selected'])
++        volume = project + '_postgres-data'
++        for kind, foreign in (('network', 'foreign-owner'), ('volume', 'foreign-owner'), ('network', None)):
++            calls = []
++
++            def checked(command, **_):
++                calls.append(command)
++                if command[3] == 'info':
++                    return 'other-daemon' if foreign is None else 'daemon'
++                resource = command[3]
++                name = project + '_test' if resource == 'network' else volume
++                if command[4] == 'ls':
++                    return name
++                labels = dict(harness.LABELS, **{'com.docker.compose.project': project})
++                if resource == kind:
++                    labels['sdlc.task'] = foreign
++                return json.dumps([{'Labels': labels}])
++
++            with self.assertRaisesRegex(RuntimeError, 'Foreign|Daemon'):
++                harness.assert_owned_storage(SimpleNamespace(checked=checked), owner, volume)
++            self.assertTrue(all(command[3] in ('info', 'network', 'volume') for command in calls))
++            self.assertFalse(any('rm' in command or 'down' in command for command in calls))
++
++
++if __name__ == '__main__':
++    unittest.main()

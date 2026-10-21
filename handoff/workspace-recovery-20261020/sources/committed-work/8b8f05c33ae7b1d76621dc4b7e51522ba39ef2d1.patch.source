@@ -1,0 +1,1021 @@
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index c78264b..28cf8ab 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -1,5 +1,6 @@
+ import { generateKeyPairSync, sign } from 'node:crypto'
+ import { test, expect, type Page, type Route } from '@playwright/test'
++import AxeBuilder from '@axe-core/playwright'
+ 
+ const mockUser = {
+   id: '00000000-0000-0000-0000-000000000001',
+@@ -318,6 +319,224 @@ async function installTrackerMocks(page: Page) {
+ }
+ 
+ test.describe('smoke', () => {
++  test('keeps notification menu geometry and keyboard navigation across themes and breakpoints', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(180_000)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    const notifications = Array.from({ length: 10 }, (_, index) => ({
++      id: `notification-${index}`,
++      event_type: 'issue_updated',
++      entity_type: 'issue',
++      entity_id: mockUser.issueId,
++      actor_id: null,
++      title: `Notification ${index}: ${'LongUnbrokenTitle'.repeat(14)}`,
++      body: `Details ${'LongUnbrokenBody'.repeat(18)}`,
++      is_read: false,
++      action_url: `/issues/${mockUser.issueId}`,
++      metadata: null,
++      created_at: '2026-10-01T10:00:00Z',
++    }))
++    await page.route('**/api/v1/notifications**', (route) =>
++      routeJson(route, { notifications, unread_count: 123456 }),
++    )
++    const failures: string[] = []
++    page.on('pageerror', (error) => failures.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') failures.push(message.text())
++    })
++    page.on('response', (response) => {
++      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
++    })
++    for (const theme of ['gray', 'dark', 'light']) {
++      await page.goto(`${app}/projects`)
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      await page.reload()
++      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++        await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
++        const trigger = page.getByTestId('notification-trigger')
++        await expect(trigger).toHaveText('99+')
++        await trigger.focus()
++        await page.keyboard.press('Enter')
++        const menu = page.getByRole('menu')
++        await expect(menu).toBeVisible()
++        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++        await expect(menu).toBeInViewport({ ratio: 1 })
++        const geometry = await menu.evaluate(
++          (element, minimum) => {
++            const rect = element.getBoundingClientRect()
++            const targets = [...element.querySelectorAll('[role="menuitem"]')].map((item) =>
++              item.getBoundingClientRect(),
++            )
++            return {
++              documentFits:
++                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++              compact: rect.height <= 512,
++              within:
++                rect.left >= 0 &&
++                rect.right <= innerWidth &&
++                rect.top >= 0 &&
++                rect.bottom <= innerHeight,
++              targets: targets.every((target) => target.height + 0.5 >= minimum),
++              localFits: element.scrollWidth <= element.clientWidth,
++              footerVisible: (() => {
++                const footer = targets.at(-1)
++                return footer && footer.top >= rect.top && footer.bottom <= rect.bottom
++              })(),
++            }
++          },
++          width < 768 ? 44 : 40,
++        )
++        expect(geometry).toEqual({
++          documentFits: true,
++          compact: true,
++          within: true,
++          targets: true,
++          localFits: true,
++          footerVisible: true,
++        })
++        if (width === 1920) {
++          const accessibility = await new AxeBuilder({ page }).include('[role="menu"]').analyze()
++          expect(
++            accessibility.violations.map(({ id, nodes }) => ({
++              id,
++              elements: nodes.map(({ html }) => html),
++            })),
++          ).toEqual([])
++        }
++        await page.keyboard.press('End')
++        await expect(
++          menu.getByRole('menuitem', { name: 'Все уведомления', exact: true }),
++        ).toBeFocused()
++        await page.keyboard.press('ArrowUp')
++        const lastRead = menu.getByRole('menuitem', {
++          name: `Отметить прочитанным: ${notifications[9].title}`,
++          exact: true,
++        })
++        await expect(lastRead).toBeFocused()
++        await expect(lastRead).toBeInViewport({ ratio: 1 })
++        await page.keyboard.press('End')
++        await page.screenshot({
++          path: testInfo.outputPath(`notifications-menu-${theme}-${width}.png`),
++          fullPage: true,
++        })
++        await page.keyboard.press('Escape')
++        await expect(trigger).toBeFocused()
++        await expect(menu).toBeHidden()
++      }
++    }
++    expect(failures).toEqual([])
++  })
++
++  test('handles notification menu pending, failed read, focus removal and independent read failures', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(180_000)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    const notification = {
++      id: 'notification-1',
++      title: 'Safe notification',
++      body: 'Safe fixture',
++      is_read: false,
++      action_url: null,
++      created_at: '2026-10-01T10:00:00Z',
++    }
++    let status = 200
++    let notifications = [notification]
++    let reads = 0
++    let release!: () => void
++    let failRead = true
++    await page.route('**/api/v1/notifications**', async (route) => {
++      if (route.request().method() === 'PATCH') {
++        reads++
++        await new Promise<void>((resolve) => {
++          release = resolve
++        })
++        if (failRead)
++          return routeJson(
++            route,
++            { error: { code: 'QA_REJECTED', message: 'Diagnostic detail' } },
++            503,
++          )
++        notifications = []
++        return route.fulfill({ status: 204, body: '' })
++      }
++      return routeJson(
++        route,
++        status === 200
++          ? { notifications, unread_count: notifications.length }
++          : { error: { code: 'QA_READ_FAILURE', message: 'Diagnostic detail' } },
++        status,
++      )
++    })
++    await page.goto(`${app}/projects`)
++    const trigger = page.getByTestId('notification-trigger')
++    await trigger.click()
++    const menu = page.getByRole('menu')
++    const read = menu.getByRole('menuitem', {
++      name: 'Отметить прочитанным: Safe notification',
++      exact: true,
++    })
++    await read.focus()
++    await page.keyboard.press('Enter')
++    await expect.poll(() => reads).toBe(1)
++    await expect(read).toBeDisabled()
++    await page.keyboard.press('Enter')
++    expect(reads).toBe(1)
++    await expect(menu.getByRole('menuitem', { name: 'Прочитать все' })).toBeDisabled()
++    release()
++    await expect(menu.getByRole('alert')).toHaveText('Не удалось отметить уведомление прочитанным.')
++    const retry = menu.getByRole('menuitem', { name: 'Повторить' })
++    await retry.focus()
++    failRead = false
++    await page.keyboard.press('Enter')
++    await expect.poll(() => reads).toBe(2)
++    release()
++    await expect(read).toHaveCount(0)
++    await expect(menu.getByRole('menuitem', { name: 'Все уведомления', exact: true })).toBeFocused()
++    await page.keyboard.press('Escape')
++    await expect(trigger).toBeFocused()
++    notifications = [notification]
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect(trigger).toHaveText('1')
++    await trigger.click()
++    status = 503
++    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++    await expect(menu.locator('[data-page-state="partial-error"]')).toBeVisible({ timeout: 45_000 })
++    await expect(read).toBeDisabled()
++    await page.screenshot({
++      path: testInfo.outputPath('notifications-menu-cached-partial.png'),
++      fullPage: true,
++    })
++    status = 403
++    await menu.getByRole('menuitem', { name: 'Повторить' }).click()
++    await expect(menu.locator('[data-page-state="permission-denied"]')).toBeVisible({
++      timeout: 45_000,
++    })
++    await expect(read).toHaveCount(0)
++    await expect(menu.getByRole('menuitem', { name: 'Повторить' })).toHaveCount(0)
++    await expect(trigger).toHaveText('')
++    await expect(page.locator('main').getByText(mockUser.name)).toBeVisible()
++    await page.screenshot({
++      path: testInfo.outputPath('notifications-menu-cached-denied.png'),
++      fullPage: true,
++    })
++    status = 404
++    await page.reload()
++    await trigger.click()
++    await expect(menu.locator('[data-page-state="not-found"]')).toBeVisible({ timeout: 45_000 })
++    await expect(menu.getByRole('menuitem', { name: 'Повторить' })).toHaveCount(0)
++    await page.screenshot({
++      path: testInfo.outputPath('notifications-menu-cold-not-found.png'),
++      fullPage: true,
++    })
++  })
++
+   test('distinguishes cached catalog refresh failures from revoked access without losing a retained draft', async ({
+     page,
+     baseURL,
+diff --git a/frontend/src/api/notifications.test.ts b/frontend/src/api/notifications.test.ts
+index f4be2b7..f9f0e38 100644
+--- a/frontend/src/api/notifications.test.ts
++++ b/frontend/src/api/notifications.test.ts
+@@ -1,13 +1,28 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+-import { listNotifications } from './notifications'
++import { ApiError } from '@sdlc/ui/lib'
++import {
++  getNotificationSettings,
++  listNotifications,
++  markAllNotificationsRead,
++  markNotificationRead,
++  updateNotificationSettings,
++} from './notifications'
+ 
+-const GET = vi.hoisted(() => vi.fn())
++const { GET, PATCH, POST } = vi.hoisted(() => ({ GET: vi.fn(), PATCH: vi.fn(), POST: vi.fn() }))
+ 
+-vi.mock('./client', () => ({ api: { GET } }))
++vi.mock('./client', () => ({ api: { GET, PATCH, POST } }))
++
++const settings = {
++  email_frequency: 'daily',
++  disabled_event_types: ['issue_updated'],
++  notify_own_changes: false,
++}
+ 
+ describe('notification API wrapper', () => {
+   beforeEach(() => {
+     GET.mockReset()
++    PATCH.mockReset()
++    POST.mockReset()
+   })
+ 
+   it('passes list query options and preserves unread_count', async () => {
+@@ -29,7 +44,7 @@ describe('notification API wrapper', () => {
+       ],
+       unread_count: 12,
+     }
+-    GET.mockResolvedValueOnce({ data: response })
++    GET.mockResolvedValueOnce({ data: response, response: new Response() })
+ 
+     await expect(listNotifications({ includeRead: true, limit: 50, offset: 10 })).resolves.toEqual(
+       response,
+@@ -38,4 +53,56 @@ describe('notification API wrapper', () => {
+       params: { query: { include_read: true, limit: 50, offset: 10 } },
+     })
+   })
++
++  for (const [name, method, call] of [
++    ['list', GET, () => listNotifications()],
++    ['settings', GET, () => getNotificationSettings()],
++    ['update settings', PATCH, () => updateNotificationSettings(settings)],
++    ['mark one', PATCH, () => markNotificationRead('notification-1')],
++    ['mark all', POST, () => markAllNotificationsRead()],
++  ] as const) {
++    it.each([400, 401, 403, 404, 408, 429, 503])(
++      `preserves HTTP %s for ${name}`,
++      async (status) => {
++        const body = { error: { code: 'QA_FAILURE', message: 'Diagnostic detail' } }
++        method.mockResolvedValue({ error: body, response: new Response(null, { status }) })
++        await expect(call()).rejects.toBeInstanceOf(ApiError)
++        await expect(call()).rejects.toMatchObject({ status, code: 'QA_FAILURE', body })
++        await expect(call()).rejects.not.toThrow('Diagnostic detail')
++      },
++    )
++
++    it(`does not replace a network failure with empty ${name} data`, async () => {
++      const error = new TypeError('Network unavailable')
++      method.mockRejectedValue(error)
++      await expect(call()).rejects.toBe(error)
++    })
++  }
++
++  it('preserves successful settings and the submitted payload', async () => {
++    GET.mockResolvedValue({ data: settings, response: new Response() })
++    PATCH.mockResolvedValue({ data: settings, response: new Response() })
++    await expect(getNotificationSettings()).resolves.toEqual(settings)
++    await expect(updateNotificationSettings(settings)).resolves.toEqual(settings)
++    expect(PATCH).toHaveBeenCalledWith('/api/v1/notification-settings', { body: settings })
++  })
++
++  it('accepts successful empty mark-read responses', async () => {
++    PATCH.mockResolvedValue({ response: new Response(null, { status: 204 }) })
++    POST.mockResolvedValue({ response: new Response(null, { status: 204 }) })
++    await expect(markNotificationRead('notification-1')).resolves.toBeUndefined()
++    await expect(markAllNotificationsRead()).resolves.toBeUndefined()
++    expect(PATCH).toHaveBeenCalledWith('/api/v1/notifications/{id}/read', {
++      params: { path: { id: 'notification-1' } },
++    })
++    expect(POST).toHaveBeenCalledWith('/api/v1/notifications/read-all')
++  })
++
++  it.each(['one', 'all'])('rejects a failed empty mark-read response: %s', async (action) => {
++    PATCH.mockResolvedValue({ response: new Response(null, { status: 503 }) })
++    POST.mockResolvedValue({ response: new Response(null, { status: 503 }) })
++    await expect(
++      action === 'one' ? markNotificationRead('notification-1') : markAllNotificationsRead(),
++    ).rejects.toMatchObject({ status: 503 })
++  })
+ })
+diff --git a/frontend/src/api/notifications.ts b/frontend/src/api/notifications.ts
+index 97302f5..08bdba5 100644
+--- a/frontend/src/api/notifications.ts
++++ b/frontend/src/api/notifications.ts
+@@ -1,5 +1,6 @@
+ import type { components } from './generated'
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ 
+ export type NotificationItem = components['schemas']['NotificationResponse']
+ export type NotificationList = components['schemas']['NotificationListResponse']
+@@ -20,34 +21,40 @@ export async function listNotifications(
+   if (options.includeRead !== undefined) query.include_read = options.includeRead
+   if (options.limit !== undefined) query.limit = options.limit
+   if (options.offset !== undefined) query.offset = options.offset
+-  const { data, error } = await api.GET('/api/v1/notifications', { params: { query } })
+-  if (!data) throw new Error(error ? JSON.stringify(error) : 'Failed to list notifications')
++  const { data, error, response } = await api.GET('/api/v1/notifications', { params: { query } })
++  const status = response.status
++  if (error || !data) throw new ApiError(status, 'Failed to list notifications', error)
+   return data
+ }
+ 
+ export async function markNotificationRead(id: string): Promise<void> {
+-  const { error } = await api.PATCH('/api/v1/notifications/{id}/read', {
++  const { error, response } = await api.PATCH('/api/v1/notifications/{id}/read', {
+     params: { path: { id } },
+   })
+-  if (error) throw new Error(JSON.stringify(error))
++  if (error || !response.ok)
++    throw new ApiError(response.status, 'Failed to mark notification as read', error)
+ }
+ 
+ export async function markAllNotificationsRead(): Promise<void> {
+-  const { error } = await api.POST('/api/v1/notifications/read-all')
+-  if (error) throw new Error(JSON.stringify(error))
++  const { error, response } = await api.POST('/api/v1/notifications/read-all')
++  if (error || !response.ok)
++    throw new ApiError(response.status, 'Failed to mark all notifications as read', error)
+ }
+ 
+ export async function getNotificationSettings(): Promise<NotificationSettings> {
+-  const { data, error } = await api.GET('/api/v1/notification-settings')
+-  if (!data) throw new Error(error ? JSON.stringify(error) : 'Failed to get notification settings')
++  const { data, error, response } = await api.GET('/api/v1/notification-settings')
++  const status = response.status
++  if (error || !data) throw new ApiError(status, 'Failed to get notification settings', error)
+   return data
+ }
+ 
+ export async function updateNotificationSettings(
+   input: UpdateNotificationSettingsInput,
+ ): Promise<NotificationSettings> {
+-  const { data, error } = await api.PATCH('/api/v1/notification-settings', { body: input })
+-  if (!data)
+-    throw new Error(error ? JSON.stringify(error) : 'Failed to update notification settings')
++  const { data, error, response } = await api.PATCH('/api/v1/notification-settings', {
++    body: input,
++  })
++  if (error || !data)
++    throw new ApiError(response.status, 'Failed to update notification settings', error)
+   return data
+ }
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index e77acc0..248b0db 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -70,6 +70,8 @@
+     "empty": "No notifications yet.",
+     "emptyUnread": "No unread notifications.",
+     "loading": "Loading notifications...",
++    "loadError": "Could not load notifications.",
++    "unreadStatus": "Unread",
+     "pagination": "Notification pages",
+     "previousPage": "Previous page",
+     "nextPage": "Next page",
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index 2d55d22..4056155 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -70,6 +70,8 @@
+     "empty": "Пока нет уведомлений.",
+     "emptyUnread": "Нет непрочитанных уведомлений.",
+     "loading": "Загрузка уведомлений...",
++    "loadError": "Не удалось загрузить уведомления.",
++    "unreadStatus": "Не прочитано",
+     "pagination": "Страницы уведомлений",
+     "previousPage": "Предыдущая страница",
+     "nextPage": "Следующая страница",
+diff --git a/frontend/src/widgets/app-shell.test.tsx b/frontend/src/widgets/app-shell.test.tsx
+index e538bed..76e45a8 100644
+--- a/frontend/src/widgets/app-shell.test.tsx
++++ b/frontend/src/widgets/app-shell.test.tsx
+@@ -49,8 +49,8 @@ function mockHooks(notifications: Notification[] | undefined, unreadCount?: numb
+       : undefined,
+     isLoading: false,
+   })
+-  useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
+-  useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
++  useMarkNotificationRead.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) })
++  useMarkAllNotificationsRead.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) })
+ }
+ 
+ describe('AppShell notifications', () => {
+@@ -441,8 +441,8 @@ describe('AppShell notifications', () => {
+       ],
+       12,
+     )
+-    useMarkNotificationRead.mockReturnValue({ mutate: markRead })
+-    useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
++    useMarkNotificationRead.mockReturnValue({ mutateAsync: markRead })
++    useMarkAllNotificationsRead.mockReturnValue({ mutateAsync: markAll })
+ 
+     render(
+       <ThemeProvider>
+@@ -460,10 +460,8 @@ describe('AppShell notifications', () => {
+     await user.click(screen.getByRole('menuitem', { name: /отметить прочитанным: Issue updated/i }))
+     expect(markRead).toHaveBeenCalledWith('notification-1')
+ 
+-    await user.click(trigger)
+     await user.click(screen.getByRole('menuitem', { name: /прочитать все|mark all as read/i }))
+     await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
+-    await user.click(trigger)
+     const viewAllLink = screen.getByRole('menuitem', {
+       name: /все уведомления|view all notifications/i,
+     })
+diff --git a/frontend/src/widgets/notification-menu.test.tsx b/frontend/src/widgets/notification-menu.test.tsx
+new file mode 100644
+index 0000000..702ac0b
+--- /dev/null
++++ b/frontend/src/widgets/notification-menu.test.tsx
+@@ -0,0 +1,278 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { act, render, screen, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
++import { MemoryRouter } from 'react-router'
++import { ApiError } from '@sdlc/ui/lib'
++import { NotificationMenu } from './notification-menu'
++
++const { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } = vi.hoisted(
++  () => ({
++    useNotifications: vi.fn(),
++    useMarkNotificationRead: vi.fn(),
++    useMarkAllNotificationsRead: vi.fn(),
++  }),
++)
++vi.mock('@/shared/api/hooks', () => ({
++  useNotifications,
++  useMarkNotificationRead,
++  useMarkAllNotificationsRead,
++}))
++
++const notification = {
++  id: 'notification-1',
++  title: 'Issue updated',
++  body: 'Safe notification body',
++  is_read: false,
++  action_url: '/issues/12',
++  created_at: '2026-10-01T10:00:00Z',
++}
++const list = { notifications: [notification], unread_count: 1 }
++const refetch = vi.fn()
++const markRead = vi.fn()
++const markAll = vi.fn()
++function menu() {
++  return (
++    <MemoryRouter>
++      <NotificationMenu />
++    </MemoryRouter>
++  )
++}
++async function open() {
++  const user = userEvent.setup()
++  await user.click(screen.getByTestId('notification-trigger'))
++  return user
++}
++
++describe('notification menu resource and interaction contracts', () => {
++  beforeEach(() => {
++    vi.clearAllMocks()
++    refetch.mockResolvedValue(undefined)
++    markRead.mockReset().mockResolvedValue(undefined)
++    markAll.mockReset().mockResolvedValue(undefined)
++    useNotifications.mockReturnValue({ data: list, isLoading: false, error: null, refetch })
++    useMarkNotificationRead.mockReturnValue({ mutateAsync: markRead, isPending: false })
++    useMarkAllNotificationsRead.mockReturnValue({ mutateAsync: markAll, isPending: false })
++  })
++
++  it('does not present pending data as an empty list or zero unread count', async () => {
++    useNotifications.mockReturnValue({ isLoading: true, refetch })
++    render(menu())
++    await open()
++    expect(screen.getByRole('status')).toHaveTextContent('Загрузка уведомлений')
++    expect(screen.getByRole('group', { name: 'Уведомления' })).toHaveAttribute('tabindex', '0')
++    expect(screen.queryByText('Нет уведомлений.')).not.toBeInTheDocument()
++    expect(screen.getByTestId('notification-trigger')).not.toHaveTextContent('0')
++    expect(screen.getByRole('menuitem', { name: 'Прочитать все' })).toHaveAttribute('data-disabled')
++  })
++
++  it.each([403, 404])(
++    'hides cached notifications and count after HTTP %s without retry',
++    async (status) => {
++      useNotifications.mockReturnValue({
++        data: list,
++        error: new ApiError(status, 'Diagnostic detail'),
++        refetch,
++      })
++      const { container } = render(menu())
++      await open()
++      expect(
++        document.querySelector(
++          `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++        ),
++      ).toBeInTheDocument()
++      expect(screen.queryByText(notification.title)).not.toBeInTheDocument()
++      expect(container.querySelector('.notification-count')).not.toBeInTheDocument()
++      expect(screen.queryByRole('menuitem', { name: 'Повторить' })).not.toBeInTheDocument()
++      expect(screen.queryByText('Diagnostic detail')).not.toBeInTheDocument()
++      expect(screen.getByRole('menuitem', { name: 'Все уведомления' })).toHaveAttribute(
++        'href',
++        '/notifications',
++      )
++    },
++  )
++
++  it('keeps cached content read-only after a retryable refresh failure', async () => {
++    useNotifications.mockReturnValue({
++      data: list,
++      error: new ApiError(503, 'Unavailable'),
++      refetch,
++    })
++    render(menu())
++    const user = await open()
++    expect(document.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByText(notification.title)).toBeInTheDocument()
++    expect(
++      screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' }),
++    ).toHaveAttribute('data-disabled')
++    expect(screen.getByRole('menuitem', { name: 'Прочитать все' })).toHaveAttribute('data-disabled')
++    await user.click(screen.getByRole('menuitem', { name: 'Повторить' }))
++    expect(refetch).toHaveBeenCalledTimes(1)
++    expect(screen.getByRole('menu')).toBeInTheDocument()
++    expect(markRead).not.toHaveBeenCalled()
++    expect(markAll).not.toHaveBeenCalled()
++  })
++
++  it('offers a keyboard menu retry for cold errors without an empty state', async () => {
++    useNotifications.mockReturnValue({ error: new TypeError('Network unavailable'), refetch })
++    render(menu())
++    const user = await open()
++    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить уведомления.')
++    const retry = screen.getByRole('menuitem', { name: 'Повторить' })
++    retry.focus()
++    await user.keyboard('{Enter}')
++    expect(refetch).toHaveBeenCalledTimes(1)
++    expect(screen.getByRole('menu')).toBeInTheDocument()
++    expect(screen.queryByText('Нет уведомлений.')).not.toBeInTheDocument()
++  })
++
++  it('caps the visual count while retaining the actual accessible count', () => {
++    useNotifications.mockReturnValue({ data: { ...list, unread_count: 123456 }, refetch })
++    render(menu())
++    expect(screen.getByTestId('notification-trigger')).toHaveTextContent('99+')
++    expect(screen.getByLabelText('Непрочитанные (123456)')).toBeInTheDocument()
++  })
++
++  it('keeps the menu open and prevents duplicate one/all requests while pending', async () => {
++    let release!: () => void
++    markRead.mockImplementation(
++      () =>
++        new Promise<void>((resolve) => {
++          release = resolve
++        }),
++    )
++    render(menu())
++    const user = await open()
++    const action = screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' })
++    await user.dblClick(action)
++    expect(markRead).toHaveBeenCalledTimes(1)
++    expect(markRead).toHaveBeenCalledWith(notification.id)
++    expect(action).toHaveAttribute('data-disabled')
++    expect(screen.getByRole('menuitem', { name: 'Прочитать все' })).toHaveAttribute('data-disabled')
++    expect(screen.getByRole('status')).toHaveTextContent('Отмечаем')
++    await act(async () => release())
++    await waitFor(() => expect(action).not.toHaveAttribute('data-disabled'))
++    await user.click(screen.getByRole('menuitem', { name: 'Прочитать все' }))
++    expect(markAll).toHaveBeenCalledTimes(1)
++    expect(screen.getByRole('menu')).toBeInTheDocument()
++  })
++
++  it('retains a failed command and retries only that notification', async () => {
++    markRead.mockRejectedValueOnce(new ApiError(503, 'Diagnostic detail'))
++    render(menu())
++    const user = await open()
++    await user.click(screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' }))
++    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось')
++    expect(screen.queryByText('Diagnostic detail')).not.toBeInTheDocument()
++    await user.click(screen.getByRole('menuitem', { name: 'Повторить' }))
++    expect(markRead).toHaveBeenNthCalledWith(2, notification.id)
++    expect(markAll).not.toHaveBeenCalled()
++  })
++
++  it.each([403, 404, 400])('does not offer retry for terminal mutation HTTP %s', async (status) => {
++    markAll.mockRejectedValue(new ApiError(status, 'Diagnostic detail'))
++    render(menu())
++    const user = await open()
++    await user.click(screen.getByRole('menuitem', { name: 'Прочитать все' }))
++    await waitFor(() =>
++      expect(
++        screen.getByText('Не удалось отметить все уведомления прочитанными.'),
++      ).toBeInTheDocument(),
++    )
++    expect(screen.queryByRole('menuitem', { name: 'Повторить' })).not.toBeInTheDocument()
++  })
++
++  it('offers only source recovery when a failed read command is followed by a refresh failure', async () => {
++    markRead.mockRejectedValueOnce(new ApiError(503, 'Read unavailable'))
++    const view = render(menu())
++    const user = await open()
++    await user.click(screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' }))
++    await screen.findByRole('alert')
++    useNotifications.mockReturnValue({
++      data: list,
++      error: new ApiError(503, 'List unavailable'),
++      refetch,
++    })
++    view.rerender(menu())
++    expect(screen.getAllByRole('menuitem', { name: 'Повторить' })).toHaveLength(1)
++    await user.click(screen.getByRole('menuitem', { name: 'Повторить' }))
++    expect(refetch).toHaveBeenCalledTimes(1)
++    expect(markRead).toHaveBeenCalledTimes(1)
++  })
++
++  it('returns Escape focus to the trigger and does not steal it when a pending action finishes', async () => {
++    let release!: () => void
++    markRead.mockImplementation(
++      () =>
++        new Promise<void>((resolve) => {
++          release = resolve
++        }),
++    )
++    render(menu())
++    const user = await open()
++    await user.click(screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' }))
++    await user.keyboard('{Escape}')
++    expect(screen.getByTestId('notification-trigger')).toHaveFocus()
++    await act(async () => release())
++    await waitFor(() => expect(screen.getByTestId('notification-trigger')).toHaveFocus())
++    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
++  })
++
++  it('moves focus to the surviving footer when invalidation removes the selected unread item', async () => {
++    let release!: () => void
++    markRead.mockImplementation(
++      () =>
++        new Promise<void>((resolve) => {
++          release = resolve
++        }),
++    )
++    const view = render(menu())
++    const user = await open()
++    const action = screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' })
++    action.focus()
++    await user.keyboard('{Enter}')
++    useNotifications.mockReturnValue({ data: { notifications: [], unread_count: 0 }, refetch })
++    view.rerender(menu())
++    await act(async () => release())
++    await waitFor(() =>
++      expect(screen.getByRole('menuitem', { name: 'Все уведомления' })).toHaveFocus(),
++    )
++  })
++
++  it('does not overwrite a deliberate focus move when invalidation removes the original item', async () => {
++    let release!: () => void
++    markRead.mockImplementation(
++      () =>
++        new Promise<void>((resolve) => {
++          release = resolve
++        }),
++    )
++    const second = {
++      ...notification,
++      id: 'notification-2',
++      title: 'Another issue',
++      action_url: '/issues/13',
++    }
++    useNotifications.mockReturnValue({
++      data: { notifications: [notification, second], unread_count: 2 },
++      refetch,
++    })
++    const view = render(menu())
++    const user = await open()
++    const action = screen.getByRole('menuitem', { name: 'Отметить прочитанным: Issue updated' })
++    action.focus()
++    await user.keyboard('{Enter}')
++    const next = screen.getByRole('menuitem', { name: /^Another issue/ }).closest('a')!
++    next.focus()
++    useNotifications.mockReturnValue({
++      data: { notifications: [second], unread_count: 1 },
++      refetch,
++    })
++    view.rerender(menu())
++    await act(async () => release())
++    await waitFor(() => expect(next).toHaveFocus())
++    await act(async () => {
++      await new Promise((resolve) => requestAnimationFrame(resolve))
++    })
++    expect(next).toHaveFocus()
++  })
++})
+diff --git a/frontend/src/widgets/notification-menu.tsx b/frontend/src/widgets/notification-menu.tsx
+index 178c0b1..24fa660 100644
+--- a/frontend/src/widgets/notification-menu.tsx
++++ b/frontend/src/widgets/notification-menu.tsx
+@@ -1,6 +1,7 @@
++import { useRef, useState } from 'react'
+ import { Link } from 'react-router'
+ import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
+-import { Bell, Check } from 'lucide-react'
++import { Bell, Check, RotateCcw } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+ import {
+   Button,
+@@ -8,6 +9,9 @@ import {
+   DropdownMenuContent,
+   DropdownMenuItem,
+   DropdownMenuTrigger,
++  ResourceStateView,
++  resourceErrorState,
++  type ResourceState,
+ } from '@sdlc/ui/ui'
+ import {
+   useMarkAllNotificationsRead,
+@@ -15,13 +19,78 @@ import {
+   useNotifications,
+ } from '@/shared/api/hooks'
+ 
++function withoutRetry(state: ResourceState): ResourceState {
++  return 'onRetry' in state ? { ...state, onRetry: undefined } : state
++}
++
+ export function NotificationMenu() {
+   const { t } = useTranslation()
+-  const { data: list } = useNotifications()
++  const { data: list, isLoading, error, refetch } = useNotifications()
+   const markRead = useMarkNotificationRead()
+   const markAll = useMarkAllNotificationsRead()
+-  const notifications = list?.notifications ?? []
+-  const unreadCount = list?.unread_count ?? 0
++  const locked = useRef(false)
++  const contentRef = useRef<HTMLDivElement>(null)
++  const viewAllRef = useRef<HTMLAnchorElement>(null)
++  const [pending, setPending] = useState(false)
++  const [lastAction, setLastAction] = useState<string | null | undefined>()
++  const [actionError, setActionError] = useState<unknown>(null)
++  const listState: ResourceState = error
++    ? resourceErrorState(error, () => void refetch(), {
++        hasData: list !== undefined,
++        message: t('notifications.loadError'),
++      })
++    : isLoading || !list
++      ? { kind: 'loading', message: t('notifications.loading') }
++      : list.notifications.length === 0
++        ? { kind: 'empty', message: t('notifications.empty') }
++        : { kind: 'ready' }
++  const showData = listState.kind === 'ready' || listState.kind === 'partial-error'
++  const notifications = showData ? (list?.notifications ?? []) : []
++  const unreadCount = showData ? list?.unread_count : undefined
++  const busy = pending || markRead.isPending || markAll.isPending
++  const canRead = (listState.kind === 'ready' || listState.kind === 'empty') && !busy
++  const readErrorState = actionError
++    ? resourceErrorState(
++        actionError,
++        () => {
++          if (lastAction !== undefined) void read(lastAction)
++        },
++        {
++          message: t(
++            lastAction === null ? 'notifications.markAllError' : 'notifications.markReadError',
++          ),
++        },
++      )
++    : undefined
++
++  async function read(id: string | null, restoreFocus = true) {
++    if (locked.current || !canRead) return
++    locked.current = true
++    const initiator = restoreFocus ? document.activeElement : null
++    setLastAction(id)
++    setActionError(null)
++    setPending(true)
++    try {
++      if (id === null) await markAll.mutateAsync()
++      else await markRead.mutateAsync(id)
++    } catch (failure) {
++      setActionError(failure)
++    } finally {
++      locked.current = false
++      setPending(false)
++      // Invalidation can remove the unread item; do not reopen a closed menu.
++      requestAnimationFrame(() => {
++        if (
++          initiator instanceof HTMLElement &&
++          !initiator.isConnected &&
++          viewAllRef.current?.isConnected &&
++          (document.activeElement === document.body ||
++            document.activeElement === contentRef.current)
++        )
++          viewAllRef.current.focus()
++      })
++    }
++  }
+   return (
+     <DropdownMenu>
+       <DropdownMenuTrigger asChild>
+@@ -34,33 +103,89 @@ export function NotificationMenu() {
+           data-testid="notification-trigger"
+         >
+           <Bell className="h-5 w-5" aria-hidden />
+-          {unreadCount > 0 && (
+-            <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+-              {unreadCount}
++          {unreadCount !== undefined && unreadCount > 0 && (
++            <span
++              role="status"
++              aria-label={t('notifications.unread', { count: unreadCount })}
++              className="notification-count absolute -right-1 -top-1 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4"
++            >
++              {unreadCount > 99 ? '99+' : unreadCount}
+             </span>
+           )}
+         </Button>
+       </DropdownMenuTrigger>
+-      <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
+-        <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+-          <DropdownMenuPrimitive.Label className="text-sm font-semibold">
++      <DropdownMenuContent
++        ref={contentRef}
++        align="end"
++        className="flex w-[calc(100vw-1rem)] max-w-80 flex-col overflow-hidden p-0"
++      >
++        <DropdownMenuPrimitive.Group className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
++          <DropdownMenuPrimitive.Label className="min-w-0 break-words text-sm font-semibold">
+             {t('notifications.title')}
+           </DropdownMenuPrimitive.Label>
+           <DropdownMenuItem
+-            className="min-h-11 px-2 text-xs"
+-            onSelect={() => markAll.mutate()}
+-            disabled={unreadCount === 0 || markAll.isPending}
++            className="shrink-0 px-2 text-xs"
++            onSelect={(event) => {
++              event.preventDefault()
++              void read(null)
++            }}
++            disabled={!canRead || !unreadCount}
+           >
+             {t('notifications.markAllRead')}
+           </DropdownMenuItem>
+         </DropdownMenuPrimitive.Group>
+-        <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
++        <DropdownMenuPrimitive.Group
++          tabIndex={0}
++          aria-label={t('notifications.title')}
++          className="max-h-96 min-h-0 overflow-y-auto p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
++        >
++          {busy && (
++            <p role="status" className="px-2 py-2 text-sm text-text-muted">
++              {t(
++                lastAction === null
++                  ? 'notifications.markAllPending'
++                  : 'notifications.markReadPending',
++              )}
++            </p>
++          )}
++          {readErrorState && (
++            <>
++              <ResourceStateView state={withoutRetry(readErrorState)} />
++              {'onRetry' in readErrorState && readErrorState.onRetry && canRead && (
++                <DropdownMenuItem
++                  disabled={!canRead}
++                  onSelect={(event) => {
++                    event.preventDefault()
++                    if (lastAction !== undefined) void read(lastAction)
++                  }}
++                >
++                  <RotateCcw className="mr-2 h-4 w-4 shrink-0" aria-hidden />
++                  {t('common.retry')}
++                </DropdownMenuItem>
++              )}
++            </>
++          )}
++          <ResourceStateView state={withoutRetry(listState)} />
++          {'onRetry' in listState && listState.onRetry && (
++            <DropdownMenuItem
++              onSelect={(event) => {
++                event.preventDefault()
++                void refetch()
++              }}
++            >
++              <RotateCcw className="mr-2 h-4 w-4 shrink-0" aria-hidden />
++              {t('common.retry')}
++            </DropdownMenuItem>
++          )}
+           {notifications.slice(0, 10).map((notification) => {
+             const content = (
+               <div className="min-w-0">
+                 <div className="line-clamp-2 break-words font-medium">{notification.title}</div>
++                {!notification.is_read && (
++                  <span className="sr-only">{t('notifications.unreadStatus')}</span>
++                )}
+                 {notification.body && (
+-                  <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
++                  <div className="mt-0.5 line-clamp-2 break-words text-xs text-text-muted">
+                     {notification.body}
+                   </div>
+                 )}
+@@ -69,11 +194,11 @@ export function NotificationMenu() {
+             return (
+               <DropdownMenuPrimitive.Group key={notification.id} className="flex items-start gap-1">
+                 {notification.action_url ? (
+-                  <DropdownMenuItem asChild className="min-h-11 min-w-0 flex-1 items-start p-2">
++                  <DropdownMenuItem asChild className="min-w-0 flex-1 items-start p-2">
+                     <Link
+                       to={notification.action_url}
+                       onClick={() => {
+-                        if (!notification.is_read) markRead.mutate(notification.id)
++                        if (!notification.is_read) void read(notification.id, false)
+                       }}
+                     >
+                       {content}
+@@ -81,9 +206,11 @@ export function NotificationMenu() {
+                   </DropdownMenuItem>
+                 ) : (
+                   <DropdownMenuItem
+-                    className="min-h-11 min-w-0 flex-1 items-start p-2"
+-                    onSelect={() => {
+-                      if (!notification.is_read) markRead.mutate(notification.id)
++                    className="min-w-0 flex-1 items-start p-2"
++                    disabled={!canRead || notification.is_read}
++                    onSelect={(event) => {
++                      event.preventDefault()
++                      void read(notification.id)
+                     }}
+                   >
+                     {content}
+@@ -91,10 +218,14 @@ export function NotificationMenu() {
+                 )}
+                 {!notification.is_read && (
+                   <DropdownMenuItem
+-                    className="min-h-11 w-11 shrink-0 justify-center p-0"
++                    className="w-11 shrink-0 justify-center p-0"
+                     aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+                     title={t('notifications.markRead')}
+-                    onSelect={() => markRead.mutate(notification.id)}
++                    disabled={!canRead}
++                    onSelect={(event) => {
++                      event.preventDefault()
++                      void read(notification.id)
++                    }}
+                   >
+                     <Check className="h-4 w-4" aria-hidden />
+                   </DropdownMenuItem>
+@@ -102,15 +233,12 @@ export function NotificationMenu() {
+               </DropdownMenuPrimitive.Group>
+             )
+           })}
+-          {notifications.length === 0 && (
+-            <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
+-              {t('notifications.empty')}
+-            </DropdownMenuPrimitive.Label>
+-          )}
+         </DropdownMenuPrimitive.Group>
+-        <DropdownMenuPrimitive.Separator className="h-px bg-border" />
+-        <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+-          <Link to="/notifications">{t('notifications.viewAll')}</Link>
++        <DropdownMenuPrimitive.Separator className="h-px shrink-0 bg-border" />
++        <DropdownMenuItem asChild className="m-1 shrink-0 justify-center text-accent">
++          <Link ref={viewAllRef} to="/notifications">
++            {t('notifications.viewAll')}
++          </Link>
+         </DropdownMenuItem>
+       </DropdownMenuContent>
+     </DropdownMenu>

@@ -42,7 +42,8 @@ PAT/delegation/machine scopes дополнительно. Public/legacy URL не
 
 Source/tests/publication/images/migration/live — отдельные gates. Прежние 1:1
 планы исторические; новая модель не меняет смысл технических receipts.
-Production, PDLC1/2/3, Hermes и соседи исключены. Не смешивать с прежними Workflow
+Production входит в порученный выпуск после заполненного migration/rollback
+rehearsal, dev-приёмки и согласованного backup. PDLC1/2/3, Hermes и соседи исключены. Не смешивать с прежними Workflow
 исправлениями профессий. Зависимые PR без автоматического merge.
 
 ## Общий допуск на human SDLC API (21 октября 2026)
@@ -55,5 +56,5 @@ Human SDLC routes используют тот же verified request frame, чт�
 остаются отдельным ограниченным протоколом с собственными ownership/lease guards;
 машинный principal не становится human или платформенным администратором.
 
-Утверждённое продолжение включает production после qualified dev/migration/rollback;
-раннее исключение production в исходном плане относилось к предыдущему этапу.
+Production-выпуск включает qualified dev, заполненный migration/rollback rehearsal,
+backup, activation и свежую матрицу доступа обычными пользователями.

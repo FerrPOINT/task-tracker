@@ -1,0 +1,70 @@
+{
+  "origin": "Synthetic schema fixture; Base scripts/runtime_boundary.py canonical ensure_ascii=True; not actual SDK custody qualification",
+  "legacy_observation": {
+    "contract_version": 1,
+    "execution_id": "00000000-0000-4000-8000-000000000001",
+    "agent_id": "00000000-0000-4000-8000-000000000002",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "session_run_id": "00000000-0000-4000-8000-000000000008",
+    "hermes_run_ref": "synthetic-known-original-run",
+    "terminal_status": "stopped",
+    "observed_at": "2026-10-18T01:00:00Z"
+  },
+  "observation": {
+    "contract_version": 1,
+    "execution_id": "00000000-0000-4000-8000-000000000001",
+    "agent_id": "00000000-0000-4000-8000-000000000002",
+    "session_id": "00000000-0000-4000-8000-000000000007",
+    "session_run_id": "00000000-0000-4000-8000-000000000008",
+    "hermes_run_ref": "synthetic-known-original-run",
+    "terminal_status": "stopped",
+    "observed_at": "2026-10-18T01:00:00Z",
+    "observation_source": {
+      "contract_version": 1,
+      "kind": "sdk_namespace_exit",
+      "reason": "deadline",
+      "context_id": "00000000-0000-4000-8000-000000000003",
+      "generation": "00000000-0000-4000-8000-000000000004",
+      "initial_operation_id": "00000000-0000-4000-8000-000000000005",
+      "stop_operation_id": "00000000-0000-4000-8000-000000000006",
+      "original_command_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "journal_ref": "fleet:bug-protective-context-stop:00000000-0000-4000-8000-000000000001",
+      "registration_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "original_running_receipt": {
+        "contract_version": 4,
+        "operation_id": "00000000-0000-4000-8000-000000000005",
+        "container_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resource_id": "00000000-0000-4000-8000-000000000002",
+        "generation": "00000000-0000-4000-8000-000000000004",
+        "registration_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "state": "observed",
+        "observation": "running",
+        "snapshot": {
+          "contract_version": 4,
+          "container_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": {
+            "ID": "synthetic-engine",
+            "KernelVersion": "qa-ядро😀",
+            "ServerVersion": "17.0-fixture"
+          },
+          "policy_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "inventory_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "started_at": "2026-10-18T00:00:00Z",
+          "init_pid": 123,
+          "network_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      },
+      "stop_proof": {
+        "contract_version": 4,
+        "operation_id": "00000000-0000-4000-8000-000000000006",
+        "container_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resource_id": "00000000-0000-4000-8000-000000000002",
+        "generation": "00000000-0000-4000-8000-000000000004",
+        "snapshot_sha256": "e22dbbb4eeb45cfa8ac17ae60eeb42a3d9e1b38293afd571da728abfddced0a6",
+        "state": "observed",
+        "observation": "namespace_exited"
+      },
+      "stop_proof_sha256": "dfce2c15dc1a8ff1c5db0105083fc679884c6a7e298a673206eeedc91af8f02a"
+    }
+  }
+}

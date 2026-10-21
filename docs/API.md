@@ -328,12 +328,15 @@ agent/config/package/Workflow refs остаются **declared**, native-ready/d
 Legacy данные не включаются автоматически и не переписываются. Текущий UI не передаёт
 opt-in версию. [Точный wire, CAS и ACL](SDLC_ROUTING_V1.md).
 
-Exact owner confirmation now publishes Backlog and queues Analysis/Ready in the
-same transaction. The existing confirmation response remains `stage: Backlog`;
-current context reports `stage: Analysis`, `waiting_reason: queued_for_analysis`
+Exact owner confirmation publishes Backlog/Ready without an Analysis intent or
+automatic start. The existing confirmation response remains `stage: Backlog`;
+current context reports `stage: Backlog`, no queued-for-analysis waiting reason
 and no new confirmation permission. New PM commands cannot change this revision.
 Same-key/payload replay retains the original receipt; stale revision, changed
 payload or a second confirmation key is 409. Reserved PM admission remains gated.
+PM is accepted as completed only with the separate existing exact terminal/Workflow
+completion receipt; Backlog alone is not terminal evidence. Completion and its
+replay do not create an Analysis intent. No request/response schema changes.
 
 `GET /api/v1/issues/{id}/sdlc/analysis-intent` returns the strict frozen
 `AnalysisIntent` (Rust DTO in `backend/domain/src/sdlc.rs`): binding IDs, intent and
@@ -343,10 +346,10 @@ attempt 0, creation time and stable `operation_key: analysis:<confirmation UUID>
 Central service-read and fresh explicit project access are required; PM grants
 cannot read this queue resource. Absent Analysis is 404, retained inconsistency
 409. It does not claim capacity, allocate an agent or permit dispatch.
-The same transaction emits `analysis.intent_created` after
-`requirements.confirmed`; `event_id` equals `intent_id`. Both legacy outbox and
-`metadata_v1` carry the new content-free frozen intent. Update consumer event
-unions before pickup. Further contracts/gaps: [lifecycle](SDLC_LIFECYCLE_V1.md).
+Historical `analysis.intent_created` has `event_id` equal to `intent_id`; both
+legacy outbox and `metadata_v1` retain that content-free format. New initial PM
+confirmation emits only `requirements.confirmed`, not an Analysis event.
+Further contracts/gaps: [lifecycle](SDLC_LIFECYCLE_V1.md).
 
 The owner issue-detail SDLC tab now uses these real endpoints and the generated
 `Analysis` / `analysis.intent_created` unions. Metadata polling is an explicit
@@ -1995,6 +1998,13 @@ barrier. Существующие контракты claim/heartbeat/resume со
 POST и DELETE связей архивного проекта возвращают 409 `namespace_resource_read_only`,
 включая повторное удаление уже отсутствующей связи. Чтение сохранённых связей остаётся доступным.
 
+## PM bootstrap retry candidate
+
+Scheduler-only initial bootstrap recovery retains canonical assignment/execution
+and uses the existing configured Fleet composite readback, never caller booleans.
+POST/GET operation paths, strict DTO and unrun qualification are documented in
+[the bounded contract](contracts/pm-bootstrap-technical-retry.md). No live readiness claim.
+
 
 ## Project/Space v2: source-кандидат
 
@@ -2072,3 +2082,14 @@ space permit. ProjectRef берётся из текущего владельца
 SDLC repository использует существующий GuardedDb для request-owned write context;
 не создаётся второй допуск, пул или копия членства. Отсутствующий human proof при
 активной политике закрывает доступ. Native capability не становится human proof.
+
+### Каталог общего пространства
+
+Явный фильтр общего пространства включает его собственные проекты и проекты
+связанных дочерних пространств. Каждый target отдельно проходит исходный допуск;
+участие в дочернем пространстве не разрешает запрос родительского каталога.
+Состав фильтруется до count/page. Независимые связи M:N не становятся иерархией;
+добавочные project links в родителя ради каталога не создаются. После исключения
+дочернего пространства оно исчезает из родительского каталога; отдельное прямое
+участие продолжает работать через его собственный каталог. У режима all явная
+иерархия возвращается как metadata, не как новое основание доступа.

@@ -1,22 +1,36 @@
 import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
 import { isUnarchivedProject } from './namespace-context'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
-import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
-import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@pdlc/ui/ui'
-import { useProjectDisclosures } from '@pdlc/ui/lib'
 import {
+  AppShell as BaseAppShell,
+  Button,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   ProjectAvatar,
   ProjectNavigationGroup,
   SidebarNavigationGroup,
   useSidebarDisclosure,
+  SidebarItem,
+  PlatformMark,
+  ThemeMenuItems,
+  PlatformHeader,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
+
+import { useProjectDisclosures } from '@pdlc/ui/lib'
+
 import { ProjectActions } from './project-actions'
+import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { SidebarItem } from '@pdlc/ui/ui'
+
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
@@ -28,7 +42,6 @@ import {
   Columns2,
   Bell,
   User,
-  Plus,
   ChevronDown,
   LogOut,
   BarChart3,
@@ -36,9 +49,7 @@ import {
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PlatformMark } from '@pdlc/ui/ui'
-import { ThemeMenuItems } from '@pdlc/ui/ui'
-import { PlatformHeader } from '@pdlc/ui/ui'
+
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -48,12 +59,6 @@ import {
   useIssue,
   useNotifications,
 } from '@/shared/api/hooks'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@pdlc/ui/ui'
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/
@@ -78,8 +83,14 @@ function useCurrentProjectKey() {
       : undefined
   // On the issue page the project is not part of the URL; resolve it from
   // the loaded issue so sidebar Board/Backlog/Trash keep their context.
-  const { data: issue } = useIssue(issueId ?? '')
-  return match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue?.project_key
+  const issue = useIssue(issueId ?? '')
+  return {
+    key: match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue.data?.project_key,
+    pending: Boolean(issueId && issue.isPending),
+    unavailable: Boolean(
+      issueId && !issue.isPending && (issue.isError || !issue.data?.project_key),
+    ),
+  }
 }
 
 function SidebarLink({
@@ -214,18 +225,27 @@ function ProjectNavigation({
 export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
-  const routeProjectKey = useCurrentProjectKey()
+  const routeProject = useCurrentProjectKey()
+  const routeProjectKey = routeProject.key
   const spaceEnabled = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
   const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && !spaceEnabled
   const namespace = useNamespaceContext(namespaceEnabled)
   const allProjects = !namespace.malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog(namespaceEnabled)
-  const projectKey =
-    namespaceEnabled && namespace.ref
-      ? namespace.query.isError
-        ? undefined
-        : namespace.query.data?.resource_key
-      : routeProjectKey
+  const projectKey = namespaceEnabled && namespace.ref
+    ? namespace.query.isError
+      ? undefined
+      : namespace.query.data?.resource_key
+    : routeProject.key
+  const createContextPending = namespaceEnabled && namespace.ref ? namespace.query.isPending : routeProject.pending
+  const createContextError =
+    (namespaceEnabled && namespace.malformed) ||
+    (namespaceEnabled && namespace.ref
+      ? !namespace.query.isPending &&
+        (namespace.query.isError || !namespace.query.data?.resource_key)
+      : routeProject.unavailable)
+      ? 'Контекст проекта недоступен. Выберите проект ещё раз.'
+      : undefined
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
   const { data: projects = [] } = useProjects()
@@ -323,16 +343,14 @@ export function AppShell() {
       renderNavigation={({ compact, mobile, onNavigate }) => (
         <>
           {mobile && (
-            <Button asChild className="mb-3 min-h-11 w-full gap-2">
-              <Link
-                to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-                onClick={onNavigate}
-                aria-label={t('navigation.create')}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                {t('navigation.create')}
-              </Link>
-            </Button>
+            <CreateTaskAction
+              projectKey={projectKey}
+              contextPending={createContextPending}
+              contextError={createContextError}
+              className="mb-3 min-h-11 w-full gap-2"
+            >
+              {t('navigation.create')}
+            </CreateTaskAction>
           )}
           <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
@@ -375,7 +393,7 @@ export function AppShell() {
               {navigationTrigger}
               <Link
                 to="/"
-                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:-ml-1.5 md:flex"
+                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
                 aria-label={t('app.name')}
               >
                 <PlatformMark size="shell" withName={false} />
@@ -390,7 +408,8 @@ export function AppShell() {
             ) : (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     aria-label={t('navigation.projects')}
                     title={currentProject?.name ?? t('navigation.projects')}
@@ -401,7 +420,7 @@ export function AppShell() {
                       {currentProject?.name ?? t('navigation.projects')}
                     </span>
                     <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
@@ -428,15 +447,15 @@ export function AppShell() {
           }
           actions={
             <>
-              <Button asChild size="sm" className="min-h-10 min-w-10 gap-1 px-2.5 text-xs">
-                <Link
-                  to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-                  aria-label={t('navigation.create')}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden xl:inline">{t('navigation.create')}</span>
-                </Link>
-              </Button>
+              <CreateTaskAction
+                projectKey={projectKey}
+                contextPending={createContextPending}
+                contextError={createContextError}
+                size="sm"
+                className="min-h-10 min-w-10 gap-1 px-2.5 text-xs"
+              >
+                <span className="hidden xl:inline">{t('navigation.create')}</span>
+              </CreateTaskAction>
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button

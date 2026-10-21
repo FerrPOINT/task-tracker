@@ -1,0 +1,317 @@
+import { expect, describe, it, vi, afterEach, beforeEach } from 'vitest'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { I18nextProvider } from 'react-i18next'
+import i18n from '@/shared/i18n/config'
+import { LogWorkDialog } from './LogWorkDialog'
+import type { Worklog } from '@/entities/worklog/model'
+
+beforeEach(() => {
+  void i18n.changeLanguage('en')
+})
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+const worklog: Worklog = {
+  id: 'w1',
+  issueId: 'i1',
+  userId: 'u1',
+  userDisplayName: 'Tester',
+  timeSpentSeconds: 90,
+  startedAt: '2026-10-04T00:00:00Z',
+  comment: 'Existing entry',
+  createdAt: '2026-10-04T00:00:00Z',
+  updatedAt: '2026-10-04T00:00:00Z',
+}
+
+function wrapper({ children }: { children: React.ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return (
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </I18nextProvider>
+  )
+}
+
+describe('LogWorkDialog', () => {
+  it('submits valid input', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
+
+    fireEvent.change(screen.getByLabelText(/Time spent/i), {
+      target: { value: '1h 30m' },
+    })
+    fireEvent.change(screen.getByLabelText(/Started/i), {
+      target: { value: '2026-07-20' },
+    })
+    fireEvent.change(screen.getByLabelText(/Comment/i), {
+      target: { value: 'Testing' },
+    })
+
+    fireEvent.click(screen.getByText(/Save/i))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const arg = onSubmit.mock.calls[0]![0]
+    expect(arg.timeSpent).toBe('1h 30m')
+    expect(arg.comment).toBe('Testing')
+  })
+
+  it('shows validation error on empty time spent', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
+
+    fireEvent.click(screen.getByText(/Save/i))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Provide time spent/i)).toBeInTheDocument()
+    })
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('disables all controls and pending dismissal without submitting through the handler', async () => {
+    const onSubmit = vi.fn(),
+      onOpenChange = vi.fn()
+    render(<LogWorkDialog open onOpenChange={onOpenChange} onSubmit={onSubmit} isPending />, {
+      wrapper,
+    })
+    for (const label of [/Time spent/i, /Started/i, /Comment/i])
+      expect(screen.getByLabelText(label)).toBeDisabled()
+    for (const name of [/Start timer/i, /Cancel/i, /Saving/i, /Закрыть/])
+      expect(screen.getByRole('button', { name })).toBeDisabled()
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-busy', 'true')
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    await act(async () => {
+      fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+    })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps duration, date and comment after API failure and renders a localized error', async () => {
+    const onSubmit = vi.fn(),
+      onOpenChange = vi.fn()
+    const view = render(<LogWorkDialog open onOpenChange={onOpenChange} onSubmit={onSubmit} />, {
+      wrapper,
+    })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: '1m 31s' } })
+    fireEvent.change(screen.getByLabelText(/Started/i), { target: { value: '2026-10-03' } })
+    fireEvent.change(screen.getByLabelText(/Comment/i), { target: { value: 'Retained draft' } })
+    view.rerender(
+      <LogWorkDialog
+        open
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        error={new Error('Internal server implementation detail')}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(/Could not save the time entry/)
+    expect(screen.queryByText('Internal server implementation detail')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('1m 31s')
+    expect(screen.getByLabelText(/Started/i)).toHaveValue('2026-10-03')
+    expect(screen.getByLabelText(/Comment/i)).toHaveValue('Retained draft')
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('blocks duplicate submit events during asynchronous validation', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={onSubmit} worklog={worklog} />, {
+      wrapper,
+    })
+    const form = screen.getByRole('dialog').querySelector('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0]![0].timeSpent).toBe('1m 30s')
+  })
+
+  it('rejects durations above the backend 24-hour bound', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: '24h 1s' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cannot exceed 24 hours/)
+    expect(screen.getByLabelText(/Time spent/i)).toHaveAttribute('aria-invalid', 'true')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('validates an empty date instead of throwing during conversion', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={onSubmit} worklog={worklog} />, {
+      wrapper,
+    })
+    fireEvent.change(screen.getByLabelText(/Started/i), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/valid start date/)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('catches up delayed timer ticks and preserves seconds when stopping', async () => {
+    vi.useFakeTimers()
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={() => {}} />, { wrapper })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: '1m 1s' } })
+    fireEvent.click(screen.getByRole('button', { name: /Start timer/i }))
+    expect(screen.getByLabelText(/Time spent/i)).toBeDisabled()
+    clock.mockReturnValue(65900)
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.getByRole('timer')).toHaveTextContent('1m 5s')
+    fireEvent.click(screen.getByRole('button', { name: /Stop timer/i }))
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('2m 6s')
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('submits elapsed timer time even when the manual duration was empty', async () => {
+    vi.useFakeTimers()
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
+    fireEvent.click(screen.getByRole('button', { name: /Start timer/i }))
+    clock.mockReturnValue(65900)
+    await act(async () => {
+      fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+    })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit.mock.calls[0]![0].timeSpent).toBe('1m 5s')
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+  })
+
+  it('stops and clears the interval when the dialog closes externally', async () => {
+    vi.useFakeTimers()
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    const props = { onSubmit: vi.fn(), onOpenChange: vi.fn() }
+    const view = render(<LogWorkDialog open {...props} />, { wrapper })
+    fireEvent.click(screen.getByRole('button', { name: /Start timer/i }))
+    clock.mockReturnValue(5000)
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    view.rerender(<LogWorkDialog open={false} {...props} />)
+    await act(async () => {
+      vi.advanceTimersByTime(10000)
+    })
+    expect(vi.getTimerCount()).toBe(0)
+    view.rerender(<LogWorkDialog open {...props} />)
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('')
+    expect(props.onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite an invalid manual draft by starting the timer', async () => {
+    render(<LogWorkDialog open onOpenChange={() => {}} onSubmit={() => {}} />, { wrapper })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: 'draft typo' } })
+    fireEvent.click(screen.getByRole('button', { name: /Start timer/i }))
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('draft typo')
+    expect(screen.getByRole('alert')).toHaveTextContent(/Use a format/)
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+  })
+
+  it('closes a clean form without confirmation or POST', () => {
+    const onOpenChange = vi.fn(),
+      onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={onOpenChange} onSubmit={onSubmit} />, { wrapper })
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('confirms dirty cancel, retains the draft and focus on rejection, and never submits discard', async () => {
+    const onOpenChange = vi.fn(),
+      onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={onOpenChange} onSubmit={onSubmit} />, { wrapper })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: '1m 31s' } })
+    fireEvent.change(screen.getByLabelText(/Comment/i), { target: { value: 'Unsaved work' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(/Discard the time entry draft/)
+    expect(onOpenChange).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /^Cancel$/i }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('1m 31s')
+    expect(screen.getByLabelText(/Comment/i)).toHaveValue('Unsaved work')
+    await waitFor(() => expect(screen.getByLabelText(/Time spent/i)).toHaveFocus())
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: /Confirm/i }),
+    )
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('stops a running timer into the draft before asking to discard and retains elapsed on cancel', async () => {
+    vi.useFakeTimers()
+    const interval = vi.spyOn(globalThis, 'setInterval')
+    const clearInterval = vi.spyOn(globalThis, 'clearInterval')
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    const onOpenChange = vi.fn(),
+      onProtectionChange = vi.fn()
+    render(
+      <LogWorkDialog
+        open
+        onOpenChange={onOpenChange}
+        onSubmit={() => {}}
+        onProtectionChange={onProtectionChange}
+      />,
+      { wrapper },
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Start timer/i }))
+    const timerId = interval.mock.results.at(-1)!.value
+    clock.mockReturnValue(65300)
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }))
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+    expect(clearInterval).toHaveBeenCalledWith(timerId)
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: /^Cancel$/i }),
+    )
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('1m 5s')
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(onProtectionChange).toHaveBeenLastCalledWith({ dirty: true, pending: false })
+  })
+
+  it('awaits an async save, blocks dismissal and duplicate submit, and retains fields on rejection', async () => {
+    let reject!: (error: Error) => void
+    const onSubmit = vi.fn(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail
+        }),
+    )
+    const onOpenChange = vi.fn(),
+      onProtectionChange = vi.fn()
+    render(
+      <LogWorkDialog
+        open
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+        worklog={worklog}
+        onProtectionChange={onProtectionChange}
+      />,
+      { wrapper },
+    )
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(screen.getByLabelText(/Time spent/i)).toBeDisabled()
+    expect(onProtectionChange).toHaveBeenLastCalledWith({ dirty: false, pending: true })
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onOpenChange).not.toHaveBeenCalled()
+    await act(async () => reject(new Error('Private server detail')))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not save the time entry/)
+    expect(screen.getByLabelText(/Time spent/i)).toHaveValue('1m 30s')
+    expect(screen.getByLabelText(/Time spent/i)).toBeEnabled()
+    expect(screen.queryByText('Private server detail')).not.toBeInTheDocument()
+  })
+})

@@ -1,0 +1,522 @@
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Tag, Plus, X, RefreshCw } from 'lucide-react'
+import {
+  useProjectLabels,
+  useIssueLabels,
+  useAttachLabel,
+  useDetachLabel,
+  useCreateLabel,
+  invalidateIssueCaches,
+} from '@/shared/api/hooks'
+import { LabelMutationError, type Label as IssueLabel } from '@/api/label'
+import { Button, ConfirmDialog, ErrorState, Input, Label, LoadingState } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
+
+const PALETTE = [
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#6b7280',
+]
+type LabelInput = { name: string }
+type UnconfirmedLabel =
+  { kind: 'create'; name: string } | { kind: 'attach'; label: IssueLabel; fromForm: boolean }
+
+export function labelForeground(color: string): '#000000' | '#ffffff' {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return '#000000'
+  const channels = [1, 3, 5].map((index) => {
+    const value = parseInt(color.slice(index, index + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  const luminance = 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff'
+}
+
+export function LabelEditor({
+  issueId,
+  projectKey,
+  onProtectionChange,
+  inputRef,
+}: {
+  issueId: string
+  projectKey: string
+  onProtectionChange: (state: { dirty: boolean; pending: boolean }) => void
+  inputRef?: RefObject<HTMLInputElement | null>
+}) {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const projectQuery = useProjectLabels(projectKey)
+  const issueQuery = useIssueLabels(issueId)
+  const projectLabels = projectQuery.data ?? []
+  const issueLabels = issueQuery.data ?? []
+  const attach = useAttachLabel(issueId, projectKey)
+  const detach = useDetachLabel(issueId, projectKey)
+  const create = useCreateLabel(projectKey)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [unconfirmed, setUnconfirmed] = useState<UnconfirmedLabel | null>(null)
+  const [detaching, setDetaching] = useState<IssueLabel | null>(null)
+  const [detachError, setDetachError] = useState<string | null>(null)
+  const [unconfirmedDetach, setUnconfirmedDetach] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const createdLabel = useRef<IssueLabel | null>(null)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const localInputRef = useRef<HTMLInputElement>(null)
+  const nameRef = inputRef ?? localInputRef
+  const restoreFocus = useRef(false)
+  const nameId = useId()
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setFocus,
+    watch,
+    formState: { errors, isDirty },
+  } = useForm<LabelInput>({
+    resolver: zodResolver(z.object({ name: z.string().trim().min(1, t('labels.nameRequired')) })),
+    defaultValues: { name: '' },
+  })
+  const name = watch('name').trim()
+  const busy = submitting || create.isPending || attach.isPending || detach.isPending
+  const dirty = (creating && isDirty) || unconfirmed !== null
+  const unavailable =
+    projectQuery.isLoading ||
+    issueQuery.isLoading ||
+    Boolean(projectQuery.error || issueQuery.error) ||
+    !projectQuery.data ||
+    !issueQuery.data
+  const issueLabelIds = new Set(issueLabels.map((label) => label.id))
+
+  useEffect(() => {
+    onProtectionChange({ dirty, pending: busy })
+  }, [dirty, busy, onProtectionChange])
+  useEffect(() => () => onProtectionChange({ dirty: false, pending: false }), [onProtectionChange])
+  useEffect(() => {
+    if (creating) setFocus('name')
+    else if (restoreFocus.current) {
+      restoreFocus.current = false
+      if (addButtonRef.current && !addButtonRef.current.disabled) addButtonRef.current.focus()
+      else regionRef.current?.focus()
+    }
+  }, [creating, setFocus])
+
+  const finishAttach = (fromForm: boolean) => {
+    setUnconfirmed(null)
+    setError(null)
+    if (fromForm) {
+      createdLabel.current = null
+      reset({ name: '' })
+      restoreFocus.current = true
+      setCreating(false)
+    }
+    toast.success(t('common.saved'))
+  }
+  const discard = () => {
+    if (busy || submittingRef.current) return
+    createdLabel.current = null
+    reset({ name: '' })
+    setUnconfirmed(null)
+    setError(null)
+    setDiscardOpen(false)
+    restoreFocus.current = true
+    if (creating) setCreating(false)
+    else regionRef.current?.focus()
+  }
+  const attachSelected = async (label: IssueLabel, fromForm: boolean) => {
+    try {
+      await attach.mutateAsync(label.id)
+      finishAttach(fromForm)
+    } catch (cause) {
+      if (!(cause instanceof LabelMutationError) || cause.outcome === 'unknown') {
+        setUnconfirmed({ kind: 'attach', label, fromForm })
+        setError(t('labels.unknownAttach', { name: label.name }))
+      } else setError(t('labels.attachFailed'))
+    }
+  }
+  const verify = async () => {
+    if (!unconfirmed || busy || submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      if (unconfirmed.kind === 'create') {
+        const result = await projectQuery.refetch()
+        if (result.error || !result.data) {
+          setError(t('labels.verifyFailed'))
+          return
+        }
+        createdLabel.current = result.data.find((label) => label.name === unconfirmed.name) ?? null
+        setUnconfirmed(null)
+        setError(t(createdLabel.current ? 'labels.createdCheck' : 'labels.notCreated'))
+      } else {
+        const result = await issueQuery.refetch()
+        if (result.error || !result.data) {
+          setError(t('labels.verifyFailed'))
+          return
+        }
+        if (result.data.some((label) => label.id === unconfirmed.label.id)) {
+          invalidateIssueCaches(qc, projectKey, issueId)
+          finishAttach(unconfirmed.fromForm)
+        } else {
+          setUnconfirmed(null)
+          setError(t('labels.notAttached'))
+        }
+      }
+    } catch {
+      setError(t('labels.verifyFailed'))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (unconfirmed) {
+      await verify()
+      return
+    }
+    if (busy || submittingRef.current || unavailable) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      await handleSubmit(async (data) => {
+        let label = projectLabels.find((item) => item.name === data.name)
+        if (!label && createdLabel.current?.name === data.name) label = createdLabel.current
+        if (!label) {
+          try {
+            label = await create.mutateAsync({
+              name: data.name,
+              color: PALETTE[projectLabels.length % PALETTE.length] ?? '#6b7280',
+            })
+            createdLabel.current = label
+          } catch (cause) {
+            if (!(cause instanceof LabelMutationError) || cause.outcome === 'unknown') {
+              setUnconfirmed({ kind: 'create', name: data.name })
+              setError(t('labels.unknownCreate'))
+            } else setError(t('labels.createFailed'))
+            return
+          }
+        }
+        await attachSelected(label, true)
+      })(event)
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const attachExisting = async (label: IssueLabel) => {
+    if (busy || submittingRef.current || unavailable || unconfirmed) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      await attachSelected(label, false)
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const confirmDetach = async () => {
+    if (!detaching || busy || submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setDetachError(null)
+    try {
+      if (unconfirmedDetach) {
+        const result = await issueQuery.refetch()
+        if (result.error || !result.data) {
+          setDetachError(t('labels.verifyFailed'))
+          return
+        }
+        if (result.data.some((label) => label.id === detaching.id)) {
+          setUnconfirmedDetach(false)
+          setDetachError(t('labels.notDetached'))
+          return
+        }
+        invalidateIssueCaches(qc, projectKey, issueId)
+      } else await detach.mutateAsync(detaching.id)
+      setUnconfirmedDetach(false)
+      setDetaching(null)
+      toast.success(t('common.saved'))
+    } catch (cause) {
+      const unknown =
+        !(cause instanceof LabelMutationError) ||
+        cause.outcome === 'unknown' ||
+        cause.status === 404
+      setUnconfirmedDetach(unknown)
+      setDetachError(t(unknown ? 'labels.unknownDetach' : 'labels.detachFailed'))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const nameField = register('name')
+  const locked = busy || unavailable || unconfirmed !== null
+  const labelStyle = (color: string) => {
+    const safeColor = /^#[0-9a-f]{6}$/i.test(color) ? color : '#6b7280'
+    return { backgroundColor: safeColor, color: labelForeground(safeColor) }
+  }
+
+  return (
+    <div
+      ref={regionRef}
+      role="region"
+      aria-label={t('labels.title')}
+      aria-busy={busy}
+      tabIndex={-1}
+      className="min-w-0 space-y-2"
+      data-testid="label-editor"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Tag className="h-4 w-4" aria-hidden />
+          {t('labels.title')}
+        </h3>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('labels.refresh')}
+          title={t('labels.refresh')}
+          className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+          disabled={busy || projectQuery.isFetching || issueQuery.isFetching}
+          onClick={() => {
+            if (!busy && !submittingRef.current) {
+              void projectQuery.refetch()
+              void issueQuery.refetch()
+            }
+          }}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+      {(projectQuery.isLoading || issueQuery.isLoading) && <LoadingState />}
+      {projectQuery.error && (
+        <ErrorState
+          message={t('labels.projectLoadFailed')}
+          onRetry={() => {
+            if (!busy) void projectQuery.refetch()
+          }}
+        />
+      )}
+      {issueQuery.error && (
+        <ErrorState
+          message={t('labels.issueLoadFailed')}
+          onRetry={() => {
+            if (!busy) void issueQuery.refetch()
+          }}
+        />
+      )}
+      {issueLabels.length > 0 && (
+        <ul className="flex min-w-0 flex-wrap gap-1">
+          {issueLabels.map((label) => (
+            <li
+              key={label.id}
+              className="inline-flex min-h-11 max-w-full items-center rounded-md pl-3 text-xs font-medium sm:min-h-10"
+              style={labelStyle(label.color)}
+              data-testid="issue-label"
+            >
+              <span className="min-w-0 [overflow-wrap:anywhere]">{label.name}</span>
+              <button
+                type="button"
+                aria-label={t('labels.detach', { name: label.name })}
+                title={t('labels.detach', { name: label.name })}
+                disabled={locked}
+                onClick={() => {
+                  if (locked || submittingRef.current) return
+                  setDetachError(null)
+                  setUnconfirmedDetach(false)
+                  setDetaching(label)
+                }}
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:cursor-not-allowed sm:min-h-10 sm:min-w-10"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!unavailable && issueLabels.length === 0 && (
+        <p className="text-xs text-text-muted">{t('labels.none')}</p>
+      )}
+      {busy && !creating && !detaching && (
+        <p role="status" className="text-sm text-text-secondary">
+          {t('common.saving')}
+        </p>
+      )}
+      {creating ? (
+        <form
+          onSubmit={(event) => void submit(event)}
+          noValidate
+          aria-busy={busy}
+          className="space-y-2"
+        >
+          <Label htmlFor={nameId}>{t('labels.nameLabel')}</Label>
+          <Input
+            {...nameField}
+            ref={(element) => {
+              nameField.ref(element)
+              nameRef.current = element
+            }}
+            id={nameId}
+            disabled={busy || unconfirmed !== null}
+            aria-required="true"
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? `${nameId}-error` : undefined}
+            className="min-h-11 min-w-0 text-sm sm:min-h-10"
+            data-testid="label-name-input"
+          />
+          {errors.name && (
+            <p id={`${nameId}-error`} role="alert" className="text-sm text-danger">
+              {errors.name.message}
+            </p>
+          )}
+          {createdLabel.current?.name === name && (
+            <p role="status" className="text-sm text-text-secondary">
+              {t('labels.createdInProject')}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-danger [overflow-wrap:anywhere]">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={busy || (unavailable && !unconfirmed)}
+              className="min-h-11 sm:min-h-10"
+              data-testid="label-submit"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              {busy ? t('common.saving') : unconfirmed ? t('labels.verify') : t('labels.add')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              className="min-h-11 sm:min-h-10"
+              onClick={() => {
+                if (busy || submittingRef.current) return
+                if (dirty) setDiscardOpen(true)
+                else discard()
+              }}
+            >
+              <X className="h-4 w-4" aria-hidden />
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="flex min-w-0 flex-wrap gap-1">
+            {projectLabels
+              .filter((label) => !issueLabelIds.has(label.id))
+              .map((label) => (
+                <button
+                  key={label.id}
+                  type="button"
+                  disabled={locked}
+                  aria-label={t('labels.attach', { name: label.name })}
+                  onClick={() => void attachExisting(label)}
+                  style={labelStyle(label.color)}
+                  className="inline-flex min-h-11 max-w-full items-center gap-1 rounded-md px-3 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:cursor-not-allowed sm:min-h-10"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{label.name}</span>
+                </button>
+              ))}
+            <Button
+              ref={addButtonRef}
+              type="button"
+              variant="ghost"
+              disabled={locked}
+              className="min-h-11 px-2 text-sm sm:min-h-10"
+              onClick={() => {
+                if (locked || submittingRef.current) return
+                setError(null)
+                setCreating(true)
+              }}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('labels.create')}
+            </Button>
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-danger [overflow-wrap:anywhere]">
+              {error}
+            </p>
+          )}
+          {unconfirmed && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={busy}
+                className="min-h-11 sm:min-h-10"
+                onClick={() => void verify()}
+              >
+                {busy ? t('common.saving') : t('labels.verify')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                className="min-h-11 sm:min-h-10"
+                onClick={() => setDiscardOpen(true)}
+              >
+                {t('common.cancel')}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title={t('labels.discardTitle')}
+        description={t('labels.discardDescription')}
+        onConfirm={discard}
+        isPending={busy}
+        returnFocusRef={{
+          get current() {
+            const input = nameRef.current
+            if (input?.isConnected && !input.disabled) return input
+            const button = addButtonRef.current
+            return button?.isConnected && !button.disabled ? button : regionRef.current
+          },
+        }}
+        fallbackFocusRef={regionRef}
+      />
+      <ConfirmDialog
+        open={detaching !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy && !submittingRef.current) {
+            setDetaching(null)
+            setDetachError(null)
+            setUnconfirmedDetach(false)
+          }
+        }}
+        title={t('labels.detach', { name: detaching?.name ?? '' })}
+        description={t('labels.detachDescription')}
+        onConfirm={() => void confirmDetach()}
+        isPending={busy}
+        error={detachError}
+        fallbackFocusRef={regionRef}
+        confirmLabel={unconfirmedDetach ? t('labels.verify') : undefined}
+      />
+    </div>
+  )
+}

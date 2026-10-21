@@ -1,0 +1,440 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import i18n from '@/shared/i18n/config'
+import { LabelMutationError, type Label } from '@/api/label'
+import { LabelEditor, labelForeground } from './LabelEditor'
+import { toast } from 'sonner'
+
+const mocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  attach: vi.fn(),
+  detach: vi.fn(),
+  projectRefetch: vi.fn(),
+  issueRefetch: vi.fn(),
+  invalidate: vi.fn(),
+  protection: vi.fn(),
+}))
+const queries = vi.hoisted(() => ({
+  project: {
+    data: [] as Label[] | undefined,
+    isLoading: false,
+    isFetching: false,
+    error: null as Error | null,
+  },
+  issue: {
+    data: [] as Label[] | undefined,
+    isLoading: false,
+    isFetching: false,
+    error: null as Error | null,
+  },
+}))
+const bug: Label = { id: 'l1', name: 'bug', color: '#ef4444', project_id: 'p1' }
+const feature: Label = { id: 'l2', name: 'feature', color: '#22c55e', project_id: 'p1' }
+const created: Label = { id: 'l3', name: 'qa', color: '#3b82f6', project_id: 'p1' }
+vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
+vi.mock('@/shared/api/hooks', () => ({
+  useProjectLabels: () => ({ ...queries.project, refetch: mocks.projectRefetch }),
+  useIssueLabels: () => ({ ...queries.issue, refetch: mocks.issueRefetch }),
+  useAttachLabel: () => ({ mutateAsync: mocks.attach, isPending: false }),
+  useDetachLabel: () => ({ mutateAsync: mocks.detach, isPending: false }),
+  useCreateLabel: () => ({ mutateAsync: mocks.create, isPending: false }),
+  invalidateIssueCaches: mocks.invalidate,
+}))
+beforeEach(() => {
+  vi.resetAllMocks()
+  void i18n.changeLanguage('en')
+  Object.assign(queries.project, {
+    data: [bug, feature],
+    isLoading: false,
+    isFetching: false,
+    error: null,
+  })
+  Object.assign(queries.issue, { data: [bug], isLoading: false, isFetching: false, error: null })
+  mocks.create.mockResolvedValue(created)
+  mocks.attach.mockResolvedValue(undefined)
+  mocks.detach.mockResolvedValue(undefined)
+  mocks.projectRefetch.mockResolvedValue({ data: [bug, feature] })
+  mocks.issueRefetch.mockResolvedValue({ data: [bug] })
+})
+function setup() {
+  const client = new QueryClient()
+  return render(
+    <LabelEditor issueId="i1" projectKey="TT" onProtectionChange={mocks.protection} />,
+    {
+      wrapper: ({ children }) => (
+        <ThemeProvider>
+          <QueryClientProvider client={client}>
+            <MemoryRouter>{children}</MemoryRouter>
+          </QueryClientProvider>
+        </ThemeProvider>
+      ),
+    },
+  )
+}
+const start = () => {
+  fireEvent.click(screen.getByRole('button', { name: 'New label' }))
+  return screen.getByLabelText('Label name', { exact: true })
+}
+const submit = () => fireEvent.submit(screen.getByTestId('label-name-input').closest('form')!)
+const confirmation = () =>
+  within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirm' })
+const remove = () => fireEvent.click(screen.getByRole('button', { name: 'Remove label bug' }))
+const check = () => fireEvent.click(screen.getByRole('button', { name: 'Check result' }))
+
+describe('LabelEditor', () => {
+  it('preserves readable palette text and accessible named actions', () => {
+    expect(labelForeground('#ef4444')).toBe('#000000')
+    expect(labelForeground('#1e293b')).toBe('#ffffff')
+    setup()
+    expect(screen.getByRole('region', { name: 'Labels' })).toBeVisible()
+    expect(screen.getByText('bug')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Attach label feature' })).toBeEnabled()
+  })
+  it('distinguishes loading and initial failure from an empty directory', () => {
+    queries.project.data = undefined
+    queries.project.isLoading = true
+    queries.issue.data = undefined
+    const view = setup()
+    expect(screen.queryByText('No labels')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New label' })).toBeDisabled()
+    queries.project.isLoading = false
+    queries.project.error = new Error('private')
+    view.rerender(
+      <LabelEditor issueId="i1" projectKey="TT" onProtectionChange={mocks.protection} />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load project labels.')
+    expect(screen.queryByText('No labels')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.projectRefetch).toHaveBeenCalledOnce()
+  })
+  it('shows a real empty state only after successful reads', () => {
+    queries.project.data = []
+    queries.issue.data = []
+    setup()
+    expect(screen.getByText('No labels')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'New label' })).toBeEnabled()
+  })
+  it('keeps stale labels and a draft but disables writes after a refetch failure', async () => {
+    const view = setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'draft' } })
+    queries.issue.error = new Error('private')
+    queries.project.data = [bug, feature, created]
+    view.rerender(
+      <LabelEditor issueId="i1" projectKey="TT" onProtectionChange={mocks.protection} />,
+    )
+    expect(screen.getByText('bug')).toBeVisible()
+    expect(field).toHaveValue('draft')
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load issue labels.')
+    expect(screen.getByTestId('label-submit')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove label bug' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.issueRefetch).toHaveBeenCalledOnce()
+    submit()
+    await waitFor(() => expect(mocks.create).not.toHaveBeenCalled())
+  })
+  it('validates whitespace and associates the required field error before writing', async () => {
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: '   ' } })
+    submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a label name.')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAttribute('aria-required', 'true')
+    expect(field.getAttribute('aria-describedby')).toBe(screen.getByRole('alert').id)
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.attach).not.toHaveBeenCalled()
+  })
+  it('blocks duplicate submit and cancel across both creation and attachment', async () => {
+    let createDone!: (value: Label) => void
+    let attachDone!: () => void
+    mocks.create.mockImplementationOnce(
+      () =>
+        new Promise<Label>((resolve) => {
+          createDone = resolve
+        }),
+    )
+    mocks.attach.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          attachDone = resolve
+        }),
+    )
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: '  qa  ' } })
+    submit()
+    submit()
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce())
+    expect(mocks.create).toHaveBeenCalledWith({ name: 'qa', color: '#eab308' })
+    expect(field).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove label bug' })).toBeDisabled()
+    expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: true, pending: true })
+    await act(async () => {
+      createDone(created)
+    })
+    await waitFor(() => expect(mocks.attach).toHaveBeenCalledWith('l3'))
+    expect(field).toBeDisabled()
+    expect(toast.success).not.toHaveBeenCalled()
+    await act(async () => {
+      attachDone()
+    })
+    await waitFor(() => expect(screen.queryByTestId('label-name-input')).not.toBeInTheDocument())
+    expect(toast.success).toHaveBeenCalledOnce()
+    expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: false, pending: false })
+  })
+  it('reuses a confirmed created label after rejected attachment without creating it twice', async () => {
+    mocks.attach.mockRejectedValueOnce(new LabelMutationError(403))
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'qa' } })
+    submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not attach the label.')
+    expect(screen.getByRole('status')).toHaveTextContent('The label is saved in the project.')
+    expect(field).toHaveValue('qa')
+    expect(toast.success).not.toHaveBeenCalled()
+    submit()
+    await waitFor(() => expect(mocks.attach).toHaveBeenCalledTimes(2))
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(mocks.attach).toHaveBeenLastCalledWith('l3')
+  })
+  it('attaches an existing exact name without creating another project label', async () => {
+    setup()
+    fireEvent.change(start(), { target: { value: ' feature ' } })
+    submit()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.attach).toHaveBeenCalledWith('l2')
+  })
+  it('preserves a rejected create draft without exposing diagnostics', async () => {
+    mocks.create.mockRejectedValueOnce(new LabelMutationError(400))
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'qa' } })
+    submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not create the label.')
+    expect(field).toHaveValue('qa')
+    expect(field).toBeEnabled()
+    expect(mocks.attach).not.toHaveBeenCalled()
+  })
+  it('verifies unknown creation with GET only and requires a separate explicit attachment', async () => {
+    mocks.create.mockRejectedValueOnce(new Error('private transport'))
+    mocks.projectRefetch
+      .mockResolvedValueOnce({ error: new Error('private GET') })
+      .mockResolvedValueOnce({ data: [created] })
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'qa' } })
+    submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The outcome of label creation is unknown.',
+    )
+    expect(field).toBeDisabled()
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not check the result'),
+    )
+    expect(field).toBeDisabled()
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('The label was found in the project.'),
+    )
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(mocks.attach).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(field).toBeEnabled()
+    submit()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(mocks.attach).toHaveBeenCalledWith('l3')
+  })
+  it('does not automatically repeat creation after GET proves absence', async () => {
+    mocks.create.mockRejectedValueOnce(new LabelMutationError(500))
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'qa' } })
+    submit()
+    await screen.findByRole('button', { name: 'Check result' })
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('The label was not found'),
+    )
+    expect(field).toHaveValue('qa')
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(mocks.attach).not.toHaveBeenCalled()
+    submit()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+  })
+  it('verifies unknown attachment and retains the created receipt when GET proves absence', async () => {
+    mocks.attach.mockRejectedValueOnce(new LabelMutationError(500))
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'qa' } })
+    submit()
+    await screen.findByRole('button', { name: 'Check result' })
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('The label is not attached'),
+    )
+    expect(field).toHaveValue('qa')
+    expect(mocks.attach).toHaveBeenCalledOnce()
+    submit()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(mocks.attach).toHaveBeenCalledTimes(2)
+  })
+  it('confirms a committed attachment via GET without another POST or losing the form', async () => {
+    mocks.attach.mockRejectedValueOnce(new LabelMutationError(500))
+    mocks.issueRefetch.mockResolvedValueOnce({ data: [created] })
+    setup()
+    fireEvent.change(start(), { target: { value: 'qa' } })
+    submit()
+    await screen.findByRole('button', { name: 'Check result' })
+    check()
+    await waitFor(() => expect(screen.queryByTestId('label-name-input')).not.toBeInTheDocument())
+    expect(mocks.attach).toHaveBeenCalledOnce()
+    expect(mocks.invalidate).toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledOnce()
+  })
+  it('protects direct attachment from duplicate clicks and an unknown outcome', async () => {
+    let fail!: (reason: Error) => void
+    mocks.attach.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        }),
+    )
+    mocks.issueRefetch
+      .mockResolvedValueOnce({ error: new Error('GET private') })
+      .mockResolvedValueOnce({ data: [bug, feature] })
+    setup()
+    const button = screen.getByRole('button', { name: 'Attach label feature' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(mocks.attach).toHaveBeenCalledOnce())
+    expect(button).toBeDisabled()
+    expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: false, pending: true })
+    await act(async () => {
+      fail(new Error('POST private'))
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The outcome of attaching label feature is unknown.',
+    )
+    expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: true, pending: false })
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not check the result'),
+    )
+    expect(button).toBeDisabled()
+    check()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.attach).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+  it('confirms local dirty discard and restores focus without writing', async () => {
+    setup()
+    const field = start()
+    fireEvent.change(field, { target: { value: 'unsaved' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(field).toHaveValue('unsaved')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(confirmation())
+    await waitFor(() => expect(screen.queryByTestId('label-name-input')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'New label' })).toHaveFocus()
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.attach).not.toHaveBeenCalled()
+  })
+  it('does not detach on cancel and retains confirmation after rejected deletion', async () => {
+    mocks.detach.mockRejectedValueOnce(new LabelMutationError(403))
+    setup()
+    remove()
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+    expect(mocks.detach).not.toHaveBeenCalled()
+    remove()
+    fireEvent.click(confirmation())
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not remove the label')
+    expect(screen.getByRole('alertdialog')).toBeVisible()
+    expect(toast.success).not.toHaveBeenCalled()
+    fireEvent.click(confirmation())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mocks.detach).toHaveBeenCalledTimes(2)
+  })
+  it('locks pending detach and focuses the labels region after its last row disappears', async () => {
+    let done!: () => void
+    mocks.detach.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve
+        }),
+    )
+    setup()
+    remove()
+    fireEvent.click(confirmation())
+    fireEvent.click(confirmation())
+    await waitFor(() => expect(mocks.detach).toHaveBeenCalledOnce())
+    expect(confirmation()).toBeDisabled()
+    expect(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
+    ).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' })
+    expect(screen.getByRole('alertdialog')).toBeVisible()
+    queries.issue.data = []
+    await act(async () => {
+      done()
+    })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Labels' })).toHaveFocus()
+  })
+  it('keeps unknown detach through failed GET and requires explicit confirmation when the row remains', async () => {
+    mocks.detach.mockRejectedValueOnce(new LabelMutationError(500))
+    mocks.issueRefetch
+      .mockResolvedValueOnce({ error: new Error('private') })
+      .mockResolvedValueOnce({ data: [bug] })
+    setup()
+    remove()
+    fireEvent.click(confirmation())
+    await screen.findByRole('button', { name: 'Check result' })
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not check the result'),
+    )
+    check()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('The label is still attached'),
+    )
+    expect(mocks.detach).toHaveBeenCalledOnce()
+    fireEvent.click(confirmation())
+    await waitFor(() => expect(toast.success).toHaveBeenCalledOnce())
+    expect(mocks.detach).toHaveBeenCalledTimes(2)
+  })
+  it('confirms detach via GET absence without repeating DELETE', async () => {
+    mocks.detach.mockRejectedValueOnce(new LabelMutationError(404))
+    mocks.issueRefetch.mockResolvedValueOnce({ data: [] })
+    setup()
+    remove()
+    fireEvent.click(confirmation())
+    await screen.findByRole('button', { name: 'Check result' })
+    check()
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mocks.detach).toHaveBeenCalledOnce()
+    expect(toast.success).toHaveBeenCalledOnce()
+    expect(mocks.invalidate).toHaveBeenCalled()
+  })
+  it('clears its protection on unmount without saving the draft', async () => {
+    const view = setup()
+    fireEvent.change(start(), { target: { value: 'draft' } })
+    await waitFor(() =>
+      expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: true, pending: false }),
+    )
+    view.unmount()
+    expect(mocks.protection).toHaveBeenLastCalledWith({ dirty: false, pending: false })
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+})

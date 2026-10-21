@@ -1,19 +1,23 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
-import { ProjectAvatar } from '@pdlc/ui/ui'
-import { useEffect, useState } from 'react'
-import { ProjectLink as Link } from '@/shared/lib/project-navigation'
-import { useParams, useSearchParams } from 'react-router'
-import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState, LoadingState } from '@pdlc/ui/ui'
+import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
+  ProjectAvatar,
+  Button,
+  ErrorState,
+  LoadingState,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  UserAvatar,
 } from '@pdlc/ui/ui'
+import { useEffect, useState } from 'react'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useParams, useSearchParams } from 'react-router'
+import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
 import {
   useBacklog,
   useSprints,
@@ -25,7 +29,7 @@ import {
   useRemoveIssueFromSprint,
 } from '@/shared/api/hooks'
 import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
-import { UserAvatar } from '@pdlc/ui/ui'
+
 import type { components } from '@/api/generated'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 
@@ -254,8 +258,6 @@ export function ProjectBacklogPage() {
     setSearchParams(next)
   }
 
-  const createIssuePath = `/issues/create?project_key=${encodeURIComponent(key)}`
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -280,12 +282,15 @@ export function ProjectBacklogPage() {
             <Plus className="h-4 w-4" />
             {t('backlog.createSprint')}
           </Button>
-          <Button variant="outline" size="sm" className="min-h-10 gap-1 sm:min-h-10" asChild>
-            <Link to={createIssuePath} state={{ project_key: key }}>
-              <Plus className="h-4 w-4" />
-              <span>{t('backlog.createIssue')}</span>
-            </Link>
-          </Button>
+          <CreateTaskAction
+            projectKey={key}
+            aria-label={t('backlog.createIssue')}
+            variant="outline"
+            size="sm"
+            className="min-h-10 gap-1 sm:min-h-10"
+          >
+            <span>{t('backlog.createIssue')}</span>
+          </CreateTaskAction>
         </div>
       </div>
 
@@ -418,17 +423,14 @@ export function ProjectBacklogPage() {
       <Section
         title={t('backlog.backlogSection', { count: backlog_issues.length })}
         action={
-          <Button
+          <CreateTaskAction
+            projectKey={key}
             variant="outline"
             size="sm"
             className="min-h-10 px-2.5 text-xs sm:min-h-10"
-            asChild
           >
-            <Link to={createIssuePath} state={{ project_key: key }}>
-              <Plus className="h-4 w-4" />
-              {t('navigation.create')}
-            </Link>
-          </Button>
+            {t('navigation.create')}
+          </CreateTaskAction>
         }
         items={backlog_issues}
         renderItem={(issue) => (

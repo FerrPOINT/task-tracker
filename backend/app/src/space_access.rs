@@ -224,6 +224,40 @@ impl SpaceActor {
             .map(|s| s.space.clone())
             .collect())
     }
+    /// A portfolio catalog contains its explicit children, without adding project links
+    /// or manufacturing access. Every included target must independently be admitted.
+    pub fn catalog_spaces(
+        &self,
+        root: Option<&SpaceRef>,
+        working_only: bool,
+    ) -> Result<Vec<SpaceRef>, AppError> {
+        let readable = self.readable_spaces()?;
+        let mut allowed = if working_only {
+            self.active_spaces()?
+        } else {
+            readable.clone()
+        };
+        if let Some(root) = root {
+            if !root.valid() || !readable.contains(root) {
+                return Err(AppError::Forbidden);
+            }
+            allowed.retain(|space| {
+                space == root
+                    || self
+                        .admission
+                        .inheritance
+                        .as_ref()
+                        .is_some_and(|hierarchy| {
+                            hierarchy
+                                .spaces
+                                .iter()
+                                .any(|grant| &grant.source.space == root && &grant.space == space)
+                        })
+            });
+        }
+        Ok(allowed)
+    }
+
     pub fn permit(&self) -> Result<SpaceWritePermit, AppError> {
         if !self.is_current() || !self.may_write {
             return Err(AppError::Forbidden);
@@ -480,6 +514,142 @@ pub(crate) mod request_context_tests {
         })
         .await;
     }
+    #[test]
+    fn portfolio_catalog_follows_hierarchy_without_adding_an_access_basis() {
+        use shared::space_access::{InheritedSpace, SpaceInheritance};
+        let user = UserId::new();
+        let identity = CentralIdentity {
+            issuer: "https://auth.example.test".into(),
+            subject: user.to_string(),
+        };
+        let now = chrono::Utc::now().timestamp();
+        let validity = AdmissionValidity::confirmed(now, now + 30, i64::MAX).unwrap();
+        let registry = uuid::Uuid::new_v4();
+        let refs: Vec<SpaceRef> = (0..4)
+            .map(|_| SpaceRef {
+                registry_instance_id: registry,
+                space_id: uuid::Uuid::new_v4(),
+            })
+            .collect();
+        let parent = ConfirmedSpace {
+            space: refs[0].clone(),
+            revision: 1,
+            state: SpaceState::Active,
+        };
+        let mut actor = SpaceActor {
+            user,
+            identity: identity.clone(),
+            window: SpaceOwnerAuthority::confirmed(identity.clone(), validity).unwrap(),
+            admission: SpaceAdmission {
+                schema_version: 2,
+                identity,
+                identity_active: true,
+                policy_revision: 1,
+                validity,
+                policy: SpaceAccessPolicy::Selected {
+                    spaces: vec![refs[0].clone(), refs[3].clone()],
+                },
+                spaces: refs
+                    .iter()
+                    .map(|space| ConfirmedSpace {
+                        space: space.clone(),
+                        revision: 1,
+                        state: SpaceState::Active,
+                    })
+                    .collect(),
+                inheritance: Some(SpaceInheritance {
+                    revision: 1,
+                    spaces: refs[1..3]
+                        .iter()
+                        .map(|space| InheritedSpace {
+                            space: space.clone(),
+                            source: parent.clone(),
+                        })
+                        .collect(),
+                }),
+            },
+            may_write: false,
+        };
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[0]), false).unwrap(),
+            refs[..3]
+        );
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[1]), false).unwrap(),
+            vec![refs[1].clone()]
+        );
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[3]), false).unwrap(),
+            vec![refs[3].clone()]
+        );
+        assert!(
+            actor.permit().is_err(),
+            "catalog grouping cannot grant a product write role"
+        );
+        actor.admission.policy = SpaceAccessPolicy::All {};
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[0]), false).unwrap(),
+            refs[..3]
+        );
+        actor.admission.policy = SpaceAccessPolicy::Selected {
+            spaces: vec![refs[1].clone()],
+        };
+        actor.admission.inheritance.as_mut().unwrap().spaces.clear();
+        assert!(
+            actor.catalog_spaces(Some(&refs[0]), false).is_err(),
+            "child membership cannot open parent"
+        );
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[1]), false).unwrap(),
+            vec![refs[1].clone()]
+        );
+        actor.admission.policy = SpaceAccessPolicy::Selected {
+            spaces: vec![refs[0].clone(), refs[1].clone()],
+        };
+        actor
+            .admission
+            .inheritance
+            .as_mut()
+            .unwrap()
+            .spaces
+            .push(InheritedSpace {
+                space: refs[2].clone(),
+                source: parent.clone(),
+            });
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[0]), false).unwrap(),
+            vec![refs[0].clone(), refs[2].clone()]
+        );
+        assert_eq!(
+            actor.catalog_spaces(None, false).unwrap(),
+            refs[..3],
+            "direct child access survives unlink"
+        );
+        actor.admission.policy = SpaceAccessPolicy::Selected {
+            spaces: vec![refs[0].clone()],
+        };
+        actor.admission.spaces[0].state = SpaceState::Archived;
+        for grant in &mut actor.admission.inheritance.as_mut().unwrap().spaces {
+            grant.source.state = SpaceState::Archived;
+        }
+        assert!(
+            actor
+                .catalog_spaces(Some(&refs[0]), true)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            actor.catalog_spaces(Some(&refs[0]), false).unwrap(),
+            vec![refs[0].clone(), refs[2].clone()]
+        );
+        assert!(
+            actor
+                .restrict_deadline(std::time::Instant::now())
+                .catalog_spaces(None, false)
+                .is_err()
+        );
+    }
+
     #[test]
     fn archived_admission_cannot_borrow_hidden_active_space() {
         let user = UserId::new();

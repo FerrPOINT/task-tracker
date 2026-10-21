@@ -1,0 +1,196 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { isUnknownWriteOutcome } from '@sdlc/ui/lib'
+import { Button, FormDialog, FormField, Input, Textarea, UnsavedChangesGuard } from '@sdlc/ui/ui'
+import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
+
+interface SprintFormDialogProps {
+  open: boolean
+  sprint?: Sprint | null
+  onOpenChange: (open: boolean) => void
+  onSubmit: (values: CreateSprintRequest | UpdateSprintRequest) => void | Promise<unknown>
+  isPending: boolean
+  readOnly?: boolean
+  error?: Error | null
+  returnFocusRef?: RefObject<HTMLElement | null>
+  fallbackFocusRef?: RefObject<HTMLElement | null>
+}
+
+const emptyValues = { name: '', goal: '', startDate: '', endDate: '' }
+
+export function SprintFormDialog({
+  open,
+  sprint,
+  onOpenChange,
+  onSubmit,
+  isPending,
+  readOnly = false,
+  error,
+  returnFocusRef,
+  fallbackFocusRef,
+}: SprintFormDialogProps) {
+  const { t } = useTranslation()
+  const [values, setValues] = useState(emptyValues)
+  const [initial, setInitial] = useState(emptyValues)
+  const [dateError, setDateError] = useState<string | null>(null)
+  const [failure, setFailure] = useState<unknown>(null)
+  const session = useRef<string | null>(null)
+  const endField = useRef<HTMLInputElement>(null)
+  const isEdit = Boolean(sprint)
+  const dirty = Object.keys(values).some(
+    (key) => values[key as keyof typeof values] !== initial[key as keyof typeof initial],
+  )
+  const activeFailure = failure ?? error
+  const status =
+    activeFailure && typeof activeFailure === 'object' && 'status' in activeFailure
+      ? activeFailure.status
+      : undefined
+  const unknownOutcome = Boolean(activeFailure && isUnknownWriteOutcome(activeFailure))
+  const terminal = status === 403 || status === 404
+  const cannotSubmit =
+    readOnly || terminal || unknownOutcome || isPending || (!isEdit && !values.name.trim())
+  const errorMessage = activeFailure
+    ? unknownOutcome
+      ? t('sprints.resultUnknown')
+      : status === 403
+        ? t('sprints.saveDenied')
+        : status === 404
+          ? t('sprints.saveNotFound')
+          : t('sprints.saveRejected')
+    : null
+
+  useEffect(() => {
+    if (!open) {
+      session.current = null
+      return
+    }
+    const identity = sprint?.id ?? 'create'
+    if (session.current === identity) return
+    session.current = identity
+    const next = {
+      name: sprint?.name ?? '',
+      goal: sprint?.goal ?? '',
+      startDate: sprint?.start_date?.slice(0, 10) ?? '',
+      endDate: sprint?.end_date?.slice(0, 10) ?? '',
+    }
+    setInitial(next)
+    setValues(next)
+    setDateError(null)
+    setFailure(null)
+  }, [open, sprint])
+
+  function submit() {
+    if (cannotSubmit) return
+    if (values.startDate && values.endDate && values.endDate < values.startDate) {
+      setDateError(t('sprints.endBeforeStart'))
+      endField.current?.focus()
+      return
+    }
+    setDateError(null)
+    setFailure(null)
+    const { name, goal, startDate, endDate } = values
+    const payload = isEdit
+      ? {
+          name: name || undefined,
+          goal: goal === '' ? null : goal,
+          start_date: startDate ? `${startDate}T00:00:00+00:00` : null,
+          end_date: endDate ? `${endDate}T00:00:00+00:00` : null,
+        }
+      : {
+          name,
+          goal: goal || undefined,
+          start_date: startDate ? `${startDate}T00:00:00+00:00` : undefined,
+          end_date: endDate ? `${endDate}T00:00:00+00:00` : undefined,
+        }
+    try {
+      return Promise.resolve(onSubmit(payload)).then(() => undefined, setFailure)
+    } catch (error) {
+      setFailure(error)
+    }
+  }
+
+  return (
+    <>
+      <UnsavedChangesGuard
+        when={open && dirty}
+        returnFocusRef={returnFocusRef}
+        fallbackFocusRef={fallbackFocusRef}
+      />
+      <FormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title={isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}
+        dirty={dirty}
+        pending={isPending}
+        error={errorMessage}
+        onSubmit={submit}
+        returnFocusRef={returnFocusRef}
+        fallbackFocusRef={fallbackFocusRef}
+        actions={
+          <Button type="submit" disabled={cannotSubmit}>
+            {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
+          </Button>
+        }
+      >
+        <FormField id="sprint-form-name" label={t('sprints.name')} required={!isEdit}>
+          {(attrs) => (
+            <Input
+              {...attrs}
+              value={values.name}
+              onChange={(event) => setValues({ ...values, name: event.target.value })}
+              placeholder={t('sprints.namePlaceholder')}
+              disabled={readOnly || terminal}
+            />
+          )}
+        </FormField>
+        <FormField id="sprint-form-goal" label={t('sprints.goal')}>
+          {(attrs) => (
+            <Textarea
+              {...attrs}
+              rows={3}
+              value={values.goal}
+              onChange={(event) => setValues({ ...values, goal: event.target.value })}
+              placeholder={t('sprints.goalPlaceholder')}
+              disabled={readOnly || terminal}
+            />
+          )}
+        </FormField>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField id="sprint-form-startdate" label={t('sprints.startDate')}>
+            {(attrs) => (
+              <Input
+                {...attrs}
+                type="date"
+                value={values.startDate}
+                disabled={readOnly || terminal}
+                onChange={(event) => {
+                  setValues({ ...values, startDate: event.target.value })
+                  setDateError(null)
+                }}
+              />
+            )}
+          </FormField>
+          <FormField
+            id="sprint-form-enddate"
+            label={t('sprints.endDate')}
+            error={dateError ?? undefined}
+          >
+            {(attrs) => (
+              <Input
+                {...attrs}
+                ref={endField}
+                type="date"
+                value={values.endDate}
+                disabled={readOnly || terminal}
+                onChange={(event) => {
+                  setValues({ ...values, endDate: event.target.value })
+                  setDateError(null)
+                }}
+              />
+            )}
+          </FormField>
+        </div>
+      </FormDialog>
+    </>
+  )
+}

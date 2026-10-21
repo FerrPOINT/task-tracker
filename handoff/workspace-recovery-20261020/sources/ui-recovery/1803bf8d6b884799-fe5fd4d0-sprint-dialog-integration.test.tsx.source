@@ -1,0 +1,244 @@
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { ApiError, ThemeProvider } from '@sdlc/ui/lib'
+import i18n from '@/shared/i18n/config'
+import { ProjectBacklogPage } from './'
+
+const mocks = vi.hoisted(() => ({
+  backlog: vi.fn(),
+  sprints: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  createReset: vi.fn(),
+  updateReset: vi.fn(),
+}))
+vi.mock('@/shared/api/hooks', () => ({
+  useBacklog: (...args: unknown[]) => mocks.backlog(...args),
+  useSprints: (...args: unknown[]) => mocks.sprints(...args),
+  useCreateSprint: () => ({
+    mutateAsync: mocks.create,
+    reset: mocks.createReset,
+    isPending: false,
+    error: null,
+  }),
+  useUpdateSprint: () => ({
+    mutateAsync: mocks.update,
+    reset: mocks.updateReset,
+    isPending: false,
+    error: null,
+  }),
+  useStartSprint: () => ({ mutate: vi.fn(), isPending: false }),
+  useCloseSprint: () => ({ mutate: vi.fn(), isPending: false }),
+  useMoveIssueToSprint: () => ({ mutate: vi.fn(), isPending: false }),
+  useRemoveIssueFromSprint: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+const sprint = {
+  id: 's1',
+  name: 'Sprint 1',
+  goal: '',
+  state: 'active',
+  velocity: 0,
+  issue_ids: [],
+  start_date: null,
+  end_date: null,
+}
+const backlog = {
+  project_id: 'p1',
+  project_key: 'TT',
+  backlog_total: 0,
+  backlog_offset: 0,
+  backlog_limit: 100,
+  sprint,
+  sprint_issues: [],
+  backlog_issues: [],
+}
+const content = createContext<ReactNode>(null)
+let testRouter: ReturnType<typeof createMemoryRouter>
+function Content() {
+  return useContext(content)
+}
+function Wrapper({ children }: { children: ReactNode }) {
+  const [router] = useState(() =>
+    createMemoryRouter([{ path: '/projects/:projectKey/backlog', element: <Content /> }], {
+      initialEntries: ['/projects/TT/backlog'],
+    }),
+  )
+  testRouter = router
+  return (
+    <ThemeProvider>
+      <content.Provider value={children}>
+        <RouterProvider router={router} />
+      </content.Provider>
+    </ThemeProvider>
+  )
+}
+beforeEach(async () => {
+  vi.resetAllMocks()
+  await i18n.changeLanguage('en')
+  mocks.backlog.mockReturnValue({ data: backlog, isLoading: false, error: null })
+  mocks.sprints.mockReturnValue({
+    data: [sprint],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn().mockResolvedValue({ data: [sprint], isSuccess: true }),
+  })
+  mocks.create.mockResolvedValue({ ...sprint, id: 's2', name: 'Sprint 2' })
+  mocks.update.mockResolvedValue(sprint)
+})
+function mount() {
+  return render(<ProjectBacklogPage />, { wrapper: Wrapper })
+}
+async function openCreate() {
+  fireEvent.click(screen.getByRole('button', { name: 'Create sprint' }))
+  await screen.findByRole('dialog')
+  fireEvent.change(screen.getByPlaceholderText('Sprint 1'), { target: { value: 'Sprint 2' } })
+}
+async function discard() {
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+  fireEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
+  )
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+}
+
+describe('backlog sprint dialog integration', () => {
+  it('guards project changes and closes the old form after confirmed context departure', async () => {
+    mocks.backlog.mockImplementation((key: string) => ({
+      data: { ...backlog, project_key: key },
+      error: null,
+      isLoading: false,
+    }))
+    mount()
+    await openCreate()
+    act(() => {
+      void testRouter.navigate('/projects/OTHER/backlog')
+    })
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel' }),
+    )
+    expect(screen.getByPlaceholderText('Sprint 1')).toHaveValue('Sprint 2')
+    act(() => {
+      void testRouter.navigate('/projects/OTHER/backlog')
+    })
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
+    )
+    await screen.findByRole('heading', { name: 'Backlog · OTHER' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    act(() => {
+      void testRouter.navigate(-1)
+    })
+    await screen.findByRole('heading', { name: 'Backlog · TT' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it('keeps the form pending for the actual mutation promise and closes only after success', async () => {
+    let resolve!: () => void
+    mocks.create.mockImplementation(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done
+        }),
+    )
+    mount()
+    await openCreate()
+    const form = screen.getByPlaceholderText('Sprint 1').closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(screen.getByPlaceholderText('Sprint 1')).toBeDisabled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await act(async () => resolve())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mocks.createReset).toHaveBeenCalledOnce()
+    expect(mocks.updateReset).toHaveBeenCalledOnce()
+  })
+
+  it('retains a failed draft while the backlog refresh fails', async () => {
+    mocks.create.mockRejectedValue(new ApiError(422, 'Private diagnostic'))
+    const view = mount()
+    await openCreate()
+    fireEvent.submit(screen.getByPlaceholderText('Sprint 1').closest('form')!)
+    await screen.findByText('The sprint could not be saved. Your changes have been retained.')
+    mocks.backlog.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new ApiError(503, 'Private diagnostic'),
+    })
+    view.rerender(<ProjectBacklogPage />)
+    expect(screen.getByPlaceholderText('Sprint 1')).toHaveValue('Sprint 2')
+    expect(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Create sprint' }),
+    ).toBeDisabled()
+    expect(screen.queryByText('Private diagnostic')).not.toBeInTheDocument()
+    await discard()
+  })
+
+  it.each(['isFetching', 'isPlaceholderData'])(
+    'does not open a write form on stale backlog %s',
+    (flag) => {
+      mocks.backlog.mockReturnValue({ data: backlog, error: null, isLoading: false, [flag]: true })
+      mount()
+      expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    },
+  )
+
+  it('keeps unknown writes blocked after failed review and background recovery, then requires a new explicit session', async () => {
+    mocks.create.mockRejectedValue(new ApiError(503, 'Private diagnostic'))
+    const refetch = vi
+      .fn()
+      .mockResolvedValue({ isSuccess: false, error: new ApiError(503, 'Private diagnostic') })
+    mocks.sprints.mockReturnValue({ data: [sprint], isLoading: false, error: null, refetch })
+    const view = mount()
+    await openCreate()
+    fireEvent.submit(screen.getByPlaceholderText('Sprint 1').closest('form')!)
+    await waitFor(() =>
+      expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent(
+        'The save result is unconfirmed',
+      ),
+    )
+    await discard()
+    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Check saved sprints' }))
+    await screen.findByText('Saved sprints could not be checked. Resubmission remains blocked.')
+    view.rerender(<ProjectBacklogPage />)
+    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+    refetch.mockResolvedValue({
+      isSuccess: true,
+      data: [{ ...sprint, id: 's2', name: 'Sprint 2' }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Check saved sprints' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create sprint' })).toBeEnabled())
+    expect(mocks.create).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'Create sprint' }))
+    expect(screen.getByPlaceholderText('Sprint 1')).toHaveValue('')
+    expect(within(screen.getByRole('dialog')).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('handles a thrown readback without unlocking writes or leaking the exception', async () => {
+    mocks.create.mockRejectedValue(new TypeError('Private transport'))
+    mocks.sprints.mockReturnValue({
+      data: [sprint],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn().mockRejectedValue(new Error('Private readback')),
+    })
+    mount()
+    await openCreate()
+    fireEvent.submit(screen.getByPlaceholderText('Sprint 1').closest('form')!)
+    await waitFor(() =>
+      expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent(
+        'The save result is unconfirmed',
+      ),
+    )
+    await discard()
+    fireEvent.click(screen.getByRole('button', { name: 'Check saved sprints' }))
+    await screen.findByText('Saved sprints could not be checked. Resubmission remains blocked.')
+    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+    expect(screen.queryByText('Private readback')).not.toBeInTheDocument()
+  })
+})

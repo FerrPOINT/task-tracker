@@ -1,3 +1,4 @@
+import { chooseValue } from '../../test/choice'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
@@ -245,9 +246,7 @@ describe('NotificationsPage', () => {
 
     renderPage()
 
-    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
-      target: { value: 'hourly' },
-    })
+    await chooseValue(screen.getByLabelText(/email frequency|частота email/i), 'hourly')
     fireEvent.click(
       screen.getByLabelText(/notify about my own changes|уведомлять о моих изменениях/i),
     )
@@ -266,7 +265,7 @@ describe('NotificationsPage', () => {
     )
   })
 
-  it('keeps changed preferences after a failed save and retries the same document', () => {
+  it('keeps changed preferences after a failed save and retries the same document', async () => {
     const updateSettings = vi.fn()
     let failed = false
     mockHooks()
@@ -279,9 +278,7 @@ describe('NotificationsPage', () => {
     }))
 
     const page = renderPage()
-    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
-      target: { value: 'hourly' },
-    })
+    await chooseValue(screen.getByLabelText(/email frequency|частота email/i), 'hourly')
     fireEvent.click(screen.getByLabelText('Назначение задачи'))
     fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
     failed = true
@@ -291,7 +288,10 @@ describe('NotificationsPage', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('hourly')
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveAttribute(
+      'data-value',
+      'hourly',
+    )
     expect(screen.getByLabelText('Назначение задачи')).not.toBeChecked()
     expect(
       screen.getByText(/Could not save preferences|Не удалось сохранить настройки/i),
@@ -308,19 +308,23 @@ describe('NotificationsPage', () => {
     )
   })
 
-  it('cancels an unsaved preference draft without an API request', () => {
+  it('cancels an unsaved preference draft without an API request', async () => {
     const updateSettings = vi.fn()
     mockHooks()
     useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings, reset: vi.fn() })
 
     renderPage()
-    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
-      target: { value: 'hourly' },
-    })
-    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('hourly')
+    await chooseValue(screen.getByLabelText(/email frequency|частота email/i), 'hourly')
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveAttribute(
+      'data-value',
+      'hourly',
+    )
     fireEvent.click(screen.getByRole('button', { name: /отмена|cancel/i }))
 
-    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('daily')
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveAttribute(
+      'data-value',
+      'daily',
+    )
     expect(screen.getByRole('button', { name: /сохранить|save/i })).toBeDisabled()
     expect(updateSettings).not.toHaveBeenCalled()
   })

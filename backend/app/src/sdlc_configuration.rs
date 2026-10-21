@@ -202,6 +202,24 @@ fn compare(
 }
 
 impl FleetConfigurationReader {
+    pub async fn read_pm_bootstrap_retry(
+        &self,
+        command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    ) -> Result<domain::sdlc_pm_bootstrap_retry::BootstrapFailureReadback, AppError> {
+        let mut url = self.origin.clone();
+        url.set_path(&format!(
+            "/internal/runtime/v1/pm/runs/{}/bootstrap-retry",
+            command.previous_session_run_id
+        ));
+        url.query_pairs_mut()
+            .append_pair("barrier_id", &command.barrier_id.to_string())
+            .append_pair(
+                "next_session_run_id",
+                &command.next_session_run_id.to_string(),
+            );
+        self.read_pm_witness(url).await
+    }
+
     pub async fn read_unsubmitted_pm(
         &self,
         run: Uuid,
@@ -211,6 +229,13 @@ impl FleetConfigurationReader {
         url.set_path(&format!("/internal/runtime/v1/pm/runs/{run}/unsubmitted"));
         url.query_pairs_mut()
             .append_pair("barrier_id", &barrier.to_string());
+        self.read_pm_witness(url).await
+    }
+
+    async fn read_pm_witness<T: serde::de::DeserializeOwned>(
+        &self,
+        url: Url,
+    ) -> Result<T, AppError> {
         let mut response = self
             .client
             .get(url)

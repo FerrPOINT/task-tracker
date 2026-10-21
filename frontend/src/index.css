@@ -5,13 +5,7 @@
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--base-font-sans);
 }
 
 .notification-count {

@@ -1,0 +1,139 @@
+//! Actual service + bulk SQL; only externally disposable synthetic PostgreSQL.
+use super::*;
+use std::sync::Arc;
+#[tokio::test]
+#[ignore = "external Base ComposeHelper v2 synthetic database only"]
+async fn actual_bug_choices_require_project_access_graph_default_board_and_live_wip() {
+    let f = Fixture::new().await;
+    let from = Uuid::new_v4();
+    let free = Uuid::new_v4();
+    let full = Uuid::new_v4();
+    let no_graph = Uuid::new_v4();
+    let off_board = Uuid::new_v4();
+    for (n, id) in [from, free, full, no_graph, off_board]
+        .into_iter()
+        .enumerate()
+    {
+        sql(&f.db,"INSERT INTO statuses(id,name,category,position,is_closed) VALUES($1,$2,'todo',$3,false)",vec![id.into(),format!("Choice {n}").into(),(n as i32).into()]).await;
+    }
+    let columns = json!([{"id":from,"name":"From","category":"todo"},{"id":free,"name":"Free","category":"todo"},{"id":full,"name":"Full","category":"todo","wip_limit":1},{"id":no_graph,"name":"No graph","category":"todo"}]);
+    sql(
+        &f.db,
+        "UPDATE boards SET columns=$2 WHERE project_id=$1",
+        vec![f.project.into(), columns.into()],
+    )
+    .await;
+    for to in [free, full, off_board] {
+        sql(
+            &f.db,
+            "INSERT INTO workflow_transitions(id,from_status_id,to_status_id) VALUES($1,$2,$3)",
+            vec![Uuid::new_v4().into(), from.into(), to.into()],
+        )
+        .await;
+    }
+    let bug = Uuid::new_v4();
+    let task = Uuid::new_v4();
+    for (id, status, kind, key) in [
+        (bug, from, "bug", "BUGS-9801"),
+        (task, full, "task", "BUGS-9802"),
+    ] {
+        sql(&f.db,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,reporter_id,priority,labels,position,time_spent_seconds) VALUES($1,$2,$3,$4,$5,'Synthetic choices',$6,'medium','[]',0,0)",vec![id.into(),f.project.into(),key.into(),kind.into(),status.into(),f.owner.into()]).await;
+    }
+    let repos = Arc::new(infra::to_domain_repositories(
+        infra::SeaOrmRepositories::new(pool(&f.url, &f.schema).await),
+    ));
+    let issue = shared::IssueId::from_uuid(bug);
+    let project = shared::ProjectId::from_uuid(f.project);
+    let choice = repos
+        .issues
+        .verification_transitions(issue, project)
+        .await
+        .unwrap();
+    assert_eq!(choice.project_id, f.project);
+    assert_eq!(choice.bug_id, bug);
+    assert_eq!(
+        choice
+            .transitions
+            .iter()
+            .map(|t| t.status_id)
+            .collect::<Vec<_>>(),
+        vec![free]
+    );
+    assert!(
+        repos
+            .issues
+            .verification_transitions(issue, shared::ProjectId::from_uuid(f.foreign))
+            .await
+            .is_err()
+    );
+    assert!(
+        repos
+            .issues
+            .verification_transitions(shared::IssueId::from_uuid(task), project)
+            .await
+            .is_err()
+    );
+    sql(
+        &f.db,
+        "UPDATE issues SET deleted_at=clock_timestamp() WHERE id=$1",
+        vec![task.into()],
+    )
+    .await;
+    assert_eq!(
+        repos
+            .issues
+            .verification_transitions(issue, project)
+            .await
+            .unwrap()
+            .transitions
+            .len(),
+        2,
+        "deleted issues do not consume WIP"
+    );
+    // App service checks fresh edit authority before exposing any choices.
+    let ctx = app::AppContext::new(
+        Arc::new(shared::AppConfig::default()),
+        repos.clone(),
+        Arc::new(domain::InMemoryStorage::default()),
+    );
+    let outsider = Uuid::new_v4();
+    sql(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,is_active,is_system_admin) VALUES($1,'outsider@example.test','outsider','Outsider','!',true,false)",vec![outsider.into()]).await;
+    // Central-mode project semantics are separately covered by real HTTP harness;
+    // local membership denial is meaningful only when central auth is disabled.
+    if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_none() {
+        assert!(matches!(
+            ctx.services
+                .issue
+                .verification_transitions(issue, shared::UserId::from_uuid(outsider))
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(
+        ctx.services
+            .issue
+            .verification_transitions(
+                shared::IssueId::from_uuid(task),
+                shared::UserId::from_uuid(f.owner)
+            )
+            .await
+            .is_err()
+    );
+    sql(
+        &f.db,
+        "UPDATE projects SET default_board_id=$2 WHERE id=$1",
+        vec![f.project.into(), Uuid::new_v4().into()],
+    )
+    .await;
+    assert!(
+        repos
+            .issues
+            .verification_transitions(issue, project)
+            .await
+            .is_err(),
+        "no fallback to another board"
+    );
+    drop(ctx);
+    drop(repos);
+    f.close().await;
+}

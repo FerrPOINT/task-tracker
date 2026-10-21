@@ -1,0 +1,1423 @@
+diff --git a/backend/infra/src/sdlc_critical_pm_reservation.rs b/backend/infra/src/sdlc_critical_pm_reservation.rs
+new file mode 100644
+index 0000000..1dd7534
+--- /dev/null
++++ b/backend/infra/src/sdlc_critical_pm_reservation.rs
+@@ -0,0 +1,354 @@
++//! Child of sdlc: durable PM review reservation only, never runtime admission or another queue.
++use super::*;
++use app::sdlc_critical_pm_reservation::{
++    CriticalPmReservationAllocation, CriticalPmReservationSource, prepare_critical_pm_reservation,
++};
++use domain::sdlc_critical_blockers::{
++    CriticalBlockerReceipt, CriticalBlockerState, valid_operation_key,
++};
++use domain::sdlc_critical_pm_reservation::*;
++use domain::sdlc_reservation::PmDraftCompletionReceipt;
++
++fn inconsistent() -> AppError {
++    AppError::conflict("critical PM review reservation history inconsistent")
++}
++
++fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult, field: &str) -> Result<T, AppError> {
++    serde_json::from_value(row.try_get::<Json>("", field).map_err(map_db)?)
++        .map_err(|_| inconsistent())
++}
++
++fn key(value: &str) -> Result<(), AppError> {
++    if !valid_operation_key(value) {
++        return Err(AppError::validation("invalid critical operation key"));
++    }
++    Ok(())
++}
++
++async fn owner_access(tx: &DatabaseTransaction, state: &TaskState) -> Result<(), AppError> {
++    let row = tx
++        .query_one(statement(
++            "SELECT u.id,p.owner_id FROM users u JOIN projects p ON p.id=$1
++         WHERE u.central_sub=$2 AND u.is_active FOR SHARE OF u,p",
++            vec![state.project_id.into(), state.owner_subject.clone().into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    let owner: Uuid = row.try_get("", "id").map_err(map_db)?;
++    if owner != row.try_get::<Uuid>("", "owner_id").map_err(map_db)? {
++        tx.query_one(statement(
++            "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
++            vec![state.project_id.into(), owner.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    }
++    Ok(())
++}
++
++async fn original_pm(tx: &DatabaseTransaction, task: Uuid) -> Result<PmAssignment, AppError> {
++    decode(&tx.query_one(statement(
++        "SELECT payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version LIMIT 1 FOR SHARE",
++        vec![task.into()],
++    )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "payload")
++}
++
++async fn saved_result(
++    tx: &DatabaseTransaction,
++    state: &TaskState,
++    row: &QueryResult,
++) -> Result<CriticalPmReservationResult, AppError> {
++    let result: CriticalPmReservationResult = decode(row, "result")?;
++    let blocker: CriticalBlockerReceipt = decode(row, "after_blocker")?;
++    let input = PostgresSdlcRepository::original_input(tx, state).await?;
++    let original = original_pm(tx, state.task_id).await?;
++    blocker.proposal.validate(blocker.role)?;
++    let reservation = &result.reservation;
++    if reservation.binding != PostgresSdlcRepository::draft_binding(state)
++        || reservation.assignment.agent_id != original.agent_id
++        || reservation.input.snapshot_ref != input.snapshot_ref
++        || reservation.input.sha256 != input.sha256
++        || reservation.dispatch_allowed
++        || blocker.state != CriticalBlockerState::InPmReview
++        || result.context.blocker_id != blocker.blocker_id
++        || result.context.blocker_version != blocker.version
++        || result.context.blocker_sha256 != blocker.blocker_sha256
++        || result.context.requirements.revision != blocker.proposal.requirement_revision
++        || result.context.requirements.content_hash != blocker.proposal.content_hash
++        || blocker.pm_review.as_ref().is_none_or(|pm| {
++            pm.assignment_id != reservation.assignment.assignment_id
++                || pm.execution_id != reservation.assignment.execution_id
++        })
++        || blocker.task_id != state.task_id
++        || blocker.root_task_id != state.task_id
++        || blocker.project_id != state.project_id
++        || blocker.tracker_instance_id != state.tracker_instance_id
++        || blocker.owner_subject != state.owner_subject
++        || blocker.blocker_sha256 != app::sdlc::canonical_hash(&blocker.proposal)?
++    {
++        return Err(inconsistent());
++    }
++    Ok(result)
++}
++
++impl PostgresSdlcRepository {
++    pub async fn reserve_critical_pm_review(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: ReserveCriticalPmReview,
++    ) -> Result<(CriticalPmReservationResult, bool), AppError> {
++        app::sdlc_reservation::scheduler(actor, &self.config)?;
++        command.validate()?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let state = self.load(&tx, task, actor).await?;
++        owner_access(&tx, &state).await?;
++        let hash = app::sdlc::canonical_hash(&command)?;
++        if let Some(row) = tx
++            .query_one(statement(
++                "SELECT command,request_sha256,result,after_blocker FROM sdlc_critical_pm_reviews
++             WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
++                vec![
++                    task.into(),
++                    actor.subject.clone().into(),
++                    command.idempotency_key.clone().into(),
++                ],
++            ))
++            .await
++            .map_err(map_db)?
++        {
++            let original: ReserveCriticalPmReview = decode(&row, "command")?;
++            if original != command
++                || row
++                    .try_get::<String>("", "request_sha256")
++                    .map_err(map_db)?
++                    != hash
++            {
++                return Err(AppError::conflict(
++                    "critical PM review key payload mismatch",
++                ));
++            }
++            let result = saved_result(&tx, &state, &row).await?;
++            tx.commit().await.map_err(map_db)?;
++            return Ok((result, true));
++        }
++        let current = super::lifecycle::current(&tx, task)
++            .await?
++            .ok_or_else(inconsistent)?;
++        super::lifecycle::exact_revision(&state, &current)?;
++        let cursor = tx.query_one(statement(
++            "SELECT state,pm_owner_version,pm_execution_id,pm_admission_state FROM sdlc_tasks WHERE task_id=$1",
++            vec![task.into()],
++        )).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++        let owner_version: i64 = cursor.try_get("", "pm_owner_version").map_err(map_db)?;
++        let execution: Option<Uuid> = cursor.try_get("", "pm_execution_id").map_err(map_db)?;
++        let admission: Option<String> = cursor.try_get("", "pm_admission_state").map_err(map_db)?;
++        let previous = Self::reservation(&tx, &state, execution.ok_or_else(inconsistent)?).await?;
++        let completion: PmDraftCompletionReceipt = decode(&tx.query_one(statement(
++            "SELECT result FROM sdlc_pm_completions WHERE task_id=$1 AND execution_id=$2 FOR SHARE",
++            vec![task.into(), previous.assignment.execution_id.into()],
++        )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "result")?;
++        let original = original_pm(&tx, task).await?;
++        let input = PmDraftInputResponse {
++            contract_version: 1,
++            tracker_instance_id: state.tracker_instance_id.clone(),
++            project_id: state.project_id,
++            task_id: task,
++            root_task_id: task,
++            owner_subject: state.owner_subject.clone(),
++            input: Self::original_input(&tx, &state).await?,
++        };
++        let blocker: CriticalBlockerReceipt = decode(&tx.query_one(statement(
++            "SELECT COALESCE(v.after_blocker,r.after_blocker) AS payload FROM sdlc_critical_blocker_heads h
++             JOIN sdlc_critical_pm_returns r ON r.task_id=h.task_id AND r.blocker_id=h.blocker_id
++             LEFT JOIN sdlc_critical_pm_reviews v ON v.task_id=h.task_id AND v.blocker_id=h.blocker_id
++             WHERE h.task_id=$1 AND h.blocker_id=$2 FOR SHARE OF h,r",
++            vec![task.into(), command.blocker_id.into()],
++        )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "payload")?;
++        // Replay above precedes all fresh CAS and server allocation.
++        if command.expected_task_version != current.task.version
++            || command.expected_blocker_version != blocker.version
++            || command.blocker_sha256 != blocker.blocker_sha256
++            || command.expected_pm_owner_version != owner_version
++            || command.expected_pm_assignment_version != previous.assignment.version
++        {
++            return Err(AppError::conflict("critical PM review stale CAS"));
++        }
++        let ordinal: i64 = tx
++            .query_one(statement(
++                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
++                vec![],
++            ))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(inconsistent)?
++            .try_get("", "ordinal")
++            .map_err(map_db)?;
++        let plan = prepare_critical_pm_reservation(
++            CriticalPmReservationSource {
++                state: &state,
++                lifecycle: &current,
++                blocker: &blocker,
++                previous_reservation: &previous,
++                current_completed: &completion,
++                original_pm_assignment: &original,
++                original_input: &input,
++                pm_owner_version: owner_version,
++                pm_admission_state: admission.as_deref().unwrap_or(""),
++            },
++            actor,
++            &self.config,
++            &command,
++            CriticalPmReservationAllocation {
++                assignment_id: Uuid::now_v7(),
++                execution_id: Uuid::now_v7(),
++                ordinal,
++            },
++        )?;
++        let before_state: Json = cursor.try_get("", "state").map_err(map_db)?;
++        let before_execution: Json = tx
++            .query_one(statement(
++                "SELECT execution FROM sdlc_delivery_heads WHERE task_id=$1",
++                vec![task.into()],
++            ))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(inconsistent)?
++            .try_get("", "execution")
++            .map_err(map_db)?;
++        let after_state = serde_json::to_value(&plan.state).map_err(AppError::internal)?;
++        let mut after_execution =
++            serde_json::to_value(&plan.lifecycle).map_err(AppError::internal)?;
++        after_execution
++            .as_object_mut()
++            .ok_or_else(inconsistent)?
++            .remove("task");
++        let review_id = Uuid::now_v7();
++        let reservation = &plan.result.reservation;
++        let assignment = &reservation.assignment;
++        exec(
++            &tx,
++            "INSERT INTO sdlc_critical_pm_reviews(review_id,task_id,blocker_id,actor_subject,
++            idempotency_key,request_sha256,command,previous_execution_id,previous_owner_version,
++            execution_id,assignment_id,assignment_version,owner_version,
++            before_state,after_state,before_execution,after_execution,after_blocker,result)
++            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)",
++            vec![
++                review_id.into(),
++                task.into(),
++                blocker.blocker_id.into(),
++                actor.subject.clone().into(),
++                command.idempotency_key.clone().into(),
++                hash.into(),
++                json_value(&command)?,
++                previous.assignment.execution_id.into(),
++                owner_version.into(),
++                assignment.execution_id.into(),
++                assignment.assignment_id.into(),
++                assignment.version.into(),
++                reservation.owner_cas.version.into(),
++                before_state.into(),
++                after_state.clone().into(),
++                before_execution.into(),
++                after_execution.clone().into(),
++                json_value(&plan.blocker)?,
++                json_value(&plan.result)?,
++            ],
++        )
++        .await?;
++        exec(
++            &tx,
++            "INSERT INTO sdlc_assignments(task_id,version,payload) VALUES($1,$2,$3)",
++            vec![
++                task.into(),
++                assignment.version.into(),
++                json_value(assignment)?,
++            ],
++        )
++        .await?;
++        exec(&tx, "INSERT INTO sdlc_pm_executions(execution_id,ordinal,task_id,assignment_id,assignment_version,
++            expected_owner_version,owner_version,input_snapshot_ref,input_sha256,assignment_operation_key,result)
++            OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", vec![
++                assignment.execution_id.into(), ordinal.into(), task.into(), assignment.assignment_id.into(),
++                assignment.version.into(), owner_version.into(), reservation.owner_cas.version.into(),
++                reservation.input.snapshot_ref.into(), reservation.input.sha256.clone().into(),
++                reservation.assignment_operation_key.clone().into(), json_value(reservation)?,
++            ]).await?;
++        exec(&tx, "INSERT INTO sdlc_delivery_projection_permits(task_id,transaction_id,next_state,next_execution)
++            VALUES($1,pg_current_xact_id(),$2,$3)", vec![task.into(), after_state.clone().into(), after_execution.clone().into()]).await?;
++        exec(
++            &tx,
++            "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
++            VALUES($1,pg_current_xact_id(),$2)",
++            vec![task.into(), after_state.clone().into()],
++        )
++        .await?;
++        exec(&tx, "UPDATE sdlc_tasks SET state=$2,pm_owner_version=$3,pm_execution_id=$4,pm_admission_state='reserved'
++            WHERE task_id=$1 AND pm_owner_version=$5 AND pm_execution_id=$6 AND pm_admission_state='completed'", vec![
++                task.into(), after_state.into(), reservation.owner_cas.version.into(),
++                assignment.execution_id.into(), owner_version.into(), previous.assignment.execution_id.into(),
++            ]).await?;
++        exec(
++            &tx,
++            "UPDATE sdlc_delivery_heads SET execution=$2 WHERE task_id=$1",
++            vec![task.into(), after_execution.into()],
++        )
++        .await?;
++        let status = super::lifecycle::mapped_issue_status(
++            &tx,
++            plan.lifecycle.task.stage.canonical(),
++            plan.lifecycle.task.status,
++        )
++        .await?;
++        super::lifecycle::project_issue_status(&tx, task, actor, status).await?;
++        exec(
++            &tx,
++            "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload)
++            VALUES($1,$2,'critical.pm_review_reserved',$3)",
++            vec![
++                review_id.into(),
++                task.into(),
++                json!({
++                    "contract_version":1,"tracker_instance_id":state.tracker_instance_id,
++                    "project_id":state.project_id,"task_id":task,"root_task_id":task,
++                    "owner_subject":state.owner_subject,"stage":"Draft","result":plan.result,
++                })
++                .into(),
++            ],
++        )
++        .await?;
++        tx.commit().await.map_err(map_db)?;
++        Ok((plan.result, false))
++    }
++
++    pub async fn critical_pm_review_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        original_key: &str,
++    ) -> Result<CriticalPmReservationResult, AppError> {
++        app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
++        key(original_key)?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let state = self.load(&tx, task, actor).await?;
++        owner_access(&tx, &state).await?;
++        let row = tx
++            .query_one(statement(
++                "SELECT result,after_blocker FROM sdlc_critical_pm_reviews WHERE task_id=$1
++             AND actor_subject=$2 AND idempotency_key=$3",
++                vec![
++                    task.into(),
++                    actor.subject.clone().into(),
++                    original_key.into(),
++                ],
++            ))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(|| AppError::not_found("critical PM review operation", original_key))?;
++        let result = saved_result(&tx, &state, &row).await?;
++        tx.commit().await.map_err(map_db)?;
++        Ok(result)
++    }
++}
+diff --git a/backend/infra/src/sdlc_critical_pm_reservation_pg_tests.rs b/backend/infra/src/sdlc_critical_pm_reservation_pg_tests.rs
+new file mode 100644
+index 0000000..f63242a
+--- /dev/null
++++ b/backend/infra/src/sdlc_critical_pm_reservation_pg_tests.rs
+@@ -0,0 +1,571 @@
++//! Child of existing critical candidates fixture. All runtime observations remain synthetic.
++use super::*;
++use app::sdlc_critical_pm_reservation::{
++    CriticalPmReservationAllocation, CriticalPmReservationSource, prepare_critical_pm_reservation,
++};
++use domain::sdlc_critical_pm_reservation::*;
++
++async fn review_snapshot(f: &Fixture, task: Uuid) -> Json {
++    f.db.query_one(statement("SELECT jsonb_build_object(
++        'state',(SELECT state FROM sdlc_tasks WHERE task_id=$1),
++        'cursor',(SELECT jsonb_build_object('owner',pm_owner_version,'execution',pm_execution_id,'admission',pm_admission_state)
++            FROM sdlc_tasks WHERE task_id=$1),
++        'execution',(SELECT execution FROM sdlc_delivery_heads WHERE task_id=$1),
++        'issue',(SELECT jsonb_build_object('status',status_id,'updated',updated_at) FROM issues WHERE id=$1),
++        'reviews',(SELECT count(*) FROM sdlc_critical_pm_reviews WHERE task_id=$1),
++        'assignments',(SELECT count(*) FROM sdlc_assignments WHERE task_id=$1),
++        'pm_executions',(SELECT count(*) FROM sdlc_pm_executions WHERE task_id=$1),
++        'outbox',(SELECT count(*) FROM sdlc_outbox WHERE task_id=$1),
++        'holds',(SELECT count(*) FROM sdlc_delivery_holds WHERE task_id=$1),
++        'permits',(SELECT count(*) FROM sdlc_delivery_projection_permits WHERE task_id=$1),
++        'pm_permits',(SELECT count(*) FROM sdlc_pm_state_write_permits WHERE task_id=$1)) AS value",
++        vec![task.into()])).await.unwrap().unwrap().try_get("", "value").unwrap()
++}
++
++async fn ordinal(f: &Fixture) -> i64 {
++    f.db.query_one(statement(
++        "SELECT pg_sequence_last_value(
++        pg_get_serial_sequence('sdlc_pm_executions','ordinal')::regclass) AS value",
++        vec![],
++    ))
++    .await
++    .unwrap()
++    .unwrap()
++    .try_get("", "value")
++    .unwrap()
++}
++
++// A raw SQL proposal-only transaction must not COMMIT without its projection/rows/outbox.
++async fn reject_journal_only(f: &Fixture, task: Uuid, command: &ReserveCriticalPmReview) {
++    let tx = f.db.begin().await.unwrap();
++    let state = f.repo.load(&tx, task, &f.writer).await.unwrap();
++    let current = crate::sdlc::lifecycle::current(&tx, task)
++        .await
++        .unwrap()
++        .unwrap();
++    let cursor = tx
++        .query_one(statement(
++            "SELECT state,pm_owner_version,pm_execution_id FROM sdlc_tasks
++        WHERE task_id=$1",
++            vec![task.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap();
++    let previous_id: Uuid = cursor.try_get("", "pm_execution_id").unwrap();
++    let owner: i64 = cursor.try_get("", "pm_owner_version").unwrap();
++    let previous = PostgresSdlcRepository::reservation(&tx, &state, previous_id)
++        .await
++        .unwrap();
++    let completed: domain::sdlc_reservation::PmDraftCompletionReceipt = parse(
++        tx.query_one(statement(
++            "SELECT result FROM sdlc_pm_completions WHERE task_id=$1 AND execution_id=$2",
++            vec![task.into(), previous_id.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "result")
++        .unwrap(),
++    );
++    let returned: CriticalBlockerReceipt = parse(
++        tx.query_one(statement(
++            "SELECT after_blocker FROM sdlc_critical_pm_returns WHERE task_id=$1 AND blocker_id=$2",
++            vec![task.into(), command.blocker_id.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "after_blocker")
++        .unwrap(),
++    );
++    let input = PmDraftInputResponse {
++        contract_version: 1,
++        tracker_instance_id: state.tracker_instance_id.clone(),
++        project_id: state.project_id,
++        task_id: task,
++        root_task_id: task,
++        owner_subject: state.owner_subject.clone(),
++        input: PostgresSdlcRepository::original_input(&tx, &state)
++            .await
++            .unwrap(),
++    };
++    let number: i64 = tx
++        .query_one(statement(
++            "SELECT nextval(
++        pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS n",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "n")
++        .unwrap();
++    let plan = prepare_critical_pm_reservation(
++        CriticalPmReservationSource {
++            state: &state,
++            lifecycle: &current,
++            blocker: &returned,
++            previous_reservation: &previous,
++            current_completed: &completed,
++            original_pm_assignment: &previous.assignment,
++            original_input: &input,
++            pm_owner_version: owner,
++            pm_admission_state: "completed",
++        },
++        &f.writer,
++        &f.repo.config,
++        command,
++        CriticalPmReservationAllocation {
++            assignment_id: Uuid::new_v4(),
++            execution_id: Uuid::new_v4(),
++            ordinal: number,
++        },
++    )
++    .unwrap();
++    let before_state: Json = cursor.try_get("", "state").unwrap();
++    let execution: Json = tx
++        .query_one(statement(
++            "SELECT execution FROM sdlc_delivery_heads WHERE task_id=$1",
++            vec![task.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "execution")
++        .unwrap();
++    let reservation = &plan.result.reservation;
++    exec(
++        &tx,
++        "INSERT INTO sdlc_critical_pm_reviews(review_id,task_id,blocker_id,actor_subject,
++        idempotency_key,request_sha256,command,previous_execution_id,previous_owner_version,
++        execution_id,assignment_id,assignment_version,owner_version,
++        before_state,after_state,before_execution,after_execution,after_blocker,result)
++        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18)",
++        vec![
++            Uuid::new_v4().into(),
++            task.into(),
++            command.blocker_id.into(),
++            f.writer.subject.clone().into(),
++            command.idempotency_key.clone().into(),
++            app::sdlc::canonical_hash(command).unwrap().into(),
++            json_value(command).unwrap(),
++            previous_id.into(),
++            owner.into(),
++            reservation.assignment.execution_id.into(),
++            reservation.assignment.assignment_id.into(),
++            reservation.assignment.version.into(),
++            reservation.owner_cas.version.into(),
++            before_state.into(),
++            json_value(&plan.state).unwrap(),
++            execution.into(),
++            json_value(&plan.blocker).unwrap(),
++            json_value(&plan.result).unwrap(),
++        ],
++    )
++    .await
++    .unwrap();
++    assert!(
++        tx.commit().await.is_err(),
++        "journal alone must fail deferred commit"
++    );
++}
++
++#[tokio::test]
++#[ignore = "fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic native/Workflow fixtures"]
++async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable() {
++    let f = Box::pin(Fixture::new()).await;
++    if f.db
++        .query_one(statement(
++            "SELECT to_regclass('sdlc_critical_pm_reviews') IS NULL AS missing",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get::<bool>("", "missing")
++        .unwrap()
++    {
++        f.db.execute_unprepared(include_str!("../../migration/src/critical_pm_review.sql"))
++            .await
++            .unwrap();
++    }
++    let user = Uuid::new_v4();
++    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
++        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)",
++        vec![user.into()]).await.unwrap();
++    exec(
++        &f.db,
++        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
++        vec![f.project.into(), user.into()],
++    )
++    .await
++    .unwrap();
++    let storage = domain::InMemoryStorage::default();
++    let r = Box::pin(start(&f, "pm-review-root", false, &storage)).await;
++    let body = blocker(&r);
++    let (held, _) =
++        Box::pin(
++            f.repo
++                .submit_critical_blocker_with_storage(r.task, &r.producer, body, &storage),
++        )
++        .await
++        .unwrap();
++    let head = f
++        .repo
++        .lifecycle_read(r.task, &f.reader)
++        .await
++        .unwrap()
++        .receipt;
++    let return_command = ReturnCriticalToPm {
++        review: CriticalPmReviewGuard {
++            blocker_id: held.blocker_id,
++            blocker_sha256: held.blocker_sha256.clone(),
++            expected_blocker_version: held.version,
++            expected_task_version: head.task.version,
++            fence: fence(&head),
++            idempotency_key: "return-before-review".into(),
++        },
++        terminal: RuntimeTerminalObservation {
++            assignment_hash: held.assignment_hash.clone(),
++            chat_id: held.chat_id,
++            run_id: held.run_id,
++            state: RuntimeTerminalState::Cancelled,
++            receipt: ArtifactReceipt {
++                reference: "fixture://synthetic-terminal-not-live-proof".into(),
++                sha256: "d".repeat(64),
++            },
++        },
++    };
++    let (returned, _) = Box::pin(f.repo.return_critical_to_pm_with_terminal(
++        r.task,
++        &f.writer,
++        return_command,
++    ))
++    .await
++    .unwrap();
++    let previous = f
++        .repo
++        .pm_draft_assignment(r.task, &f.owner, None)
++        .await
++        .unwrap()
++        .current
++        .unwrap();
++    let completion = f
++        .repo
++        .pm_draft_completion(r.task, &f.reader)
++        .await
++        .unwrap()
++        .current
++        .unwrap();
++    let original_input = f.repo.pm_draft_input(r.task, &f.owner).await.unwrap();
++    let command = ReserveCriticalPmReview {
++        blocker_id: held.blocker_id,
++        blocker_sha256: held.blocker_sha256.clone(),
++        expected_blocker_version: returned.blocker.version,
++        expected_task_version: returned.lifecycle.task.version,
++        expected_pm_owner_version: previous.owner_cas.version,
++        expected_pm_assignment_version: previous.assignment.version,
++        idempotency_key: "original-pm-review-reservation".into(),
++    };
++    let before = review_snapshot(&f, r.task).await;
++    let old_history = json!({"reservation":previous,"completion":completion,"input":original_input,
++        "held":held,"returned":returned.blocker});
++    let old_pm = actor(
++        "pm",
++        false,
++        &["task-tracker:write", &previous.assignment.scope(r.task)],
++    );
++    let paired = actor(
++        "scheduler",
++        false,
++        &["task-tracker:read", "task-tracker:write"],
++    );
++    for denied in [&f.owner, &f.reader, &old_pm, &paired] {
++        assert!(matches!(
++            Box::pin(
++                f.repo
++                    .reserve_critical_pm_review(r.task, denied, command.clone())
++            )
++            .await,
++            Err(AppError::Forbidden)
++        ));
++        assert_eq!(review_snapshot(&f, r.task).await, before);
++    }
++    for changed in 0..5 {
++        let mut stale = command.clone();
++        match changed {
++            0 => stale.expected_task_version += 1,
++            1 => stale.expected_blocker_version += 1,
++            2 => stale.expected_pm_owner_version += 1,
++            3 => stale.expected_pm_assignment_version += 1,
++            _ => stale.blocker_sha256 = "f".repeat(64),
++        }
++        assert!(
++            Box::pin(f.repo.reserve_critical_pm_review(r.task, &f.writer, stale))
++                .await
++                .is_err()
++        );
++        assert_eq!(review_snapshot(&f, r.task).await, before);
++    }
++    // A forged unbacked cursor cannot bypass old canonical/PM guards.
++    let tx = f.db.begin().await.unwrap();
++    assert!(
++        exec(
++            &tx,
++            "UPDATE sdlc_tasks SET pm_owner_version=pm_owner_version+1 WHERE task_id=$1",
++            vec![r.task.into()]
++        )
++        .await
++        .is_err()
++    );
++    tx.rollback().await.unwrap();
++    assert_eq!(review_snapshot(&f, r.task).await, before);
++    Box::pin(reject_journal_only(&f, r.task, &command)).await;
++    assert_eq!(review_snapshot(&f, r.task).await, before);
++    f.db.execute_unprepared("CREATE FUNCTION pm_review_test_reject_event() RETURNS trigger LANGUAGE plpgsql AS $$
++        BEGIN IF NEW.event_type='critical.pm_review_reserved' THEN RAISE EXCEPTION 'synthetic late failure'; END IF;
++        RETURN NEW; END $$; CREATE TRIGGER pm_review_test_reject_event BEFORE INSERT ON sdlc_outbox
++        FOR EACH ROW EXECUTE FUNCTION pm_review_test_reject_event();").await.unwrap();
++    assert!(
++        Box::pin(
++            f.repo
++                .reserve_critical_pm_review(r.task, &f.writer, command.clone())
++        )
++        .await
++        .is_err()
++    );
++    assert_eq!(review_snapshot(&f, r.task).await, before);
++    f.db.execute_unprepared(
++        "DROP TRIGGER pm_review_test_reject_event ON sdlc_outbox;
++        DROP FUNCTION pm_review_test_reject_event();",
++    )
++    .await
++    .unwrap();
++    let (one, two) = tokio::join!(
++        Box::pin(
++            f.repo
++                .reserve_critical_pm_review(r.task, &f.writer, command.clone())
++        ),
++        Box::pin(
++            f.repo
++                .reserve_critical_pm_review(r.task, &f.writer, command.clone())
++        ),
++    );
++    let (one, replay_one) = one.unwrap();
++    let (two, replay_two) = two.unwrap();
++    assert_eq!(json!(one), json!(two));
++    assert_ne!(replay_one, replay_two);
++    assert_eq!(
++        one.reservation.assignment.agent_id,
++        previous.assignment.agent_id
++    );
++    assert_ne!(
++        one.reservation.assignment.assignment_id,
++        previous.assignment.assignment_id
++    );
++    assert_ne!(
++        one.reservation.assignment.execution_id,
++        previous.assignment.execution_id
++    );
++    assert_eq!(
++        one.reservation.assignment.version,
++        previous.assignment.version + 1
++    );
++    assert_eq!(
++        one.reservation.owner_cas.version,
++        previous.owner_cas.version + 1
++    );
++    assert_eq!(json!(one.reservation.input), json!(previous.input));
++    assert!(!one.reservation.dispatch_allowed);
++    assert_eq!(one.context.blocker_version, 3);
++    let after = review_snapshot(&f, r.task).await;
++    assert_eq!(after["reviews"], json!(1));
++    assert_eq!(after["assignments"], json!(2));
++    assert_eq!(after["pm_executions"], json!(2));
++    assert_eq!(after["holds"], json!(0));
++    assert_eq!(after["permits"], json!(0));
++    assert_eq!(after["pm_permits"], json!(0));
++    assert_eq!(after["cursor"]["admission"], json!("reserved"));
++    assert_eq!(after["state"]["runtime_state"], json!("terminal"));
++    assert_eq!(after["state"]["draft_submode"], json!("brainstorming"));
++    assert_eq!(after["state"]["confirmation_revision"], json!(null));
++    assert_eq!(after["execution"], before["execution"]);
++    let sequence = ordinal(&f).await;
++    assert!(
++        Box::pin(
++            f.repo
++                .reserve_critical_pm_review(r.task, &f.writer, command.clone())
++        )
++        .await
++        .unwrap()
++        .1
++    );
++    assert_eq!(
++        ordinal(&f).await,
++        sequence,
++        "original replay must not allocate another ordinal"
++    );
++    assert_eq!(
++        json!(
++            f.repo
++                .critical_pm_review_operation(r.task, &f.reader, &command.idempotency_key)
++                .await
++                .unwrap()
++        ),
++        json!(one)
++    );
++    for denied in [&f.writer, &f.owner, &old_pm, &paired] {
++        assert!(matches!(
++            f.repo
++                .critical_pm_review_operation(r.task, denied, &command.idempotency_key)
++                .await,
++            Err(AppError::Forbidden)
++        ));
++    }
++    exec(
++        &f.db,
++        "UPDATE users SET is_active=false WHERE central_sub='owner'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        f.repo
++            .critical_pm_review_operation(r.task, &f.reader, &command.idempotency_key)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(
++        &f.db,
++        "UPDATE users SET is_active=true WHERE central_sub='owner'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    exec(
++        &f.db,
++        "DELETE FROM project_members WHERE project_id=$1 AND user_id IN
++        (SELECT id FROM users WHERE central_sub='scheduler')",
++        vec![f.project.into()],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        f.repo
++            .critical_pm_review_operation(r.task, &f.reader, &command.idempotency_key)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(
++        &f.db,
++        "INSERT INTO project_members(project_id,user_id,role)
++        SELECT $1,id,'developer' FROM users WHERE central_sub='scheduler'",
++        vec![f.project.into()],
++    )
++    .await
++    .unwrap();
++    // Reconstruct the repository and recover a committed operation using GET-only readback.
++    let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap();
++    let recovered = PostgresSdlcRepository::connect(&url, f.repo.config.clone())
++        .await
++        .unwrap();
++    assert_eq!(
++        json!(
++            recovered
++                .critical_pm_review_operation(r.task, &f.reader, &command.idempotency_key)
++                .await
++                .unwrap()
++        ),
++        json!(one)
++    );
++    assert_eq!(ordinal(&f).await, sequence);
++    let tx = f.db.begin().await.unwrap();
++    assert!(
++        exec(
++            &tx,
++            "UPDATE sdlc_critical_pm_reviews SET result='{}' WHERE task_id=$1",
++            vec![r.task.into()]
++        )
++        .await
++        .is_err()
++    );
++    tx.rollback().await.unwrap();
++    let other = f.draft("review-foreign-lookup", None).await;
++    assert!(matches!(
++        f.repo
++            .critical_pm_review_operation(other, &f.reader, &command.idempotency_key)
++            .await,
++        Err(AppError::NotFound { .. })
++    ));
++    let mut changed = command.clone();
++    changed.expected_task_version += 1;
++    assert!(matches!(
++        Box::pin(
++            f.repo
++                .reserve_critical_pm_review(r.task, &f.writer, changed)
++        )
++        .await,
++        Err(AppError::Conflict(_))
++    ));
++    let current_pm = f
++        .repo
++        .pm_draft_assignment(r.task, &f.owner, None)
++        .await
++        .unwrap()
++        .current
++        .unwrap();
++    assert_eq!(json!(current_pm), json!(one.reservation));
++    assert!(
++        f.repo
++            .pm_draft_completion(r.task, &f.reader)
++            .await
++            .unwrap()
++            .current
++            .is_none()
++    );
++    // The main-applied companion query must expose review detail without rewriting old receipts.
++    let detail = f
++        .repo
++        .critical_blocker(r.task, &f.reader, held.blocker_id)
++        .await
++        .unwrap();
++    assert_eq!(detail.state, CriticalBlockerState::InPmReview);
++    assert_eq!(detail.version, 3);
++    assert_eq!(
++        detail.pm_review.as_ref().unwrap().execution_id,
++        one.reservation.assignment.execution_id
++    );
++    let history =
++        f.db.query_one(statement(
++            "SELECT e.result AS reservation,c.result AS completion,
++        b.payload AS held,r.after_blocker AS returned FROM sdlc_pm_executions e
++        JOIN sdlc_pm_completions c USING(task_id,execution_id)
++        JOIN sdlc_critical_blockers b ON b.task_id=e.task_id
++        JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id
++        WHERE e.task_id=$1 AND e.execution_id=$2",
++            vec![r.task.into(), previous.assignment.execution_id.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap();
++    assert_eq!(
++        old_history,
++        json!({"reservation":history.try_get::<Json>("","reservation").unwrap(),
++        "completion":history.try_get::<Json>("","completion").unwrap(),
++        "input":f.repo.pm_draft_input(r.task,&f.owner).await.unwrap(),
++        "held":history.try_get::<Json>("","held").unwrap(),"returned":history.try_get::<Json>("","returned").unwrap()})
++    );
++    let no_dispatch =
++        f.db.query_one(statement(
++            "SELECT NOT EXISTS(SELECT 1 FROM sdlc_pm_execution_leases WHERE execution_id=$1)
++        AND NOT EXISTS(SELECT 1 FROM sdlc_pm_native_admissions WHERE execution_id=$1)
++        AND NOT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE execution_id=$1) AS absent",
++            vec![one.reservation.assignment.execution_id.into()],
++        ))
++        .await
++        .unwrap()
++        .unwrap();
++    assert!(no_dispatch.try_get::<bool>("", "absent").unwrap());
++    assert_eq!(review_snapshot(&f, r.task).await, after);
++}
+diff --git a/backend/migration/src/critical_pm_review.sql b/backend/migration/src/critical_pm_review.sql
+new file mode 100644
+index 0000000..113ff0d
+--- /dev/null
++++ b/backend/migration/src/critical_pm_review.sql
+@@ -0,0 +1,329 @@
++-- Included by MAIN after critical_pm_return.sql in the same UNRELEASED096 migration.
++-- Reservation is pre-admission: no execution lease, native receipt or owner consent is created.
++CREATE TABLE sdlc_critical_pm_reviews (
++    review_id uuid PRIMARY KEY CHECK(review_id<>'00000000-0000-0000-0000-000000000000'),
++    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    blocker_id uuid NOT NULL UNIQUE,
++    actor_subject text NOT NULL CHECK(length(actor_subject)>0),
++    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128
++        AND idempotency_key NOT IN ('.','..') AND idempotency_key !~ '[[:space:][:cntrl:]]'
++        AND position('/' in idempotency_key)=0 AND position(chr(92) in idempotency_key)=0),
++    request_sha256 text NOT NULL CHECK(request_sha256 ~ '^[0-9a-f]{64}$'),
++    command jsonb NOT NULL,
++    previous_execution_id uuid NOT NULL,
++    previous_owner_version bigint NOT NULL CHECK(previous_owner_version BETWEEN 1 AND 9007199254740990),
++    execution_id uuid NOT NULL UNIQUE CHECK(execution_id<>'00000000-0000-0000-0000-000000000000'
++        AND execution_id<>previous_execution_id),
++    assignment_id uuid NOT NULL UNIQUE CHECK(assignment_id<>'00000000-0000-0000-0000-000000000000'
++        AND assignment_id<>execution_id),
++    assignment_version bigint NOT NULL CHECK(assignment_version BETWEEN 2 AND 9007199254740991),
++    owner_version bigint NOT NULL CHECK(owner_version=previous_owner_version+1),
++    transaction_id xid8 NOT NULL DEFAULT pg_current_xact_id(),
++    before_state jsonb NOT NULL,
++    after_state jsonb NOT NULL,
++    before_execution jsonb NOT NULL,
++    after_execution jsonb NOT NULL,
++    after_blocker jsonb NOT NULL,
++    result jsonb NOT NULL,
++    UNIQUE(task_id,actor_subject,idempotency_key),
++    FOREIGN KEY(blocker_id,task_id) REFERENCES sdlc_critical_blockers(blocker_id,task_id) ON DELETE RESTRICT,
++    FOREIGN KEY(task_id,previous_execution_id) REFERENCES sdlc_pm_executions(task_id,execution_id) ON DELETE RESTRICT,
++    FOREIGN KEY(task_id,execution_id) REFERENCES sdlc_pm_executions(task_id,execution_id)
++        ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED,
++    FOREIGN KEY(task_id,assignment_version) REFERENCES sdlc_assignments(task_id,version)
++        ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED,
++    FOREIGN KEY(review_id) REFERENCES sdlc_outbox(event_id) DEFERRABLE INITIALLY DEFERRED,
++    CHECK ((command-ARRAY['blocker_id','blocker_sha256','expected_blocker_version','expected_task_version',
++            'expected_pm_owner_version','expected_pm_assignment_version','idempotency_key']='{}'::jsonb
++        AND result-ARRAY['purpose','reservation','context']='{}'::jsonb
++        AND (result->'reservation')-ARRAY['contract_version','variant','binding','owner_cas','assignment',
++            'execution','input','assignment_operation_key','admission_state','dispatch_allowed']='{}'::jsonb
++        AND (result->'reservation'->'assignment')-ARRAY['assignment_id','execution_id','agent_id','version','machine_subject']='{}'::jsonb
++        AND (result->'reservation'->'execution')-ARRAY['ordinal','key']='{}'::jsonb
++        AND result->>'purpose'='critical_business_review'
++        AND result->'reservation'->'contract_version'='1'::jsonb
++        AND result->'reservation'->>'variant'='pm_draft_reserved'
++        AND result->'reservation'->>'admission_state'='reserved'
++        AND result->'reservation'->'dispatch_allowed'='false'::jsonb
++        AND result->'reservation'->'binding'->>'task_id'=task_id::text
++        AND result->'reservation'->'binding'->>'root_task_id'=task_id::text
++        AND result->'reservation'->'assignment'->>'execution_id'=execution_id::text
++        AND result->'reservation'->'assignment'->>'assignment_id'=assignment_id::text
++        AND result->'reservation'->'assignment'->'version'=to_jsonb(assignment_version)
++        AND result->'reservation'->'owner_cas'=jsonb_build_object(
++            'expected_version',previous_owner_version,'version',owner_version)
++        AND result->'context'->>'blocker_id'=blocker_id::text
++        AND after_blocker->>'blocker_id'=blocker_id::text
++        AND after_blocker->>'state'='in_pm_review'
++        AND after_blocker->'pm_review'=jsonb_build_object('assignment_id',assignment_id,'execution_id',execution_id)
++        AND command->>'idempotency_key'=idempotency_key
++        AND command->>'blocker_id'=blocker_id::text
++        AND command->'expected_pm_owner_version'=to_jsonb(previous_owner_version)
++        AND after_state->'assignment'=result->'reservation'->'assignment'
++        AND before_execution=after_execution
++        AND after_execution=jsonb_build_object('assignment',NULL,'lease',NULL,'binding',NULL,'result',NULL)) IS TRUE)
++);
++CREATE INDEX sdlc_critical_pm_review_task ON sdlc_critical_pm_reviews(task_id);
++CREATE TRIGGER sdlc_critical_pm_review_immutable BEFORE UPDATE OR DELETE ON sdlc_critical_pm_reviews
++FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
++
++CREATE FUNCTION sdlc_critical_pm_review_insert_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE t sdlc_tasks%ROWTYPE; previous jsonb; returned jsonb; original jsonb;
++    expected_state jsonb; expected_blocker jsonb; next_pm jsonb;
++BEGIN
++    SELECT * INTO t FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
++    SELECT result INTO previous FROM sdlc_pm_executions
++        WHERE task_id=NEW.task_id AND execution_id=NEW.previous_execution_id;
++    SELECT r.after_blocker INTO returned FROM sdlc_critical_pm_returns r
++        JOIN sdlc_critical_blocker_heads h ON h.task_id=r.task_id AND h.blocker_id=r.blocker_id
++        WHERE r.task_id=NEW.task_id AND r.blocker_id=NEW.blocker_id;
++    SELECT payload INTO original FROM sdlc_assignments WHERE task_id=NEW.task_id ORDER BY version LIMIT 1;
++    next_pm := NEW.result->'reservation';
++    IF (t.root_task_id=t.task_id AND t.state->>'flow'='single-task-v1'
++        AND NEW.transaction_id=pg_current_xact_id() AND NEW.before_state=t.state
++        AND t.pm_execution_id=NEW.previous_execution_id AND t.pm_owner_version=NEW.previous_owner_version
++        AND sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)
++        AND t.state->'assignment'=previous->'assignment'
++        AND t.state->>'stage'='Draft' AND t.state->>'status'='Ready'
++        AND t.state->>'runtime_state'='terminal'
++        AND t.state->>'waiting_reason'='critical_pm_review_queued'
++        AND t.state->'lifecycle'->>'stage'='Draft' AND t.state->'lifecycle'->>'status'='Ready'
++        AND t.state->'lifecycle'->>'runtime'='terminal'
++        AND t.state->'lifecycle'->>'waiting_reason'='critical_pm_review_queued'
++        AND (t.state->'lifecycle'->>'version')::bigint BETWEEN 1 AND 9007199254740990
++        AND returned->>'state'='awaiting_pm_review'
++        AND (returned->>'version')::bigint BETWEEN 1 AND 9007199254740990
++        AND (returned->>'routing_generation')::bigint BETWEEN 1 AND 9007199254740991
++        AND returned->'pm_review'='null'::jsonb AND returned->'resolution'='null'::jsonb
++        AND returned->'technical_terminal'<>'null'::jsonb
++        AND returned->>'task_id'=t.task_id::text AND returned->>'owner_subject'=t.owner_subject
++        AND returned->>'project_id'=t.project_id::text AND returned->>'tracker_instance_id'=t.tracker_instance_id
++        AND returned->'proposal'->'requirement_revision'=t.state->'lifecycle'->'routing'->'requirement_revision'
++        AND returned->'proposal'->'content_hash'=t.state->'lifecycle'->'routing'->'content_hash'
++        AND NEW.command->'expected_blocker_version'=returned->'version'
++        AND NEW.command->'blocker_sha256'=returned->'blocker_sha256'
++        AND NEW.command->'expected_task_version'=t.state->'lifecycle'->'version'
++        AND NEW.command->'expected_pm_assignment_version'=previous->'assignment'->'version'
++        AND NEW.assignment_version=(previous->'assignment'->>'version')::bigint+1
++        AND next_pm->'binding'=previous->'binding'
++        AND next_pm->'input'=previous->'input'
++        AND next_pm->'assignment'->'agent_id'=original->'agent_id'
++        AND next_pm->'assignment'->'agent_id'=previous->'assignment'->'agent_id'
++        AND next_pm->'assignment'->'machine_subject'=previous->'assignment'->'machine_subject'
++        AND NEW.assignment_id::text<>previous->'assignment'->>'assignment_id'
++        AND next_pm->>'assignment_operation_key'='pm-draft:'||NEW.assignment_id::text
++        AND next_pm->'execution'->>'ordinal' ~ '^[1-9][0-9]{0,18}$'
++        AND (next_pm->'execution'->>'ordinal')::numeric BETWEEN 1 AND 9223372036854775807
++        AND (next_pm->'execution'->>'ordinal')::numeric>(previous->'execution'->>'ordinal')::numeric
++        AND next_pm->'execution'->>'key'='SDLC-'||(next_pm->'execution'->>'ordinal')) IS NOT TRUE
++        OR EXISTS(SELECT 1 FROM sdlc_delivery_holds WHERE task_id=NEW.task_id)
++        OR NOT EXISTS(SELECT 1 FROM sdlc_delivery_heads
++            WHERE task_id=NEW.task_id AND execution=NEW.before_execution) THEN
++        RAISE EXCEPTION 'SDLC critical PM review requires exact returned task and completed PM CAS' USING ERRCODE='23514';
++    END IF;
++    expected_state := jsonb_set(NEW.before_state,'{assignment}',next_pm->'assignment');
++    expected_state := jsonb_set(expected_state,'{draft_submode}','"brainstorming"'::jsonb);
++    expected_state := jsonb_set(expected_state,'{confirmation_revision}','null'::jsonb);
++    expected_state := jsonb_set(expected_state,'{lifecycle,version}',
++        to_jsonb((NEW.before_state->'lifecycle'->>'version')::bigint+1));
++    expected_blocker := jsonb_set(returned,'{version}',to_jsonb((returned->>'version')::bigint+1));
++    expected_blocker := jsonb_set(expected_blocker,'{state}','"in_pm_review"'::jsonb);
++    expected_blocker := jsonb_set(expected_blocker,'{pm_review}',
++        jsonb_build_object('assignment_id',NEW.assignment_id,'execution_id',NEW.execution_id));
++    IF NEW.after_state IS DISTINCT FROM expected_state OR NEW.after_blocker IS DISTINCT FROM expected_blocker
++        OR NEW.result->'context' IS DISTINCT FROM jsonb_build_object('blocker_id',NEW.blocker_id,
++            'blocker_sha256',returned->'blocker_sha256','blocker_version',expected_blocker->'version',
++            'requirements',jsonb_build_object('revision',returned->'proposal'->'requirement_revision',
++                'content_hash',returned->'proposal'->'content_hash')) THEN
++        RAISE EXCEPTION 'SDLC critical PM review changes reservation context only' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE TRIGGER sdlc_critical_pm_review_insert_gate BEFORE INSERT ON sdlc_critical_pm_reviews
++FOR EACH ROW EXECUTE FUNCTION sdlc_critical_pm_review_insert_gate();
++
++CREATE FUNCTION sdlc_critical_pm_review_commit_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t JOIN sdlc_delivery_heads d USING(task_id)
++        JOIN sdlc_pm_executions e ON e.task_id=t.task_id AND e.execution_id=NEW.execution_id
++        JOIN sdlc_assignments a ON a.task_id=t.task_id AND a.version=NEW.assignment_version
++        JOIN sdlc_outbox o ON o.task_id=t.task_id AND o.event_id=NEW.review_id
++        WHERE t.task_id=NEW.task_id AND t.state=NEW.after_state AND d.execution=NEW.after_execution
++            AND t.pm_execution_id=NEW.execution_id AND t.pm_owner_version=NEW.owner_version
++            AND t.pm_admission_state='reserved' AND e.result=NEW.result->'reservation'
++            AND a.payload=NEW.result->'reservation'->'assignment'
++            AND o.event_type='critical.pm_review_reserved' AND o.payload->'result'=NEW.result)
++        OR EXISTS(SELECT 1 FROM sdlc_delivery_holds WHERE task_id=NEW.task_id)
++        OR EXISTS(SELECT 1 FROM sdlc_pm_execution_leases WHERE execution_id=NEW.execution_id)
++        OR EXISTS(SELECT 1 FROM sdlc_pm_native_admissions WHERE execution_id=NEW.execution_id)
++        OR EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE execution_id=NEW.execution_id)
++        OR EXISTS(SELECT 1 FROM sdlc_delivery_projection_permits
++            WHERE task_id=NEW.task_id AND transaction_id=pg_current_xact_id())
++        OR EXISTS(SELECT 1 FROM sdlc_pm_state_write_permits
++            WHERE task_id=NEW.task_id AND transaction_id=pg_current_xact_id()) THEN
++        RAISE EXCEPTION 'SDLC critical PM review must commit atomically without dispatch or lease' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++CREATE CONSTRAINT TRIGGER sdlc_critical_pm_review_commit_gate AFTER INSERT ON sdlc_critical_pm_reviews
++DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sdlc_critical_pm_review_commit_gate();
++
++CREATE FUNCTION sdlc_critical_pm_review_execution(p_task uuid,p_execution uuid,p_owner_version bigint,p_state jsonb)
++RETURNS boolean LANGUAGE sql STABLE AS $$
++    SELECT EXISTS(SELECT 1 FROM sdlc_critical_pm_reviews j WHERE j.task_id=p_task
++        AND j.execution_id=p_execution AND j.owner_version=p_owner_version
++        AND j.result->'reservation'->'assignment'=p_state->'assignment')
++$$;
++ALTER TABLE sdlc_tasks DROP CONSTRAINT sdlc_pm_control;
++ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_pm_control CHECK (
++    (pm_owner_version=0 AND pm_execution_id IS NULL AND pm_admission_state IS NULL)
++    OR (pm_owner_version=1 AND pm_execution_id IS NOT NULL AND pm_admission_state IN ('reserved','completed')
++        AND (state->'assignment'->>'execution_id'=pm_execution_id::text) IS TRUE)
++    OR (pm_owner_version BETWEEN 2 AND 9007199254740991 AND pm_execution_id IS NOT NULL
++        AND pm_admission_state IN ('reserved','completed')
++        AND (state->'assignment'->>'execution_id'=pm_execution_id::text) IS TRUE
++        AND sdlc_critical_pm_review_execution(task_id,pm_execution_id,pm_owner_version,state))
++);
++
++-- Transaction-bound exact transition predicate, not a dispatch or future-write permit.
++CREATE FUNCTION sdlc_critical_pm_review_transition(p_task uuid,p_before_state jsonb,p_after_state jsonb,
++    p_before_owner bigint,p_after_owner bigint,p_before_execution uuid,p_after_execution uuid,
++    p_before_admission text,p_after_admission text) RETURNS boolean LANGUAGE sql STABLE AS $$
++    SELECT p_before_admission='completed' AND p_after_admission='reserved'
++        AND EXISTS(SELECT 1 FROM sdlc_critical_pm_reviews j WHERE j.task_id=p_task
++            AND j.transaction_id=pg_current_xact_id() AND j.before_state=p_before_state AND j.after_state=p_after_state
++            AND j.previous_owner_version=p_before_owner AND j.owner_version=p_after_owner
++            AND j.previous_execution_id=p_before_execution AND j.execution_id=p_after_execution)
++$$;
++
++CREATE OR REPLACE FUNCTION sdlc_pm_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++  IF sdlc_critical_pm_review_transition(OLD.task_id,OLD.state,NEW.state,OLD.pm_owner_version,NEW.pm_owner_version,
++      OLD.pm_execution_id,NEW.pm_execution_id,OLD.pm_admission_state,NEW.pm_admission_state) THEN
++    IF NEW.task_id IS DISTINCT FROM OLD.task_id OR NEW.root_task_id IS DISTINCT FROM OLD.root_task_id
++        OR NEW.owner_subject IS DISTINCT FROM OLD.owner_subject OR NEW.project_id IS DISTINCT FROM OLD.project_id
++        OR NEW.tracker_instance_id IS DISTINCT FROM OLD.tracker_instance_id
++        OR NOT EXISTS(SELECT 1 FROM sdlc_pm_state_write_permits p WHERE p.task_id=OLD.task_id
++            AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
++        RAISE EXCEPTION 'SDLC critical PM review requires exact canonical permit' USING ERRCODE='23514';
++    END IF;
++    DELETE FROM sdlc_pm_state_write_permits WHERE task_id=OLD.task_id
++        AND transaction_id=pg_current_xact_id() AND next_state=NEW.state;
++    RETURN NEW;
++  END IF;
++  IF OLD.pm_execution_id IS NOT NULL THEN
++    IF NEW.pm_owner_version IS DISTINCT FROM OLD.pm_owner_version
++      OR NEW.pm_execution_id IS DISTINCT FROM OLD.pm_execution_id
++      OR NEW.state->'assignment' IS DISTINCT FROM OLD.state->'assignment'
++      OR NEW.state->'task_id' IS DISTINCT FROM OLD.state->'task_id'
++      OR NEW.state->'root_task_id' IS DISTINCT FROM OLD.state->'root_task_id'
++      OR NEW.state->'project_id' IS DISTINCT FROM OLD.state->'project_id'
++      OR NEW.state->'tracker_instance_id' IS DISTINCT FROM OLD.state->'tracker_instance_id'
++      OR NEW.state->'owner_subject' IS DISTINCT FROM OLD.state->'owner_subject' THEN
++      RAISE EXCEPTION 'SDLC reserved PM ownership is immutable' USING ERRCODE='23514';
++    END IF;
++    IF NEW.pm_admission_state IS DISTINCT FROM OLD.pm_admission_state THEN
++      IF NOT (OLD.pm_admission_state='reserved' AND NEW.pm_admission_state='completed'
++        AND sdlc_current_pm_completed(OLD.task_id,OLD.pm_execution_id,OLD.state,'completed')) THEN
++        RAISE EXCEPTION 'SDLC reserved PM completion transition is not authorized' USING ERRCODE='23514';
++      END IF;
++    END IF;
++    IF NEW.state IS DISTINCT FROM OLD.state THEN
++      IF NOT (EXISTS(SELECT 1 FROM sdlc_pm_native_admissions a WHERE a.execution_id=OLD.pm_execution_id
++          AND a.assignment_id::text=(OLD.state #>> '{assignment,assignment_id}')
++          AND a.assignment_version::text=(OLD.state #>> '{assignment,version}')
++          AND (a.proof #>> '{identity,task_ref}')=OLD.task_id::text)
++        OR sdlc_current_pm_completed(OLD.task_id,OLD.pm_execution_id,OLD.state,OLD.pm_admission_state)
++        OR sdlc_current_pm_draft_reserved(OLD.task_id,OLD.pm_execution_id,OLD.state,
++            OLD.pm_owner_version,OLD.pm_admission_state)) THEN
++        RAISE EXCEPTION 'SDLC reserved PM requires verified reservation, completion or native admission' USING ERRCODE='23514';
++      END IF;
++      IF NOT EXISTS(SELECT 1 FROM sdlc_pm_state_write_permits p WHERE p.task_id=OLD.task_id
++          AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
++        RAISE EXCEPTION 'SDLC reserved PM requires an authorized state write' USING ERRCODE='23514';
++      END IF;
++      DELETE FROM sdlc_pm_state_write_permits WHERE task_id=OLD.task_id
++          AND transaction_id=pg_current_xact_id() AND next_state=NEW.state;
++    END IF;
++  END IF;
++  RETURN NEW;
++END $$;
++
++CREATE OR REPLACE FUNCTION sdlc_delivery_legacy_exclusion() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE selected_agent text; selected_task uuid;
++BEGIN
++    selected_task := NEW.task_id; selected_agent := NEW.payload->>'agent_id';
++    PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
++    IF TG_TABLE_NAME='sdlc_assignments' THEN
++        IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_holds
++            WHERE task_id=selected_task OR agent_id::text=selected_agent)
++            AND EXISTS(SELECT 1 FROM sdlc_critical_pm_reviews j JOIN sdlc_tasks t ON t.task_id=j.task_id
++                WHERE j.task_id=selected_task AND j.transaction_id=pg_current_xact_id()
++                    AND j.before_state=t.state AND j.assignment_version=NEW.version
++                    AND j.result->'reservation'->'assignment'=NEW.payload) THEN RETURN NEW; END IF;
++    END IF;
++    IF EXISTS(SELECT 1 FROM sdlc_delivery_tasks WHERE task_id=selected_task)
++        OR EXISTS(SELECT 1 FROM sdlc_delivery_holds WHERE agent_id::text=selected_agent) THEN
++        RAISE EXCEPTION 'SDLC single-task delivery owns execution' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++
++CREATE OR REPLACE FUNCTION sdlc_critical_projection_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE active_before jsonb; expected jsonb; returned_before jsonb; returned_after jsonb;
++BEGIN
++    IF TG_TABLE_NAME='sdlc_tasks' THEN
++        IF sdlc_critical_pm_review_transition(OLD.task_id,OLD.state,NEW.state,
++            OLD.pm_owner_version,NEW.pm_owner_version,OLD.pm_execution_id,NEW.pm_execution_id,
++            OLD.pm_admission_state,NEW.pm_admission_state) THEN RETURN NEW; END IF;
++    END IF;
++    SELECT b.previous_receipt INTO active_before FROM sdlc_critical_blocker_heads h JOIN sdlc_critical_blockers b
++        ON b.blocker_id=h.blocker_id AND b.task_id=h.task_id WHERE h.task_id=NEW.task_id;
++    IF NOT FOUND THEN
++        IF TG_TABLE_NAME='sdlc_tasks' THEN
++            IF NEW.state->'lifecycle'->>'waiting_reason'='critical_business_question_held' THEN
++                RAISE EXCEPTION 'SDLC critical waiting requires a persisted blocker' USING ERRCODE='23514';
++            END IF;
++        END IF;
++        RETURN NEW;
++    END IF;
++    IF TG_TABLE_NAME='sdlc_tasks' THEN
++        SELECT r.before_receipt,r.after_receipt INTO returned_before,returned_after
++            FROM sdlc_critical_pm_returns r JOIN sdlc_critical_blocker_heads h
++                ON h.task_id=r.task_id AND h.blocker_id=r.blocker_id WHERE r.task_id=NEW.task_id;
++        IF FOUND AND OLD.state->'lifecycle'=returned_before->'task'
++            AND NEW.state->'lifecycle'=returned_after->'task' THEN
++            expected := jsonb_set(OLD.state,'{lifecycle}',returned_after->'task');
++            expected := jsonb_set(expected,'{stage}',returned_after->'task'->'stage');
++            expected := jsonb_set(expected,'{status}',returned_after->'task'->'status');
++            expected := jsonb_set(expected,'{runtime_state}',returned_after->'task'->'runtime');
++            expected := jsonb_set(expected,'{waiting_reason}',returned_after->'task'->'waiting_reason');
++            IF NEW.state IS DISTINCT FROM expected THEN
++                RAISE EXCEPTION 'SDLC critical return cannot change unrelated state' USING ERRCODE='23514';
++            END IF;
++            RETURN NEW;
++        END IF;
++        IF OLD.state->'lifecycle'->>'waiting_reason'='critical_business_question_held' THEN
++            IF NEW.state IS DISTINCT FROM OLD.state THEN
++                RAISE EXCEPTION 'SDLC critical hold forbids business progression' USING ERRCODE='23514';
++            END IF;
++        ELSE
++            expected := jsonb_set(OLD.state,'{waiting_reason}','"critical_business_question_held"'::jsonb);
++            expected := jsonb_set(expected,'{lifecycle,waiting_reason}','"critical_business_question_held"'::jsonb);
++            expected := jsonb_set(expected,'{lifecycle,version}',to_jsonb((OLD.state->'lifecycle'->>'version')::bigint+1));
++            IF NEW.state IS DISTINCT FROM expected
++                OR OLD.state->'lifecycle' IS DISTINCT FROM active_before->'task' THEN
++                RAISE EXCEPTION 'SDLC critical hold changes waiting only' USING ERRCODE='23514';
++            END IF;
++        END IF;
++    ELSE
++        IF EXISTS(SELECT 1 FROM sdlc_critical_pm_returns r
++            WHERE r.task_id=NEW.task_id AND r.before_receipt-'task'=OLD.execution
++                AND r.after_receipt-'task'=NEW.execution) THEN RETURN NEW; END IF;
++        IF NEW.execution-'lease' IS DISTINCT FROM OLD.execution-'lease' THEN
++            RAISE EXCEPTION 'SDLC critical hold retains exact assignment/run custody' USING ERRCODE='23514';
++        END IF;
++        -- Existing sdlc_delivery_head_gate verifies every actual lease CAS/TTL update.
++    END IF;
++    RETURN NEW;
++END $$;
+diff --git a/docs/contracts/CRITICAL_PM_REVIEW_PERSISTENCE.md b/docs/contracts/CRITICAL_PM_REVIEW_PERSISTENCE.md
+new file mode 100644
+index 0000000..0d947f7
+--- /dev/null
++++ b/docs/contracts/CRITICAL_PM_REVIEW_PERSISTENCE.md
+@@ -0,0 +1,79 @@
++# Critical PM Review Persistence
++
++Signatures frozen before implementation, baseline main 1b006c8 plus the reviewed
++3173a2b/84a02e2 planner. Return source is the accepted ae07b57/674 packet; bc13d55
++and 16d881e are transport references only. Superseded b1ca106 is NOT included.
++
++Inherent methods on PostgresSdlcRepository (no shared trait/API edits here):
++
++```rust
++pub async fn reserve_critical_pm_review(
++    &self, task: Uuid, actor: &Principal, command: ReserveCriticalPmReview,
++) -> Result<(CriticalPmReservationResult, bool), AppError>;
++
++pub async fn critical_pm_review_operation(
++    &self, task: Uuid, actor: &Principal, key: &str,
++) -> Result<CriticalPmReservationResult, AppError>;
++```
++
++WRITE uses existing scheduler(actor, config) unchanged. Original-key GET uses
++existing scheduler_read(actor, config) unchanged: a separate read child, not
++paired READ/WRITE scopes. Both retain current active actor/owner/project access.
++Replay compares the exact saved command/hash before allocation or fresh CAS.
++Readback is history, not authority to dispatch or mutate the current selector.
++
++Source records come from the locked task/current PM selector and completed PM
++row, original first PM assignment/input and actual persisted terminal Return.
++The existing sequence allocates the ordinal. One transaction persists journal,
++new existing PM assignment/execution rows, canonical pre-admission plan, PM cursor,
++unchanged technical terminal execution, and outbox. Initial/held/return records
++are not overwritten; no PM lease/native admission/result/consent is inserted.
++
++Main includes critical_pm_review.sql AFTER critical_pm_return.sql in the same
++unreleased096 migration. No released migration is changed. Exact journal rows
++in the CURRENT transaction permit only the saved before->after state/cursor and
++the one saved new PM assignment. Existing consent/canonical projection permits,
++capacity exclusions and unrelated write guards remain in force. A deferred gate
++requires the complete reservation/projection/outbox before COMMIT.
++
++The companion detail patch changes only the COALESCE read selection to prefer
++the saved review after_blocker (InPmReview v3 for the first review), then Return,
++then Held. It does not change current detail authorization or original-key Held
++history. Main owns applying registrations, migration inclusion, DI/API/codegen
++and later PM admission/lease/runtime/context transitions.
++
++New PG tests are children of the existing critical candidates fixture. All
++runtime/Workflow proof in that fixture is synthetic, not live qualification.
++Tests require a fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending
++_candidates_test and the supplied registration/migration patch. No Cargo/Docker
++execution is authorized in this packet. The 13 pure planner cases are reused.
++
++Main integration order: retain 3173a2b + 84a02e2, apply the existing pure-module
++registration patch, then the new review registration and detail patches. Keep
++bc13d55/16d881e transport source separate; do not include b1ca106. The review patch
++does not wire a new public route or relax either scheduler credential policy.
++
++Focused qualification commands for main after applying the patches:
++
++```text
++cargo test -p domain sdlc_critical_pm_reservation::tests --lib
++cargo test -p app sdlc_critical_pm_reservation::tests --lib
++cargo test -p infra actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable --lib -- --ignored
++```
++
++Each PG invocation needs the existing fresh disposable candidates database fixture; this packet
++does not create a DB runner or execute these commands. Authored PG checks include
++strict separate credentials, owner/project revocation, stale CAS, unbacked cursor,
++journal-only commit rejection, late-write rollback, concurrent duplicate and
++original-key restart readback with unchanged sequence, immutable history/current
++selector/detail and absence of new leases/native admissions/completions.
++
++This is reservation persistence only. Existing PM edit/admission/runtime/resolution
++transitions after InPmReview require main/Locke's subsequent bounded wiring;
++current PM-grant detail policy is deliberately not broadened by the read companion.
++
++Packet checks: rustfmt --check for both new Rust files and git apply --check for
++both new handoff patches passed on the stated baseline. The shared source files
++were not manually edited. Rust compile, the 13 pure tests and the new ignored PG
++aggregate were NOT executed; SQL syntax/atomic behavior still need main's actual
++PostgreSQL qualification. No Docker/Cargo, runtime mutation or push was performed.
+diff --git a/docs/contracts/critical-pm-review-detail.patch b/docs/contracts/critical-pm-review-detail.patch
+new file mode 100644
+index 0000000..be982f4
+--- /dev/null
++++ b/docs/contracts/critical-pm-review-detail.patch
+@@ -0,0 +1,16 @@
++diff --git a/backend/infra/src/sdlc_critical_blockers.rs b/backend/infra/src/sdlc_critical_blockers.rs
++--- a/backend/infra/src/sdlc_critical_blockers.rs
+++++ b/backend/infra/src/sdlc_critical_blockers.rs
++@@ -394,10 +394,11 @@
++         let row = tx
++             .query_one(statement(
++-                "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
+++                "SELECT COALESCE(v.after_blocker,r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
++              JOIN sdlc_critical_blocker_heads h ON h.blocker_id=b.blocker_id AND h.task_id=b.task_id
++              LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
+++             LEFT JOIN sdlc_critical_pm_reviews v ON v.blocker_id=b.blocker_id AND v.task_id=b.task_id
++              WHERE b.task_id=$1 AND b.blocker_id=$2 FOR SHARE OF h,b",
++                 vec![task.into(), blocker_id.into()],
++             ))
++             .await
++             .map_err(map_db)?
+diff --git a/docs/contracts/critical-pm-review-registration.patch b/docs/contracts/critical-pm-review-registration.patch
+new file mode 100644
+index 0000000..6468e17
+--- /dev/null
++++ b/docs/contracts/critical-pm-review-registration.patch
+@@ -0,0 +1,38 @@
++diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
++--- a/backend/infra/src/sdlc.rs
+++++ b/backend/infra/src/sdlc.rs
++@@ -14,6 +14,8 @@
++ #[path = "sdlc_critical_blockers.rs"]
++ mod critical_blockers;
+++#[path = "sdlc_critical_pm_reservation.rs"]
+++mod critical_pm_reservation;
++ #[path = "sdlc_execution_lease.rs"]
++ mod execution_lease;
++ #[path = "sdlc_lifecycle.rs"]
++ mod lifecycle;
++diff --git a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++--- a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+++++ b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++@@ -1,6 +1,8 @@
++ //! Child of the existing candidates fixture, not another DB runner.
++ //! Runtime/Workflow observations and business content below are explicitly synthetic.
++ use super::*;
+++#[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
+++mod pm_review_tests;
++ use crate::sdlc::attachment_artifacts as artifacts;
++ use domain::attachment_artifact::{ArtifactUpload, Seal};
++ use domain::sdlc_critical_blockers::*;
++diff --git a/backend/migration/src/m20261013_0000096_single_task_delivery.rs b/backend/migration/src/m20261013_0000096_single_task_delivery.rs
++--- a/backend/migration/src/m20261013_0000096_single_task_delivery.rs
+++++ b/backend/migration/src/m20261013_0000096_single_task_delivery.rs
++@@ -12,7 +12,9 @@
++             .execute_unprepared(concat!(
++                 include_str!("single_task_lifecycle.sql"),
++                 "\n",
++-                include_str!("critical_pm_return.sql")
+++                include_str!("critical_pm_return.sql"),
+++                "\n",
+++                include_str!("critical_pm_review.sql")
++             ))
++             .await?;
++         Ok(())

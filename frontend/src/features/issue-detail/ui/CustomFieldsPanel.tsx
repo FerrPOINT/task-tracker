@@ -1,3 +1,5 @@
+import { MultiSelect, Input, Select, toast } from '@pdlc/ui/ui'
+
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -6,7 +8,6 @@ import {
   useSetIssueCustomFieldValue,
 } from '@/shared/api/hooks'
 import type { CustomField } from '@/api/custom-fields'
-import { toast } from 'sonner'
 
 export function customFieldDateInputValue(value: unknown) {
   if (typeof value !== 'string') return ''
@@ -55,43 +56,37 @@ export function CustomFieldValueInput({
 
   if (field.field_type === 'select') {
     return (
-      <select
-        className="w-full rounded border border-border bg-background p-2"
+      <Select
+        className="w-full"
         value={current}
-        onChange={(e) => onSave(e.target.value)}
-      >
-        <option value="">{t('customFields.selectPlaceholder')}</option>
-        {field.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+        onValueChange={(nextValue) => onSave(nextValue)}
+        options={[
+          { value: '', label: String(t('customFields.selectPlaceholder')) },
+          ...(field.options.map((option) => ({ value: String(option), label: String(option) })) ??
+            []),
+        ]}
+      />
     )
   }
   if (field.field_type === 'multi-select') {
     const selected = Array.isArray(value) ? value.map(String) : []
     return (
-      <select
-        multiple
-        className="w-full rounded border border-border bg-background p-2"
+      <MultiSelect
+        className="w-full"
         value={selected}
-        onChange={(e) => onSave(Array.from(e.target.selectedOptions, (o) => o.value))}
-      >
-        {field.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+        onValueChange={(nextValues) => onSave(nextValues)}
+        options={[
+          ...(field.options.map((option) => ({ value: String(option), label: String(option) })) ??
+            []),
+        ]}
+      />
     )
   }
   const type =
     field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'
   if (commit === 'change') {
     return (
-      <input
-        className="w-full rounded border border-border bg-background p-2"
+      <Input
         type={type}
         value={current}
         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
@@ -99,8 +94,7 @@ export function CustomFieldValueInput({
     )
   }
   return (
-    <input
-      className="w-full rounded border border-border bg-background p-2"
+    <Input
       type={type}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}

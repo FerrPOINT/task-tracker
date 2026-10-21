@@ -1,0 +1,359 @@
+diff --git a/frontend/src/api/sdlc.test.ts b/frontend/src/api/sdlc.test.ts
+index 4b6e874..506adf3 100644
+--- a/frontend/src/api/sdlc.test.ts
++++ b/frontend/src/api/sdlc.test.ts
+@@ -110,6 +110,35 @@ describe('SDLC generated API adapter', () => {
+     GET.mockResolvedValue(success({ ...context, stage: 'Draft', requirement_revision: null }))
+     await expect(getSdlcSnapshot(task)).resolves.toMatchObject({ requirements: null, intent: null })
+   })
++  it.each(['awaiting_confirmation', 'clarification'] as const)(
++    'reads actual Draft %s owner context and its full revision without inventing an intent',
++    async (draft_submode) => {
++      const draft: SdlcContext = {
++        ...context,
++        stage: 'Draft',
++        draft_submode,
++        status: 'InProgress',
++        permissions: { can_answer: draft_submode === 'clarification', can_confirm: true },
++        waiting_reason:
++          draft_submode === 'clarification'
++            ? 'waiting_for_owner_answers'
++            : 'waiting_for_owner_confirmation',
++      }
++      GET.mockResolvedValueOnce(success(draft)).mockResolvedValueOnce(success(requirements))
++      await expect(getSdlcSnapshot(task)).resolves.toEqual({
++        context: draft,
++        requirements,
++        intent: null,
++      })
++      expect(GET.mock.calls.map(([path]) => path)).toEqual([
++        '/api/v1/issues/{id}/sdlc/context',
++        '/api/v1/issues/{id}/sdlc/requirements/{revision}',
++      ])
++      GET.mockResolvedValueOnce(success(singleTaskRoutingPolicy(task)))
++      await expect(getSdlcRoutingPolicy(draft)).resolves.toMatchObject({ contract_version: 2 })
++      expect(POST).not.toHaveBeenCalled()
++    },
++  )
+   it.each([
+     'content_hash',
+     'requirement_revision',
+diff --git a/frontend/src/features/sdlc/model/confirmation-context.test.ts b/frontend/src/features/sdlc/model/confirmation-context.test.ts
+new file mode 100644
+index 0000000..d77fe44
+--- /dev/null
++++ b/frontend/src/features/sdlc/model/confirmation-context.test.ts
+@@ -0,0 +1,63 @@
++import { describe, expect, it } from 'vitest'
++import type { SdlcContext } from '@/api/sdlc'
++import { canConfirmRequirementsContext } from './confirmation-context'
++
++const context: SdlcContext = {
++  contract_version: 1,
++  tracker_instance_id: 'tracker-test',
++  project_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
++  task_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
++  root_task_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
++  owner_subject: 'central-owner-not-local-user-id',
++  stage: 'Draft',
++  draft_submode: 'awaiting_confirmation',
++  requirement_revision: 2,
++  permissions: { can_answer: false, can_confirm: true },
++}
++
++describe('Tracker owner confirmation context', () => {
++  it.each([
++    ['legacy Clarification', 'Clarification', undefined, true, true],
++    ['projected legacy', 'Draft', undefined, true, true],
++    ['projected legacy null', 'Draft', null, true, true],
++    ['awaiting owner', 'Draft', 'awaiting_confirmation', true, true],
++    ['ready clarification', 'Draft', 'clarification', true, true],
++    ['required open question', 'Draft', 'clarification', false, false],
++    ['read-only review', 'Draft', 'awaiting_confirmation', false, false],
++    ['read-only legacy', 'Clarification', undefined, false, false],
++    ['brainstorming', 'Draft', 'brainstorming', true, false],
++    ['unready missing mode', 'Draft', undefined, false, false],
++    ['technical stage', 'Analysis', undefined, true, false],
++  ] satisfies [string, SdlcContext['stage'], SdlcContext['draft_submode'], boolean, boolean][])(
++    '%s keeps server permission and exact review stage semantics',
++    (_name, stage, draft_submode, can_confirm, expected) => {
++      expect(
++        canConfirmRequirementsContext({
++          ...context,
++          stage,
++          draft_submode,
++          permissions: { can_confirm, can_answer: draft_submode === 'clarification' },
++        }),
++      ).toBe(expected)
++    },
++  )
++  it('does not infer readiness from status or waiting reason, or a missing context', () => {
++    expect(canConfirmRequirementsContext()).toBe(false)
++    expect(
++      canConfirmRequirementsContext({
++        ...context,
++        status: 'InProgress',
++        waiting_reason: 'waiting_for_owner_answers',
++        permissions: { can_answer: true, can_confirm: true },
++      }),
++    ).toBe(true)
++    expect(
++      canConfirmRequirementsContext({
++        ...context,
++        status: 'Ready',
++        waiting_reason: 'waiting_for_owner_confirmation',
++        permissions: { can_answer: false, can_confirm: false },
++      }),
++    ).toBe(false)
++  })
++})
+diff --git a/frontend/src/features/sdlc/model/confirmation-context.ts b/frontend/src/features/sdlc/model/confirmation-context.ts
+new file mode 100644
+index 0000000..c3e89a6
+--- /dev/null
++++ b/frontend/src/features/sdlc/model/confirmation-context.ts
+@@ -0,0 +1,17 @@
++import type { SdlcContext } from '@/api/sdlc'
++
++export function isRequirementsReviewContext(context: SdlcContext): boolean {
++  return (
++    context.stage === 'Clarification' ||
++    (context.stage === 'Draft' &&
++      (context.draft_submode === 'awaiting_confirmation' ||
++        context.draft_submode === 'clarification' ||
++        // Tracker also projects legacy Clarification as Draft without a submode.
++        (context.draft_submode == null && context.permissions.can_confirm)))
++  )
++}
++
++export function canConfirmRequirementsContext(context?: SdlcContext): boolean {
++  // Tracker's owner(actor) && ready() is authoritative for questions/evidence.
++  return Boolean(context?.permissions.can_confirm && isRequirementsReviewContext(context))
++}
+diff --git a/frontend/src/features/sdlc/model/use-sdlc.ts b/frontend/src/features/sdlc/model/use-sdlc.ts
+index 990a953..6500767 100644
+--- a/frontend/src/features/sdlc/model/use-sdlc.ts
++++ b/frontend/src/features/sdlc/model/use-sdlc.ts
+@@ -2,6 +2,7 @@ import { useMemo } from 'react'
+ import { useQuery } from '@tanstack/react-query'
+ import { getSdlcMetadata, getSdlcRoutingPolicy, getSdlcSnapshot } from '@/api/sdlc'
+ import { useAuthStore } from '@/shared/auth/store'
++import { canConfirmRequirementsContext } from './confirmation-context'
+ 
+ export function useSdlcTask(issueId: string, after: string) {
+   const token = useAuthStore((state) => state.token)
+@@ -32,8 +33,7 @@ export function useSdlcTask(issueId: string, after: string) {
+     queryFn: ({ signal }) => getSdlcRoutingPolicy(context!, signal),
+     enabled: Boolean(
+       session.token &&
+-      context?.permissions.can_confirm &&
+-      context.stage === 'Clarification' &&
++      canConfirmRequirementsContext(context) &&
+       !forbidden &&
+       !snapshot.error &&
+       !snapshot.isFetching,
+diff --git a/frontend/src/features/sdlc/ui/SdlcPanel.test.tsx b/frontend/src/features/sdlc/ui/SdlcPanel.test.tsx
+index 78f9fb2..0a2cc21 100644
+--- a/frontend/src/features/sdlc/ui/SdlcPanel.test.tsx
++++ b/frontend/src/features/sdlc/ui/SdlcPanel.test.tsx
+@@ -278,6 +278,152 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)',
+       'expected_routing_policy_version',
+     )
+   })
++  it.each(['awaiting_confirmation', 'clarification', undefined, null] as const)(
++    'fetches and submits v2 only with explicit consent in actual Draft %s',
++    async (draft_submode) => {
++      vi.mocked(getSdlcSnapshot).mockResolvedValue({
++        ...initial,
++        context: {
++          ...initial.context,
++          stage: 'Draft',
++          status: 'InProgress',
++          draft_submode,
++          waiting_reason:
++            draft_submode === 'clarification'
++              ? 'waiting_for_owner_answers'
++              : 'waiting_for_owner_confirmation',
++          permissions: { can_answer: draft_submode === 'clarification', can_confirm: true },
++        },
++      })
++      vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
++      vi.mocked(confirmRequirements).mockResolvedValue(receipt)
++      mount()
++      const choice = await screen.findByRole('checkbox', {
++        name: 'Publish with routing policy version 5',
++      })
++      expect(choice).not.toBeChecked()
++      expect(getSdlcRoutingPolicy).toHaveBeenCalledWith(
++        expect.objectContaining({ stage: 'Draft', draft_submode }),
++        expect.anything(),
++      )
++      expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
++      fireEvent.click(choice)
++      fireEvent.click(
++        screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
++      )
++      fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
++      await waitFor(() =>
++        expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
++          content_hash: hash,
++          idempotency_key: expect.any(String),
++          expected_routing_policy_version: 5,
++        }),
++      )
++    },
++  )
++  it.each([
++    ['brainstorming', true],
++    ['clarification', false],
++    ['awaiting_confirmation', false],
++  ] as const)(
++    'does not fetch or confirm Draft %s with can_confirm=%s',
++    async (draft_submode, can_confirm) => {
++      vi.mocked(getSdlcSnapshot).mockResolvedValue({
++        ...initial,
++        context: {
++          ...initial.context,
++          stage: 'Draft',
++          draft_submode,
++          permissions: { can_answer: draft_submode === 'clarification', can_confirm },
++        },
++      })
++      mount()
++      await screen.findByText('Exact goal shown to the owner')
++      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
++      expect(screen.queryByRole('button', { name: 'Confirm requirements' })).not.toBeInTheDocument()
++      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
++      fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
++      await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledTimes(2))
++      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
++      expect(confirmRequirements).not.toHaveBeenCalled()
++    },
++  )
++  it('refreshes policy in Draft awaiting_confirmation and blocks stale saved consent', async () => {
++    const draft: SdlcSnapshot = {
++      ...initial,
++      context: {
++        ...initial.context,
++        stage: 'Draft',
++        draft_submode: 'awaiting_confirmation',
++      },
++    }
++    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
++    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
++    mount()
++    fireEvent.click(
++      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
++    )
++    fireEvent.click(
++      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
++    )
++    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(503))
++    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
++    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
++    await screen.findByText(/Saved data · refresh failed/)
++    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
++    expect(
++      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
++    ).toBeDisabled()
++    fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
++    expect(confirmRequirements).not.toHaveBeenCalled()
++    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
++    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
++    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue({
++      ...singleTaskRoutingPolicy(task),
++      version: 6,
++      routing_hash: 'b'.repeat(64),
++    })
++    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
++    await screen.findByText(
++      'The selected policy is not current or its source is unavailable. Refresh and explicitly review the choice.',
++    )
++    expect(
++      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
++    ).toBeChecked()
++    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
++    expect(confirmRequirements).not.toHaveBeenCalled()
++  })
++  it('removes Draft consent when a fresh read returns to brainstorming', async () => {
++    vi.mocked(getSdlcSnapshot).mockResolvedValue({
++      ...initial,
++      context: {
++        ...initial.context,
++        stage: 'Draft',
++        draft_submode: 'awaiting_confirmation',
++      },
++    })
++    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
++    mount()
++    fireEvent.click(
++      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
++    )
++    fireEvent.click(
++      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
++    )
++    vi.mocked(getSdlcSnapshot).mockResolvedValue({
++      ...initial,
++      context: {
++        ...initial.context,
++        stage: 'Draft',
++        draft_submode: 'brainstorming',
++      },
++    })
++    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
++    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
++    await waitFor(() => expect(screen.queryByRole('checkbox')).not.toBeInTheDocument())
++    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
++    expect(confirmRequirements).not.toHaveBeenCalled()
++  })
+   it.each([
+     ['v1', routingPolicy, 'Package commit / manifest hash', 'Instruction profile / manifest hash'],
+     [
+diff --git a/frontend/src/features/sdlc/ui/SdlcPanel.tsx b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+index dfa8cf6..f16fdb1 100644
+--- a/frontend/src/features/sdlc/ui/SdlcPanel.tsx
++++ b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+@@ -21,6 +21,10 @@ import {
+   type RoutingPolicy,
+ } from '@/api/sdlc'
+ import { useSdlcTask } from '../model/use-sdlc'
++import {
++  canConfirmRequirementsContext,
++  isRequirementsReviewContext,
++} from '../model/confirmation-context'
+ 
+ const documentFields = [
+   'goal',
+@@ -114,11 +118,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
+     const result = await snapshot.refetch()
+     if (result.data && !result.error) {
+       await metadata.refetch()
+-      if (
+-        result.data.context.permissions.can_confirm &&
+-        result.data.context.stage === 'Clarification'
+-      )
+-        await routingPolicy.refetch()
++      if (canConfirmRequirementsContext(result.data.context)) await routingPolicy.refetch()
+     }
+   }
+   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
+@@ -151,9 +151,8 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
+     ? `${queryKey[2]}:${requirements.revision}:${requirements.content_hash}`
+     : null
+   const canConfirm =
+-    context.permissions.can_confirm &&
++    canConfirmRequirementsContext(context) &&
+     requirements &&
+-    context.stage === 'Clarification' &&
+     !snapshot.isFetching &&
+     !snapshot.error &&
+     !confirm.isPending
+@@ -276,7 +275,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
+               )}
+             </div>
+           ))}
+-          {context.stage === 'Clarification' && (
++          {isRequirementsReviewContext(context) && (
+             <div className="border-t border-border py-4">
+               {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
+               {confirm.data && <p role="status">{t('sdlc.confirmationSaved')}</p>}

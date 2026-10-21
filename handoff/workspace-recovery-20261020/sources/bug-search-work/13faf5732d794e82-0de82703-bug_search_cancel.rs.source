@@ -1,0 +1,367 @@
+//! Synthetic producer attestations only; actual Fleet/Base custody has its own runtime gate.
+use super::*;
+use domain::bug_search_cancel::*;
+
+pub(super) fn cancellation(g: &BugSearchGrantReadback, key: &str) -> CancelBugSearchBeforeStart {
+    CancelBugSearchBeforeStart {
+        idempotency_key: key.into(),
+        expected_fence: g.binding.fence,
+        not_started_observation: BugNotStartedObservation {
+            contract_version: 1,
+            execution_id: g.binding.execution_id,
+            agent_id: g.binding.agent_id,
+            snapshot_sha256: g.binding.snapshot_sha256.clone(),
+            journal_ref: "fleet:synthetic-durable-cancel-fence".into(),
+            disposition: BugNativeDispatchDisposition::NeverSubmitted,
+            observed_at: chrono::Utc::now(),
+            runtime_custody: BugPreRunRuntimeCustody {
+                contract_version: 1,
+                disposition: BugPreRunCustodyDisposition::NeverProvisioned,
+                context_id: None,
+                stop_proof: None,
+                stop_proof_sha256: None,
+            },
+        },
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires TT_BUG_SEARCH_DISPOSABLE_DB=1 and external Base finally teardown"]
+async fn never_started_removed_is_protective_original_custody_not_a_fake_runtime_terminal() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let e = f.execution(1051, true, true).await;
+    let g = f.repo.execution_grant(f.project, e, &a).await.unwrap();
+    let mut c = cancellation(&g, "cancel-created-removed");
+    let context = Uuid::new_v4();
+    let proof = json!({"contract_version":1,"operation_id":Uuid::new_v4(),"resource_id":g.binding.agent_id,
+        "context_id":context,"generation":Uuid::new_v4(),"container_id":"a".repeat(64),
+        "registration_sha256":"b".repeat(64),"request_sha256":"c".repeat(64),
+        "state":"observed","observation":"never_started_removed"});
+    c.not_started_observation.runtime_custody = BugPreRunRuntimeCustody {
+        contract_version: 1,
+        disposition: BugPreRunCustodyDisposition::NeverStartedRemoved,
+        context_id: Some(context),
+        stop_proof_sha256: Some(app::bug_search::canonical_hash(&proof).unwrap()),
+        stop_proof: Some(proof),
+    };
+    for change in [
+        "observation",
+        "context_id",
+        "registration_sha256",
+        "unknown",
+    ] {
+        let mut bad = c.clone();
+        bad.not_started_observation
+            .runtime_custody
+            .stop_proof
+            .as_mut()
+            .unwrap()[change] = json!("unconfirmed");
+        assert!(matches!(
+            f.repo.cancel(f.project, e, &a, bad).await,
+            Err(AppError::Validation(_))
+        ));
+    }
+    assert_eq!(f.count("sdlc_bug_search_commands").await, 0);
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let (receipt, replayed) = f.repo.cancel(f.project, e, &a, c.clone()).await.unwrap();
+    assert!(!replayed);
+    assert!(receipt.custody_released);
+    assert_eq!(
+        receipt.not_started_observation.runtime_custody.disposition,
+        BugPreRunCustodyDisposition::NeverStartedRemoved
+    );
+    assert!(
+        serde_json::to_value(&receipt)
+            .unwrap()
+            .get("runtime_observation")
+            .is_none()
+    );
+    let restarted = f.reopened().await;
+    assert_eq!(
+        restarted.cancel(f.project, e, &a, c.clone()).await.unwrap(),
+        (receipt.clone(), true)
+    );
+    assert_eq!(
+        serde_json::to_value(
+            restarted
+                .command(f.project, &a, &c.idempotency_key)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(BugSearchCommandReceipt::Cancel(receipt)).unwrap()
+    );
+    assert!(matches!(
+        restarted
+            .command(f.project, &machine("foreign"), &c.idempotency_key)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let row=f.db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,"SELECT capacity_held,terminal_receipt FROM sdlc_bug_search_executions WHERE execution_id=$1",[e.into()])).await.unwrap().unwrap();
+    assert!(!row.try_get::<bool>("", "capacity_held").unwrap());
+    let raw: serde_json::Value = row.try_get("", "terminal_receipt").unwrap();
+    assert!(raw.get("session_run_id").is_none());
+    assert!(raw.get("hermes_run_ref").is_none());
+    drop(restarted);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TT_BUG_SEARCH_DISPOSABLE_DB=1 and external Base finally teardown"]
+async fn pre_run_cancel_releases_only_proven_custody_without_fake_runtime_refs() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let e = f.execution(1001, false, true).await;
+    let grant = f.repo.execution_grant(f.project, e, &a).await.unwrap();
+    let c = cancellation(&grant, "cancel-never-provisioned");
+    assert!(matches!(
+        f.repo
+            .cancel(f.project, e, &machine("unrelated"), c.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(f.repo.cancel(f.foreign, e, &a, c.clone()).await.is_err());
+    let mut bad = c.clone();
+    bad.not_started_observation.runtime_custody.context_id = Some(Uuid::new_v4());
+    assert!(matches!(
+        f.repo.cancel(f.project, e, &a, bad).await,
+        Err(AppError::Validation(_))
+    ));
+    assert_eq!(f.count("sdlc_bug_search_commands").await, 0);
+    sql(&f.db,"UPDATE sdlc_bug_search_executions SET expires_at=clock_timestamp()-interval '1 second' WHERE execution_id=$1",vec![e.into()]).await;
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let (receipt, replay) = f.repo.cancel(f.project, e, &a, c.clone()).await.unwrap();
+    assert!(!replay);
+    assert_eq!(receipt.kind, BugPreRunEndKind::CancelledBeforeStart);
+    assert!(receipt.custody_released);
+    let encoded = serde_json::to_value(&receipt).unwrap();
+    assert!(encoded.get("runtime_observation").is_none());
+    assert!(encoded.get("session_id").is_none());
+    assert_eq!(
+        f.repo.cancel(f.project, e, &a, c.clone()).await.unwrap(),
+        (receipt.clone(), true)
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.reopened()
+                .await
+                .command(f.project, &a, &c.idempotency_key)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(BugSearchCommandReceipt::Cancel(receipt)).unwrap()
+    );
+    assert_eq!(f.count("sdlc_bug_search_commands").await, 1);
+    let mut changed = c;
+    changed.not_started_observation.journal_ref = "changed".into();
+    assert!(matches!(
+        f.repo.cancel(f.project, e, &a, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    assert!(
+        !f.repo
+            .execution_grant(f.project, e, &a)
+            .await
+            .unwrap()
+            .authorization_valid
+    );
+    let actual = AcceptBugSearchTerminal {
+        idempotency_key: "contradictory-actual-run".into(),
+        expected_fence: grant.binding.fence,
+        workflow_receipt: None,
+        workflow_receipt_sha256: None,
+        runtime_observation: BugRuntimeObservation {
+            contract_version: 1,
+            execution_id: e,
+            agent_id: grant.binding.agent_id,
+            session_id: Uuid::new_v4(),
+            session_run_id: Uuid::new_v4(),
+            hermes_run_ref: "synthetic-actual-run-must-conflict".into(),
+            terminal_status: BugRuntimeTerminalStatus::Stopped,
+            observed_at: chrono::Utc::now(),
+            observation_source: None,
+        },
+    };
+    assert!(matches!(
+        f.repo.terminal(f.project, e, &a, actual).await,
+        Err(AppError::Conflict(_))
+    ));
+
+    let e2 = f.execution(1002, true, true).await;
+    let grant2 = f.repo.execution_grant(f.project, e2, &a).await.unwrap();
+    let mut c2 = cancellation(&grant2, "cancel-prepared-context");
+    let proof = json!({"contract_version":4,"operation_id":Uuid::new_v4(),"container_id":"a".repeat(64),
+        "generation":Uuid::new_v4(),"resource_id":grant2.binding.agent_id,"snapshot_sha256":"b".repeat(64),
+        "state":"observed","observation":"namespace_exited"});
+    c2.not_started_observation.runtime_custody = BugPreRunRuntimeCustody {
+        contract_version: 1,
+        disposition: BugPreRunCustodyDisposition::NamespaceExited,
+        context_id: Some(Uuid::new_v4()),
+        stop_proof: Some(proof.clone()),
+        stop_proof_sha256: Some(app::bug_search::canonical_hash(&proof).unwrap()),
+    };
+    let mut unknown = c2.clone();
+    unknown
+        .not_started_observation
+        .runtime_custody
+        .stop_proof
+        .as_mut()
+        .unwrap()["state"] = json!("held");
+    assert!(matches!(
+        f.repo.cancel(f.project, e2, &a, unknown).await,
+        Err(AppError::Validation(_))
+    ));
+    let mut hash = c2.clone();
+    hash.not_started_observation
+        .runtime_custody
+        .stop_proof_sha256 = Some("0".repeat(64));
+    assert!(matches!(
+        f.repo.cancel(f.project, e2, &a, hash).await,
+        Err(AppError::Validation(_))
+    ));
+    let held =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT capacity_held FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            [e2.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(held.try_get::<bool>("", "capacity_held").unwrap());
+    let restarted = f.reopened().await;
+    let (left, right) = tokio::join!(
+        f.repo.cancel(f.project, e2, &a, c2.clone()),
+        restarted.cancel(f.project, e2, &a, c2.clone())
+    );
+    let left = left.unwrap();
+    let right = right.unwrap();
+    assert_eq!(left.0, right.0);
+    assert_ne!(left.1, right.1);
+    assert_eq!(f.count("sdlc_bug_search_commands").await, 2);
+    assert!(
+        !f.repo
+            .execution_grant(f.project, e2, &a)
+            .await
+            .unwrap()
+            .dispatch_allowed
+    );
+    // Positive accepted findings contradict a later never-submitted assertion,
+    // even while the active source-only execution has no terminal receipt yet.
+    let e3 = f.execution(1003, true, true).await;
+    let grant3 = f.repo.execution_grant(f.project, e3, &a).await.unwrap();
+    let mut finding = command(e3, "finding-before-false-cancel");
+    finding.expected_fence = grant3.binding.fence;
+    f.repo.register(f.project, &a, finding).await.unwrap();
+    let before = f.count("sdlc_bug_search_commands").await;
+    assert!(matches!(
+        f.repo
+            .cancel(
+                f.project,
+                e3,
+                &a,
+                cancellation(&grant3, "cancel-after-finding")
+            )
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(f.count("sdlc_bug_search_commands").await, before);
+    assert!(
+        f.repo
+            .execution_grant(f.project, e3, &a)
+            .await
+            .unwrap()
+            .dispatch_allowed,
+        "contradictory cancellation never releases custody"
+    );
+    drop(restarted);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TT_BUG_SEARCH_DISPOSABLE_DB=1 and external Base finally teardown"]
+async fn positive_unprepared_successor100_replays_after_revocation_and_cannot_be_retyped_as_exit() {
+    let f = Fixture::new().await;
+    let a = machine("bug-fleet");
+    let e = f.execution(1061, true, true).await;
+    let g = f.repo.execution_grant(f.project, e, &a).await.unwrap();
+    let mut c = cancellation(&g, "cancel-original-unprepared-successor");
+    let context = Uuid::new_v4();
+    let proof = json!({"contract_version":1,"state":"cancelled","observation":"unprepared_successor_cancelled", "operation_id":Uuid::new_v4(),"resource_id":g.binding.agent_id,
+        "context_id":context,"generation":Uuid::new_v4(),"command_sha256":"a".repeat(64),"intent_sha256":"b".repeat(64),"origin_sha256":"c".repeat(64),
+        "family_manifest_sha256":"d".repeat(64),"predecessor_sha256":"e".repeat(64),"execution_sources_sha256":"f".repeat(64),"creation_request_sha256":"0".repeat(64)});
+    c.not_started_observation.runtime_custody = BugPreRunRuntimeCustody {
+        contract_version: 1,
+        disposition: BugPreRunCustodyDisposition::UnpreparedSuccessorCancelled,
+        context_id: Some(context),
+        stop_proof: Some(proof.clone()),
+        stop_proof_sha256: Some(app::bug_search::canonical_hash(&proof).unwrap()),
+    };
+    let mut bad = c.clone();
+    bad.not_started_observation.runtime_custody.disposition =
+        BugPreRunCustodyDisposition::NamespaceExited;
+    assert!(matches!(
+        f.repo.cancel(f.project, e, &a, bad).await,
+        Err(AppError::Validation(_))
+    ));
+    bad = c.clone();
+    bad.not_started_observation
+        .runtime_custody
+        .stop_proof_sha256 = Some("9".repeat(64));
+    assert!(matches!(
+        f.repo.cancel(f.project, e, &a, bad).await,
+        Err(AppError::Validation(_))
+    ));
+    sql(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![f.owner.into()],
+    )
+    .await;
+    let (r, replay) = f.repo.cancel(f.project, e, &a, c.clone()).await.unwrap();
+    assert!(!replay);
+    assert!(r.custody_released);
+    let restarted = f.reopened().await;
+    let original = restarted
+        .command(f.project, &a, &c.idempotency_key)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(original).unwrap(),
+        serde_json::to_value(BugSearchCommandReceipt::Cancel(r.clone())).unwrap()
+    );
+    assert_eq!(
+        restarted.cancel(f.project, e, &a, c).await.unwrap(),
+        (r, true)
+    );
+    assert!(matches!(
+        restarted
+            .command(
+                f.project,
+                &machine("foreign"),
+                "cancel-original-unprepared-successor"
+            )
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    drop(restarted);
+    f.close().await;
+}

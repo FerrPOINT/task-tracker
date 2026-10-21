@@ -1,0 +1,382 @@
+diff --git a/backend/app/src/sdlc_lifecycle.rs b/backend/app/src/sdlc_lifecycle.rs
+index 833c346..c94d716 100644
+--- a/backend/app/src/sdlc_lifecycle.rs
++++ b/backend/app/src/sdlc_lifecycle.rs
+@@ -519,6 +519,36 @@ pub fn reconcile_terminal(
+     Ok(())
+ }
+ 
++/// New input only: historical operation replay must run before this gate.
++pub fn validate_new_pm_feedback(state: &domain::sdlc::TaskState) -> Result<(), AppError> {
++    use domain::sdlc::{DraftSubmode, QuestionState, Stage};
++    state.require_root()?;
++    let marked = state.draft_flow()?.is_some();
++    let stage_allowed =
++        state.stage == Stage::Draft || (!marked && state.stage == Stage::Clarification);
++    let status_allowed = matches!(
++        state.status,
++        Some(LifecycleStatus::Ready | LifecycleStatus::InProgress)
++    ) || (!marked && state.status.is_none());
++    let mode_allowed = matches!(
++        state.draft_submode,
++        Some(DraftSubmode::Brainstorming | DraftSubmode::AwaitingConfirmation)
++    ) || (!marked && state.draft_submode.is_none());
++    if !stage_allowed
++        || !status_allowed
++        || !mode_allowed
++        || state
++            .questions
++            .iter()
++            .any(|q| q.state == QuestionState::Open)
++    {
++        return Err(AppError::conflict(
++            "pm_feedback_not_available_in_current_draft_mode",
++        ));
++    }
++    Ok(())
++}
++
+ pub fn pm_feedback_resume_contract(
+     state: &domain::sdlc::TaskState,
+     feedback: &PmFeedbackReceipt,
+diff --git a/backend/app/src/sdlc_tests.rs b/backend/app/src/sdlc_tests.rs
+index dcb8013..dc1b988 100644
+--- a/backend/app/src/sdlc_tests.rs
++++ b/backend/app/src/sdlc_tests.rs
+@@ -73,6 +73,95 @@ fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
+     assert!(validate_draft(&human, &command).is_err());
+ }
+ 
++#[test]
++fn new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state() {
++    use crate::sdlc_lifecycle::validate_new_pm_feedback;
++    use domain::sdlc_lifecycle::LifecycleStatus;
++
++    let (mut state, config, _, pm, _, fence) = fixture();
++    assert!(validate_new_pm_feedback(&state).is_ok());
++    state.stage = Stage::Clarification;
++    let legacy = serde_json::to_value(&state).unwrap();
++    assert!(validate_new_pm_feedback(&state).is_ok());
++    assert_eq!(serde_json::to_value(&state).unwrap(), legacy);
++
++    state.stage = Stage::Draft;
++    state
++        .retained_fields
++        .insert("flow".into(), json!("single-task-v1"));
++    for mode in [
++        DraftSubmode::Brainstorming,
++        DraftSubmode::AwaitingConfirmation,
++    ] {
++        state.draft_submode = Some(mode);
++        for status in [LifecycleStatus::Ready, LifecycleStatus::InProgress] {
++            state.status = Some(status);
++            let before = serde_json::to_value(&state).unwrap();
++            assert!(validate_new_pm_feedback(&state).is_ok());
++            assert_eq!(serde_json::to_value(&state).unwrap(), before);
++        }
++    }
++    for status in [None, Some(LifecycleStatus::Completed)] {
++        state.status = status;
++        assert!(validate_new_pm_feedback(&state).is_err());
++    }
++    state.status = Some(LifecycleStatus::Ready);
++    for mode in [None, Some(DraftSubmode::Clarification)] {
++        state.draft_submode = mode;
++        assert!(validate_new_pm_feedback(&state).is_err());
++    }
++    state.draft_submode = Some(DraftSubmode::Brainstorming);
++    for stage in [
++        Stage::Clarification,
++        Stage::Backlog,
++        Stage::Analysis,
++        Stage::Architecture,
++        Stage::Development,
++        Stage::Review,
++        Stage::Testing,
++        Stage::Rework,
++        Stage::Deployment,
++    ] {
++        state.stage = stage;
++        assert!(validate_new_pm_feedback(&state).is_err());
++    }
++    state.stage = Stage::Draft;
++    publish(&mut state, &config, &pm, &fence);
++    assert_eq!(
++        state.draft_submode,
++        Some(DraftSubmode::AwaitingConfirmation)
++    );
++    assert!(validate_new_pm_feedback(&state).is_ok());
++    let mut question = question(&fence, QuestionMode::Single);
++    question.required = false;
++    apply(
++        &mut state,
++        &pm,
++        &config,
++        &SdlcCommand::PublishQuestion(question),
++    )
++    .unwrap();
++    assert!(validate_new_pm_feedback(&state).is_err());
++    state.draft_submode = Some(DraftSubmode::AwaitingConfirmation);
++    // Even an optional open question blocks free feedback in an inconsistent mode.
++    assert!(validate_new_pm_feedback(&state).is_err());
++    state.retained_fields.remove("flow");
++    state.stage = Stage::Clarification;
++    state.status = None;
++    state.draft_submode = None;
++    assert!(validate_new_pm_feedback(&state).is_err());
++    state.questions[0].state = QuestionState::Answered;
++    assert!(validate_new_pm_feedback(&state).is_ok());
++    state.draft_submode = Some(DraftSubmode::Clarification);
++    assert!(validate_new_pm_feedback(&state).is_err());
++    state.draft_submode = None;
++    state.root_task_id = Uuid::new_v4();
++    assert!(validate_new_pm_feedback(&state).is_err());
++    state.root_task_id = state.task_id;
++    state.retained_fields.insert("flow".into(), json!(null));
++    assert!(validate_new_pm_feedback(&state).is_err());
++}
++
+ #[test]
+ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
+     let legacy = json!({"title":"Draft","description":"Input","idempotency_key":"create"});
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+index 1f4ad49..1f9c42e 100644
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -565,6 +565,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
+             tx.commit().await.map_err(map_db)?;
+             return Ok((receipt, true));
+         }
++        app::sdlc_lifecycle::validate_new_pm_feedback(&state)?;
+         let duplicate = tx
+             .query_one(statement(
+                 "SELECT message_id FROM sdlc_pm_feedback WHERE message_id=$1",
+diff --git a/backend/infra/src/sdlc_pm_resume_pg_tests.rs b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+index 2d65ccd..35c4f94 100644
+--- a/backend/infra/src/sdlc_pm_resume_pg_tests.rs
++++ b/backend/infra/src/sdlc_pm_resume_pg_tests.rs
+@@ -46,6 +46,68 @@ async fn saved_lease(db: &DatabaseConnection, execution: Uuid) -> Json {
+     .unwrap()
+ }
+ 
++async fn feedback_snapshot(db: &DatabaseConnection, task: Uuid) -> Json {
++    db.query_one(statement(
++        "SELECT jsonb_build_object('task',to_jsonb(t),
++         'leases',(SELECT jsonb_agg(to_jsonb(l)) FROM sdlc_pm_execution_leases l
++             JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=t.task_id),
++         'feedback',(SELECT count(*) FROM sdlc_pm_feedback WHERE task_id=t.task_id),
++         'operations',(SELECT count(*) FROM sdlc_idempotency WHERE task_id=t.task_id),
++         'outbox',(SELECT count(*) FROM sdlc_outbox WHERE task_id=t.task_id),
++         'questions',(SELECT count(*) FROM sdlc_question_versions WHERE task_id=t.task_id),
++         'answers',(SELECT count(*) FROM sdlc_answers WHERE task_id=t.task_id),
++         'requirements',(SELECT count(*) FROM sdlc_requirements WHERE task_id=t.task_id),
++         'executions',(SELECT count(*) FROM sdlc_pm_executions WHERE task_id=t.task_id),
++         'resume_inputs',(SELECT count(*) FROM sdlc_pm_resume_inputs WHERE task_id=t.task_id)) AS snapshot
++         FROM sdlc_tasks t WHERE task_id=$1",
++        vec![task.into()],
++    )).await.unwrap().unwrap().try_get("", "snapshot").unwrap()
++}
++
++async fn assert_feedback_replay_unchanged(
++    db: &DatabaseConnection,
++    repo: &PostgresSdlcRepository,
++    task: Uuid,
++    owner: &Principal,
++    command: &SubmitPmFeedback,
++    receipt: &domain::sdlc_lifecycle::PmFeedbackReceipt,
++) {
++    let before = feedback_snapshot(db, task).await;
++    let (replayed, was_replayed) = repo
++        .submit_pm_feedback(task, owner, command.clone())
++        .await
++        .unwrap();
++    assert!(was_replayed);
++    let expected = serde_json::to_value(receipt).unwrap();
++    assert_eq!(serde_json::to_value(replayed).unwrap(), expected);
++    assert_eq!(
++        serde_json::to_value(
++            repo.pm_feedback_operation(task, owner, &command.idempotency_key)
++                .await
++                .unwrap()
++        )
++        .unwrap(),
++        expected
++    );
++    assert_eq!(feedback_snapshot(db, task).await, before);
++}
++
++async fn assert_new_feedback_rejected(
++    db: &DatabaseConnection,
++    repo: &PostgresSdlcRepository,
++    task: Uuid,
++    owner: &Principal,
++    original: &SubmitPmFeedback,
++) {
++    let before = feedback_snapshot(db, task).await;
++    let mut fresh = original.clone();
++    fresh.message_id = Uuid::new_v4();
++    fresh.idempotency_key = format!("denied-{}", fresh.message_id);
++    assert!(matches!(repo.submit_pm_feedback(task, owner, fresh).await,
++        Err(AppError::Conflict(reason)) if reason == "pm_feedback_not_available_in_current_draft_mode"));
++    assert_eq!(feedback_snapshot(db, task).await, before);
++}
++
+ #[tokio::test]
+ #[ignore = "requires fresh disposable TT_PM_RESUME_TEST_DATABASE_URL ending in _pm_resume_test"]
+ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+@@ -156,17 +218,14 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         .await
+         .unwrap();
+     let checkpoint = Uuid::new_v4();
++    let feedback_command = SubmitPmFeedback {
++        message_id: Uuid::new_v4(),
++        fence: fence.clone(),
++        text: "Real saved brainstorming input".into(),
++        idempotency_key: "feedback".into(),
++    };
+     let (feedback, _) = repo
+-        .submit_pm_feedback(
+-            task,
+-            &owner,
+-            SubmitPmFeedback {
+-                message_id: Uuid::new_v4(),
+-                fence: fence.clone(),
+-                text: "Real saved brainstorming input".into(),
+-                idempotency_key: "feedback".into(),
+-            },
+-        )
++        .submit_pm_feedback(task, &owner, feedback_command.clone())
+         .await
+         .unwrap();
+     let command = resume(
+@@ -213,6 +272,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         repo.execution_lease(task, &pm, None).await.unwrap().state,
+         ExecutionLeaseState::Expired
+     ));
++    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+     let heartbeat = HeartbeatExecutionLease {
+         expected_owner_version: 1,
+         fence: fence.clone(),
+@@ -424,6 +484,26 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     )
+     .await
+     .unwrap();
++    let mut awaiting_command = feedback_command.clone();
++    awaiting_command.message_id = Uuid::new_v4();
++    awaiting_command.idempotency_key = "feedback-awaiting-confirmation".into();
++    awaiting_command.text = "Actual owner feedback while reviewing requirements".into();
++    let mut before = feedback_snapshot(&db, task).await;
++    let (awaiting_feedback, replayed) = repo
++        .submit_pm_feedback(task, &owner, awaiting_command.clone())
++        .await
++        .unwrap();
++    assert!(!replayed);
++    assert_eq!(awaiting_feedback.requirement_revision, Some(1));
++    let after = feedback_snapshot(&db, task).await;
++    for counter in ["feedback", "operations", "outbox"] {
++        assert_eq!(
++            after[counter].as_i64().unwrap(),
++            before[counter].as_i64().unwrap() + 1
++        );
++        before[counter] = after[counter].clone();
++    }
++    assert_eq!(before, after);
+     let question = PublishQuestion {
+         fence: fence.clone(),
+         request_id: Uuid::new_v4(),
+@@ -449,6 +529,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     )
+     .await
+     .unwrap();
++    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
++    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+     let answer: Answer = parse(
+         repo.execute_verified(
+             task,
+@@ -470,6 +552,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         .await
+         .unwrap(),
+     );
++    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+     let answer_command = resume(
+         &heartbeat_lease,
+         PmResumeInput::Answer {
+@@ -615,6 +698,17 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+         .await
+         .unwrap(),
+     );
++    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
++    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
++    assert_feedback_replay_unchanged(
++        &db,
++        &repo,
++        task,
++        &owner,
++        &awaiting_command,
++        &awaiting_feedback,
++    )
++    .await;
+     let closing = resume(
+         &answer_lease,
+         PmResumeInput::Confirmation {
+@@ -670,6 +764,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
+     )
+     .await
+     .unwrap();
++    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
++    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+     assert_eq!(
+         repo.pm_resume_operation(task, &reader, "resume-feedback")
+             .await
+diff --git a/docs/API.md b/docs/API.md
+index 739aaec..ed0a1f6 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -63,6 +63,23 @@ confirmation retains its original explicit-version snapshot semantics.
+ статус квалификации и открытые gates:
+ [single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+ 
++## New PM Feedback Guard
++
++Owner-only POST `.../pm-feedback` rechecks ACL, current PM fence and immutable
++assignment, then original-operation replay under the task lock. Only a new effect
++requires Draft with Ready/InProgress and brainstorming/awaiting_confirmation;
++any open structured question blocks free feedback. Marked tasks require these
++explicit canonical fields. Legacy unmarked Draft/Clarification may omit status
++and submode, but may not have an open question or an explicit clarification mode.
++No legacy state/history is rewritten. Backlog/Analysis and later stages reject new
++feedback with 409 `pm_feedback_not_available_in_current_draft_mode`.
++
++Historical replay and owner operation GET still return the exact original receipt
++after publication/confirmation or lease expiry, without a new outbox event, state
++mutation or fabricated answer. Idle feedback does not require a live lease. The
++owner operation endpoint is NOT a machine read source; an assignment-scoped saved
++message GET is a coordination proposal only, not implemented in this patch.
++
+ ## Trusted PM Resume (Producer Source)
+ 
+ Parent registration in the existing SDLC controller:
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index dad4c07..fc843c3 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -270,6 +270,19 @@ contains task/project/root/owner/instance, the current PM fence, original text a
+ hash, nullable current requirement revision and server creation time.
+ It never creates a clarification answer or changes requirements, consent,
+ stage or lease; accepting idle feedback does not require a live lease.
++New effects run a Draft/submode/status gate AFTER original-operation replay under
++the same task lock: marked tasks require Draft Ready/InProgress and brainstorming
++or awaiting_confirmation, with no open structured question (optional included).
++Legacy unmarked Draft/Clarification permits absent status/submode, never an open
++question or explicit clarification mode; history is not normalized in storage.
++After exact owner confirmation, new feedback is 409 even while the PM fence remains
++unchanged for its closing Workflow. Original receipts/replay stay available through
++confirmation, revision changes and lease expiry, with no duplicate business event.
++Focused source tests: app `new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state`
++and the existing infra `pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history`
++now cover rejection/no side effects, real awaiting-confirmation feedback and
++immutable replay/readback. These additions have not been executed by this worker;
++Cargo/PG QA stays with parent.
+ Parent still owns HTTP registration and Fleet delivery of this receipt:
+ POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session only.
+ CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`

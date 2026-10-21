@@ -1,0 +1,88 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 033d490..d75eac8 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,9 @@
+ 
+ ## [Unreleased]
+ 
++- HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
++  дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
++
+ - Общий Base snapshot обновлён до 0ffb99e: verified profile/directory contracts
+   и UI dependency graph без замены shell. Принятый runtime не переключается.
+ 
+diff --git a/docs/plans/2026-10-06-project-key-pattern.md b/docs/plans/2026-10-06-project-key-pattern.md
+new file mode 100644
+index 0000000..a5b2ecc
+--- /dev/null
++++ b/docs/plans/2026-10-06-project-key-pattern.md
+@@ -0,0 +1,19 @@
++# Native-валидация ключа проекта
++
++## Проблема и изменение
++
++HTML `pattern` использует режим Unicode sets (`v`), в котором литеральный
++дефис внутри character class требует экранирования. Невалидный pattern
++браузер не применяет: [HTML Standard](https://html.spec.whatwg.org/multipage/input.html#the-pattern-attribute).
++
++Исправить только атрибут Base Input в ProjectFormDialog. Доменная проверка
++JS и API остаются прежними: uppercase ASCII, цифры, дефис, длина 1–10.
++Не менять Base pin, shell, DTO, auth и runtime; чужой Task checkout не трогать.
++
++## Проверка
++
++- Component test компилирует фактический атрибут с `v`, проверяет native
++  validity для допустимых значений и underscore/dot/space/слишком длинного key.
++- Штатные frontend tests, typecheck, lint/format/OpenAPI/build и Base gate.
++- Проверка реального browser input отдельно от jsdom; ошибка не теряет draft.
++- Source acceptance не заменяет actual-image/SSO/README acceptance.
+diff --git a/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx b/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
+index 613382f..b6d4c10 100644
+--- a/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
++++ b/frontend/src/features/projects/ui/ProjectFormDialog.test.tsx
+@@ -61,13 +61,30 @@ describe('ProjectFormDialog', () => {
+     expect(key).toHaveAccessibleName(/key/i)
+     expect(key).toHaveAttribute('minlength', '1')
+     expect(key).toHaveAttribute('maxlength', '10')
+-    expect(key).toHaveAttribute('pattern', '[A-Z0-9-]{1,10}')
++    expect(key).toHaveAttribute('pattern', '[A-Z0-9\\-]{1,10}')
+     expect(key).toBeRequired()
+     expect(screen.getByPlaceholderText(/e\.g\. Task Tracker/i)).toBeRequired()
+     changeName('   ')
+     expect(screen.getByRole('button', { name: /create project/i })).toBeDisabled()
+   })
+ 
++  it('compiles the native Unicode-set pattern and rejects keys outside API bounds', () => {
++    renderForm()
++    const key = screen.getByPlaceholderText<HTMLInputElement>(/e\.g\. TT/i)
++    const pattern = new RegExp(`^(?:${key.pattern})$`, 'v')
++    for (const value of ['A', 'TT-1', '123', '----------']) {
++      fireEvent.change(key, { target: { value } })
++      expect(pattern.test(value)).toBe(true)
++      expect(key.checkValidity()).toBe(true)
++    }
++    for (const value of ['A_', 'A.B', 'A B', 'ABCDEFGHIJK']) {
++      fireEvent.change(key, { target: { value } })
++      expect(pattern.test(value)).toBe(false)
++      expect(key.validity.patternMismatch).toBe(true)
++      expect(key.checkValidity()).toBe(false)
++    }
++  })
++
+   it('submits trimmed values with an uppercase key and an optional description', async () => {
+     const onSubmit = vi.fn()
+     renderForm({ onSubmit })
+diff --git a/frontend/src/features/projects/ui/ProjectFormDialog.tsx b/frontend/src/features/projects/ui/ProjectFormDialog.tsx
+index 1a19799..e6e03e9 100644
+--- a/frontend/src/features/projects/ui/ProjectFormDialog.tsx
++++ b/frontend/src/features/projects/ui/ProjectFormDialog.tsx
+@@ -108,7 +108,7 @@ export function ProjectFormDialog({
+               disabled={isEdit || readOnly}
+               minLength={1}
+               maxLength={10}
+-              pattern="[A-Z0-9-]{1,10}"
++              pattern="[A-Z0-9\-]{1,10}"
+             />
+           )}
+         </FormField>

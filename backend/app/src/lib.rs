@@ -18,6 +18,7 @@ pub mod sdlc_draft_flow;
 pub mod sdlc_draft_source_enrollment;
 pub mod sdlc_lifecycle;
 pub mod sdlc_metadata;
+pub mod sdlc_pm_bootstrap_retry;
 pub mod sdlc_pm_resume;
 pub mod sdlc_pm_unsubmitted;
 pub mod sdlc_reservation;

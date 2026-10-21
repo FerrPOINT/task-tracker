@@ -1,0 +1,332 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useReducer } from 'react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import { toast } from 'sonner'
+import i18n from '@/shared/i18n/config'
+import { CustomFieldMutationError, type CustomField } from '@/api/custom-fields'
+import { ProjectCustomFieldsPage } from './'
+
+const mocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  remove: vi.fn(),
+  fields: vi.fn(),
+  refresh: vi.fn(),
+}))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/shared/api/hooks', () => ({
+  useProjectCustomFields: mocks.fields,
+  useCreateCustomField: () => ({ mutateAsync: mocks.create, isPending: false }),
+  useDeleteCustomField: () => ({ mutateAsync: mocks.remove, isPending: false }),
+}))
+const field: CustomField = {
+  id: 'f1',
+  project_id: 'p1',
+  name: 'Customer',
+  field_type: 'text',
+  options: [],
+  is_required: false,
+  created_at: '2026-10-04T00:00:00Z',
+}
+const directory = (fields = [field], extra = {}) => ({
+  data: fields,
+  isLoading: false,
+  isFetching: false,
+  error: null,
+  refetch: mocks.refresh,
+  ...extra,
+})
+function setup() {
+  let refresh!: () => void
+  function RouteHarness() {
+    const [, update] = useReducer((value) => value + 1, 0)
+    refresh = update
+    return <ProjectCustomFieldsPage />
+  }
+  const router = createMemoryRouter(
+    [
+      { path: '/projects/:projectKey/custom-fields', element: <RouteHarness /> },
+      { path: '/other', element: <h1>Destination</h1> },
+    ],
+    { initialEntries: ['/projects/TT/custom-fields'] },
+  )
+  const tree = () => (
+    <ThemeProvider>
+      <RouterProvider router={router} />
+    </ThemeProvider>
+  )
+  const view = render(tree())
+  return {
+    router,
+    ...view,
+    tree,
+    rerender: (nextTree: React.ReactNode) => {
+      void nextTree
+      act(() => refresh())
+    },
+  }
+}
+const createForm = () => screen.getByTestId('custom-field-create-form')
+const nameInput = () => screen.getByRole('textbox', { name: 'Field name' })
+const add = () => screen.getByRole('button', { name: 'Add field' })
+const dialog = () => screen.getByRole('alertdialog')
+async function requestDelete() {
+  await userEvent.click(screen.getByRole('button', { name: 'Delete field Customer' }))
+}
+const confirm = () => within(dialog()).getByRole('button', { name: 'Confirm' })
+beforeEach(async () => {
+  await i18n.changeLanguage('en')
+  vi.resetAllMocks()
+  mocks.fields.mockReturnValue(directory())
+  mocks.create.mockResolvedValue(field)
+  mocks.remove.mockResolvedValue(undefined)
+  mocks.refresh.mockResolvedValue({ data: [field] })
+})
+describe('project custom field settings', () => {
+  it('distinguishes loading/error/empty and retains stale rows with retry', async () => {
+    mocks.fields.mockReturnValue(directory([], { isLoading: true, data: undefined }))
+    const view = setup()
+    expect(screen.queryByText('No custom fields configured.')).not.toBeInTheDocument()
+    expect(add()).toBeDisabled()
+    mocks.fields.mockReturnValue(directory([field], { error: new Error('private') }))
+    view.rerender(view.tree())
+    expect(screen.getByText('Customer')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).not.toHaveTextContent('private')
+    expect(add()).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete field Customer' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(mocks.refresh).toHaveBeenCalledOnce()
+    mocks.fields.mockReturnValue(directory([]))
+    view.rerender(view.tree())
+    expect(screen.getByText('No custom fields configured.')).toBeInTheDocument()
+  })
+  it.each(['', ' ', 'One,', ',One', 'One, One'])(
+    'does not POST missing/duplicate options %j',
+    async (options) => {
+      setup()
+      fireEvent.change(nameInput(), { target: { value: 'Team' } })
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Field type' }), 'select')
+      fireEvent.change(screen.getByRole('textbox', { name: 'Options, separated by commas' }), {
+        target: { value: options },
+      })
+      await userEvent.click(add())
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(mocks.create).not.toHaveBeenCalled()
+      expect(nameInput()).toHaveValue('Team')
+    },
+  )
+  it('rejects whitespace names and trims name/options without inventing a name bound', async () => {
+    setup()
+    fireEvent.change(nameInput(), { target: { value: ' ' } })
+    await userEvent.click(add())
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a field name')
+    expect(mocks.create).not.toHaveBeenCalled()
+    const name = 'N'.repeat(300)
+    fireEvent.change(nameInput(), { target: { value: ` ${name} ` } })
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Field type' }),
+      'multi-select',
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Options, separated by commas' }), {
+      target: { value: ' First, Second ' },
+    })
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Required' }))
+    await userEvent.click(add())
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith({
+        name,
+        field_type: 'multi-select',
+        options: ['First', 'Second'],
+        is_required: true,
+      }),
+    )
+    await waitFor(() => expect(nameInput()).toHaveValue(''))
+    expect(toast.success).toHaveBeenCalledWith('Field added.')
+  })
+  it('retains draft on rejected create and on refetch, then explicitly retries', async () => {
+    mocks.create.mockRejectedValueOnce(new CustomFieldMutationError(422))
+    const view = setup()
+    fireEvent.change(nameInput(), { target: { value: 'Team' } })
+    await userEvent.click(add())
+    expect(nameInput()).toHaveValue('Team')
+    expect(nameInput()).not.toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not add the field')
+    expect(toast.success).not.toHaveBeenCalled()
+    mocks.fields.mockReturnValue(directory([{ ...field, name: 'external' }]))
+    view.rerender(view.tree())
+    expect(nameInput()).toHaveValue('Team')
+    await userEvent.click(add())
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2))
+  })
+  it('locks all form and mutation controls pending and ignores duplicate submit', async () => {
+    let resolve!: (field: CustomField) => void
+    mocks.create.mockImplementation(
+      () =>
+        new Promise<CustomField>((done) => {
+          resolve = done
+        }),
+    )
+    setup()
+    fireEvent.change(nameInput(), { target: { value: 'Team' } })
+    fireEvent.submit(createForm())
+    fireEvent.submit(createForm())
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce())
+    expect(nameInput()).toBeDisabled()
+    expect(screen.getByRole('checkbox')).toBeDisabled()
+    for (const button of ['Cancel', 'Delete field Customer', 'Refresh custom fields'])
+      expect(screen.getByRole('button', { name: button })).toBeDisabled()
+    await act(async () => resolve(field))
+    await waitFor(() => expect(nameInput()).toHaveValue(''))
+  })
+  it('protects dirty SPA/reload draft and restores focus when navigation is cancelled', async () => {
+    const { router } = setup()
+    fireEvent.change(nameInput(), { target: { value: 'draft' } })
+    const before = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(before)
+    expect(before.defaultPrevented).toBe(true)
+    await act(async () => {
+      void router.navigate('/other')
+    })
+    expect(dialog()).toHaveTextContent(/unsaved/i)
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(nameInput()).toHaveFocus())
+    expect(nameInput()).toHaveValue('draft')
+    expect(router.state.location.pathname).toContain('custom-fields')
+    await act(async () => {
+      void router.navigate('/other')
+    })
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Destination' })).toBeInTheDocument(),
+    )
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('local cancel requires confirmation and never POSTs', async () => {
+    setup()
+    fireEvent.change(nameInput(), { target: { value: 'draft' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(nameInput()).toHaveFocus())
+    expect(nameInput()).toHaveValue('draft')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(confirm())
+    await waitFor(() => expect(nameInput()).toHaveValue(''))
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('freezes unknown creation through GET failure and excludes preexisting identical fields', async () => {
+    mocks.create.mockRejectedValueOnce(new CustomFieldMutationError(500))
+    setup()
+    fireEvent.change(nameInput(), { target: { value: 'Customer' } })
+    await userEvent.click(add())
+    expect(nameInput()).toBeDisabled()
+    mocks.refresh.mockResolvedValueOnce({ error: new Error('private') })
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    expect(nameInput()).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    expect(nameInput()).not.toBeDisabled()
+    expect(nameInput()).toHaveValue('Customer')
+    expect(screen.getByRole('alert')).toHaveTextContent('No new field was found')
+    expect(mocks.create).toHaveBeenCalledOnce()
+    expect(toast.success).not.toHaveBeenCalled()
+    await userEvent.click(add())
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2))
+  })
+  it.each([1, 2])('checks %s matching new records without another POST', async (count) => {
+    mocks.create.mockRejectedValueOnce(new CustomFieldMutationError())
+    mocks.refresh.mockResolvedValue({
+      data: [
+        field,
+        ...Array.from({ length: count }, (_, index) => ({ ...field, id: `new-${index}` })),
+      ],
+    })
+    setup()
+    fireEvent.change(nameInput(), { target: { value: 'Customer' } })
+    await userEvent.click(add())
+    await userEvent.click(screen.getByRole('button', { name: 'Check result' }))
+    expect(mocks.create).toHaveBeenCalledOnce()
+    if (count === 1) {
+      expect(nameInput()).toHaveValue('')
+      expect(toast.success).toHaveBeenCalledOnce()
+    } else {
+      expect(nameInput()).toBeDisabled()
+      expect(screen.getByRole('alert')).toHaveTextContent('Several new fields')
+      expect(toast.success).not.toHaveBeenCalled()
+    }
+  })
+  it('cancel deletion performs no DELETE and preserves focus', async () => {
+    setup()
+    await requestDelete()
+    expect(dialog()).toHaveTextContent('Customer')
+    expect(dialog()).toHaveTextContent('cannot be undone')
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
+    expect(mocks.remove).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete field Customer' })).toHaveFocus(),
+    )
+  })
+  it('retains a rejected delete in its dialog and confirms only eventual success', async () => {
+    mocks.remove.mockRejectedValueOnce(new CustomFieldMutationError(403))
+    setup()
+    await requestDelete()
+    await userEvent.click(confirm())
+    expect(dialog()).toHaveTextContent('Could not delete the field')
+    expect(toast.success).not.toHaveBeenCalled()
+    await userEvent.click(confirm())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mocks.remove).toHaveBeenCalledTimes(2)
+  })
+  it('blocks repeated delete, Escape and form edits pending', async () => {
+    let resolve!: () => void
+    mocks.remove.mockImplementation(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done
+        }),
+    )
+    setup()
+    await requestDelete()
+    await userEvent.click(confirm())
+    expect(confirm()).toBeDisabled()
+    expect(within(dialog()).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByLabelText('Field name')).toBeDisabled()
+    await userEvent.keyboard('{Escape}')
+    expect(dialog()).toBeInTheDocument()
+    expect(mocks.remove).toHaveBeenCalledOnce()
+    await act(async () => resolve())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+  })
+  it.each([404, 500])(
+    'verifies uncertain DELETE %s and requires fresh explicit confirmation for existing row',
+    async (status) => {
+      mocks.remove.mockRejectedValueOnce(new CustomFieldMutationError(status))
+      setup()
+      await requestDelete()
+      await userEvent.click(confirm())
+      mocks.refresh.mockResolvedValueOnce({ error: new Error('private') })
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Check result' }))
+      expect(dialog()).toHaveTextContent('Could not check')
+      expect(mocks.remove).toHaveBeenCalledOnce()
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Check result' }))
+      expect(dialog()).toHaveTextContent('fresh confirmation')
+      expect(mocks.remove).toHaveBeenCalledOnce()
+      await userEvent.click(confirm())
+      await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(2))
+    },
+  )
+  it('confirms absent field via GET only and restores region focus after row removal', async () => {
+    mocks.remove.mockRejectedValueOnce(new CustomFieldMutationError(500))
+    const view = setup()
+    await requestDelete()
+    await userEvent.click(confirm())
+    mocks.fields.mockReturnValue(directory([]))
+    mocks.refresh.mockResolvedValue({ data: [] })
+    view.rerender(view.tree())
+    await userEvent.click(within(dialog()).getByRole('button', { name: 'Check result' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mocks.remove).toHaveBeenCalledOnce()
+    expect(toast.success).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Custom fields' })).toHaveFocus())
+  })
+})

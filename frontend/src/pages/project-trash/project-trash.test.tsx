@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate, toast } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
-import { toast } from 'sonner'
 
 import { ProjectTrashPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
@@ -14,7 +13,10 @@ const mockTrash = vi.hoisted(() => vi.fn())
 const mockRestoreState = vi.hoisted(() => vi.fn())
 const mockPurgeState = vi.hoisted(() => vi.fn())
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
+  ...(await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()),
+}))
 
 vi.mock('@/shared/api/hooks', () => ({
   useTrash: (...args: unknown[]) => mockTrash(...args),

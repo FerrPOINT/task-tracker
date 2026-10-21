@@ -1,0 +1,151 @@
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+index 98454e3..ac07b7c 100644
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -984,23 +984,26 @@ impl LifecycleRepository for PostgresSdlcRepository {
+         if before.as_ref().is_some_and(|previous| previous != &receipt) {
+             Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
+         }
+-        let event_id = (before.as_ref() != Some(&receipt)).then(Uuid::now_v7);
++        let event = match &command {
++            LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
++            LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
++            LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
++            // Lease renewals are audited in operations, not mirrored into business chat.
++            LifecycleCommand::Heartbeat { .. } => None,
++            LifecycleCommand::BindRun { .. } => Some("delivery.run_bound"),
++            LifecycleCommand::Complete { .. } => Some("delivery.result_accepted"),
++        };
++        let event_id = event
++            .filter(|_| before.as_ref() != Some(&receipt))
++            .map(|_| Uuid::now_v7());
+         exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
+             VALUES($1,$2,$3,$4,$5,$6)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
+                 hash.into(),json_value(&receipt)?,event_id.into()]).await?;
+-        let event = match &command {
+-            LifecycleCommand::Reconcile { .. } => "delivery.reconciled",
+-            LifecycleCommand::EnsureQueued { .. } => "delivery.queued",
+-            LifecycleCommand::Reserve { .. } => "delivery.assignment_reserved",
+-            LifecycleCommand::Heartbeat { .. } => "delivery.lease_renewed",
+-            LifecycleCommand::BindRun { .. } => "delivery.run_bound",
+-            LifecycleCommand::Complete { .. } => "delivery.result_accepted",
+-        };
+-        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+-            "project_id":state.project_id,"task_id":task,"root_task_id":task,
+-            "owner_subject":state.owner_subject,"stage":receipt.task.stage,
+-            "requirement_revision":receipt.task.routing.requirement_revision,"result":&receipt});
+-        if let Some(event_id) = event_id {
++        if let (Some(event_id), Some(event)) = (event_id, event) {
++            let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
++                "project_id":state.project_id,"task_id":task,"root_task_id":task,
++                "owner_subject":state.owner_subject,"stage":receipt.task.stage,
++                "requirement_revision":receipt.task.routing.requirement_revision,"result":&receipt});
+             exec(
+                 &tx,
+                 "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+index 4eedd56..2bea8a3 100644
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -353,11 +353,57 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         fence: stale.clone(),
+         idempotency_key: "heartbeat-0".into(),
+     };
++    let outbox_before_heartbeat = count(&db, "sdlc_outbox").await;
++    let operations_before_heartbeat = count(&db, "sdlc_delivery_operations").await;
++    let mirror_source_before_heartbeat: Vec<Json> = repo
++        .metadata_outbox(task, &owner, 0, 100)
++        .await
++        .unwrap()
++        .into_iter()
++        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
++        .collect();
+     let (renewed, _) = repo
+         .lifecycle_command(task, &scheduler, heartbeat.clone())
+         .await
+         .unwrap();
+     assert_eq!(renewed.lease.as_ref().unwrap().version, 2);
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat);
++    assert_eq!(
++        count(&db, "sdlc_delivery_operations").await,
++        operations_before_heartbeat + 1
++    );
++    let mirror_source_after_heartbeat: Vec<Json> = repo
++        .metadata_outbox(task, &owner, 0, 100)
++        .await
++        .unwrap()
++        .into_iter()
++        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
++        .collect();
++    assert_eq!(
++        mirror_source_after_heartbeat,
++        mirror_source_before_heartbeat
++    );
++    let heartbeat_audit = db.query_one(statement(
++        "SELECT event_id,result FROM sdlc_delivery_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key='heartbeat-0'",
++        vec![task.into(),scheduler.subject.clone().into()],
++    )).await.unwrap().unwrap();
++    assert!(
++        heartbeat_audit
++            .try_get::<Option<Uuid>>("", "event_id")
++            .unwrap()
++            .is_none()
++    );
++    assert_eq!(
++        heartbeat_audit.try_get::<Json>("", "result").unwrap(),
++        serde_json::to_value(&renewed).unwrap()
++    );
++    let fresh_after_heartbeat = repo.lifecycle_read(task, &reader).await.unwrap();
++    assert_eq!(
++        serde_json::to_value(&fresh_after_heartbeat.receipt).unwrap(),
++        serde_json::to_value(&renewed).unwrap()
++    );
++    assert!(fresh_after_heartbeat.observed_at >= renewed.lease.as_ref().unwrap().heartbeat_at);
++    assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at);
+     assert!(
+         repo.lifecycle_command(
+             task,
+@@ -409,12 +455,24 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         3
+     );
+     let (proposal, _) = concurrent_proposal.unwrap();
++    // The concurrent proposal remains a business event; the second heartbeat does not.
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
++    let operations_after_race = count(&db, "sdlc_delivery_operations").await;
+     let original_heartbeat = repo
+         .lifecycle_command(task, &scheduler, heartbeat)
+         .await
+         .unwrap();
+     assert!(original_heartbeat.1);
+     assert_eq!(original_heartbeat.0.lease.as_ref().unwrap().version, 2);
++    assert_eq!(
++        serde_json::to_value(&original_heartbeat.0).unwrap(),
++        serde_json::to_value(&renewed).unwrap()
++    );
++    assert_eq!(
++        count(&db, "sdlc_delivery_operations").await,
++        operations_after_race
++    );
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
+     assert_eq!(
+         repo.lifecycle_operation(task, &reader, "heartbeat-0")
+             .await
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index d1edd42..8ce6f20 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -200,6 +200,14 @@ call. Complete still rejects expiry. On 409, reconcile the ORIGINAL operation fi
+ then GET fresh lifecycle readback with the read-only child token; never change a payload
+ under a previously accepted key or redispatch an unknown-acceptance run.
+ 
++Heartbeat renews the authoritative lease head and appends its immutable operation,
++but emits NO business outbox event (`event_id` is null on that operation). Fresh
++readback still advances its server clock/current lease; replay retains the original
++receipt. Fleet's metadata-to-chat mirror therefore receives no renewal message.
++Existing historical `delivery.lease_renewed` metadata remains readable; stage/run,
++proposal, result, feedback and reconciliation events are unchanged. No new message
++field, schema or migration is needed to suppress heartbeat chatter.
++
+ Proposal does not change stage/status or release capacity. Existing Fleet
+ consumer observes actual runtime terminal and then invokes scheduler-only
+ Complete with matching proposal output/hash/Workflow receipt plus the actual

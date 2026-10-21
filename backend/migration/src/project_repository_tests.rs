@@ -36,7 +36,10 @@ impl MigratorTrait for CatalogBeforePmRecovery {
                 !matches!(
                     migration.name(),
                     "m20261018_0000098_pm_unsubmitted_recovery"
+                        | "m20261021_0000099_pm_bootstrap_retry"
                         | "m20261019_0000099_unified_spaces"
+                        | "m20261021_0000100_human_sdlc_spaces"
+                        | "m20261021_0000101_native_sdlc_spaces"
                 )
             })
             .collect()
@@ -52,7 +55,10 @@ impl MigratorTrait for LegacyCatalogBeforePmRecovery {
                 !matches!(
                     migration.name(),
                     "m20261018_0000098_pm_unsubmitted_recovery"
+                        | "m20261021_0000099_pm_bootstrap_retry"
                         | "m20261019_0000099_unified_spaces"
+                        | "m20261021_0000100_human_sdlc_spaces"
+                        | "m20261021_0000101_native_sdlc_spaces"
                 )
             })
             .collect()
@@ -111,7 +117,7 @@ async fn project_compat_legacy_preserves_links_and_ledger_without_invented_task_
         .await,
         serde_json::json!(0)
     );
-    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_pm_unsubmitted_recovery','m20261018_0000098_project_repository_catalog','m20261019_0000099_unified_spaces')").await);
+    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_pm_unsubmitted_recovery','m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces')").await);
     let once = value(
         &db,
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m",
@@ -136,9 +142,7 @@ async fn project_compat_published_source_history_remains_valid() {
         Some(
             PublishedMigrator::migrations()
                 .iter()
-                .position(|migration| {
-                    migration.name() == "m20261018_0000098_project_repository_catalog"
-                })
+                .position(|m| m.name() == "m20261018_0000098_project_repository_catalog")
                 .unwrap() as u32,
         ),
     )
@@ -150,7 +154,7 @@ async fn project_compat_published_source_history_remains_valid() {
     )
     .await;
     Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_project_repository_catalog','m20261019_0000099_unified_spaces')").await);
+    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces')").await);
     assert_eq!(value(&db,"SELECT to_jsonb(count(*)) AS v FROM seaql_migrations WHERE version='m20261016_0000096_project_repositories'").await,serde_json::json!(0));
 }
 
@@ -170,7 +174,7 @@ async fn assert_catalog_before_pm_history(db: &DatabaseConnection) {
     .await;
     Migrator::up(db, None).await.unwrap();
     assert_eq!(ledger_before, value(db,
-        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_pm_unsubmitted_recovery','m20261019_0000099_unified_spaces')").await);
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_pm_unsubmitted_recovery','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces')").await);
     assert_eq!(links, value(db,
         "SELECT jsonb_agg(to_jsonb(p) ORDER BY repository_id) AS v FROM project_repository_links p").await);
     assert_eq!(value(db,

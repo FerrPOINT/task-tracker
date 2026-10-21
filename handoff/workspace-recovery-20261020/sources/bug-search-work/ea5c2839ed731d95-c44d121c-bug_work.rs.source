@@ -1,0 +1,138 @@
+use async_trait::async_trait;
+use domain::{
+    bug_search_control::validate_key, bug_search_intake::validate_scope, bug_work::*,
+    sdlc::Principal,
+};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+#[async_trait]
+pub trait BugWorkRepository: Send + Sync {
+    async fn work_origin(
+        &self,
+        project: Uuid,
+        assignment: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::bug_work_origin::BugWorkOriginReadback, AppError>;
+    async fn claim_work(
+        &self,
+        project: Uuid,
+        worker: Uuid,
+        actor: &Principal,
+        command: ClaimBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError>;
+    async fn bind_work(
+        &self,
+        project: Uuid,
+        assignment: Uuid,
+        actor: &Principal,
+        command: BindBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError>;
+    async fn close_work(
+        &self,
+        project: Uuid,
+        assignment: Uuid,
+        actor: &Principal,
+        command: CloseBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError>;
+    async fn work_assignment(
+        &self,
+        project: Uuid,
+        assignment: Uuid,
+        actor: &Principal,
+    ) -> Result<BugWorkState, AppError>;
+    async fn current_work(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+    ) -> Result<Option<BugWorkState>, AppError>;
+    async fn work_operation(
+        &self,
+        project: Uuid,
+        key: &str,
+        actor: &Principal,
+    ) -> Result<BugWorkReceipt, AppError>;
+}
+#[derive(Clone)]
+pub struct BugWorkService {
+    pub repository: Arc<dyn BugWorkRepository>,
+}
+impl BugWorkService {
+    pub async fn origin(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+    ) -> Result<domain::bug_work_origin::BugWorkOriginReadback, AppError> {
+        ids(p, id)?;
+        self.repository.work_origin(p, id, a).await
+    }
+    pub async fn claim(
+        &self,
+        p: Uuid,
+        w: Uuid,
+        a: &Principal,
+        c: ClaimBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        c.validate(p, w)?;
+        self.repository.claim_work(p, w, a, c).await
+    }
+    pub async fn bind(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: BindBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        ids(p, id)?;
+        c.validate()?;
+        self.repository.bind_work(p, id, a, c).await
+    }
+    pub async fn close(
+        &self,
+        p: Uuid,
+        id: Uuid,
+        a: &Principal,
+        c: CloseBugWork,
+    ) -> Result<(BugWorkReceipt, bool), AppError> {
+        ids(p, id)?;
+        c.validate()?;
+        self.repository.close_work(p, id, a, c).await
+    }
+    pub async fn read(&self, p: Uuid, id: Uuid, a: &Principal) -> Result<BugWorkState, AppError> {
+        ids(p, id)?;
+        self.repository.work_assignment(p, id, a).await
+    }
+    pub async fn current(
+        &self,
+        p: Uuid,
+        owner: &str,
+        w: Uuid,
+        a: &Principal,
+    ) -> Result<Option<BugWorkState>, AppError> {
+        validate_scope(p, owner, w)?;
+        self.repository.current_work(p, owner, w, a).await
+    }
+    pub async fn operation(
+        &self,
+        p: Uuid,
+        key: &str,
+        a: &Principal,
+    ) -> Result<BugWorkReceipt, AppError> {
+        if p.is_nil() {
+            return Err(AppError::validation("invalid Bug work project"));
+        }
+        validate_key(key)?;
+        self.repository.work_operation(p, key, a).await
+    }
+}
+fn ids(p: Uuid, id: Uuid) -> Result<(), AppError> {
+    if p.is_nil() || id.is_nil() {
+        Err(AppError::validation("invalid Bug work identity"))
+    } else {
+        Ok(())
+    }
+}

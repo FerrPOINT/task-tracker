@@ -1,0 +1,127 @@
+//! Exact Fleet producer attestation; no lease expiry or invented run can release custody.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, exec, field, stmt};
+use crate::bug_search_control::{command_hash, locks, save, saved};
+use domain::{bug_search_cancel::*, bug_search_control::BugSearchCommandReceipt, sdlc::Principal};
+use sea_orm::{ConnectionTrait, TransactionTrait};
+use serde_json::{Value, json};
+use shared::AppError;
+use uuid::Uuid;
+
+impl PostgresBugSearchRepository {
+    pub(super) async fn cancel_before_start(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: CancelBugSearchBeforeStart,
+    ) -> Result<(BugSearchCancellationReceipt, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = command_hash(
+            "cancel",
+            p,
+            &json!({"execution_id":e,
+            "expected_fence":c.expected_fence,"not_started_observation":c.not_started_observation}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        // Registration holds a shared execution lock until its occurrence commits.
+        // Exclusive custody here makes the contradiction check and end receipt
+        // indivisible with respect to a concurrent accepted finding/result.
+        exec(
+            &tx,
+            "SELECT execution_id FROM sdlc_bug_search_executions WHERE execution_id=$1 AND project_id=$2 FOR UPDATE",
+            vec![e.into(), p.into()],
+        )
+        .await?;
+        let row = self.retained_execution(&tx, p, e).await?;
+        let b = self.binding(&row)?;
+        b.require_machine(a)?;
+        if b.fence != c.expected_fence
+            || c.not_started_observation.execution_id != e
+            || c.not_started_observation.agent_id != b.agent_id
+            || c.not_started_observation.snapshot_sha256 != b.snapshot_sha256
+        {
+            return Err(AppError::conflict("not-started immutable binding differs"));
+        }
+        if let Some(BugSearchCommandReceipt::Cancel(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "cancel", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        let now: chrono::DateTime<chrono::Utc> = field(&row, "observed_at")?;
+        if c.not_started_observation.observed_at > now + chrono::Duration::seconds(5)
+            || c.not_started_observation.observed_at
+                < field::<chrono::DateTime<chrono::Utc>>(&row, "created_at")?
+        {
+            return Err(AppError::validation("not-started observation time differs"));
+        }
+        let custody = &c.not_started_observation.runtime_custody;
+        if let Some(proof) = &custody.stop_proof {
+            if Some(app::bug_search::canonical_hash(proof)?).as_deref()
+                != custody.stop_proof_sha256.as_deref()
+            {
+                return Err(AppError::validation(
+                    "original namespace exit digest differs",
+                ));
+            }
+        }
+        let old: Option<Value> = field(&row, "terminal_receipt")?;
+        if old.is_none()
+            && tx.query_one(stmt(
+                "SELECT execution_id FROM sdlc_bug_occurrences WHERE execution_id=$1 AND project_id=$2 UNION ALL SELECT execution_id FROM sdlc_bug_search_results WHERE execution_id=$1 AND project_id=$2 LIMIT 1",
+                vec![e.into(), p.into()],
+            ))
+            .await
+            .map_err(db_error)?
+            .is_some()
+        {
+            return Err(AppError::conflict(
+                "accepted execution result contradicts not-started evidence",
+            ));
+        }
+        let (result, replayed) = if let Some(old) = old {
+            let receipt: BugSearchCancellationReceipt = serde_json::from_value(old)
+                .map_err(|_| AppError::conflict("actual runtime terminal already retained"))?;
+            if receipt.not_started_observation != c.not_started_observation {
+                return Err(AppError::conflict("not-started producer evidence changed"));
+            }
+            (receipt, true)
+        } else {
+            let result = BugSearchCancellationReceipt {
+                contract_version: 1,
+                kind: BugPreRunEndKind::CancelledBeforeStart,
+                operation_id: Uuid::now_v7(),
+                tracker_instance_id: b.tracker_instance_id.clone(),
+                project_id: p,
+                execution_id: e,
+                fence: b.fence,
+                not_started_observation: c.not_started_observation,
+                custody_released: true,
+                accepted_at: now,
+            };
+            exec(&tx,"UPDATE sdlc_bug_search_executions SET terminal_receipt=$2,capacity_held=false WHERE execution_id=$1",
+                 vec![e.into(),serde_json::to_value(&result).map_err(AppError::internal)?.into()]).await?;
+            (result, false)
+        };
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &b.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::Cancel(result.clone()),
+        )
+        .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, replayed))
+    }
+}

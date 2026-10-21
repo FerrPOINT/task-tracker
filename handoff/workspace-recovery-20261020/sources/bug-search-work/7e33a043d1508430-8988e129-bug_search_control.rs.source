@@ -1,0 +1,532 @@
+//! No network call occurs while Tracker locks are held. Fleet attests producer readback.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, exec, field, stmt};
+use domain::{bug_search::*, bug_search_control::*, sdlc::Principal};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, TransactionTrait};
+use serde_json::{Value, json};
+use shared::AppError;
+use uuid::Uuid;
+
+pub(super) fn command_hash(
+    kind: &str,
+    p: Uuid,
+    body: &impl serde::Serialize,
+) -> Result<String, AppError> {
+    let mut body = serde_json::to_value(body).map_err(AppError::internal)?;
+    body.as_object_mut()
+        .ok_or_else(|| AppError::validation("invalid control command"))?
+        .remove("idempotency_key");
+    app::bug_search::canonical_hash(&json!({"kind":kind,"project_id":p,"body":body}))
+}
+pub(super) async fn locks(
+    tx: &DatabaseTransaction,
+    a: &Principal,
+    key: &str,
+    p: Uuid,
+) -> Result<(), AppError> {
+    exec(
+        tx,
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,96))",
+        vec![json!(["bugs.command", a.subject, key]).to_string().into()],
+    )
+    .await?;
+    exec(
+        tx,
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,97))",
+        vec![json!(["bugs.project", p]).to_string().into()],
+    )
+    .await
+}
+pub(super) async fn saved(
+    tx: &DatabaseTransaction,
+    p: Uuid,
+    a: &Principal,
+    key: &str,
+    kind: &str,
+    hash: &str,
+) -> Result<Option<BugSearchCommandReceipt>, AppError> {
+    let row=tx.query_one(stmt("SELECT project_id,kind,request_sha256,receipt FROM sdlc_bug_search_commands WHERE actor_subject=$1 AND idempotency_key=$2",vec![a.subject.clone().into(),key.into()])).await.map_err(db_error)?;
+    if let Some(r) = row {
+        if field::<Uuid>(&r, "project_id")? != p
+            || field::<String>(&r, "kind")? != kind
+            || field::<String>(&r, "request_sha256")? != hash
+        {
+            return Err(AppError::conflict("bug operation key payload changed"));
+        }
+        return Ok(Some(decode(&r, "receipt")?));
+    }
+    Ok(None)
+}
+pub(super) async fn save(
+    tx: &DatabaseTransaction,
+    p: Uuid,
+    a: &Principal,
+    key: &str,
+    owner: &str,
+    hash: &str,
+    r: &BugSearchCommandReceipt,
+) -> Result<(), AppError> {
+    let kind = match r {
+        BugSearchCommandReceipt::Policy(_) => "policy",
+        BugSearchCommandReceipt::Reserve(_) => "reserve",
+        BugSearchCommandReceipt::Admit(_) => "admit",
+        BugSearchCommandReceipt::Register(_) => "register",
+        BugSearchCommandReceipt::Terminal(_) => "terminal",
+        BugSearchCommandReceipt::Cancel(_) => "cancel",
+        BugSearchCommandReceipt::AbortUnbound(_) => "abort_unbound",
+        BugSearchCommandReceipt::DeferDue(_) => "defer_due",
+        BugSearchCommandReceipt::Intake(_) => "intake",
+        BugSearchCommandReceipt::BugWork(_) => "bug_work",
+        BugSearchCommandReceipt::BugBusiness(_) => "bug_business",
+    };
+    exec(tx,"INSERT INTO sdlc_bug_search_commands(actor_subject,idempotency_key,project_id,owner_subject,kind,request_sha256,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)",vec![a.subject.clone().into(),key.into(),p.into(),owner.into(),kind.into(),hash.into(),serde_json::to_value(r).map_err(AppError::internal)?.into()]).await
+}
+pub(super) async fn policy(
+    tx: &DatabaseTransaction,
+    p: Uuid,
+) -> Result<BugSearchPolicyState, AppError> {
+    let r=tx.query_one(stmt("SELECT r.payload,h.next_due_at FROM sdlc_bug_search_policy_heads h JOIN sdlc_bug_search_policy_revisions r USING(project_id,revision) WHERE h.project_id=$1",vec![p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_search_policy",p))?;
+    let mut s: BugSearchPolicyState = decode(&r, "payload")?;
+    s.policy.validate()?;
+    if s.contract_version != 1
+        || s.project_id != p
+        || app::bug_search::canonical_hash(&s.policy)? != s.policy_sha256
+    {
+        return Err(AppError::conflict("retained bug policy differs"));
+    }
+    s.next_due_at = field(&r, "next_due_at")?;
+    Ok(s)
+}
+fn grant(
+    r: &sea_orm::QueryResult,
+    b: BugSearchExecutionBinding,
+) -> Result<BugSearchGrantReadback, AppError> {
+    let valid = PostgresBugSearchRepository::active(r)?;
+    let state: String = field(r, "admission_state")?;
+    let admitted = state == "admitted" && field::<Option<Value>>(r, "workflow_receipt")?.is_some();
+    Ok(BugSearchGrantReadback {
+        contract_version: 1,
+        binding: b,
+        expires_at: field(r, "expires_at")?,
+        revoked: field::<Option<chrono::DateTime<chrono::Utc>>>(r, "revoked_at")?.is_some(),
+        admission_state: state,
+        authorization_valid: valid,
+        dispatch_allowed: valid && admitted,
+        blocked_reasons: if !valid {
+            vec!["execution_grant_inactive".into()]
+        } else if !admitted {
+            vec!["awaiting_admission".into()]
+        } else {
+            vec![]
+        },
+    })
+}
+impl PostgresBugSearchRepository {
+    pub(super) async fn reject_other_command_kind(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+        kind: &str,
+        hash: &str,
+    ) -> Result<(), AppError> {
+        let _ = saved(tx, p, a, key, kind, hash).await?;
+        Ok(())
+    }
+    pub(super) async fn manage(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        subject: &str,
+    ) -> Result<(), AppError> {
+        let (_, _, owner) = self.owner_access(tx, p, subject, true).await?;
+        if !owner {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
+    }
+    pub(super) async fn control_apply_policy(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: ApplyBugSearchPolicy,
+    ) -> Result<(BugSearchPolicyState, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = command_hash("policy", p, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        self.manage(&tx, p, &c.owner_subject).await?;
+        if let Some(BugSearchCommandReceipt::Policy(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "policy", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        let head = tx
+            .query_one(stmt(
+                "SELECT revision FROM sdlc_bug_search_policy_heads WHERE project_id=$1 FOR UPDATE",
+                vec![p.into()],
+            ))
+            .await
+            .map_err(db_error)?;
+        let current = head
+            .as_ref()
+            .map(|r| field::<i64>(r, "revision"))
+            .transpose()?
+            .unwrap_or(0);
+        if c.expected_revision != current {
+            return Err(AppError::conflict("bug policy revision changed"));
+        }
+        let row = tx
+            .query_one(stmt("SELECT clock_timestamp() AS now", vec![]))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| AppError::internal("database clock unavailable"))?;
+        let now: chrono::DateTime<chrono::Utc> = field(&row, "now")?;
+        let previous = if head.is_some() {
+            Some(policy(&tx, p).await?)
+        } else {
+            None
+        };
+        let next_due_at = if !c.policy.enabled {
+            None
+        } else {
+            previous
+                .as_ref()
+                .filter(|old| old.policy.enabled)
+                .and_then(|old| old.next_due_at)
+                .or_else(|| {
+                    Some(now + chrono::Duration::minutes(i64::from(c.policy.interval_minutes)))
+                })
+        };
+        let result = BugSearchPolicyState {
+            contract_version: 1,
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            project_id: p,
+            owner_subject: c.owner_subject.clone(),
+            revision: c.desired_revision,
+            policy_sha256: app::bug_search::canonical_hash(&c.policy)?,
+            policy: c.policy,
+            operation_id: Uuid::now_v7(),
+            accepted_at: now,
+            next_due_at,
+        };
+        exec(&tx,"INSERT INTO sdlc_bug_search_policy_revisions(project_id,revision,owner_subject,payload) VALUES($1,$2,$3,$4)",vec![p.into(),result.revision.into(),result.owner_subject.clone().into(),serde_json::to_value(&result).map_err(AppError::internal)?.into()]).await?;
+        exec(&tx,"INSERT INTO sdlc_bug_search_policy_heads(project_id,revision,next_due_at) VALUES($1,$2,$3) ON CONFLICT(project_id) DO UPDATE SET revision=EXCLUDED.revision,next_due_at=EXCLUDED.next_due_at",vec![p.into(),result.revision.into(),next_due_at.into()]).await?;
+        // Superseded unstarted periodic authority is revoked, never custody-released.
+        // Already admitted runs keep their original immutable snapshot.
+        exec(&tx,"UPDATE sdlc_bug_search_executions SET revoked_at=clock_timestamp() WHERE project_id=$1 AND admission_state='reserved' AND revoked_at IS NULL AND snapshot->>'trigger'='periodic' AND policy_revision<>$2",vec![p.into(),result.revision.into()]).await?;
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &result.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::Policy(result.clone()),
+        )
+        .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, false))
+    }
+    pub(super) async fn control_policy(
+        &self,
+        p: Uuid,
+        a: &Principal,
+    ) -> Result<BugSearchPolicyState, AppError> {
+        self.fleet(a, false)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let s = policy(&tx, p).await?;
+        self.owner_access(&tx, p, &s.owner_subject, false).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(s)
+    }
+    pub(super) async fn control_command(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+    ) -> Result<BugSearchCommandReceipt, AppError> {
+        self.fleet(a, false)?;
+        validate_key(key)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let row=tx.query_one(stmt("SELECT owner_subject,receipt FROM sdlc_bug_search_commands WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",vec![p.into(),a.subject.clone().into(),key.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_search_operation",key))?;
+        let r: BugSearchCommandReceipt = decode(&row, "receipt")?;
+        let protective = match &r {
+            BugSearchCommandReceipt::Terminal(v) => Some((v.execution_id, v.fence)),
+            BugSearchCommandReceipt::Cancel(v) => Some((v.execution_id, v.fence)),
+            BugSearchCommandReceipt::AbortUnbound(v) => Some((v.execution_id, v.fence)),
+            _ => None,
+        };
+        if let BugSearchCommandReceipt::BugBusiness(r) = &r {
+            self.business_receipt_access(&tx, p, a, r).await?;
+        } else if let BugSearchCommandReceipt::BugWork(work) = &r {
+            self.work_receipt_access(&tx, p, a, work).await?;
+        } else if let BugSearchCommandReceipt::Intake(intake) = &r {
+            let fleet = self.intake_producer(a)?;
+            self.intake_receipt(BugSearchCommandReceipt::Intake(intake.clone()), p, fleet)?;
+            self.intake_owner(&tx, p, &intake.owner_subject).await?;
+        } else if let BugSearchCommandReceipt::Reserve(original)
+        | BugSearchCommandReceipt::Admit(original) = &r
+        {
+            // Recovery returns the historical acceptance only. In particular it
+            // is not a fresh dispatch grant after the human owner is revoked.
+            let retained = self
+                .retained_execution(&tx, p, original.binding.execution_id)
+                .await?;
+            let binding = self.binding(&retained)?;
+            if serde_json::to_value(&binding).map_err(AppError::internal)?
+                != serde_json::to_value(&original.binding).map_err(AppError::internal)?
+                || field::<String>(&row, "owner_subject")? != binding.owner_subject
+            {
+                return Err(AppError::conflict("original reservation binding differs"));
+            }
+            if a.scopes.contains("task-tracker:write") {
+                binding.require_machine(a)?;
+            } else {
+                // Preserve the existing read-only service contract without
+                // extending protective authority to a read-only credential.
+                self.owner_access(&tx, p, &binding.owner_subject, false)
+                    .await?;
+            }
+        } else if let Some((execution, fence)) = protective {
+            // Original exact service may recover protective acceptance after a
+            // human/Namespace revocation, without regaining any effect permission.
+            let retained = self.retained_execution(&tx, p, execution).await?;
+            let binding = self.binding(&retained)?;
+            binding.require_machine(a)?;
+            if binding.fence != fence {
+                return Err(AppError::conflict("protective receipt fence differs"));
+            }
+        } else {
+            self.owner_access(&tx, p, &field::<String>(&row, "owner_subject")?, false)
+                .await?;
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(r)
+    }
+    pub(super) async fn control_reserve(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: ReserveBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        c.snapshot
+            .require_source_registry(self.config.tracker_instance_uuid)?;
+        app::bug_search_verification::require_basis(&c.snapshot)?;
+        if c.snapshot_sha256 != app::bug_search::canonical_hash(&c.snapshot)?
+            || c.snapshot.project.project_id != p
+            || c.snapshot.project.tracker_instance_id != self.config.tracker_instance_id
+        {
+            return Err(AppError::validation("snapshot digest or project differs"));
+        }
+        let hash = command_hash("reserve", p, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        self.manage(&tx, p, &c.owner_subject).await?;
+        if let Some(BugSearchCommandReceipt::Reserve(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "reserve", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        let s = policy(&tx, p).await?;
+        if s.revision != c.expected_policy_revision || s.owner_subject != c.owner_subject {
+            return Err(AppError::conflict("accepted bug policy changed"));
+        }
+        c.snapshot.require_policy(&s.policy)?;
+        self.require_repeat_parent(&tx, &c.snapshot).await?;
+        let expected_due = self.reserve_due(&tx, p, &s, &c).await?;
+        crate::bug_search_verification::require(&tx, &c.snapshot).await?;
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        if tx
+            .query_one(stmt(
+                "SELECT execution_id FROM sdlc_bug_search_executions WHERE capacity_held LIMIT 1",
+                vec![],
+            ))
+            .await
+            .map_err(db_error)?
+            .is_some()
+        {
+            return Err(AppError::conflict("bug_search_capacity_held"));
+        }
+        let fence = tx
+            .query_one(stmt(
+                "SELECT nextval('sdlc_bug_search_fence') AS fence",
+                vec![],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| AppError::internal("bug fence unavailable"))?;
+        let e = Uuid::now_v7();
+        let f: i64 = field(&fence, "fence")?;
+        let purpose = match c.snapshot.kind {
+            BugSearchPurpose::Search => "search",
+            BugSearchPurpose::Verification => "verification",
+        };
+        exec(
+            &tx,
+            "INSERT INTO sdlc_bug_search_executions(
+                execution_id,tracker_instance_id,tracker_instance_uuid,project_id,
+                owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,
+                fence,machine_subject,grant_ref,bug_id,expected_delivery_ref,expires_at,capacity_held)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                    clock_timestamp()+interval '35 minutes',true)",
+            vec![
+                e.into(),
+                self.config.tracker_instance_id.clone().into(),
+                self.config.tracker_instance_uuid.into(),
+                p.into(),
+                c.owner_subject.clone().into(),
+                c.agent_id.into(),
+                purpose.into(),
+                c.snapshot_sha256.into(),
+                serde_json::to_value(&c.snapshot).map_err(AppError::internal)?.into(),
+                s.revision.into(),
+                f.into(),
+                a.subject.clone().into(),
+                Uuid::now_v7().into(),
+                c.snapshot.bug_id.into(),
+                c.snapshot.expected_fixed_deployment_ref.clone().into(),
+            ],
+        )
+        .await?;
+        let row = self.execution(&tx, p, e, true).await?;
+        let result = grant(&row, self.binding(&row)?)?;
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &c.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::Reserve(result.clone()),
+        )
+        .await?;
+        exec(&tx,"INSERT INTO sdlc_bug_search_outbox(event_id,project_id,execution_id,event_type,payload) VALUES($1,$2,$3,'bug.search_reserved',$4)",vec![Uuid::now_v7().into(),p.into(),e.into(),json!({"fence":f,"snapshot_sha256":result.binding.snapshot_sha256,"expected_due":expected_due}).into()]).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, false))
+    }
+    pub(super) async fn control_admit(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: AdmitBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = command_hash(
+            "admit",
+            p,
+            &json!({"execution_id":e,"expected_fence":c.expected_fence,"workflow_receipt":c.workflow_receipt,"workflow_receipt_sha256":c.workflow_receipt_sha256}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        // Same hierarchy as reserve/terminal: current owner/Namespace, capacity,
+        // execution. The execution trigger also uses the capacity singleton.
+        let hint=tx.query_one(stmt("SELECT owner_subject FROM sdlc_bug_search_executions WHERE execution_id=$1 AND project_id=$2",vec![e.into(),p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_search_execution",e))?;
+        self.manage(&tx, p, &field::<String>(&hint, "owner_subject")?)
+            .await?;
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        let row = self.execution(&tx, p, e, true).await?;
+        let b = self.binding(&row)?;
+        b.require_machine(a)?;
+        if let Some(BugSearchCommandReceipt::Admit(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "admit", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        if b.fence != c.expected_fence
+            || !Self::active(&row)?
+            || field::<String>(&row, "admission_state")? != "reserved"
+            || !field::<bool>(&row, "capacity_held")?
+        {
+            return Err(AppError::conflict("execution cannot be admitted"));
+        }
+        let receipt = &c.workflow_receipt;
+        let snapshot: Value = field(&row, "snapshot")?;
+        if b.purpose == BugSearchPurpose::Verification {
+            let typed_snapshot: BugSearchSnapshot = serde_json::from_value(snapshot.clone())
+                .map_err(|_| {
+                    AppError::conflict("retained verification snapshot is incompatible")
+                })?;
+            crate::bug_search_verification::require(&tx, &typed_snapshot).await?;
+        }
+        let mode = match b.purpose {
+            BugSearchPurpose::Search => "search",
+            BugSearchPurpose::Verification => "verification",
+        };
+        if app::bug_search::canonical_hash(receipt)? != c.workflow_receipt_sha256
+            || receipt.get("contract_version") != Some(&json!(1))
+            || receipt.get("execution_id") != Some(&json!(e))
+            || receipt.get("binding")
+                != Some(&serde_json::to_value(&b).map_err(AppError::internal)?)
+            || receipt.get("snapshot_sha256") != Some(&json!(b.snapshot_sha256))
+            || receipt.get("profession") != snapshot.get("profession")
+            || receipt.get("state") != Some(&json!("prepared"))
+            || receipt.get("version") != Some(&json!(1))
+            || receipt.get("fence") != Some(&json!(b.fence))
+            || receipt.get("phase_index") != Some(&json!(0))
+            || receipt.get("mode_key") != Some(&json!(mode))
+            || !["workflow_id", "mode_id"].iter().all(|k| {
+                receipt
+                    .get(k)
+                    .and_then(Value::as_i64)
+                    .is_some_and(|v| v > 0)
+            })
+            || ![
+                "session_id",
+                "session_run_id",
+                "hermes_run_ref",
+                "result",
+                "target_observations",
+            ]
+            .iter()
+            .all(|k| receipt.get(k).is_some_and(Value::is_null))
+            || receipt.get("runtime_terminal_confirmed") != Some(&json!(false))
+            || !receipt.get("phase_contract").is_some_and(Value::is_object)
+        {
+            return Err(AppError::conflict(
+                "Workflow prepared receipt binding differs",
+            ));
+        }
+        self.advance_admitted_due(&tx, p, e, &snapshot).await?;
+        exec(&tx,"UPDATE sdlc_bug_search_executions SET admission_state='admitted',workflow_receipt=$2 WHERE execution_id=$1",vec![e.into(),c.workflow_receipt.into()]).await?;
+        let row = self.execution(&tx, p, e, true).await?;
+        let result = grant(&row, b.clone())?;
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &b.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::Admit(result.clone()),
+        )
+        .await?;
+        exec(&tx,"INSERT INTO sdlc_bug_search_outbox(event_id,project_id,execution_id,event_type,payload) VALUES($1,$2,$3,'bug.search_admitted',$4)",vec![Uuid::now_v7().into(),p.into(),e.into(),json!({"fence":b.fence,"workflow_receipt_sha256":c.workflow_receipt_sha256}).into()]).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, false))
+    }
+}

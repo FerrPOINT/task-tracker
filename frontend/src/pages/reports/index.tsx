@@ -1,7 +1,29 @@
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+  Select,
+  ProjectPicker,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Button,
+  ErrorState,
+  Label,
+} from '@pdlc/ui/ui'
+
+
 import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
 import { useScopedMutation } from '@/shared/api/useScopedMutation'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
-import { ProjectPicker } from '@pdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -30,11 +52,7 @@ import {
   useControlChartReport,
   useSprints,
 } from '@/shared/api/hooks'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@pdlc/ui/ui'
-import { Card, CardHeader, CardTitle, CardContent } from '@pdlc/ui/ui'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState } from '@pdlc/ui/ui'
-import { Label } from '@pdlc/ui/ui'
+
 import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
@@ -224,28 +242,31 @@ export function ReportsPage() {
         {tab === 'burndown' && projectKey && (
           <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="report-sprint">{t('reports.sprint')}</Label>
-            <select
+            <Select
               id="report-sprint"
               disabled={
                 (sprintsQuery.isLoading || Boolean(sprintsQuery.error)) && sprints.length === 0
               }
               value={selectedSprintId}
-              onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
-              className="min-h-11 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10 sm:w-64"
-            >
-              <option value="">
-                {sprintsQuery.isLoading && sprints.length === 0
-                  ? t('reports.loadingSprints')
-                  : sprints.length === 0 && !sprintsQuery.error
-                    ? t('reports.noSprints')
-                    : t('reports.selectSprint')}
-              </option>
-              {sprints.map((sprint) => (
-                <option key={sprint.id} value={sprint.id}>
-                  {sprint.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={(nextValue) => updateParams({ sprint_id: nextValue || undefined })}
+              className="w-auto max-w-full sm:w-64"
+              options={[
+                {
+                  value: '',
+                  label: String(
+                    sprintsQuery.isLoading && sprints.length === 0
+                      ? t('reports.loadingSprints')
+                      : sprints.length === 0 && !sprintsQuery.error
+                        ? t('reports.noSprints')
+                        : t('reports.selectSprint'),
+                  ),
+                },
+                ...(sprints.map((sprint) => ({
+                  value: String(sprint.id),
+                  label: String(sprint.name),
+                })) ?? []),
+              ]}
+            />
           </div>
         )}
 
@@ -405,24 +426,24 @@ export function ReportsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="sr-only">
-                <table aria-label={t('reports.velocity.title')}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('reports.velocity.sprint')}</th>
-                      <th scope="col">{t('reports.velocity.committed')}</th>
-                      <th scope="col">{t('reports.velocity.completed')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table aria-label={t('reports.velocity.title')}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">{t('reports.velocity.sprint')}</TableHead>
+                      <TableHead scope="col">{t('reports.velocity.committed')}</TableHead>
+                      <TableHead scope="col">{t('reports.velocity.completed')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {velocity.data?.sprints.map((sprint, index) => (
-                      <tr key={`${sprint.name}-${index}`}>
-                        <th scope="row">{sprint.name}</th>
-                        <td>{sprint.committed}</td>
-                        <td>{sprint.completed}</td>
-                      </tr>
+                      <TableRow key={`${sprint.name}-${index}`}>
+                        <TableHead scope="row">{sprint.name}</TableHead>
+                        <TableCell>{sprint.committed}</TableCell>
+                        <TableCell>{sprint.completed}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </ReportPanel>
           </TabsContent>
@@ -466,22 +487,22 @@ export function ReportsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="sr-only">
-                <table aria-label={t('reports.burndown.title')}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('reports.burndown.date')}</th>
-                      <th scope="col">{t('reports.burndown.remaining')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table aria-label={t('reports.burndown.title')}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">{t('reports.burndown.date')}</TableHead>
+                      <TableHead scope="col">{t('reports.burndown.remaining')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {burndown.data?.points.map((point) => (
-                      <tr key={point.date}>
-                        <th scope="row">{point.date}</th>
-                        <td>{point.remaining}</td>
-                      </tr>
+                      <TableRow key={point.date}>
+                        <TableHead scope="row">{point.date}</TableHead>
+                        <TableCell>{point.remaining}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </ReportPanel>
           </TabsContent>
@@ -536,26 +557,26 @@ export function ReportsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="sr-only">
-                <table aria-label={t('reports.cumulativeFlow.title')}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('reports.cumulativeFlow.date')}</th>
-                      <th scope="col">{t('reports.cumulativeFlow.todo')}</th>
-                      <th scope="col">{t('reports.cumulativeFlow.inProgress')}</th>
-                      <th scope="col">{t('reports.cumulativeFlow.done')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table aria-label={t('reports.cumulativeFlow.title')}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">{t('reports.cumulativeFlow.date')}</TableHead>
+                      <TableHead scope="col">{t('reports.cumulativeFlow.todo')}</TableHead>
+                      <TableHead scope="col">{t('reports.cumulativeFlow.inProgress')}</TableHead>
+                      <TableHead scope="col">{t('reports.cumulativeFlow.done')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {cumulativeFlow.data?.points.map((point) => (
-                      <tr key={point.date}>
-                        <th scope="row">{point.date}</th>
-                        <td>{point.todo}</td>
-                        <td>{point.in_progress}</td>
-                        <td>{point.done}</td>
-                      </tr>
+                      <TableRow key={point.date}>
+                        <TableHead scope="row">{point.date}</TableHead>
+                        <TableCell>{point.todo}</TableCell>
+                        <TableCell>{point.in_progress}</TableCell>
+                        <TableCell>{point.done}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </ReportPanel>
           </TabsContent>
@@ -589,22 +610,22 @@ export function ReportsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="sr-only">
-                <table aria-label={t('reports.controlChart.title')}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('reports.controlChart.issue')}</th>
-                      <th scope="col">{t('reports.controlChart.cycleTime')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table aria-label={t('reports.controlChart.title')}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">{t('reports.controlChart.issue')}</TableHead>
+                      <TableHead scope="col">{t('reports.controlChart.cycleTime')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {controlChart.data?.points.map((point) => (
-                      <tr key={point.issue_key}>
-                        <td>{point.issue_key}</td>
-                        <td>{point.cycle_time_days}</td>
-                      </tr>
+                      <TableRow key={point.issue_key}>
+                        <TableCell>{point.issue_key}</TableCell>
+                        <TableCell>{point.cycle_time_days}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </ReportPanel>
           </TabsContent>

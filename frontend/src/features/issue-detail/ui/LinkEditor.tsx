@@ -1,13 +1,10 @@
-import { ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Select, ResourceList, ResourceListRow, Button, Input, toast } from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
-import { Button } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
-import { toast } from 'sonner'
 
 const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const
 
@@ -62,7 +59,8 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                         {otherKey}
                       </Link>
                     </span>
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       aria-label={t('links.delete', { key: otherKey })}
                       onClick={() =>
@@ -74,7 +72,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                       className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
                       <X className="h-3.5 w-3.5" aria-hidden />
-                    </button>
+                    </Button>
                   </li>
                 </ResourceListRow>
               )
@@ -100,18 +98,18 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
               }
             }}
           />
-          <select
+          <Select
             value={linkType}
-            onChange={(e) => setLinkType(e.target.value as (typeof LINK_TYPES)[number])}
-            className="min-h-10 rounded-md border border-border bg-background px-2 text-xs"
+            onValueChange={(nextValue) => setLinkType(nextValue as (typeof LINK_TYPES)[number])}
+            className="w-auto"
             aria-label={t('links.typeLabel')}
-          >
-            {LINK_TYPES.map((lt) => (
-              <option key={lt} value={lt}>
-                {t(`links.type.${lt}`)}
-              </option>
-            ))}
-          </select>
+            options={[
+              ...(LINK_TYPES.map((lt) => ({
+                value: String(lt),
+                label: String(t(`links.type.${lt}`)),
+              })) ?? []),
+            ]}
+          />
           <Button
             type="button"
             size="sm"

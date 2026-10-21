@@ -1,0 +1,1269 @@
+diff --git a/backend/api/src/routes/sdlc_critical_pm_reviews.rs b/backend/api/src/routes/sdlc_critical_pm_reviews.rs
+new file mode 100644
+index 0000000..5612d0b
+--- /dev/null
++++ b/backend/api/src/routes/sdlc_critical_pm_reviews.rs
+@@ -0,0 +1,249 @@
++use super::sdlc::service;
++use axum::{
++    Extension, Json, Router,
++    extract::{Path, State},
++    http::{HeaderMap, HeaderValue, StatusCode, header},
++    response::{IntoResponse, Response},
++    routing::{get, post},
++};
++use domain::{
++    sdlc::Principal,
++    sdlc_critical_pm_reservation::{CriticalPmReservationResult, ReserveCriticalPmReview},
++};
++use std::sync::Arc;
++use uuid::Uuid;
++
++// Mount beside the existing SDLC router with the SAME strict auth; no-store wraps auth failures too.
++pub(super) fn router() -> Router<Arc<app::AppContext>> {
++    Router::new()
++        .route(
++            "/issues/{id}/sdlc/critical-blockers/pm-reviews",
++            post(reserve),
++        )
++        .route(
++            "/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}",
++            get(operation),
++        )
++        .route_layer(axum::middleware::from_fn(
++            crate::middleware::sdlc_auth::strict_central_auth,
++        ))
++        .layer(axum::middleware::map_response(uncached))
++}
++
++async fn uncached(mut response: Response) -> Response {
++    response
++        .headers_mut()
++        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
++    response
++}
++
++fn no_store() -> HeaderMap {
++    let mut headers = HeaderMap::new();
++    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
++    headers
++}
++
++fn failure(error: impl IntoResponse) -> (HeaderMap, Response) {
++    (no_store(), error.into_response())
++}
++
++fn written<T>((result, replay): (T, bool)) -> (StatusCode, HeaderMap, Json<T>) {
++    (
++        if replay {
++            StatusCode::OK
++        } else {
++            StatusCode::CREATED
++        },
++        no_store(),
++        Json(result),
++    )
++}
++
++#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews",operation_id="reserve_critical_business_pm_review",tag="sdlc",
++    params(("id"=Uuid,Path)),request_body=ReserveCriticalPmReview,
++    responses((status=201,body=CriticalPmReservationResult),(status=200,body=CriticalPmReservationResult,description="Original durable reservation replay"),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
++pub async fn reserve(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Path(task): Path<Uuid>,
++    input: Result<Json<ReserveCriticalPmReview>, axum::extract::rejection::JsonRejection>,
++) -> Result<(StatusCode, HeaderMap, Json<CriticalPmReservationResult>), (HeaderMap, Response)> {
++    let Json(input) = input.map_err(failure)?;
++    let result = service(&ctx)
++        .map_err(failure)?
++        .reserve_critical_pm_review(task, &actor, input)
++        .await
++        .map_err(failure)?;
++    Ok(written(result))
++}
++
++#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}",operation_id="read_critical_business_pm_review_operation",tag="sdlc",
++    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
++    responses((status=200,body=CriticalPmReservationResult),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
++pub async fn operation(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Path((task, key)): Path<(Uuid, String)>,
++) -> Result<(HeaderMap, Json<CriticalPmReservationResult>), (HeaderMap, Response)> {
++    let result = service(&ctx)
++        .map_err(failure)?
++        .critical_pm_review_operation(task, &actor, &key)
++        .await
++        .map_err(failure)?;
++    Ok((no_store(), Json(result)))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use axum::extract::FromRequest;
++    use serde_json::json;
++    use utoipa::OpenApi;
++
++    #[test]
++    fn contract_is_closed_typed_separate_authenticated_and_not_initial_draft() {
++        #[derive(utoipa::OpenApi)]
++        #[openapi(
++            paths(reserve, operation),
++            components(schemas(ReserveCriticalPmReview, CriticalPmReservationResult))
++        )]
++        struct Contract;
++        let spec = serde_json::to_value(Contract::openapi()).unwrap();
++        for (path, method, statuses) in [
++            (
++                "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews",
++                "post",
++                vec!["200", "201"],
++            ),
++            (
++                "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}",
++                "get",
++                vec!["200"],
++            ),
++        ] {
++            let op = &spec["paths"][path][method];
++            assert_eq!(op["security"], json!([{"bearer":[]}]));
++            for status in statuses {
++                assert_eq!(
++                    op["responses"][status]["content"]["application/json"]["schema"]["$ref"],
++                    "#/components/schemas/CriticalPmReservationResult"
++                );
++            }
++            for status in ["401", "403", "404", "409", "422", "503"] {
++                assert!(op["responses"][status].is_object());
++            }
++        }
++        let schemas = &spec["components"]["schemas"];
++        for name in [
++            "ReserveCriticalPmReview",
++            "CriticalPmReservationResult",
++            "CriticalPmReviewContext",
++            "CriticalPmRequirementsRef",
++        ] {
++            assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
++        }
++        assert_eq!(
++            schemas["ReserveCriticalPmReview"]["properties"]
++                .as_object()
++                .unwrap()
++                .len(),
++            7
++        );
++        assert_eq!(
++            schemas["CriticalPmReservationResult"]["properties"]
++                .as_object()
++                .unwrap()
++                .len(),
++            3
++        );
++        assert_eq!(
++            schemas["CriticalPmReservationPurpose"]["enum"],
++            json!(["critical_business_review"])
++        );
++        assert_eq!(spec["paths"].as_object().unwrap().len(), 2);
++    }
++
++    #[tokio::test]
++    async fn actual_json_extractor_rejects_open_fields_and_unsafe_versions() {
++        let body = json!({"blocker_id":Uuid::new_v4(),"blocker_sha256":"a".repeat(64),
++            "expected_blocker_version":2,"expected_task_version":9,"expected_pm_owner_version":17,
++            "expected_pm_assignment_version":17,"idempotency_key":"pm-review:original"});
++        for mismatch in 0..8 {
++            let mut value = body.clone();
++            match mismatch {
++                0 => {}
++                1 => value["requested_agent_id"] = json!(Uuid::new_v4()),
++                2 => value["terminal"] = json!({}),
++                3 => value["dispatch_allowed"] = json!(true),
++                4 => value["expected_pm_owner_version"] = json!(null),
++                5 => value["expected_task_version"] = json!(0),
++                6 => value["expected_pm_assignment_version"] = json!(9_007_199_254_740_992_i64),
++                _ => {
++                    value.as_object_mut().unwrap().remove("blocker_id");
++                }
++            }
++            let request = axum::http::Request::builder()
++                .method("POST")
++                .header(header::CONTENT_TYPE, "application/json")
++                .body(axum::body::Body::from(value.to_string()))
++                .unwrap();
++            let parsed = Json::<ReserveCriticalPmReview>::from_request(request, &()).await;
++            if mismatch == 0 {
++                assert_eq!(serde_json::to_value(parsed.unwrap().0).unwrap(), body);
++            } else {
++                let response = failure(parsed.unwrap_err()).into_response();
++                assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
++                assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
++            }
++        }
++    }
++
++    #[tokio::test]
++    async fn replay_creation_and_failures_never_cache() {
++        assert_eq!(written(((), false)).0, StatusCode::CREATED);
++        assert_eq!(written(((), true)).0, StatusCode::OK);
++        for error in [
++            shared::AppError::Forbidden,
++            shared::AppError::not_found("review", Uuid::nil()),
++            shared::AppError::conflict("fixture conflict"),
++            shared::AppError::validation("fixture invalid"),
++            shared::AppError::Unavailable("fixture unavailable".into()),
++        ] {
++            let response = failure(error).into_response();
++            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
++        }
++        let response = uncached(StatusCode::BAD_REQUEST.into_response()).await;
++        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
++    }
++
++    #[tokio::test]
++    async fn same_strict_central_middleware_rejects_missing_bearer_without_cache() {
++        use tower::ServiceExt;
++        let app = Router::new()
++            .route(
++                "/issues/{id}/sdlc/critical-blockers/pm-reviews",
++                post(|| async { StatusCode::NO_CONTENT }),
++            )
++            .route(
++                "/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}",
++                get(|| async { StatusCode::NO_CONTENT }),
++            )
++            .route_layer(axum::middleware::from_fn(
++                crate::middleware::sdlc_auth::strict_central_auth,
++            ))
++            .layer(axum::middleware::map_response(uncached));
++        for (method, suffix) in [("POST", ""), ("GET", "/operations/original")] {
++            let request = axum::http::Request::builder()
++                .method(method)
++                .uri(format!(
++                    "/issues/{}/sdlc/critical-blockers/pm-reviews{suffix}",
++                    Uuid::new_v4()
++                ))
++                .body(axum::body::Body::empty())
++                .unwrap();
++            let response = app.clone().oneshot(request).await.unwrap();
++            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
++            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
++        }
++    }
++}
+diff --git a/backend/app/src/sdlc_critical_pm_reviews.rs b/backend/app/src/sdlc_critical_pm_reviews.rs
+new file mode 100644
+index 0000000..3d413db
+--- /dev/null
++++ b/backend/app/src/sdlc_critical_pm_reviews.rs
+@@ -0,0 +1,190 @@
++//! Transport preflight only. Configured scheduler identity and fresh ACL stay in the repository.
++use domain::sdlc::Principal;
++use domain::sdlc_critical_blockers::valid_operation_key;
++use domain::sdlc_critical_pm_reservation::{CriticalPmReservationResult, ReserveCriticalPmReview};
++use shared::AppError;
++use uuid::Uuid;
++
++impl crate::sdlc::SdlcService {
++    pub async fn reserve_critical_pm_review(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: ReserveCriticalPmReview,
++    ) -> Result<(CriticalPmReservationResult, bool), AppError> {
++        validate_request(task, actor, &command)?;
++        self.lifecycle_repository()?
++            .reserve_critical_pm_review(task, actor, command)
++            .await
++    }
++
++    pub async fn critical_pm_review_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<CriticalPmReservationResult, AppError> {
++        actor_shape(actor, false)?;
++        validate_key(task, key)?;
++        self.lifecycle_repository()?
++            .critical_pm_review_operation(task, actor, key)
++            .await
++    }
++}
++
++fn actor_shape(actor: &Principal, write: bool) -> Result<(), AppError> {
++    let scope = if write {
++        "task-tracker:write"
++    } else {
++        "task-tracker:read"
++    };
++    if actor.human_session
++        || actor.trusted_human
++        || actor.scopes.len() != 1
++        || !actor.scopes.contains(scope)
++    {
++        return Err(AppError::Forbidden);
++    }
++    Ok(())
++}
++
++fn validate_key(task: Uuid, key: &str) -> Result<(), AppError> {
++    if task.is_nil() || !valid_operation_key(key) {
++        return Err(AppError::validation(
++            "invalid critical PM review task or key",
++        ));
++    }
++    Ok(())
++}
++
++fn validate_request(
++    task: Uuid,
++    actor: &Principal,
++    command: &ReserveCriticalPmReview,
++) -> Result<(), AppError> {
++    actor_shape(actor, true)?;
++    validate_key(task, &command.idempotency_key)?;
++    command.validate()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use domain::sdlc::SdlcConfig;
++    use serde_json::json;
++
++    fn actor(write: bool) -> Principal {
++        Principal {
++            subject: "scheduler".into(),
++            human_session: false,
++            trusted_human: false,
++            scopes: [if write {
++                "task-tracker:write"
++            } else {
++                "task-tracker:read"
++            }
++            .into()]
++            .into(),
++        }
++    }
++
++    fn command() -> ReserveCriticalPmReview {
++        serde_json::from_value(
++            json!({"blocker_id":Uuid::new_v4(),"blocker_sha256":"a".repeat(64),
++            "expected_blocker_version":2,"expected_task_version":9,"expected_pm_owner_version":17,
++            "expected_pm_assignment_version":17,"idempotency_key":"pm-review:original?x=+%#"}),
++        )
++        .unwrap()
++    }
++
++    #[test]
++    fn preflight_preserves_original_command_and_arbitrary_positive_generation() {
++        let command = command();
++        let original = serde_json::to_value(&command).unwrap();
++        validate_request(Uuid::new_v4(), &actor(true), &command).unwrap();
++        assert_eq!(serde_json::to_value(&command).unwrap(), original);
++        actor_shape(&actor(false), false).unwrap();
++    }
++
++    #[test]
++    fn read_write_human_and_assignment_grants_cannot_be_substituted() {
++        assert!(actor_shape(&actor(false), true).is_err());
++        assert!(actor_shape(&actor(true), false).is_err());
++        for write in [false, true] {
++            for mismatch in 0..5 {
++                let mut invalid = actor(write);
++                match mismatch {
++                    0 => invalid.human_session = true,
++                    1 => invalid.trusted_human = true,
++                    2 => {
++                        invalid.scopes.insert("task-tracker:read".into());
++                        invalid.scopes.insert("task-tracker:write".into());
++                    }
++                    3 => {
++                        let old_pm = domain::sdlc::PmAssignment {
++                            assignment_id: Uuid::new_v4(),
++                            execution_id: Uuid::new_v4(),
++                            agent_id: Uuid::new_v4(),
++                            version: 17,
++                            machine_subject: "previous-pm".into(),
++                        };
++                        invalid.scopes.insert(old_pm.scope(Uuid::new_v4()));
++                    }
++                    _ => {
++                        invalid.scopes.clear();
++                    }
++                }
++                assert!(matches!(
++                    actor_shape(&invalid, write),
++                    Err(AppError::Forbidden)
++                ));
++            }
++        }
++    }
++
++    #[test]
++    fn invalid_manual_command_and_unreadable_keys_are_rejected() {
++        for key in ["", ".", "..", "a/b", "a\\b", "a b", "a\n", "\0"] {
++            let mut bad = command();
++            bad.idempotency_key = key.into();
++            assert!(validate_request(Uuid::new_v4(), &actor(true), &bad).is_err());
++            assert!(validate_key(Uuid::new_v4(), key).is_err());
++        }
++        assert!(validate_key(Uuid::nil(), "original").is_err());
++        for mismatch in 0..6 {
++            let mut bad = command();
++            match mismatch {
++                0 => bad.blocker_id = Uuid::nil(),
++                1 => bad.blocker_sha256 = "A".repeat(64),
++                2 => bad.expected_blocker_version = 0,
++                3 => bad.expected_task_version = -1,
++                4 => bad.expected_pm_owner_version = domain::sdlc::MAX_SAFE_VERSION + 1,
++                _ => bad.expected_pm_assignment_version = 0,
++            }
++            assert!(validate_request(Uuid::new_v4(), &actor(true), &bad).is_err());
++        }
++    }
++
++    #[test]
++    fn shape_preflight_is_not_configured_scheduler_authority() {
++        let config = SdlcConfig {
++            reservation_scheduler_subject: "scheduler".into(),
++            orchestrator_subject: "orchestrator".into(),
++            verifier_subject: "verifier".into(),
++            single_task_project_ids: Default::default(),
++            instance_id: "synthetic-tracker".into(),
++        };
++        for subject in ["foreign", "orchestrator", "verifier"] {
++            let mut writer = actor(true);
++            writer.subject = subject.into();
++            actor_shape(&writer, true).unwrap();
++            assert!(crate::sdlc_reservation::scheduler(&writer, &config).is_err());
++            let mut reader = actor(false);
++            reader.subject = subject.into();
++            actor_shape(&reader, false).unwrap();
++            assert!(crate::sdlc_lifecycle::scheduler_read(&reader, &config).is_err());
++        }
++        crate::sdlc_reservation::scheduler(&actor(true), &config).unwrap();
++        crate::sdlc_lifecycle::scheduler_read(&actor(false), &config).unwrap();
++    }
++}
+diff --git a/backend/cli/src/sdlc_critical_pm_reviews.rs b/backend/cli/src/sdlc_critical_pm_reviews.rs
+new file mode 100644
+index 0000000..e575762
+--- /dev/null
++++ b/backend/cli/src/sdlc_critical_pm_reviews.rs
+@@ -0,0 +1,144 @@
++use super::readable_key;
++use crate::commands::{json_input, sdlc_path};
++use crate::{Api, enc};
++use anyhow::Result;
++use clap::Subcommand;
++use serde::Deserialize;
++use serde_json::Value;
++use uuid::Uuid;
++
++#[derive(Subcommand)]
++pub enum CriticalPmReviewCommand {
++    /// Scheduler WRITE only: reserve a new PM review, not a native dispatch or initial Draft
++    Reserve {
++        #[arg(long)]
++        task: Uuid,
++        #[arg(long, value_name = "PATH|-")]
++        from_file: String,
++    },
++    /// Scheduler READ only: read the original operation after an unknown acknowledgement
++    Operation {
++        #[arg(long)]
++        task: Uuid,
++        #[arg(long)]
++        key: String,
++    },
++}
++
++// The CLI intentionally has no production domain dependency. Agreement is checked below.
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct ReservationInput {
++    blocker_id: Uuid,
++    blocker_sha256: String,
++    expected_blocker_version: i64,
++    expected_task_version: i64,
++    expected_pm_owner_version: i64,
++    expected_pm_assignment_version: i64,
++    idempotency_key: String,
++}
++
++fn validate_input(task: Uuid, payload: &Value) -> Result<()> {
++    let input: ReservationInput = serde_json::from_value(payload.clone())
++        .map_err(|_| anyhow::anyhow!("invalid critical PM review reservation payload"))?;
++    anyhow::ensure!(
++        !task.is_nil()
++            && !input.blocker_id.is_nil()
++            && input.blocker_sha256.len() == 64
++            && input
++                .blocker_sha256
++                .bytes()
++                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++            && [
++                input.expected_blocker_version,
++                input.expected_task_version,
++                input.expected_pm_owner_version,
++                input.expected_pm_assignment_version
++            ]
++            .iter()
++            .all(|version| (1..=9_007_199_254_740_991).contains(version))
++            && readable_key(&input.idempotency_key),
++        "invalid critical PM review reservation payload"
++    );
++    Ok(())
++}
++
++pub async fn pm_review(api: &Api, command: CriticalPmReviewCommand) -> Result<Value> {
++    match command {
++        CriticalPmReviewCommand::Reserve { task, from_file } => {
++            let payload = json_input(&from_file)?;
++            validate_input(task, &payload)?;
++            api.post(&sdlc_path(task, "/critical-blockers/pm-reviews"), payload)
++                .await
++        }
++        CriticalPmReviewCommand::Operation { task, key } => {
++            anyhow::ensure!(
++                !task.is_nil() && readable_key(&key),
++                "invalid critical PM review task or key"
++            );
++            api.get(&sdlc_path(
++                task,
++                &format!("/critical-blockers/pm-reviews/operations/{}", enc(&key)),
++            ))
++            .await
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview;
++    use serde_json::json;
++
++    #[test]
++    fn closed_cli_input_agrees_with_domain_and_preserves_original_body() {
++        let task = Uuid::new_v4();
++        let body = json!({"blocker_id":Uuid::new_v4(),"blocker_sha256":"a".repeat(64),
++            "expected_blocker_version":2,"expected_task_version":9,"expected_pm_owner_version":17,
++            "expected_pm_assignment_version":17,"idempotency_key":"pm-review:original?x=+%#"});
++        let original = body.clone();
++        validate_input(task, &body).unwrap();
++        assert_eq!(body, original);
++        for field in [
++            "expected_blocker_version",
++            "expected_task_version",
++            "expected_pm_owner_version",
++            "expected_pm_assignment_version",
++        ] {
++            for value in [
++                json!(0),
++                json!(-1),
++                json!(null),
++                json!(1.5),
++                json!("1"),
++                json!(9_007_199_254_740_992_i64),
++                json!(9_007_199_254_740_991_i64),
++            ] {
++                let mut input = body.clone();
++                input[field] = value;
++                assert_eq!(
++                    validate_input(task, &input).is_ok(),
++                    serde_json::from_value::<ReserveCriticalPmReview>(input)
++                        .is_ok_and(|v| v.validate().is_ok())
++                );
++            }
++        }
++        for (field, value) in [
++            ("blocker_id", json!(Uuid::nil())),
++            ("blocker_sha256", json!("A".repeat(64))),
++            ("idempotency_key", json!("../bad")),
++            ("requested_agent_id", json!(Uuid::new_v4())),
++            ("dispatch_allowed", json!(true)),
++        ] {
++            let mut input = body.clone();
++            input[field] = value;
++            assert!(validate_input(task, &input).is_err());
++            assert!(
++                !serde_json::from_value::<ReserveCriticalPmReview>(input)
++                    .is_ok_and(|v| v.validate().is_ok())
++            );
++        }
++        assert!(validate_input(Uuid::nil(), &body).is_err());
++    }
++}
+diff --git a/backend/cli/tests/workflows/critical_pm_reviews.rs b/backend/cli/tests/workflows/critical_pm_reviews.rs
+new file mode 100644
+index 0000000..4e84156
+--- /dev/null
++++ b/backend/cli/tests/workflows/critical_pm_reviews.rs
+@@ -0,0 +1,268 @@
++use super::*;
++
++const TASK: &str = "11111111-1111-1111-1111-111111111111";
++
++fn command(key: &str) -> Value {
++    json!({"blocker_id":"22222222-2222-2222-2222-222222222222","blocker_sha256":"a".repeat(64),
++        "expected_blocker_version":2,"expected_task_version":9,"expected_pm_owner_version":17,
++        "expected_pm_assignment_version":17,"idempotency_key":key})
++}
++
++// Source-shaped synthetic receipt only, not a dispatched PM/native/Workflow observation.
++fn receipt(key: &str) -> Value {
++    let value = json!({"purpose":"critical_business_review","reservation":{
++        "contract_version":1,"variant":"pm_draft_reserved","binding":{
++            "tracker_instance_id":"synthetic-tracker","project_id":"33333333-3333-3333-3333-333333333333",
++            "task_id":TASK,"root_task_id":TASK,"owner_subject":"synthetic-owner"},
++        "owner_cas":{"expected_version":17,"version":18},"assignment":{
++            "assignment_id":"44444444-4444-4444-4444-444444444444",
++            "execution_id":"55555555-5555-5555-5555-555555555555",
++            "agent_id":"66666666-6666-6666-6666-666666666666","version":18,"machine_subject":"synthetic-pm"},
++        "execution":{"ordinal":"23","key":"SDLC-23"},"input":{
++            "snapshot_ref":"77777777-7777-7777-7777-777777777777","sha256":"b".repeat(64)},
++        "assignment_operation_key":key,"admission_state":"reserved","dispatch_allowed":false},
++        "context":{"blocker_id":"22222222-2222-2222-2222-222222222222","blocker_sha256":"a".repeat(64),
++            "blocker_version":3,"requirements":{"revision":4,"content_hash":"c".repeat(64)}}});
++    let typed: domain::sdlc_critical_pm_reservation::CriticalPmReservationResult =
++        serde_json::from_value(value.clone()).unwrap();
++    assert_eq!(serde_json::to_value(typed).unwrap(), value);
++    value
++}
++
++fn reserve_args() -> Vec<&'static str> {
++    vec![
++        "sdlc",
++        "critical-blocker",
++        "pm-review",
++        "reserve",
++        "--task",
++        TASK,
++        "--from-file",
++        "-",
++    ]
++}
++
++#[tokio::test]
++async fn critical_pm_review_original_post_replay_and_separate_get_keep_exact_payload_and_key() {
++    let key = "pm-review:original?x=+%#";
++    let result = receipt(key);
++    let server = Server::start(vec![
++        (201, result.clone()),
++        (200, result.clone()),
++        (200, result.clone()),
++    ])
++    .await;
++    let body = command(key).to_string();
++    assert_eq!(
++        success(&server.run(&reserve_args(), Some(&body)).await),
++        result
++    );
++    assert_eq!(
++        success(&server.run(&reserve_args(), Some(&body)).await),
++        result
++    );
++    assert_eq!(
++        success(
++            &server
++                .run(
++                    &[
++                        "sdlc",
++                        "critical-blocker",
++                        "pm-review",
++                        "operation",
++                        "--task",
++                        TASK,
++                        "--key",
++                        key
++                    ],
++                    None
++                )
++                .await
++        ),
++        result
++    );
++    let requests = server.requests();
++    assert_eq!(requests.len(), 3);
++    for request in &requests[..2] {
++        assert_eq!(request.method, "POST");
++        assert_eq!(
++            request.path,
++            format!("/api/v1/issues/{TASK}/sdlc/critical-blockers/pm-reviews")
++        );
++        assert_eq!(
++            serde_json::from_slice::<Value>(&request.body).unwrap(),
++            command(key)
++        );
++        assert_eq!(
++            request.authorization.as_deref(),
++            Some("Bearer fixture-token")
++        );
++    }
++    assert_eq!(requests[0].body, requests[1].body);
++    assert_eq!(requests[2].method, "GET");
++    assert_eq!(
++        requests[2].path,
++        format!(
++            "/api/v1/issues/{TASK}/sdlc/critical-blockers/pm-reviews/operations/pm-review%3Aoriginal%3Fx%3D%2B%25%23"
++        )
++    );
++    assert_eq!(
++        requests[2].authorization.as_deref(),
++        Some("Bearer fixture-token")
++    );
++    assert!(requests[2].body.is_empty());
++}
++
++#[tokio::test]
++async fn critical_pm_review_closed_invalid_input_is_rejected_before_http_without_echo() {
++    let server = Server::start(vec![]).await;
++    for mismatch in 0..9 {
++        let mut body = command("original");
++        match mismatch {
++            0 => body["requested_agent_id"] = json!("private-input-must-not-echo"),
++            1 => body["terminal"] = json!({"private":"private-input-must-not-echo"}),
++            2 => body["expected_pm_owner_version"] = json!(null),
++            3 => body["expected_pm_assignment_version"] = json!(9_007_199_254_740_992_i64),
++            4 => body["expected_blocker_version"] = json!(0),
++            5 => body["expected_task_version"] = json!("9"),
++            6 => body["blocker_id"] = json!(uuid::Uuid::nil()),
++            7 => body["blocker_sha256"] = json!("A".repeat(64)),
++            _ => {
++                body.as_object_mut().unwrap().remove("idempotency_key");
++            }
++        }
++        let output = server.run(&reserve_args(), Some(&body.to_string())).await;
++        assert!(!output.status.success());
++        assert!(output.stdout.is_empty());
++        assert!(!String::from_utf8_lossy(&output.stderr).contains("private-input-must-not-echo"));
++    }
++    for key in ["", ".", "..", "bad/key", "bad\\key", "bad key"] {
++        let output = server
++            .run(&reserve_args(), Some(&command(key).to_string()))
++            .await;
++        assert!(!output.status.success());
++        let output = server
++            .run(
++                &[
++                    "sdlc",
++                    "critical-blocker",
++                    "pm-review",
++                    "operation",
++                    "--task",
++                    TASK,
++                    "--key",
++                    key,
++                ],
++                None,
++            )
++            .await;
++        assert!(!output.status.success());
++    }
++    for args in [
++        vec![
++            "sdlc",
++            "critical-blocker",
++            "pm-review",
++            "reserve",
++            "--task",
++            "TT-1",
++            "--from-file",
++            "-",
++        ],
++        vec![
++            "sdlc",
++            "critical-blocker",
++            "pm-review",
++            "reserve",
++            "--task",
++            TASK,
++            "--from-file",
++            "-",
++            "--owner",
++            "synthetic-owner",
++        ],
++        vec![
++            "sdlc",
++            "critical-blocker",
++            "pm-review",
++            "operation",
++            "--task",
++            TASK,
++            "--key",
++            "original",
++            "--scheduler",
++            "foreign",
++        ],
++    ] {
++        assert_eq!(server.run(&args, Some("{}")).await.status.code(), Some(2));
++    }
++    assert!(server.requests().is_empty());
++}
++
++#[tokio::test]
++async fn critical_pm_review_denials_and_unknown_ack_do_not_retry_post_and_use_original_get() {
++    for status in [401, 403, 404, 409, 422, 503] {
++        let server = Server::start(vec![(
++            status,
++            json!({"error":{"code":"FIXTURE_DENIAL","message":"fixture-token"}}),
++        )])
++        .await;
++        let mut args = vec!["--error-format", "json"];
++        args.extend(reserve_args());
++        let output = server
++            .run(&args, Some(&command("original").to_string()))
++            .await;
++        assert!(!output.status.success());
++        assert!(output.stdout.is_empty());
++        assert_eq!(server.requests().len(), 1);
++        assert_eq!(
++            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["status"],
++            status
++        );
++        assert!(!String::from_utf8_lossy(&output.stderr).contains("fixture-token"));
++    }
++    let key = "pm-review:unknown-ack";
++    let saved = receipt(key);
++    let server = Server::bytes(
++        vec![
++            (201, b"{".to_vec()),
++            (200, serde_json::to_vec(&saved).unwrap()),
++        ],
++        Duration::ZERO,
++    )
++    .await;
++    let output = server
++        .run(&reserve_args(), Some(&command(key).to_string()))
++        .await;
++    assert!(!output.status.success());
++    assert!(output.stdout.is_empty());
++    assert_eq!(server.requests().len(), 1);
++    assert_eq!(
++        success(
++            &server
++                .run(
++                    &[
++                        "sdlc",
++                        "critical-blocker",
++                        "pm-review",
++                        "operation",
++                        "--task",
++                        TASK,
++                        "--key",
++                        key
++                    ],
++                    None
++                )
++                .await
++        ),
++        saved
++    );
++    assert_eq!(server.requests().len(), 2);
++    assert_eq!(server.requests()[1].method, "GET");
++    assert_eq!(
++        server.requests()[1].path,
++        format!(
++            "/api/v1/issues/{TASK}/sdlc/critical-blockers/pm-reviews/operations/pm-review%3Aunknown-ack"
++        )
++    );
++}
+diff --git a/docs/contracts/CRITICAL_PM_REVIEW_TRANSPORT.md b/docs/contracts/CRITICAL_PM_REVIEW_TRANSPORT.md
+new file mode 100644
+index 0000000..b69202e
+--- /dev/null
++++ b/docs/contracts/CRITICAL_PM_REVIEW_TRANSPORT.md
+@@ -0,0 +1,148 @@
++# Critical PM review reservation transport (source only)
++
++## Source and ownership
++
++Actual transport baseline: Tracker `caf7ab3`, merged as `1cc5850` into the
++isolated critical-pm-reservation checkout. Persistence dependency: `eea0dcf`;
++planner dependency: `84a02e2`. Superseded auth relaxation `b1ca106` is absent.
++Routes/signatures below were frozen before implementation.
++
++Only four new Rust files and this handoff/companion patch are authored here.
++No shared source, registrations, traits, API client, generated schema, migration,
++SQL, database or runtime has been changed by this transport packet.
++
++## Frozen transport
++
++POST `/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews`
++
++Request is the EXISTING closed `ReserveCriticalPmReview` domain DTO:
++
++```json
++{
++  "blocker_id": "22222222-2222-2222-2222-222222222222",
++  "blocker_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++  "expected_blocker_version": 2,
++  "expected_task_version": 9,
++  "expected_pm_owner_version": 17,
++  "expected_pm_assignment_version": 17,
++  "idempotency_key": "critical-pm-review:original"
++}
++```
++
++All four CAS versions are positive safe integers, not fixed first-review versions.
++Task/blocker UUIDs must be nonnil; hash is lowercase SHA-256; the shared domain
++operation-key policy applies. No arbitrary PM selector, native receipt, lease,
++result or owner confirmation is accepted in this command.
++
++Response: existing `CriticalPmReservationResult`, 201 fresh or 200 exact replay.
++`purpose=critical_business_review`, existing PM reservation with original input,
++new assignment/execution and next owner/assignment versions, separate blocker and
++requirements context. `dispatch_allowed=false` remains enforced by the existing
++reservation DTO. No new completion/admission claims.
++
++GET `/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}`
++
++Response: 200 original saved `CriticalPmReservationResult`. No fresh allocation,
++no POST fallback on 404, no new key on unknown acknowledgement. This is historical
++operation readback, NOT dispatch authorization and NOT mutable current detail.
++
++Both operations document 401/403/404/409/422/503. Handler success/errors, extractor
++errors and strict-auth rejection are `Cache-Control: no-store`. The new sibling
++router applies the SAME existing `strict_central_auth`, wrapped by no-store.
++The companion patch merges it AFTER the old router's auth layer: each route runs
++strict auth once, never legacy bearer/local-token fallback.
++
++## Frozen app and repository signatures
++
++Both new `SdlcService` methods and the existing Postgres inherent methods use:
++
++```rust
++async fn reserve_critical_pm_review(
++    &self, task: Uuid, actor: &Principal, command: ReserveCriticalPmReview,
++) -> Result<(CriticalPmReservationResult, bool), AppError>;
++
++async fn critical_pm_review_operation(
++    &self, task: Uuid, actor: &Principal, key: &str,
++) -> Result<CriticalPmReservationResult, AppError>;
++```
++
++App performs closed command/key/task and machine scope-shape preflight, then
++delegates unchanged through `LifecycleRepository`. It cannot authorize a
++configured subject by itself. Persistence remains authoritative: existing
++`sdlc_reservation::scheduler` for WRITE, `sdlc_lifecycle::scheduler_read` for READ,
++exact configured scheduler (not orchestrator/verifier), fresh task/project/owner
++ACL before original-key lookup. Paired basic scopes, human and old PM grants are
++not accepted. No email gate, introspection loop or auth-policy relaxation.
++
++The repository still owns task locking, original-key replay before allocation,
++current completed PM/returned blocker validation and atomic journal/outbox CAS.
++This packet adds no queue, runtime activity, initial Draft retry or terminal resume.
++
++## CLI
++
++```text
++task-tracker sdlc critical-blocker pm-review reserve --task UUID --from-file PATH|-
++task-tracker sdlc critical-blocker pm-review operation --task UUID --key ORIGINAL_KEY
++```
++
++Reserve uses the existing JSON-file/stdin input and HTTP client, preserving the
++original JSON values/key; it does not regenerate CAS or substitute project defaults.
++Closed local deserialization validates before HTTP. The CLI has no production
++domain dependency; its validator is checked against the actual domain DTO in a
++focused unit test. It reuses the existing CLI readable-key guard (already tested
++against the shared domain helper), not a second new key policy. GET encodes the
++original key as ONE URL segment with the existing `enc` helper.
++
++One command performs one HTTP request. Unknown/malformed POST acknowledgement is
++an error; only a subsequent explicit `operation` command performs GET. No automatic
++POST retry, recovery claim or key regeneration. Existing transport error redaction
++is retained, and invalid closed payload diagnostics do not echo private fields.
++
++## Main-owned integration
++
++Apply prerequisite planner/persistence registration patches from their accepted
++handoffs if not already integrated. Then apply:
++
++`docs/contracts/critical-pm-review-transport-registration.patch`
++
++This exact companion patch (checked against the merged source) contains only:
++
++- New app/API module registrations and strict-router merge.
++- Two `LifecycleRepository` default-unavailable methods and Postgres delegations
++  to the ALREADY accepted persistence implementation.
++- OpenAPI handler/components registrations and `ToSchema` derives/constraints
++  on the EXISTING five domain types; no parallel wire DTO/schema.
++- CLI nested command registration/dispatch and child HTTP-test registration.
++
++Parent owns applying these changes, genuine OpenAPI/client generation and public
++API documentation/indexes. The patch is not applied in this checkout; the new
++transport modules are deliberately unregistered until main integrates dependencies.
++Preserve prior SQL detail companion: mutable current detail reads saved InPmReview
++v3, but original Held/Return/review operations remain immutable history.
++
++## Authored targeted checks (not executed)
++
++Twelve new test functions: app 4, API 4, CLI unit 1, CLI HTTP 3.
++
++- App: original payload/generation, strict read/write/human/old-PM/paired-scope
++  rejection, invalid command/key/task, configured-scheduler authority distinction.
++- API: two typed authenticated OpenAPI routes/closed schemas, real JSON extractor
++  negatives, 201/200/no-store errors, actual missing-bearer middleware rejection.
++- CLI: agreement with domain closed validation; real existing fixture HTTP capture
++  of original POST, explicit replay and encoded GET; no HTTP on invalid payload;
++  denial/redaction and malformed-ACK then GET-only recovery. All data synthetic.
++
++Main's focused invocations after registration, from `backend`:
++
++```text
++cargo test -p app sdlc_critical_pm_reviews::tests
++cargo test -p api routes::sdlc_critical_pm_reviews::tests
++cargo test -p task-tracker-cli --bin task-tracker closed_cli_input_agrees_with_domain
++cargo test -p task-tracker-cli --test workflows critical_pm_review_
++```
++
++Source-only checks performed here: rustfmt on the four new Rust files,
++`git apply --check` for the companion patch, diff whitespace check and ancestry
++check excluding `b1ca106`. Cargo, Docker, compile, unit/HTTP execution, PG, OpenAPI
++generation and live PM review are NOT performed/claimed. Existing persistence PG
++fixtures remain parent qualification, not new transport proof.
+diff --git a/docs/contracts/critical-pm-review-transport-registration.patch b/docs/contracts/critical-pm-review-transport-registration.patch
+new file mode 100644
+index 0000000..0a98ea3
+--- /dev/null
++++ b/docs/contracts/critical-pm-review-transport-registration.patch
+@@ -0,0 +1,234 @@
++diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
++--- a/backend/app/src/lib.rs
+++++ b/backend/app/src/lib.rs
++@@ -10,6 +10,7 @@
++ pub mod sdlc_configuration;
++ pub mod sdlc_confirmation;
++ pub mod sdlc_critical_blockers;
+++pub mod sdlc_critical_pm_reviews;
++ pub mod sdlc_draft_flow;
++ pub mod sdlc_lifecycle;
++ pub mod sdlc_metadata;
++diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
++--- a/backend/domain/src/sdlc_lifecycle.rs
+++++ b/backend/domain/src/sdlc_lifecycle.rs
++@@ -526,6 +526,28 @@
++
++ #[async_trait::async_trait]
++ pub trait LifecycleRepository: Send + Sync {
+++    async fn reserve_critical_pm_review(
+++        &self,
+++        _task: Uuid,
+++        _actor: &Principal,
+++        _command: crate::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
+++    ) -> Result<(crate::sdlc_critical_pm_reservation::CriticalPmReservationResult, bool), AppError> {
+++        Err(AppError::Unavailable(
+++            "critical PM review repository not configured".into(),
+++        ))
+++    }
+++
+++    async fn critical_pm_review_operation(
+++        &self,
+++        _task: Uuid,
+++        _actor: &Principal,
+++        _key: &str,
+++    ) -> Result<crate::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
+++        Err(AppError::Unavailable(
+++            "critical PM review repository not configured".into(),
+++        ))
+++    }
+++
++     async fn return_critical_to_pm(
++         &self,
++         _task: Uuid,
++diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
++--- a/backend/infra/src/sdlc_lifecycle.rs
+++++ b/backend/infra/src/sdlc_lifecycle.rs
++@@ -524,6 +524,24 @@
++
++ #[async_trait]
++ impl LifecycleRepository for PostgresSdlcRepository {
+++    async fn reserve_critical_pm_review(
+++        &self,
+++        task: Uuid,
+++        actor: &Principal,
+++        command: domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
+++    ) -> Result<(domain::sdlc_critical_pm_reservation::CriticalPmReservationResult, bool), AppError> {
+++        PostgresSdlcRepository::reserve_critical_pm_review(self, task, actor, command).await
+++    }
+++
+++    async fn critical_pm_review_operation(
+++        &self,
+++        task: Uuid,
+++        actor: &Principal,
+++        key: &str,
+++    ) -> Result<domain::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
+++        PostgresSdlcRepository::critical_pm_review_operation(self, task, actor, key).await
+++    }
+++
++     async fn return_critical_to_pm(
++         &self,
++         task: Uuid,
++diff --git a/backend/api/src/routes/mod.rs b/backend/api/src/routes/mod.rs
++--- a/backend/api/src/routes/mod.rs
+++++ b/backend/api/src/routes/mod.rs
++@@ -25,6 +25,7 @@
++ pub mod sdlc;
++ pub mod sdlc_candidates;
++ pub mod sdlc_delivery;
+++pub mod sdlc_critical_pm_reviews;
++ pub mod sdlc_reservation;
++ pub mod sdlc_routing;
++ pub mod users;
++diff --git a/backend/api/src/routes/sdlc.rs b/backend/api/src/routes/sdlc.rs
++--- a/backend/api/src/routes/sdlc.rs
+++++ b/backend/api/src/routes/sdlc.rs
++@@ -208,6 +208,8 @@
++         .route_layer(middleware::from_fn(
++             crate::middleware::sdlc_auth::strict_central_auth,
++         ))
+++        // This sibling wraps the same strict auth with no-store, including auth failures.
+++        .merge(super::sdlc_critical_pm_reviews::router())
++ }
++
++ #[utoipa::path(
++diff --git a/backend/api/src/lib.rs b/backend/api/src/lib.rs
++--- a/backend/api/src/lib.rs
+++++ b/backend/api/src/lib.rs
++@@ -92,6 +92,8 @@
++         routes::sdlc_delivery::critical_operation,
++         routes::sdlc_delivery::critical_return,
++         routes::sdlc_delivery::critical_return_operation,
+++        routes::sdlc_critical_pm_reviews::reserve,
+++        routes::sdlc_critical_pm_reviews::operation,
++         routes::sdlc_delivery::feedback,
++         routes::sdlc_delivery::feedback_operation,
++         routes::sdlc_delivery::feedback_message,
++@@ -264,6 +266,11 @@
++         domain::sdlc_critical_blockers::CriticalPolicyChange,
++         domain::sdlc_critical_blockers::ReturnCriticalToPm,
++         domain::sdlc_critical_blockers::CriticalPmReviewGuard,
+++        domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
+++        domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
+++        domain::sdlc_critical_pm_reservation::CriticalPmReservationPurpose,
+++        domain::sdlc_critical_pm_reservation::CriticalPmReviewContext,
+++        domain::sdlc_critical_pm_reservation::CriticalPmRequirementsRef,
++         domain::sdlc_candidates::DeliveryCandidates,
++         domain::sdlc_candidates::DeliveryCandidate,
++         domain::sdlc_candidates::CandidateOperation,
++diff --git a/backend/cli/src/sdlc_critical_commands.rs b/backend/cli/src/sdlc_critical_commands.rs
++--- a/backend/cli/src/sdlc_critical_commands.rs
+++++ b/backend/cli/src/sdlc_critical_commands.rs
++@@ -2,6 +2,9 @@
++ use clap::Subcommand;
++ use uuid::Uuid;
++
+++#[path = "sdlc_critical_pm_reviews.rs"]
+++mod pm_reviews;
+++
++ fn readable_key(value: &str) -> bool {
++     !value.is_empty()
++         && value.len() <= 128
++@@ -13,6 +16,11 @@
++
++ #[derive(Subcommand)]
++ pub enum CriticalBlockerCommand {
+++    /// Scheduler only: reserve or read a new PM review of the same task
+++    PmReview {
+++        #[command(subcommand)]
+++        command: pm_reviews::CriticalPmReviewCommand,
+++    },
++     /// Scheduler only: return a held task to PM after actual native terminal readback
++     ReturnToPm {
++         #[arg(long)]
++@@ -52,6 +60,7 @@
++
++ pub async fn critical_blocker(api: &Api, command: CriticalBlockerCommand) -> Result<Value> {
++     match command {
+++        CriticalBlockerCommand::PmReview { command } => pm_reviews::pm_review(api, command).await,
++         CriticalBlockerCommand::ReturnToPm { task, from_file } => {
++             let payload = json_input(&from_file)?;
++             anyhow::ensure!(
++diff --git a/backend/cli/tests/workflows.rs b/backend/cli/tests/workflows.rs
++--- a/backend/cli/tests/workflows.rs
+++++ b/backend/cli/tests/workflows.rs
++@@ -133,6 +133,9 @@
++         }
++     }
++ }
+++#[path = "workflows/critical_pm_reviews.rs"]
+++mod critical_pm_reviews;
+++
++ #[derive(Debug, Clone)]
++ struct Recorded {
++     method: String,
++diff --git a/backend/domain/src/sdlc_critical_pm_reservation.rs b/backend/domain/src/sdlc_critical_pm_reservation.rs
++--- a/backend/domain/src/sdlc_critical_pm_reservation.rs
+++++ b/backend/domain/src/sdlc_critical_pm_reservation.rs
++@@ -6,19 +6,25 @@
++ use shared::AppError;
++ use uuid::Uuid;
++
+++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++ #[serde(deny_unknown_fields)]
++ pub struct ReserveCriticalPmReview {
++     pub blocker_id: Uuid,
+++    #[schema(pattern = "^[0-9a-f]{64}$")]
++     pub blocker_sha256: String,
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub expected_blocker_version: i64,
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub expected_task_version: i64,
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub expected_pm_owner_version: i64,
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub expected_pm_assignment_version: i64,
+++    #[schema(min_length = 1, max_length = 128)]
++     pub idempotency_key: String,
++ }
++
++@@ -44,31 +50,35 @@
++     }
++ }
++
+++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
++ #[serde(rename_all = "snake_case")]
++ pub enum CriticalPmReservationPurpose {
++     CriticalBusinessReview,
++ }
++
+++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++ #[serde(deny_unknown_fields)]
++ pub struct CriticalPmRequirementsRef {
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub revision: i64,
+++    #[schema(pattern = "^[0-9a-f]{64}$")]
++     pub content_hash: String,
++ }
++
+++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
++ #[serde(deny_unknown_fields)]
++ pub struct CriticalPmReviewContext {
++     pub blocker_id: Uuid,
+++    #[schema(pattern = "^[0-9a-f]{64}$")]
++     pub blocker_sha256: String,
++     #[serde(deserialize_with = "safe_version")]
+++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++     pub blocker_version: i64,
++     pub requirements: CriticalPmRequirementsRef,
++ }
++
+++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++-#[derive(Clone, Debug, Serialize, Deserialize)]
++ #[serde(deny_unknown_fields)]
++ pub struct CriticalPmReservationResult {
++     pub purpose: CriticalPmReservationPurpose,

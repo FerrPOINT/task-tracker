@@ -1,0 +1,24 @@
+diff --git a/frontend/src/features/sdlc/ui/SdlcPanel.tsx b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+index 45c0ac4..3f3adeb 100644
+--- a/frontend/src/features/sdlc/ui/SdlcPanel.tsx
++++ b/frontend/src/features/sdlc/ui/SdlcPanel.tsx
+@@ -360,11 +360,17 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
+                                         {route.fleet_config_revision}
+                                       </DescriptionItem>
+                                       {displayedPolicy.contract_version === 1 ? (
+-                                        <DescriptionItem layout="inline" label={t('sdlc.publication.package')}>
++                                        <DescriptionItem
++                                          layout="inline"
++                                          label={t('sdlc.publication.package')}
++                                        >
+                                           {route.package_commit} / {route.package_manifest_sha256}
+                                         </DescriptionItem>
+                                       ) : (
+-                                        <DescriptionItem layout="inline" label={t('sdlc.publication.instructionProfile')}>
++                                        <DescriptionItem
++                                          layout="inline"
++                                          label={t('sdlc.publication.instructionProfile')}
++                                        >
+                                           {route.instruction_profile} /{' '}
+                                           {route.instruction_manifest_sha256}
+                                         </DescriptionItem>

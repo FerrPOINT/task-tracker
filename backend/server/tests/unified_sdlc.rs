@@ -194,6 +194,67 @@ async fn directory(client: &reqwest::Client, base: &str, token: &str, mut expect
     }
     panic!("directory did not terminate");
 }
+async fn space_catalog(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    authority: &Authority,
+    space: usize,
+    mut expected: Vec<Uuid>,
+    status: u16,
+) {
+    let query = format!(
+        "registry_instance_id={}&space_id={}",
+        authority.registry, authority.spaces[space]
+    );
+    let response = client
+        .get(format!("{base}/api/v2/projects?{query}&limit=1"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    let actual = response.status().as_u16();
+    let body = response.text().await.unwrap();
+    assert_eq!(actual, status, "namespace catalog: {body}");
+    if status != 200 {
+        return;
+    }
+    let first: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(first["total"], expected.len());
+    let mut seen = first["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| serde_json::from_value::<Uuid>(row["id"].clone()).unwrap())
+        .collect::<Vec<_>>();
+    for offset in 1..expected.len() {
+        let response = client
+            .get(format!(
+                "{base}/api/v2/projects?{query}&limit=1&offset={offset}"
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        let page: Value = response.json().await.unwrap();
+        assert_eq!(page["total"], expected.len());
+        seen.extend(
+            page["projects"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| serde_json::from_value::<Uuid>(row["id"].clone()).unwrap()),
+        );
+    }
+    seen.sort();
+    expected.sort();
+    assert_eq!(
+        seen, expected,
+        "namespace filtering must precede count and pagination"
+    );
+}
+
 async fn draft(
     client: &reqwest::Client,
     base: &str,
@@ -604,6 +665,10 @@ async fn ordinary_spaces_guard_sdlc_catalog_resources_roles_and_original_deadlin
     )
     .await;
     read(&client, &base, "sdlc/project-access", &machine_token, 403).await;
+    // The portfolio has no project links of its own; only explicit hierarchy groups children.
+    space_catalog(&client, &base, &tokens[0], &a, 0, projects.to_vec(), 200).await;
+    space_catalog(&client, &base, &tokens[1], &a, 0, vec![], 403).await;
+    space_catalog(&client, &base, &tokens[1], &a, 1, vec![projects[0]], 200).await;
     let expected = [
         vec![projects[0], projects[1]],
         vec![projects[0]],
@@ -725,6 +790,8 @@ async fn ordinary_spaces_guard_sdlc_catalog_resources_roles_and_original_deadlin
     a.linked.store(false, Ordering::SeqCst);
     tokio::time::sleep(std::time::Duration::from_millis(3200)).await;
     directory(&client, &base, &tokens[0], projects.to_vec()).await;
+    space_catalog(&client, &base, &tokens[0], &a, 0, vec![projects[1]], 200).await;
+    space_catalog(&client, &base, &tokens[0], &a, 1, vec![projects[0]], 200).await;
     a.direct.store(false, Ordering::SeqCst);
     a.revoked.store(true, Ordering::SeqCst);
     tokio::time::sleep(std::time::Duration::from_millis(3200)).await;

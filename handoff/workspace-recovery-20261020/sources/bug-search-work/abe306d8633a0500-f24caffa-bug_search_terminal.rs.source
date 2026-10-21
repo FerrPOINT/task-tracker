@@ -1,0 +1,180 @@
+//! Protective terminal proof is distinct from authority for new effects.
+use crate::{
+    bug_search::*,
+    bug_search_control::{bounded_json, validate_key},
+    sdlc::MAX_SAFE_VERSION,
+};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugRuntimeTerminalStatus {
+    Succeeded,
+    Failed,
+    Stopped,
+    Cancelled,
+    Interrupted,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugRuntimeObservation {
+    pub contract_version: u8,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub session_id: Uuid,
+    pub session_run_id: Uuid,
+    pub hermes_run_ref: String,
+    pub terminal_status: BugRuntimeTerminalStatus,
+    pub observed_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_source: Option<crate::bug_search_namespace_exit::KnownRunNamespaceExit>,
+}
+impl BugRuntimeObservation {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if let Some(source) = &self.observation_source {
+            source.validate(
+                self.execution_id,
+                self.agent_id,
+                self.terminal_status,
+                self.observed_at,
+            )?;
+        }
+        if self.contract_version != 1
+            || [
+                self.execution_id,
+                self.agent_id,
+                self.session_id,
+                self.session_run_id,
+            ]
+            .iter()
+            .any(Uuid::is_nil)
+            || !bounded_text(&self.hermes_run_ref, 512)
+            || self.hermes_run_ref.chars().any(char::is_control)
+        {
+            return Err(AppError::validation(
+                "invalid actual runtime terminal observation",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptBugSearchTerminal {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub workflow_receipt: Option<serde_json::Value>,
+    pub workflow_receipt_sha256: Option<String>,
+    pub runtime_observation: BugRuntimeObservation,
+}
+impl AcceptBugSearchTerminal {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.runtime_observation.validate()?;
+        if !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence)
+            || match (&self.workflow_receipt, &self.workflow_receipt_sha256) {
+                (None, None) => false,
+                (Some(v), Some(h)) => {
+                    !v.is_object()
+                        || !sha256(h)
+                        || !serde_json::to_vec_pretty(v).is_ok_and(|v| v.len() <= 262144)
+                }
+                _ => true,
+            }
+        {
+            return Err(AppError::validation(
+                "invalid bounded terminal producer receipt",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchTerminalReceipt {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub execution_id: Uuid,
+    pub fence: i64,
+    pub runtime_observation: BugRuntimeObservation,
+    pub custody_released: bool,
+    pub result_sha256: Option<String>,
+    pub result_available: bool,
+    pub accepted_at: DateTime<Utc>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugProducedFindingReport {
+    pub source_identity: String,
+    pub source: BugSourceIdentity,
+    pub title: String,
+    pub basis: String,
+    pub expected: String,
+    pub actual: String,
+    pub reproducer: String,
+    pub checked_version: String,
+    pub evidence_refs: Vec<String>,
+}
+impl BugProducedFindingReport {
+    pub fn report(&self) -> BugFindingReport {
+        BugFindingReport {
+            title: self.title.clone(),
+            basis: self.basis.clone(),
+            expected: self.expected.clone(),
+            actual: self.actual.clone(),
+            reproducer: self.reproducer.clone(),
+            checked_version: self.checked_version.clone(),
+            evidence_refs: self.evidence_refs.clone(),
+        }
+    }
+    pub fn validate(&self) -> Result<(), AppError> {
+        self.source.validate()?;
+        self.report().validate()?;
+        if !sha256(&self.source_identity) {
+            return Err(AppError::validation("invalid typed producer source hash"));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BugProducedFinding {
+    pub finding_id: Uuid,
+    pub report: BugProducedFindingReport,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BugTechnicalCoverage {
+    Complete,
+    Partial,
+    Inconclusive,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchTechnicalResult {
+    pub coverage: BugTechnicalCoverage,
+    pub findings: Vec<BugProducedFinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<serde_json::Value>,
+}
+impl BugSearchTechnicalResult {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.findings.len() > 100 || !bounded_json(self) {
+            return Err(AppError::validation(
+                "invalid bounded technical bug search result",
+            ));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for f in &self.findings {
+            if f.finding_id.is_nil() || !seen.insert(f.finding_id) {
+                return Err(AppError::validation("duplicate finding occurrence"));
+            }
+            f.report.validate()?;
+        }
+        Ok(())
+    }
+}

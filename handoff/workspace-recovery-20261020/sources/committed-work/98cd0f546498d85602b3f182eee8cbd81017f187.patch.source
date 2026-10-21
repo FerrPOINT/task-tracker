@@ -1,0 +1,946 @@
+diff --git a/backend/api/src/middleware/sdlc_critical_pm_read_tests.rs b/backend/api/src/middleware/sdlc_critical_pm_read_tests.rs
+new file mode 100644
+index 0000000..1c86508
+--- /dev/null
++++ b/backend/api/src/middleware/sdlc_critical_pm_read_tests.rs
+@@ -0,0 +1,71 @@
++use super::*;
++use domain::sdlc::{PmAssignment, Principal};
++use uuid::Uuid;
++
++#[test]
++fn current_pm_grant_route_policy_allows_only_exact_task_blocker_detail_get() {
++    let task = Uuid::new_v4();
++    let assignment = PmAssignment {
++        assignment_id: Uuid::new_v4(),
++        execution_id: Uuid::new_v4(),
++        agent_id: Uuid::new_v4(),
++        version: 18,
++        machine_subject: "synthetic-pm".into(),
++    };
++    let actor = Principal {
++        subject: assignment.machine_subject.clone(),
++        human_session: false,
++        trusted_human: false,
++        scopes: ["task-tracker:read".into(), assignment.scope(task)].into(),
++    };
++    let prefix = format!("/api/v1/issues/{task}/sdlc/");
++    let id = Uuid::from_u128(0xabcdef);
++    pm_request_policy(&actor, "GET", &format!("{prefix}critical-blockers/{id}")).unwrap();
++    for method in ["POST", "PATCH", "DELETE"] {
++        assert!(
++            pm_request_policy(&actor, method, &format!("{prefix}critical-blockers/{id}")).is_err()
++        );
++    }
++    for suffix in [
++        "critical-blockers".into(),
++        "critical-blockers/returns".into(),
++        "critical-blockers/operations/original".into(),
++        "critical-blockers/pm-reviews".into(),
++        "critical-blockers/pm-reviews/operations/original".into(),
++        format!("critical-blockers/{id}/"),
++        format!("critical-blockers/{}", id.to_string().to_uppercase()),
++        "critical-blockers/00000000-0000-0000-0000-000000000000".into(),
++    ] {
++        assert!(pm_request_policy(&actor, "GET", &format!("{prefix}{suffix}")).is_err());
++    }
++    assert!(
++        pm_request_policy(
++            &actor,
++            "GET",
++            &format!(
++                "/api/v1/issues/{}/sdlc/critical-blockers/{id}",
++                Uuid::new_v4()
++            )
++        )
++        .is_err()
++    );
++    for path in [
++        format!("/api/v1/attachments/{id}/download"),
++        format!("/api/v1/issues/{task}/attachments"),
++    ] {
++        assert!(pm_request_policy(&actor, "GET", &path).is_err());
++    }
++    let mut ambiguous = actor.clone();
++    ambiguous.scopes.insert(assignment.scope(Uuid::new_v4()));
++    assert!(
++        pm_request_policy(
++            &ambiguous,
++            "GET",
++            &format!("{prefix}critical-blockers/{id}")
++        )
++        .is_err()
++    );
++    let mut human = actor;
++    human.human_session = true;
++    assert!(pm_request_policy(&human, "GET", &format!("{prefix}critical-blockers/{id}")).is_err());
++}
+diff --git a/backend/app/src/sdlc_critical_pm_blocker_read_tests.rs b/backend/app/src/sdlc_critical_pm_blocker_read_tests.rs
+new file mode 100644
+index 0000000..99a950e
+--- /dev/null
++++ b/backend/app/src/sdlc_critical_pm_blocker_read_tests.rs
+@@ -0,0 +1,263 @@
++use super::*;
++use chrono::{Duration, TimeZone, Utc};
++use domain::sdlc::{MachineFence, TaskState};
++use domain::sdlc_critical_pm_reservation::CriticalPmReservationResult;
++use domain::sdlc_execution_lease::{ExecutionLease, ExecutionLeaseReceipt};
++use serde_json::json;
++
++struct ReadFixture {
++    state: TaskState,
++    actor: Principal,
++    blocker: CriticalBlockerReceipt,
++    review: CriticalPmReservationResult,
++    lease: ExecutionLeaseReceipt,
++    now: chrono::DateTime<Utc>,
++}
++
++impl ReadFixture {
++    fn new() -> Self {
++        let now = Utc.with_ymd_and_hms(2026, 10, 14, 12, 0, 0).unwrap();
++        let task = Uuid::new_v4();
++        let project = Uuid::new_v4();
++        let assignment = domain::sdlc::PmAssignment {
++            assignment_id: Uuid::new_v4(),
++            execution_id: Uuid::new_v4(),
++            agent_id: Uuid::new_v4(),
++            version: 18,
++            machine_subject: "synthetic-pm".into(),
++        };
++        let state: TaskState = serde_json::from_value(json!({
++            "tracker_instance_id":"synthetic-tracker","project_id":project,"task_id":task,
++            "root_task_id":task,"owner_subject":"synthetic-owner","stage":"Draft",
++            "status":"Ready","draft_submode":"brainstorming","confirmation_revision":null,
++            "assignment":assignment,"questions":[],"revisions":[],"confirmations":[],"evidence":[],
++            "flow":"single-task-v1"
++        }))
++        .unwrap();
++        let technical_assignment = Uuid::new_v4();
++        let technical_execution = Uuid::new_v4();
++        let proposal: SubmitCriticalBlocker = serde_json::from_value(json!({
++            "fence":{"assignment_id":technical_assignment,"execution_id":technical_execution,
++                "lease_id":Uuid::new_v4(),"fencing_token":5,"expected_lease_version":3},
++            "requirement_revision":4,"content_hash":"a".repeat(64),"kind":"requirements_contradiction",
++            "question":"Which retention rule is authoritative?","rationale":"The two rules conflict.",
++            "options":[],"recommendation":null,"idempotency_key":"original-question",
++            "evidence":[{"receipt":{"reference":format!("tracker-attachment:{}",Uuid::new_v4()),"sha256":"b".repeat(64)},
++                "binding":{"assignment_id":technical_assignment,"execution_id":technical_execution,"role":"developer"}}]
++        })).unwrap();
++        proposal.validate(DeliveryRole::Developer).unwrap();
++        let mut blocker: CriticalBlockerReceipt = serde_json::from_value(json!({
++            "blocker_id":Uuid::new_v4(),"version":3,"tracker_instance_id":state.tracker_instance_id,
++            "project_id":project,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
++            "producer_subject":"synthetic-developer","agent_id":Uuid::new_v4(),"role":"developer",
++            "assignment_hash":"c".repeat(64),"chat_id":Uuid::new_v4(),"run_id":Uuid::new_v4(),
++            "routing_snapshot_id":Uuid::new_v4(),"routing_generation":1,
++            "blocker_sha256":crate::sdlc::canonical_hash(&proposal).unwrap(),"proposal":proposal,
++            "state":"in_pm_review","pm_review":{"assignment_id":assignment.assignment_id,"execution_id":assignment.execution_id},
++            "resolution":null,"technical_terminal":null,"created_at":now
++        })).unwrap();
++        blocker.technical_terminal = Some(RuntimeTerminalObservation {
++            assignment_hash: blocker.assignment_hash.clone(),
++            chat_id: blocker.chat_id,
++            run_id: blocker.run_id,
++            state: RuntimeTerminalState::Cancelled,
++            receipt: ArtifactReceipt {
++                reference: "fixture://synthetic-terminal-not-live-proof".into(),
++                sha256: "e".repeat(64),
++            },
++        });
++        let review: CriticalPmReservationResult = serde_json::from_value(json!({
++            "purpose":"critical_business_review","reservation":{"contract_version":1,"variant":"pm_draft_reserved",
++                "binding":{"tracker_instance_id":state.tracker_instance_id,"project_id":project,
++                    "task_id":task,"root_task_id":task,"owner_subject":state.owner_subject},
++                "assignment":assignment,"owner_cas":{"expected_version":17,"version":18},
++                "execution":{"ordinal":"23","key":"SDLC-23"},
++                "input":{"snapshot_ref":Uuid::new_v4(),"sha256":"d".repeat(64)},
++                "assignment_operation_key":"review-reservation-original","admission_state":"reserved","dispatch_allowed":false},
++            "context":{"blocker_id":blocker.blocker_id,"blocker_sha256":blocker.blocker_sha256,
++                "blocker_version":3,"requirements":{"revision":4,"content_hash":"a".repeat(64)}}
++        })).unwrap();
++        let actor = Principal {
++            subject: assignment.machine_subject.clone(),
++            human_session: false,
++            trusted_human: false,
++            scopes: [
++                "task-tracker:read".into(),
++                "task-tracker:write".into(),
++                assignment.scope(task),
++            ]
++            .into(),
++        };
++        let lease = ExecutionLeaseReceipt {
++            contract_version: 1,
++            binding: review.reservation.binding.clone(),
++            owner_version: 18,
++            fence: MachineFence {
++                assignment_id: assignment.assignment_id,
++                execution_id: assignment.execution_id,
++                agent_id: assignment.agent_id,
++                assignment_version: assignment.version,
++            },
++            lease: ExecutionLease {
++                lease_id: Uuid::new_v4(),
++                version: 2,
++                holder_subject: actor.subject.clone(),
++                claimed_at: now - Duration::seconds(10),
++                heartbeat_at: now,
++                expires_at: now + Duration::seconds(30),
++            },
++            ttl_seconds: 30,
++            heartbeat_seconds: 10,
++            dispatch_allowed: false,
++        };
++        Self {
++            state,
++            actor,
++            blocker,
++            review,
++            lease,
++            now,
++        }
++    }
++
++    fn allowed(&self) -> Result<(), AppError> {
++        authorize_critical_pm_blocker_read(
++            &self.state,
++            &self.actor,
++            &self.blocker,
++            &self.review,
++            &self.review.reservation,
++            &self.lease,
++            self.now,
++        )
++    }
++}
++
++#[test]
++fn current_review_reads_only_its_blocker_in_all_draft_submodes_without_mutation() {
++    let mut f = ReadFixture::new();
++    for mode in [
++        domain::sdlc::DraftSubmode::Brainstorming,
++        domain::sdlc::DraftSubmode::Clarification,
++        domain::sdlc::DraftSubmode::AwaitingConfirmation,
++    ] {
++        f.state.draft_submode = Some(mode);
++        let before = json!({"state":f.state,"blocker":f.blocker,"review":f.review,"lease":f.lease});
++        f.allowed().unwrap();
++        assert_eq!(
++            json!({"state":f.state,"blocker":f.blocker,"review":f.review,"lease":f.lease}),
++            before
++        );
++    }
++}
++
++#[test]
++fn old_pm_foreign_task_agent_execution_version_and_missing_read_scope_are_denied() {
++    for mismatch in 0..8 {
++        let mut f = ReadFixture::new();
++        match mismatch {
++            0 => {
++                f.actor.scopes.remove("task-tracker:read");
++            }
++            1 => f.actor.human_session = true,
++            2 => f.actor.subject = "foreign".into(),
++            _ => {
++                let mut wrong = f.state.assignment.clone().unwrap();
++                let mut task = f.state.task_id;
++                match mismatch {
++                    3 => wrong.assignment_id = Uuid::new_v4(),
++                    4 => wrong.execution_id = Uuid::new_v4(),
++                    5 => wrong.agent_id = Uuid::new_v4(),
++                    6 => wrong.version -= 1,
++                    _ => task = Uuid::new_v4(),
++                }
++                f.actor.scopes = ["task-tracker:read".into(), wrong.scope(task)].into();
++            }
++        }
++        assert!(f.allowed().is_err());
++    }
++}
++
++#[test]
++fn held_returned_resolved_foreign_and_unlinked_review_context_are_denied() {
++    for mismatch in 0..12 {
++        let mut f = ReadFixture::new();
++        match mismatch {
++            0 => f.blocker.state = CriticalBlockerState::Held,
++            1 => f.blocker.state = CriticalBlockerState::AwaitingPmReview,
++            2 => f.blocker.state = CriticalBlockerState::Resolved,
++            3 => f.blocker.task_id = Uuid::new_v4(),
++            4 => f.blocker.project_id = Uuid::new_v4(),
++            5 => f.blocker.owner_subject = "foreign-owner".into(),
++            6 => f.blocker.pm_review = None,
++            7 => f.blocker.pm_review.as_mut().unwrap().execution_id = Uuid::new_v4(),
++            8 => f.review.context.blocker_id = Uuid::new_v4(),
++            9 => f.review.context.blocker_sha256 = "f".repeat(64),
++            10 => f.review.context.requirements.revision += 1,
++            _ => f.review.context.blocker_version -= 1,
++        }
++        assert!(f.allowed().is_err());
++    }
++}
++
++#[test]
++fn lease_expiry_future_time_wrong_holder_owner_and_every_fence_component_deny() {
++    for mismatch in 0..12 {
++        let mut f = ReadFixture::new();
++        match mismatch {
++            0 => f.now = f.lease.lease.expires_at,
++            1 => f.now = f.lease.lease.heartbeat_at - Duration::nanoseconds(1),
++            2 => f.lease.lease.holder_subject = "old-pm".into(),
++            3 => f.lease.owner_version -= 1,
++            4 => f.lease.fence.assignment_id = Uuid::new_v4(),
++            5 => f.lease.fence.execution_id = Uuid::new_v4(),
++            6 => f.lease.fence.agent_id = Uuid::new_v4(),
++            7 => f.lease.fence.assignment_version -= 1,
++            8 => f.lease.binding.owner_subject = "foreign-owner".into(),
++            9 => f.lease.lease.lease_id = Uuid::nil(),
++            10 => f.lease.lease.version = 0,
++            _ => f.lease.lease.claimed_at = f.now + Duration::seconds(1),
++        }
++        assert!(f.allowed().is_err());
++    }
++    let f = ReadFixture::new();
++    let mut changed = f.review.reservation.clone();
++    changed.owner_cas.version += 1;
++    assert!(
++        authorize_critical_pm_blocker_read(
++            &f.state, &f.actor, &f.blocker, &f.review, &changed, &f.lease, f.now
++        )
++        .is_err()
++    );
++}
++
++#[test]
++fn only_canonical_blocker_detail_get_shape_is_allowed_never_operations_or_attachments() {
++    let id = Uuid::from_u128(0xabcdef).to_string();
++    assert!(is_pm_critical_blocker_read(
++        "GET",
++        &["critical-blockers", &id]
++    ));
++    for method in ["POST", "PATCH", "DELETE"] {
++        assert!(!is_pm_critical_blocker_read(
++            method,
++            &["critical-blockers", &id]
++        ));
++    }
++    for parts in [
++        vec!["critical-blockers"],
++        vec!["critical-blockers", "returns"],
++        vec!["critical-blockers", "pm-reviews"],
++        vec!["critical-blockers", "operations", "original"],
++        vec!["critical-blockers", "pm-reviews", "operations", "original"],
++        vec!["critical-blockers", &id, ""],
++        vec!["attachments", &id, "download"],
++        vec!["critical-blockers", "00000000-0000-0000-0000-000000000000"],
++    ] {
++        assert!(!is_pm_critical_blocker_read("GET", &parts));
++    }
++    assert!(!is_pm_critical_blocker_read(
++        "GET",
++        &["critical-blockers", &id.to_uppercase()]
++    ));
++}
+diff --git a/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs b/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs
+new file mode 100644
+index 0000000..aeb58f3
+--- /dev/null
++++ b/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs
+@@ -0,0 +1,238 @@
++//! Child of the existing critical candidates fixture. Synthetic custody, not live runtime evidence.
++use super::*;
++use domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview;
++use domain::sdlc_execution_lease::ClaimExecutionLease;
++
++async fn read_snapshot(f: &Fixture, task: Uuid) -> Json {
++    f.db.query_one(statement("SELECT jsonb_build_object(
++        'state',(SELECT state FROM sdlc_tasks WHERE task_id=$1),
++        'reviews',(SELECT count(*) FROM sdlc_critical_pm_reviews WHERE task_id=$1),
++        'leases',(SELECT count(*) FROM sdlc_pm_execution_leases l JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=$1),
++        'outbox',(SELECT count(*) FROM sdlc_outbox WHERE task_id=$1)) AS value",
++        vec![task.into()])).await.unwrap().unwrap().try_get("", "value").unwrap()
++}
++
++#[tokio::test]
++#[ignore = "fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime only"]
++async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_current_lease() {
++    let f = Box::pin(Fixture::new()).await;
++    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
++        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)",
++        vec![Uuid::new_v4().into()]).await.unwrap();
++    exec(
++        &f.db,
++        "INSERT INTO project_members(project_id,user_id,role)
++        SELECT $1,id,'developer' FROM users WHERE central_sub='critical-agent'",
++        vec![f.project.into()],
++    )
++    .await
++    .unwrap();
++    let storage = domain::InMemoryStorage::default();
++    let r = Box::pin(start(&f, "pm-blocker-reader", false, &storage)).await;
++    let (held, _) = Box::pin(f.repo.submit_critical_blocker_with_storage(
++        r.task,
++        &r.producer,
++        blocker(&r),
++        &storage,
++    ))
++    .await
++    .unwrap();
++    let previous = f
++        .repo
++        .pm_draft_assignment(r.task, &f.owner, None)
++        .await
++        .unwrap()
++        .current
++        .unwrap();
++    let mut old_pm = actor("pm", false, &["task-tracker:read", "task-tracker:write"]);
++    old_pm.scopes.insert(previous.assignment.scope(r.task));
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &old_pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    let current = f
++        .repo
++        .lifecycle_read(r.task, &f.reader)
++        .await
++        .unwrap()
++        .receipt;
++    let (returned, _) = Box::pin(f.repo.return_critical_to_pm_with_terminal(
++        r.task,
++        &f.writer,
++        ReturnCriticalToPm {
++            review: CriticalPmReviewGuard {
++                blocker_id: held.blocker_id,
++                blocker_sha256: held.blocker_sha256.clone(),
++                expected_blocker_version: held.version,
++                expected_task_version: current.task.version,
++                fence: fence(&current),
++                idempotency_key: "reader-return-original".into(),
++            },
++            terminal: RuntimeTerminalObservation {
++                assignment_hash: held.assignment_hash.clone(),
++                chat_id: held.chat_id,
++                run_id: held.run_id,
++                state: RuntimeTerminalState::Cancelled,
++                receipt: ArtifactReceipt {
++                    reference: "fixture://synthetic-terminal-not-live-proof".into(),
++                    sha256: "d".repeat(64),
++                },
++            },
++        },
++    ))
++    .await
++    .unwrap();
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &old_pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    let (review, _) = Box::pin(f.repo.reserve_critical_pm_review(
++        r.task,
++        &f.writer,
++        ReserveCriticalPmReview {
++            blocker_id: held.blocker_id,
++            blocker_sha256: held.blocker_sha256.clone(),
++            expected_blocker_version: returned.blocker.version,
++            expected_task_version: returned.lifecycle.task.version,
++            expected_pm_owner_version: previous.owner_cas.version,
++            expected_pm_assignment_version: previous.assignment.version,
++            idempotency_key: "reader-review-original".into(),
++        },
++    ))
++    .await
++    .unwrap();
++    let assignment = &review.reservation.assignment;
++    let mut pm = actor(
++        &assignment.machine_subject,
++        false,
++        &["task-tracker:read", "task-tracker:write"],
++    );
++    pm.scopes.insert(assignment.scope(r.task));
++    // A saved review or a syntactically exact grant alone is not an active read capability.
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    let (_, replay) = f
++        .repo
++        .claim_pm_execution_lease(
++            r.task,
++            &pm,
++            ClaimExecutionLease {
++                expected_owner_version: review.reservation.owner_cas.version,
++                fence: MachineFence {
++                    assignment_id: assignment.assignment_id,
++                    execution_id: assignment.execution_id,
++                    agent_id: assignment.agent_id,
++                    assignment_version: assignment.version,
++                },
++                idempotency_key: "reader-lease-original".into(),
++            },
++        )
++        .await
++        .unwrap();
++    assert!(!replay);
++    let before = read_snapshot(&f, r.task).await;
++    let detail = f
++        .repo
++        .critical_blocker(r.task, &pm, held.blocker_id)
++        .await
++        .unwrap();
++    assert_eq!(detail.state, CriticalBlockerState::InPmReview);
++    assert_eq!(detail.version, review.context.blocker_version);
++    assert_eq!(
++        detail.pm_review.as_ref().unwrap().execution_id,
++        assignment.execution_id
++    );
++    assert_eq!(detail.proposal, held.proposal);
++    assert_eq!(read_snapshot(&f, r.task).await, before);
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &old_pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &pm, Uuid::new_v4())
++            .await
++            .is_err()
++    );
++    let other = f.draft("foreign-pm-blocker-read", None).await;
++    assert!(
++        f.repo
++            .critical_blocker(other, &pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    // No PM access to original producer or scheduler operation history is introduced.
++    assert!(
++        f.repo
++            .critical_blocker_operation(r.task, &pm, &held.proposal.idempotency_key)
++            .await
++            .is_err()
++    );
++    assert!(
++        f.repo
++            .critical_pm_review_operation(r.task, &pm, &review.reservation.assignment_operation_key)
++            .await
++            .is_err()
++    );
++
++    exec(
++        &f.db,
++        "UPDATE users SET is_active=false WHERE central_sub='owner'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    exec(
++        &f.db,
++        "UPDATE users SET is_active=true WHERE central_sub='owner'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    exec(&f.db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",
++        vec![f.project.into()]).await.unwrap();
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",
++        vec![f.project.into()]).await.unwrap();
++    exec(&f.db,"UPDATE projects SET owner_id=(SELECT id FROM users WHERE central_sub='foreign') WHERE id=$1",
++        vec![f.project.into()]).await.unwrap();
++    assert!(
++        f.repo
++            .critical_blocker(r.task, &pm, held.blocker_id)
++            .await
++            .is_err()
++    );
++    exec(
++        &f.db,
++        "UPDATE projects SET owner_id=(SELECT id FROM users WHERE central_sub='owner') WHERE id=$1",
++        vec![f.project.into()],
++    )
++    .await
++    .unwrap();
++    f.repo
++        .critical_blocker(r.task, &pm, held.blocker_id)
++        .await
++        .unwrap();
++    assert_eq!(read_snapshot(&f, r.task).await, before);
++}
+diff --git a/docs/contracts/CRITICAL_PM_BLOCKER_READ.md b/docs/contracts/CRITICAL_PM_BLOCKER_READ.md
+new file mode 100644
+index 0000000..172cb96
+--- /dev/null
++++ b/docs/contracts/CRITICAL_PM_BLOCKER_READ.md
+@@ -0,0 +1,131 @@
++# Current PM critical blocker read (source only)
++
++Baseline: Tracker `8ac333a`, merged as `c76bd65`. Main's schema derives were retained
++when resolving the old planner add/add conflict. No superseded `b1ca106` dependency.
++
++## Coordinated scope
++
++Production edits are ONLY a companion patch, not applied here:
++
++`docs/contracts/critical-pm-blocker-read.patch`
++
++- `app/src/sdlc_critical_blockers.rs`: canonical detail GET shape and pure current
++  review/PM/fence/lease authorization helper, plus dedicated test registration.
++- `infra/src/sdlc_critical_blockers.rs`: replace blanket PM denial ONLY for detail
++  with same-transaction current-review verification. Other callers/history unchanged.
++- `api/src/middleware/sdlc_auth.rs`: allow ONLY canonical blocker detail GET for
++  the exact PM task and existing basic READ scope. Dedicated policy test registration.
++- Existing critical PG fixture: register a NEW child test file; no existing test rewrite.
++
++No lifecycle/routing/SQL guard, schema, trait, registration outside these hooks,
++API client, controller, endpoint, attachment reader or credential changes.
++Main/Locke retain lifecycle/routing/persistence ownership. Frozen QA source is untouched.
++
++## Existing route, narrow authority
++
++GET `/api/v1/issues/{task}/sdlc/critical-blockers/{blocker_id}` remains the ONLY route.
++The strict Central middleware still verifies the bearer/service scope and exact
++PM task grant before entering the existing handler/service/repository. Shape
++allowance is NOT authorization to any supplied blocker UUID.
++
++The repository's EXISTING task-locked transaction does all of the following:
++
++1. `load_read`: fresh active actor/project ACL; root/task scope; exact current PM
++   assignment grant and latest persisted assignment. Existing mixed delivery-grant
++   checks remain; old PM grants fail before reading the requested payload.
++2. Existing `owner_access`: fresh active owner and project ownership/membership.
++3. Existing current-head detail query; the requested blocker must be saved
++   `InPmReview`, not Held/Awaiting/Resolved, and linked to the current assignment
++   AND execution in the actual immutable `sdlc_critical_pm_reviews` row.
++4. Immutable journal `after_blocker` must equal returned detail; journal reservation
++   must equal existing `PostgresSdlcRepository::reservation`, including original
++   input and actual owner/assignment versions. Current PM cursor/execution must
++   match, with existing admission state `reserved`.
++5. Existing `lease_current` validates actual retained lease operation/row, holder,
++   TTL and owner/fence. A final DB `clock` observation requires claimed <= heartbeat
++   <= observed < expiry, same holder and exact assignment/execution/agent/version.
++
++No stage/status/submode is invented as an additional read gate. Requirements
++context is the original blocker context: subsequent PM edits must not make the
++original question unreadable merely by adding a new requirements revision.
++Unclaimed/expired/missing/inconsistent lease or selector fails closed. No fallback
++to old PM execution, scheduler impersonation, project-default PM or archived grant.
++
++The helper signatures in the companion patch are:
++
++```rust
++pub fn is_pm_critical_blocker_read(method: &str, parts: &[&str]) -> bool;
++
++pub fn authorize_critical_pm_blocker_read(
++    state: &TaskState, actor: &Principal, blocker: &CriticalBlockerReceipt,
++    review: &CriticalPmReservationResult, current: &PmDraftReservation,
++    lease: &ExecutionLeaseReceipt, observed_at: DateTime<Utc>,
++) -> Result<(), AppError>;
++```
++
++Only the existing repository calls the pure helper after same-transaction source
++verification. No new ports or persisted structures. Reads do not mutate PM/Tracker
++state, lease, journal or outbox. Human owner/scheduler/technical detail behavior and
++all original-key operation readers remain unchanged. PM receives no operation
++history, list/read-all, return/reservation write or dispatch capability.
++
++## Sealed evidence: demonstrated gap, no access widened
++
++At this baseline `api/middleware/attachment_auth.rs::attachment_auth` explicitly
++denies every PM grant. `infra/attachment_artifacts.rs::authority` accepts current
++technical delivery or scheduler READ authority and needs a technical assignment
++and binding; Return has deliberately cleared both. Its `allowed` function grants
++only own current technical artifacts or exact accepted predecessor output, and
++scheduler proposal artifacts. Merely allowing a PM URL in middleware would not
++authorize these bytes and must NOT become general attachment access.
++
++Blocker POST already checks `proposal.evidence` against actual attachment task,
++producer, seal/run/binding and raw SHA via `verify_evidence`. The detail response
++returns these existing typed references, not raw bytes. This patch does NOT add
++PM list/download or open ordinary attachments.
++
++Minimal future contract (needs separately approved existing-reader hooks, no new
++credentials/schema/endpoint): ONLY the existing single attachment download may
++accept current PM READ authority after the SAME current review/owner/project/lease
++check. The requested attachment must equal an exact item in that saved blocker's
++`proposal.evidence` (reference, SHA and producer binding); validate the existing
++seal/provenance against the retained technical assignment/run and task; verify
++raw bytes with the existing FileStorage/`verify_bytes` before returning. No current
++technical assignment requirement for that narrow archived-evidence case, no
++ordinary attachment list/upload/delete, arbitrary attachment ID or old PM access.
++It must be rechecked before returning bytes after storage I/O if authority expiry
++or revocation can occur during the download. This permission is NOT implemented
++or claimed available here; metadata detail read alone is not evidence-download proof.
++
++## Dedicated authored regressions
++
++Seven new test functions, not executed:
++
++- App (5): current review in all three Draft submodes, no mutation; old/foreign PM
++  task/agent/execution/version and missing READ denial; wrong blocker/journal context;
++  expiry/future clock/holder/owner/every fence component; canonical GET-only routes.
++- API policy (1): exact-task canonical detail GET; deny writes/history/operations,
++  foreign task, ambiguous/human grant and attachment routes.
++- Existing PG fixture child (1 ignored): real initial completed PM -> actual
++  Hold/Return/review journal -> current PM lease claim -> detail read. Denies old PM,
++  unclaimed review, foreign blocker/task, operation history, revoked actor project
++  access, inactive owner and owner project access. No state/outbox/lease mutations
++  by reads. Native/Workflow observations are synthetic; no live runtime proof.
++
++After main applies the companion patch, targeted commands from `backend`:
++
++```text
++cargo test -p app sdlc_critical_blockers::pm_blocker_read_tests
++cargo test -p api middleware::sdlc_auth::critical_pm_read_tests
++cargo test -p infra actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_current_lease -- --ignored
++```
++
++The PG command requires a fresh disposable candidates fixture DB with the current
++unreleased migrations, under main's existing protected runner/cleanup. Lease
++expiry/fence negatives are pure tests, not claims of PG clock advancement.
++
++Qualification here: rustfmt on the three new Rust test files, companion
++`git apply --check`, staged whitespace and forbidden-ancestor check only.
++No Cargo/Docker, compile, pure/API/PG execution, OpenAPI or live proof. Main must
++apply/review the patch and run affected qualification; it is not applied to the
++working production hooks in this checkout.
+diff --git a/docs/contracts/critical-pm-blocker-read.patch b/docs/contracts/critical-pm-blocker-read.patch
+new file mode 100644
+index 0000000..4644cd9
+--- /dev/null
++++ b/docs/contracts/critical-pm-blocker-read.patch
+@@ -0,0 +1,213 @@
++diff --git a/backend/app/src/sdlc_critical_blockers.rs b/backend/app/src/sdlc_critical_blockers.rs
++--- a/backend/app/src/sdlc_critical_blockers.rs
+++++ b/backend/app/src/sdlc_critical_blockers.rs
++@@ -465,6 +465,81 @@
++     Ok(next)
++ }
++
+++/// Route-shape allowance only; repository verifies the saved current review and fresh lease.
+++pub fn is_pm_critical_blocker_read(method: &str, parts: &[&str]) -> bool {
+++    matches!((method, parts), ("GET", ["critical-blockers", id])
+++        if crate::sdlc::canonical_pm_uuid(id).is_some())
+++}
+++
+++/// Inputs must come from the SAME task-locked transaction after fresh actor/owner/project ACL.
+++/// A review receipt alone never authorizes reading another blocker or dispatch.
+++pub fn authorize_critical_pm_blocker_read(
+++    state: &domain::sdlc::TaskState,
+++    actor: &Principal,
+++    blocker: &CriticalBlockerReceipt,
+++    review: &domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
+++    current: &domain::sdlc_pm_draft::PmDraftReservation,
+++    lease: &domain::sdlc_execution_lease::ExecutionLeaseReceipt,
+++    observed_at: chrono::DateTime<chrono::Utc>,
+++) -> Result<(), AppError> {
+++    if crate::sdlc::pm_grant_task(actor)? != Some(state.task_id)
+++        || !actor.scopes.contains("task-tracker:read")
+++        || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+++    {
+++        return Err(AppError::Forbidden);
+++    }
+++    crate::sdlc::authorize_pm_read(state, actor)?;
+++    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+++    let binding = &current.binding;
+++    if blocker.state != CriticalBlockerState::InPmReview
+++        || blocker.resolution.is_some()
+++        || blocker.pm_review.as_ref().is_none_or(|pm| {
+++            pm.assignment_id != assignment.assignment_id
+++                || pm.execution_id != assignment.execution_id
+++        })
+++        || blocker.task_id != state.task_id
+++        || blocker.root_task_id != state.task_id
+++        || blocker.project_id != state.project_id
+++        || blocker.tracker_instance_id != state.tracker_instance_id
+++        || blocker.owner_subject != state.owner_subject
+++        || binding.task_id != state.task_id
+++        || binding.root_task_id != state.task_id
+++        || binding.project_id != state.project_id
+++        || binding.tracker_instance_id != state.tracker_instance_id
+++        || binding.owner_subject != state.owner_subject
+++        || current.assignment != *assignment
+++        || current.dispatch_allowed
+++        || crate::sdlc::canonical_hash(&review.reservation)?
+++            != crate::sdlc::canonical_hash(current)?
+++        || review.context.blocker_id != blocker.blocker_id
+++        || review.context.blocker_version != blocker.version
+++        || review.context.blocker_sha256 != blocker.blocker_sha256
+++        || review.context.requirements.revision != blocker.proposal.requirement_revision
+++        || review.context.requirements.content_hash != blocker.proposal.content_hash
+++        || lease.contract_version != 1
+++        || lease.dispatch_allowed
+++        || lease.binding != *binding
+++        || lease.owner_version != current.owner_cas.version
+++        || lease.fence.assignment_id != assignment.assignment_id
+++        || lease.fence.execution_id != assignment.execution_id
+++        || lease.fence.agent_id != assignment.agent_id
+++        || lease.fence.assignment_version != assignment.version
+++        || lease.lease.lease_id.is_nil()
+++        || lease.lease.holder_subject != actor.subject
+++        || !positive(lease.lease.version)
+++        || lease.lease.claimed_at > lease.lease.heartbeat_at
+++        || lease.lease.heartbeat_at > observed_at
+++        || observed_at >= lease.lease.expires_at
+++    {
+++        return Err(AppError::Forbidden);
+++    }
+++    Ok(())
+++}
+++
+++#[cfg(test)]
+++#[path = "sdlc_critical_pm_blocker_read_tests.rs"]
+++mod pm_blocker_read_tests;
+++
++ #[cfg(test)]
++ #[path = "sdlc_critical_blockers_tests.rs"]
++ mod tests;
++diff --git a/backend/infra/src/sdlc_critical_blockers.rs b/backend/infra/src/sdlc_critical_blockers.rs
++--- a/backend/infra/src/sdlc_critical_blockers.rs
+++++ b/backend/infra/src/sdlc_critical_blockers.rs
++@@ -76,6 +76,60 @@
++     receipt_producer(&current, actor, saved, &grant)
++ }
++
+++// No separate connection/readback: task, current selector, journal and lease share this lock.
+++async fn current_pm_reader(
+++    tx: &DatabaseTransaction,
+++    state: &TaskState,
+++    actor: &Principal,
+++    saved: &CriticalBlockerReceipt,
+++) -> Result<(), AppError> {
+++    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+++    let row = tx
+++        .query_one(statement(
+++            "SELECT result,after_blocker FROM sdlc_critical_pm_reviews
+++         WHERE task_id=$1 AND blocker_id=$2 AND assignment_id=$3 AND execution_id=$4",
+++            vec![
+++                state.task_id.into(),
+++                saved.blocker_id.into(),
+++                assignment.assignment_id.into(),
+++                assignment.execution_id.into(),
+++            ],
+++        ))
+++        .await
+++        .map_err(map_db)?
+++        .ok_or(AppError::Forbidden)?;
+++    let review: domain::sdlc_critical_pm_reservation::CriticalPmReservationResult =
+++        decode(&row, "result")?;
+++    let retained: CriticalBlockerReceipt = decode(&row, "after_blocker")?;
+++    if retained != *saved {
+++        return Err(invalid_history());
+++    }
+++    let cursor = tx.query_one(statement(
+++        "SELECT pm_owner_version,pm_execution_id,pm_admission_state FROM sdlc_tasks WHERE task_id=$1",
+++        vec![state.task_id.into()],
+++    )).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+++    let execution: Option<Uuid> = cursor.try_get("", "pm_execution_id").map_err(map_db)?;
+++    let admission: Option<String> = cursor.try_get("", "pm_admission_state").map_err(map_db)?;
+++    let current = PostgresSdlcRepository::reservation(tx, state, assignment.execution_id).await?;
+++    if execution != Some(assignment.execution_id)
+++        || admission.as_deref() != Some("reserved")
+++        || cursor
+++            .try_get::<i64>("", "pm_owner_version")
+++            .map_err(map_db)?
+++            != current.owner_cas.version
+++    {
+++        return Err(AppError::Forbidden);
+++    }
+++    let lease = PostgresSdlcRepository::lease_current(tx, &current)
+++        .await?
+++        .ok_or(AppError::Forbidden)?;
+++    // lease_current validates the retained operation/fence, row columns, holder and TTL.
+++    let now = super::execution_lease::clock(tx).await?;
+++    app::sdlc_critical_blockers::authorize_critical_pm_blocker_read(
+++        state, actor, saved, &review, &current, &lease, now,
+++    )
+++}
+++
++ fn receipt_producer(
++     current: &LifecycleReceipt,
++     actor: &Principal,
++@@ -420,11 +474,13 @@
++         actor: &Principal,
++         blocker_id: Uuid,
++     ) -> Result<CriticalBlockerReceipt, AppError> {
+++        let pm = app::sdlc::has_pm_grant(&actor.scopes);
++-        if app::sdlc::has_pm_grant(&actor.scopes) {
++-            return Err(AppError::Forbidden);
++-        }
++         let tx = self.db.begin().await.map_err(map_db)?;
+++        let state = if pm {
+++            self.load_read(&tx, task, actor).await?
+++        } else {
+++            self.load(&tx, task, actor).await?
+++        };
++-        let state = self.load(&tx, task, actor).await?;
++         owner_access(&tx, &state).await?;
++         let row = tx
++             .query_one(statement(
++@@ -440,7 +496,9 @@
++             .ok_or_else(|| AppError::not_found("critical blocker", blocker_id))?;
++         let saved: CriticalBlockerReceipt = decode(&row, "payload")?;
++         scope(&state, &saved)?;
+++        if pm {
+++            current_pm_reader(&tx, &state, actor, &saved).await?;
+++        } else if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
++-        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
++             current_producer(&tx, &state, actor, &saved, false).await?;
++         } else if !(actor.human_session
++             && actor.trusted_human
++diff --git a/backend/api/src/middleware/sdlc_auth.rs b/backend/api/src/middleware/sdlc_auth.rs
++--- a/backend/api/src/middleware/sdlc_auth.rs
+++++ b/backend/api/src/middleware/sdlc_auth.rs
++@@ -120,6 +120,10 @@
++     }
++ }
++
+++#[cfg(test)]
+++#[path = "sdlc_critical_pm_read_tests.rs"]
+++mod critical_pm_read_tests;
+++
++ fn pm_request_policy(
++     actor: &domain::sdlc::Principal,
++     method: &str,
++@@ -154,6 +158,8 @@
++         }
++         _ => {
++             app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice())
+++                || (actor.scopes.contains("task-tracker:read")
+++                    && app::sdlc_critical_blockers::is_pm_critical_blocker_read(method, parts.as_slice()))
++                 || (actor.scopes.contains("task-tracker:read")
++                     && app::sdlc_lifecycle::is_pm_feedback_message_read(method, parts.as_slice()))
++         }
++diff --git a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++--- a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+++++ b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++@@ -3,6 +3,8 @@
++ use super::*;
++ #[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
++ mod pm_review_tests;
+++#[path = "sdlc_critical_pm_blocker_read_pg_tests.rs"]
+++mod pm_blocker_read_tests;
++ use crate::sdlc::attachment_artifacts as artifacts;
++ use domain::attachment_artifact::{ArtifactUpload, Seal};
++ use domain::sdlc_critical_blockers::*;

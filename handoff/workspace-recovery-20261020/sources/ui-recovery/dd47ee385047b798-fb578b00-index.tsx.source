@@ -1,0 +1,552 @@
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
+import type {
+  NotificationItem,
+  NotificationSettings,
+  UpdateNotificationSettingsInput,
+} from '@/api/notifications'
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotificationSettings,
+  useNotifications,
+  useNotificationWritesPending,
+  useUpdateNotificationSettings,
+} from '@/shared/api/hooks'
+import { Button } from '@sdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
+import { ErrorState, UnsavedChangesGuard } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { notificationTarget } from '@/shared/lib/notification-target'
+import { notificationTitle } from '@/shared/lib/notification-title'
+
+const PAGE_SIZE = 20
+type ReadAction = { kind: 'one'; id: string } | { kind: 'all' }
+
+const NOTIFICATION_EVENTS = [
+  'issue_assigned',
+  'issue_moved',
+  'issue_updated',
+  'issue_commented',
+  'issue_comment_edited',
+  'issue_comment_deleted',
+  'issue_worklog_logged',
+  'issue_attachment_added',
+  'issue_link_created',
+  'issue_link_deleted',
+] as const
+
+function sameSettings(left: NotificationSettings, right: UpdateNotificationSettingsInput) {
+  return (
+    left.email_frequency === right.email_frequency &&
+    left.notify_own_changes === right.notify_own_changes &&
+    left.disabled_event_types.length === right.disabled_event_types.length &&
+    left.disabled_event_types.every((event) => right.disabled_event_types.includes(event))
+  )
+}
+
+const NotificationRow = memo(function NotificationRow({
+  notification,
+  onMarkRead,
+  pendingRead,
+}: {
+  notification: NotificationItem
+  onMarkRead: (id: string) => void
+  pendingRead: boolean
+}) {
+  const { t, i18n } = useTranslation()
+  const actionUrl = notificationTarget(notification)
+  const title = notificationTitle(notification, t)
+  const createdAt = new Date(notification.created_at)
+  const dateLabel = new Intl.DateTimeFormat(i18n.language, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(createdAt)
+  const content = (
+    <>
+      <div className="flex min-w-0 items-start gap-2">
+        <h2 className="min-w-0 flex-1 break-words text-sm font-semibold">{title}</h2>
+        <time
+          dateTime={notification.created_at}
+          title={createdAt.toLocaleString(i18n.language)}
+          className="shrink-0 pt-0.5 text-xs text-text-muted"
+        >
+          {dateLabel}
+        </time>
+      </div>
+      {notification.body && (
+        <p className="mt-0.5 break-words text-xs text-text-secondary">{notification.body}</p>
+      )}
+    </>
+  )
+  return (
+    <li
+      className={`flex min-w-0 items-center gap-2 border-l-2 px-2 py-1.5 ${notification.is_read ? 'border-l-transparent' : 'border-l-accent'}`}
+    >
+      {actionUrl ? (
+        <Link
+          to={actionUrl}
+          className="block min-h-11 min-w-0 flex-1 py-1.5 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          aria-disabled={pendingRead || undefined}
+          onClick={(event) => {
+            if (pendingRead) event.preventDefault()
+          }}
+        >
+          {content}
+        </Link>
+      ) : (
+        <div className="min-w-0 flex-1 py-1">{content}</div>
+      )}
+      {!notification.is_read && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0 sm:h-10 sm:w-10"
+          aria-label={`${t('notifications.markRead')}: ${title}`}
+          title={t('notifications.markRead')}
+          disabled={pendingRead}
+          onClick={() => onMarkRead(notification.id)}
+        >
+          <Check className="h-4 w-4" />
+        </Button>
+      )}
+    </li>
+  )
+})
+
+export function NotificationsPage() {
+  const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filterParam = searchParams.get('filter')
+  const pageParam = searchParams.get('page')
+  const parsedPage = Number(pageParam)
+  const hasValidPage =
+    pageParam !== null &&
+    Number.isSafeInteger(parsedPage) &&
+    parsedPage > 0 &&
+    Number.isSafeInteger((parsedPage - 1) * PAGE_SIZE)
+  const showUnread = filterParam === 'unread'
+  const page = hasValidPage ? parsedPage - 1 : 0
+  const [settingsDraft, setSettingsDraft] = useState<UpdateNotificationSettingsInput | null>(null)
+  const [readAction, setReadAction] = useState<ReadAction | null>(null)
+  const [activeMutation, setActiveMutation] = useState<'settings' | 'read' | null>(null)
+  const mutationLock = useRef(false)
+  const frequencyRef = useRef<HTMLSelectElement>(null)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const {
+    data: notificationList,
+    isLoading: notificationsLoading,
+    error: notificationsError,
+    refetch: refetchNotifications,
+  } = useNotifications({ includeRead: !showUnread, limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE })
+  const {
+    data: settings,
+    isLoading: settingsLoading,
+    error: settingsError,
+    refetch: refetchSettings,
+  } = useNotificationSettings()
+  const markNotificationRead = useMarkNotificationRead()
+  const markAllNotificationsRead = useMarkAllNotificationsRead()
+  const updateSettings = useUpdateNotificationSettings()
+  const sharedWritePending = useNotificationWritesPending()
+  const displayedSettings = settingsDraft ?? settings
+  const settingsDirty = !!settings && !!settingsDraft && !sameSettings(settings, settingsDraft)
+  const readMutation = readAction?.kind === 'all' ? markAllNotificationsRead : markNotificationRead
+  const settingsBusy = activeMutation === 'settings' || updateSettings.isPending
+  const readBusy =
+    activeMutation === 'read' ||
+    markNotificationRead.isPending ||
+    markAllNotificationsRead.isPending
+  const busy = Boolean(sharedWritePending || settingsBusy || readBusy)
+  const listUnavailable = notificationsLoading || Boolean(notificationsError)
+  const preferencesUnavailable = settingsLoading || Boolean(settingsError)
+  const notifications = notificationList?.notifications ?? []
+  const visibleNotifications = notifications.slice(0, PAGE_SIZE)
+  const hasNextPage = notifications.length > PAGE_SIZE
+  const unreadCount = notificationList?.unread_count ?? 0
+
+  const updateListParams = useCallback(
+    (nextUnread: boolean, nextPage: number, replace = false) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (nextUnread) next.set('filter', 'unread')
+          else next.delete('filter')
+          if (nextPage > 0) next.set('page', String(nextPage + 1))
+          else next.delete('page')
+          return next
+        },
+        { replace },
+      )
+    },
+    [setSearchParams],
+  )
+
+  useEffect(() => {
+    const canonicalFilter = showUnread ? 'unread' : null
+    const canonicalPage = hasValidPage && parsedPage > 1 ? String(parsedPage) : null
+    if (filterParam === canonicalFilter && pageParam === canonicalPage) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (canonicalFilter) next.set('filter', canonicalFilter)
+        else next.delete('filter')
+        if (canonicalPage) next.set('page', canonicalPage)
+        else next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
+  }, [filterParam, hasValidPage, pageParam, parsedPage, setSearchParams, showUnread])
+
+  useEffect(() => {
+    if (
+      !busy &&
+      !settingsDirty &&
+      !listUnavailable &&
+      page > 0 &&
+      notificationList &&
+      notifications.length === 0
+    ) {
+      updateListParams(showUnread, 0, true)
+    }
+  }, [
+    busy,
+    listUnavailable,
+    settingsDirty,
+    notificationList,
+    notifications.length,
+    page,
+    showUnread,
+    updateListParams,
+  ])
+
+  function updatePreference(input: Partial<UpdateNotificationSettingsInput>) {
+    if (!displayedSettings || mutationLock.current || busy || preferencesUnavailable) return
+    const next = { ...displayedSettings, ...input }
+    setSettingsDraft(settings && sameSettings(settings, next) ? null : next)
+    updateSettings.reset()
+  }
+
+  function toggleEvent(eventType: string, enabled: boolean) {
+    const disabled = new Set(displayedSettings?.disabled_event_types ?? [])
+    if (enabled) disabled.delete(eventType)
+    else disabled.add(eventType)
+    updatePreference({ disabled_event_types: [...disabled] })
+  }
+
+  function saveSettings() {
+    if (!settingsDraft || !settingsDirty || mutationLock.current || busy || preferencesUnavailable)
+      return
+    mutationLock.current = true
+    setActiveMutation('settings')
+    updateSettings.mutate(settingsDraft, {
+      onSuccess: () => setSettingsDraft(null),
+      onSettled: releaseMutation,
+    })
+  }
+
+  function releaseMutation() {
+    mutationLock.current = false
+    setActiveMutation(null)
+  }
+
+  function markRead(target: ReadAction) {
+    if (mutationLock.current || busy || listUnavailable) return
+    mutationLock.current = true
+    setActiveMutation('read')
+    setReadAction(target)
+    if (target.kind === 'all')
+      markAllNotificationsRead.mutate(undefined, { onSettled: releaseMutation })
+    else markNotificationRead.mutate(target.id, { onSettled: releaseMutation })
+  }
+
+  return (
+    <div
+      ref={regionRef}
+      role="region"
+      aria-label={t('notifications.title')}
+      tabIndex={-1}
+      className="space-y-6"
+    >
+      <UnsavedChangesGuard
+        when={settingsDirty}
+        isPending={busy}
+        description={busy ? t('notifications.leavePending') : undefined}
+        returnFocusRef={displayedSettings && !preferencesUnavailable ? frequencyRef : regionRef}
+      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-bold sm:text-2xl">{t('notifications.title')}</h1>
+          <p className="mt-1 text-sm text-text-muted">{t('notifications.description')}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-11 sm:min-h-10"
+          onClick={() => markRead({ kind: 'all' })}
+          disabled={unreadCount === 0 || busy || listUnavailable}
+        >
+          {t('notifications.markAllRead')}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <section
+          aria-label={t('notifications.list')}
+          aria-busy={readBusy || undefined}
+          className="min-w-0 space-y-3"
+        >
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
+            <Button
+              variant={showUnread ? 'ghost' : 'secondary'}
+              size="sm"
+              className="min-h-11 sm:min-h-10"
+              aria-pressed={!showUnread}
+              disabled={busy}
+              onClick={() => updateListParams(false, 0)}
+            >
+              {t('notifications.all')}
+            </Button>
+            <Button
+              variant={showUnread ? 'secondary' : 'ghost'}
+              size="sm"
+              className="min-h-11 sm:min-h-10"
+              aria-pressed={showUnread}
+              disabled={busy}
+              onClick={() => updateListParams(true, 0)}
+            >
+              {t('notifications.unread', { count: unreadCount })}
+            </Button>
+          </div>
+
+          {readAction && (
+            <div role="status" aria-live="polite" className="text-sm">
+              {readBusy && (
+                <span className="text-text-muted">
+                  {t(
+                    readAction.kind === 'all'
+                      ? 'notifications.markAllPending'
+                      : 'notifications.markReadPending',
+                  )}
+                </span>
+              )}
+              {!readBusy && readMutation.isSuccess && (
+                <span className="text-success">
+                  {t(
+                    readAction.kind === 'all'
+                      ? 'notifications.markAllSuccess'
+                      : 'notifications.markReadSuccess',
+                  )}
+                </span>
+              )}
+              {!readBusy && readMutation.isError && (
+                <span className="flex items-center gap-2 text-danger">
+                  {t(
+                    readAction.kind === 'all'
+                      ? 'notifications.markAllError'
+                      : 'notifications.markReadError',
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11 sm:min-h-10"
+                    disabled={busy || listUnavailable}
+                    onClick={() => markRead(readAction)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                </span>
+              )}
+            </div>
+          )}
+
+          {notificationsError && (
+            <ErrorState message={t('common.error')} onRetry={() => void refetchNotifications()} />
+          )}
+          {notificationsLoading && !notificationList ? (
+            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
+              {t('notifications.loading')}
+            </p>
+          ) : visibleNotifications.length === 0 ? (
+            !notificationsError && (
+              <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
+                {showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}
+              </p>
+            )
+          ) : (
+            <>
+              <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
+                {visibleNotifications.map((notification) => (
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    pendingRead={busy || listUnavailable}
+                    onMarkRead={(id) => markRead({ kind: 'one', id })}
+                  />
+                ))}
+              </ul>
+              {(page > 0 || hasNextPage) && (
+                <nav
+                  aria-label={t('notifications.pagination')}
+                  className="flex items-center justify-center gap-3 pt-1"
+                >
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 sm:h-10 sm:w-10"
+                    aria-label={t('notifications.previousPage')}
+                    title={t('notifications.previousPage')}
+                    disabled={page === 0 || busy || listUnavailable}
+                    onClick={() => updateListParams(showUnread, page - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-text-secondary">
+                    {t('notifications.page', { page: page + 1 })}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 sm:h-10 sm:w-10"
+                    aria-label={t('notifications.nextPage')}
+                    title={t('notifications.nextPage')}
+                    disabled={
+                      !hasNextPage ||
+                      busy ||
+                      listUnavailable ||
+                      !Number.isSafeInteger((page + 1) * PAGE_SIZE)
+                    }
+                    onClick={() => updateListParams(showUnread, page + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </nav>
+              )}
+            </>
+          )}
+        </section>
+
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>{t('notifications.preferences')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {settingsError && displayedSettings && (
+              <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
+            )}
+            {settingsLoading && !displayedSettings ? (
+              <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
+            ) : !displayedSettings ? (
+              <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
+            ) : (
+              <form
+                aria-label={t('notifications.preferences')}
+                aria-busy={settingsBusy || undefined}
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  saveSettings()
+                }}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
+                  <select
+                    ref={frequencyRef}
+                    id="notification-frequency"
+                    className="flex min-h-11 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10"
+                    value={displayedSettings.email_frequency}
+                    onChange={(event) =>
+                      updatePreference({
+                        email_frequency: event.target.value,
+                      })
+                    }
+                    disabled={busy || preferencesUnavailable}
+                  >
+                    <option value="immediate">{t('notifications.frequencyImmediate')}</option>
+                    <option value="hourly">{t('notifications.frequencyHourly')}</option>
+                    <option value="daily">{t('notifications.frequencyDaily')}</option>
+                    <option value="never">{t('notifications.frequencyNone')}</option>
+                  </select>
+                </div>
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 accent-accent"
+                    checked={displayedSettings.notify_own_changes}
+                    onChange={(event) =>
+                      updatePreference({ notify_own_changes: event.target.checked })
+                    }
+                    disabled={busy || preferencesUnavailable}
+                  />
+                  <span className="leading-5">{t('notifications.ownChanges')}</span>
+                </label>
+                <fieldset className="border-t border-border pt-3">
+                  <legend className="text-sm font-medium">{t('notifications.eventsTitle')}</legend>
+                  {NOTIFICATION_EVENTS.map((eventType) => (
+                    <label
+                      key={eventType}
+                      className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-text-secondary sm:min-h-10"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 shrink-0 accent-accent"
+                        checked={!displayedSettings.disabled_event_types.includes(eventType)}
+                        onChange={(event) => toggleEvent(eventType, event.target.checked)}
+                        disabled={busy || preferencesUnavailable}
+                      />
+                      <span>{t(`notifications.events.${eventType}`)}</span>
+                    </label>
+                  ))}
+                </fieldset>
+                <div className="space-y-2 border-t border-border pt-4">
+                  {(settingsBusy || updateSettings.isSuccess || updateSettings.isError) && (
+                    <div role="status" aria-live="polite" className="text-xs">
+                      {settingsBusy && (
+                        <span className="text-text-muted">{t('common.saving')}</span>
+                      )}
+                      {!settingsBusy && updateSettings.isSuccess && (
+                        <span className="text-success">{t('common.saved')}</span>
+                      )}
+                      {!settingsBusy && updateSettings.isError && (
+                        <span className="text-danger">{t('notifications.settingsSaveError')}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="min-h-11 sm:min-h-10"
+                      disabled={!settingsDirty || busy}
+                      onClick={() => {
+                        if (mutationLock.current || busy) return
+                        setSettingsDraft(null)
+                        updateSettings.reset()
+                      }}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="min-h-11 sm:min-h-10"
+                      disabled={!settingsDirty || busy || preferencesUnavailable}
+                    >
+                      {t('common.save')}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

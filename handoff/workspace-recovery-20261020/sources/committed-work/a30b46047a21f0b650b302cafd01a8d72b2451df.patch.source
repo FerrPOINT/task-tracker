@@ -1,0 +1,115 @@
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index f776229..cb7e7ce 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -2,6 +2,69 @@
+ 
+ ## Latest Source Checkpoint
+ 
++Notification API states and the header menu supersede the project catalog snapshot
++below. This is source QA, not runtime release acceptance.
++
++- Task source: `8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1`.
++- Base source: `4de2cd69894320815deeac4c5e981b1ce38270e6`.
++- Base installed/source fingerprint:
++  `5c067887d2ec9c6c400756afc27dbc31d0feefaaa8af6141480ece30c8e5daac`.
++- Product fingerprint:
++  `7236cd8438ffc358cca5c10f49dfb90c7cbe282038a8f958a85047d02fc106a1`.
++- Frozen offline installation with `--force` refreshed the file dependency;
++  lockfile and generated API schema did not change.
++
++| Command | Exit | Evidence |
++|---|---|---|
++| `pnpm install --offline --frozen-lockfile --force` | 0 | `task-notification-menu-install.log` |
++| `pnpm test --maxWorkers=2` | 0 | `task-notifications-release-source-units.log`; 346 tests, 47 files |
++| `pnpm lint` | 0 | `task-notifications-release-source-lint.log` |
++| `pnpm build` | 0 | `task-notifications-release-source-build.log`; typecheck and Vite |
++| Installed UI gate and `--fingerprint` | 0 | `task-notifications-release-source-ui-gate.log`; 16 route patterns |
++| Chromium smoke, one worker, `--max-failures=1` | 0 | `task-notifications-release-source-browser.log`; 8 tests, 4.8 minutes |
++| README validator and Python script tests | 0 | README validation and 4 script tests; gallery provenance remains pending |
++| Scoped Prettier and `git diff --check` | 0 | reviewed source delta |
++
++Base frontend: `base-dropdown-viewport-units.log`, 96 Vitest tests (22 files),
++18 script tests and semantic contrast check; lint/typecheck and README/hub
++validators passed. Full Rust/backend release gates were not run for this checkpoint.
++
++- Notification reads and mutations retain HTTP status/body in Base ApiError;
++  empty 204 mark-read responses remain valid, and network failures are not
++  substituted with empty data. UI feedback does not expose diagnostic envelopes.
++- Header menu distinguishes loading/empty/error/403/404/partial. Cached access
++  revocation hides items/count; retryable refresh preserves readonly content.
++  Only repeatable errors offer retry; a failed source must recover before retrying
++  its write command. A capped visual count retains its actual accessible value.
++- Synchronous command locking prevents duplicate one/all writes. The menu stays
++  open for feedback; invalidation that removes its initiator restores safe focus,
++  but does not overwrite a deliberate focus move or steal Escape focus.
++- Base DropdownMenu owns the 8 px viewport inset and available-height cap.
++  The bounded preview has a named keyboard-focusable local scroll region, with
++  a stationary header/footer. It does not become a desktop full-height panel.
++- Final browser output contains 188 PNG files: the earlier 155 page/form/state
++  captures plus 30 menu captures (3 themes x 10 widths) and 3 controlled menu states.
++  Menu geometry, targets 40/44, End/ArrowUp scrolling, Escape/focus and normal
++  console/network checks passed. Axe found no violations in the menu at 1920 px
++  in gray/dark/light; this is not a whole-application accessibility claim.
++
++Final mobile/desktop menu and controlled-state captures were inspected visually.
++Artifacts: [current captures](../../../../audit-artifacts/base-standard-2026-10-01/task-notifications-release-source-browser/),
++[current browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-notifications-release-source-browser.log).
++Earlier menu/compact/verified runs are superseded, including the intermediate
++scrollable-region-focusable failure fixed before this final run.
++
++All browser HTTP/OIDC is mocked. No accepted images, runtime pins, volumes,
++credentials, default refs or foreign checkouts were changed. The owned preview
++ended and port 18865 had no listener. Foreign candidate/validation containers seen
++in a read-only inventory were left untouched. All original findings remain open.
++The notifications page itself still needs Base composition, independent settings
++states, URL/hash preservation and draft protection; legacy counter typography/theme
++CSS, other routes, backend/actual-image/live SSO QA, real README provenance,
++consumer synchronization, local default integration and mirror remain required.
++
++## Project Catalog Checkpoint (Historical)
++
+ Project catalog and guarded forms supersede the earlier shell/detail snapshot
+ below. Earlier logs remain historical evidence, not proof for current runtime.
+ 
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 0a55f63..54d8729 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -44,6 +44,13 @@ Route patterns, роли, fixtures и обязательные acceptance states
+   переходом на board; удаление сохраняет URL-фильтр каталога. Login передаёт
+   полный pathname/query/hash в Base SSO; повторная авторизация заменяет временную
+   запись истории и не добавляет дубликат текущего фильтра после reload.
++- Notification API reads/mutations сохраняют HTTP status в Base ApiError.
++  Header menu использует Base resource states: ошибка не превращается в empty,
++  cached 403/404 скрывают содержимое/count, cached 503 оставляет readonly данные.
++  Pending блокирует повторные one/all команды; feedback остаётся в открытом меню.
++  Возврат фокуса после удаления пункта не перехватывает намеренный переход или Escape.
++  Base владеет viewport inset/height; bounded preview прокручивается локально,
++  сохраняет header/footer и именованный доступный focus target.
+ 
+ ## Exceptions
+ 
+@@ -83,6 +90,12 @@ Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+ 
+ ## Remaining Acceptance
+ 
++Текущий source checkpoint: `8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1`, Base
++`4de2cd69894320815deeac4c5e981b1ce38270e6`. 346 unit tests (47 files), lint,
++build/typecheck, installed gate и 8 Chromium tests (188 PNG) прошли. Menu проверен
++в трёх темах на десяти ширинах, включая keyboard scrolling и axe на 1920.
++Подробности и ограничения: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
++
+ 1. Мигрировать остальные list/form/audit/log compositions: board,
+    backlog, trash, settings, search, notifications, reports, admin и create.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+@@ -90,6 +103,9 @@ Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+    pending, validation и focus сценарии всех форм/диалогов. Локализовать generic
+    технические API errors каталога/форм projects; не считать source QA доказательством
+    всех effective-role и server validation сценариев.
++   Notifications page ещё требует Base composition, независимых settings states,
++   draft guard и сохранения hash/URL. Typography/theme CSS header counter остаются
++   legacy; меню не означает завершение всей страницы или визуального стандарта.
+ 3. Проверить URL filters/sort/pagination и Back/Forward во всех списках. Проверить
+    все manifest patterns с long/big fixtures и loading/empty/403/404/5xx/partial.
+ 4. Выполнить полный backend gate и no-mock QA immutable images через штатный
