@@ -16,6 +16,18 @@ def job(text, name):
 
 
 class QualityRouteTests(unittest.TestCase):
+    def test_native_artifact_reuse_waits_for_this_peer_qualification(self):
+        artifacts = [g for g in selector.load(ROOT)['gates'] if g.get('kind') == 'artifact']
+        self.assertEqual({g['id'] for g in artifacts}, {'frontend:build', 'backend:build'})
+        self.assertTrue(all(g['cacheable'] is False for g in artifacts))
+
+    def test_every_automatic_consumer_uses_the_selected_exact_head(self):
+        ci = (ROOT/'.github/workflows/ci.yml').read_text(encoding='utf-8')
+        paths = re.findall(r'^          path: task-tracker\n(.*?)(?=^      -|^  [a-zA-Z0-9_-]+:|\Z)', ci, re.M | re.S)
+        self.assertEqual(len(paths), 4)
+        for checkout in paths:
+            self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', checkout)
+
     def plan(self, changed, profile='build', **options):
         with patch.object(selector, 'git', return_value='a' * 40):
             return selector.plan(ROOT, profile, changed=changed, **options)

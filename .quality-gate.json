@@ -224,7 +224,7 @@
         ".base-ui-revision",
         ".gitattributes"
       ],
-      "cacheable": true,
+      "cacheable": false,
       "tools": [
         {
           "argv": [
@@ -376,7 +376,7 @@
         "rust-toolchain*",
         ".gitattributes"
       ],
-      "cacheable": true,
+      "cacheable": false,
       "platforms": [
         "linux"
       ],

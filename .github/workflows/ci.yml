@@ -69,6 +69,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: task-tracker
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: README validator tests
         working-directory: task-tracker
         run: python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks scripts.tests.test_quality_routes
@@ -88,6 +89,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: task-tracker
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Read pinned Base revision
         id: base
         working-directory: task-tracker
@@ -105,7 +107,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88.0"
-          components: clippy, rustfmt
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: task-tracker/backend
@@ -133,6 +135,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: task-tracker
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Read pinned Base revision
         id: base

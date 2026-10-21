@@ -9,6 +9,10 @@
 и полный workspace inventory сохранены в `release.yml`. Coverage60% остаётся
 ручным release requirement; зелёный unit-набор не подтверждает этот порог.
 
+Automatic jobs проверяют тот же exact PR head, который классифицировал selector.
+Native artifact gates пока `cacheable: false`: reusable binary/dist именно этого
+peer tuple требует отдельной qualification. Dependency caches сохраняются.
+
 - Каждый тест проверяет значимый путь и конкретное поведение.
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
 - Frontend: unit-тесты на Vitest; E2E на Playwright.
