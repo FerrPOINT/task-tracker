@@ -1,15 +1,18 @@
 //! Recovery regressions; PostgreSQL cases use disposable DBs and synthetic Fleet evidence.
 use super::*;
 use domain::sdlc_execution_lease::*;
+#[path = "sdlc_pm_bootstrap_retry_pg_tests.rs"]
+mod bootstrap_retry_tests;
 
 #[tokio::test]
 async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
     let migrations = migration::Migrator::migrations();
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-    assert_eq!(names.len(), 30);
+    assert_eq!(names.len(), 31);
     assert_eq!(names[27], "m20261017_0000097_task_source_binding");
     assert_eq!(names[28], "m20261018_0000098_pm_unsubmitted_recovery");
     assert_eq!(names[29], "m20261018_0000098_project_repository_catalog");
+    assert_eq!(names[30], "m20261021_0000099_pm_bootstrap_retry");
     let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
     let error = migrations[28]
         .down(&sea_orm_migration::SchemaManager::new(&db))
@@ -263,7 +266,9 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
         "m20261018_0000098_project_repository_catalog"
     );
     migration::Migrator::up(&f.db, None).await.unwrap();
-    assert_eq!(migration_versions(&f).await, catalog_versions);
+    let mut final_versions = catalog_versions;
+    final_versions.push("m20261021_0000099_pm_bootstrap_retry".into());
+    assert_eq!(migration_versions(&f).await, final_versions);
     for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
         assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
         assert_eq!(&original_operations(&f, pm).await, operations);

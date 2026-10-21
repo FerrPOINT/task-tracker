@@ -1,5 +1,10 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Technical bootstrap retry before PM enrollment/first instruction is a scheduler
+recovery, not a new Draft or owner answer. The existing task/chat/business input
+is retained and unknown/pending effects block retry. Source candidate only:
+[contract](contracts/pm-bootstrap-technical-retry.md); no installed acceptance.
+
 Видимые действия создания задачи в header/mobile navigation, backlog (включая
 пустой список) и колонках board открывают пустой чат PM в Fleet. Выбранный ключ
 проекта разрешается через существующий GET проекта в immutable UUID для

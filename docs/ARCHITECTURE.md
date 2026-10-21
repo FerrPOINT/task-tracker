@@ -1,5 +1,11 @@
 # Архитектура Task Tracker
 
+Initial PM bootstrap retry reads a composite witness from the EXISTING Fleet
+reader outside SQL, then rechecks task/lease/authorization under locks. Fleet,
+not Tracker, reads Workflow. Original-key recovery is ledger-first; no public
+boolean, fake checkpoint, new execution/owner or direct Workflow credential.
+[Source-only boundary](contracts/pm-bootstrap-technical-retry.md).
+
 Project counters читают сохранённые `statuses.category` без учёта ASCII-регистра:
 Debug-формат записи `Todo`/`InProgress`/`Done`, wire-формат и прежнее
 `in_progress` дают соответствующую категорию как в status mapping, так и в batch

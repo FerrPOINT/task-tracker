@@ -23,6 +23,8 @@ mod execution_lease;
 mod lifecycle;
 #[path = "sdlc_native_admission.rs"]
 mod native_admission;
+#[path = "sdlc_pm_bootstrap_retry.rs"]
+mod pm_bootstrap_retry;
 #[path = "sdlc_pm_resume.rs"]
 mod pm_resume;
 #[path = "sdlc_pm_unsubmitted.rs"]
@@ -931,6 +933,32 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
         self.read_unsubmitted_recovery(task, actor, key).await
+    }
+    async fn preflight_pm_bootstrap_retry(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
+        self.preflight_bootstrap_retry(task, actor, command).await
+    }
+    async fn retry_pm_bootstrap(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+        witness: domain::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.commit_bootstrap_retry(task, actor, command, witness)
+            .await
+    }
+    async fn pm_bootstrap_retry_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
+        self.read_bootstrap_retry(task, actor, key).await
     }
     async fn reserve_pm_draft(
         &self,

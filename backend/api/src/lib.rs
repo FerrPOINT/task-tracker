@@ -135,6 +135,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::resume_execution_lease_operation,
         routes::sdlc::recover_unsubmitted_execution_lease,
         routes::sdlc::unsubmitted_execution_lease_operation,
+        routes::sdlc::retry_pm_bootstrap,
+        routes::sdlc::pm_bootstrap_retry_operation,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
@@ -868,6 +870,42 @@ pub async fn serve(ctx: Arc<app::AppContext>) {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn bootstrap_retry_schema_is_closed_and_contains_no_caller_proof() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let root = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap";
+        for (path, method) in [
+            (root.to_string(), "post"),
+            (format!("{root}/operations/{{idempotency_key}}"), "get"),
+        ] {
+            let operation = &doc["paths"][path][method];
+            assert_eq!(operation["security"], serde_json::json!([{"bearer":[]}]));
+            assert!(operation["responses"]["200"].is_object());
+        }
+        let schema = &doc["components"]["schemas"]["BootstrapRetryCommand"];
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"].as_array().unwrap().len(), 12);
+        for field in [
+            "witness",
+            "terminal",
+            "no_step",
+            "no_enrollment",
+            "terminal_receipt",
+            "bootstrap_receipt",
+            "dispatch_allowed",
+        ] {
+            assert!(schema["properties"][field].is_null());
+        }
+        let predecessor = &doc["components"]["schemas"]["WorkflowBootstrapPredecessor"];
+        assert_eq!(predecessor["additionalProperties"], false);
+        assert!(
+            predecessor["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("finalized_binding"))
+        );
+    }
 
     #[test]
     fn unsubmitted_pm_recovery_schema_is_scheduler_only_and_has_no_caller_witness() {

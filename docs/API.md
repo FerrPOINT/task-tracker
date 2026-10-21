@@ -1991,3 +1991,10 @@ barrier. Существующие контракты claim/heartbeat/resume со
 
 POST и DELETE связей архивного проекта возвращают 409 `namespace_resource_read_only`,
 включая повторное удаление уже отсутствующей связи. Чтение сохранённых связей остаётся доступным.
+
+## PM bootstrap retry candidate
+
+Scheduler-only initial bootstrap recovery retains canonical assignment/execution
+and uses the existing configured Fleet composite readback, never caller booleans.
+POST/GET operation paths, strict DTO and unrun qualification are documented in
+[the bounded contract](contracts/pm-bootstrap-technical-retry.md). No live readiness claim.

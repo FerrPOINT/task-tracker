@@ -1,5 +1,11 @@
 # Дата-модель Task Tracker
 
+Source candidate0099 reuses immutable `sdlc_pm_lease_operations.recovery` for one
+initial terminal/no-enrollment bootstrap retry. Original task/assignment/execution,
+owner, input, lease ID/claimedAt and old keys are retained; only exact expired
+lease version+1 is CAS-renewed with matching trusted evidence in one transaction.
+No table or history rewrite. [Contract and unrun tests](contracts/pm-bootstrap-technical-retry.md).
+
 Source candidate migration 0097 adds immutable policy/selection/enrollment/ref-owner/source
 binding history, without backfilling tasks or editing old migrations. See
 [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md); not installed/live evidence.

@@ -824,6 +824,25 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: &crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
     ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
+    async fn preflight_pm_bootstrap_retry(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
+    async fn retry_pm_bootstrap(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+        witness: crate::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn pm_bootstrap_retry_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
     async fn recover_unsubmitted_pm_execution_lease(
         &self,
         task: Uuid,
