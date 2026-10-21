@@ -324,10 +324,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         confirmation
     );
     assert_eq!(read_confirmation.stage, Stage::Backlog);
-    assert_eq!(
-        repo.read(task, &owner).await.unwrap().stage,
-        Stage::Analysis
-    );
+    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
     assert!(matches!(
         repo.confirmation_read(task, &pm_reader, 2).await,
         Err(AppError::NotFound(_))
@@ -366,6 +363,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     )
     .await
     .unwrap();
+    // The remaining test targets delivery, not automatic PM promotion.
+    crate::sdlc::seed_analysis_fixture(&db, task, &owner).await;
     let ensure = LifecycleCommand::EnsureQueued {
         idempotency_key: "queue".into(),
     };

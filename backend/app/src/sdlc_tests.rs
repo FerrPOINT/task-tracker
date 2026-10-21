@@ -194,6 +194,8 @@ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
         canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap()
     );
     let (mut state, config, owner, pm, verifier, fence) = fixture();
+    state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    state.draft_submode = Some(DraftSubmode::Brainstorming);
     state
         .retained_fields
         .insert("flow".into(), json!("single-task-v1"));
@@ -217,7 +219,15 @@ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
     )
     .unwrap();
     let state: TaskState = serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
-    assert_eq!(state.stage, Stage::Analysis);
+    assert_eq!(state.stage, Stage::Backlog);
+    assert_eq!(
+        state.status,
+        Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)
+    );
+    assert_eq!(state.draft_submode, None);
+    assert!(state.questions.is_empty());
+    assert_eq!(state.confirmations.len(), 1);
+    assert!(!state.context(&owner).permissions.can_confirm);
     assert_eq!(state.draft_flow().unwrap(), Some(DraftFlow::SingleTaskV1));
     assert!(
         serde_json::to_value(state.context(&owner))
@@ -333,7 +343,7 @@ fn sdlc_confirmation_read_uses_exact_saved_owner_history_without_current_stage_r
     )
     .unwrap();
     let receipt: Confirmation = serde_json::from_value(result.clone()).unwrap();
-    assert_eq!(state.stage, Stage::Analysis);
+    assert_eq!(state.stage, Stage::Backlog);
     let before = canonical_hash(&state).unwrap();
     assert_eq!(
         serde_json::to_value(exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap())
@@ -1162,19 +1172,10 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         .is_err()
     );
     apply(&mut state, &owner, &config, &command).unwrap();
-    assert!(matches!(state.stage, Stage::Analysis));
+    assert!(matches!(state.stage, Stage::Backlog));
     assert!(!state.ready());
-    assert_eq!(
-        state.context(&owner).waiting_reason.as_deref(),
-        Some("queued_for_analysis")
-    );
-    let intent =
-        analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).unwrap();
-    assert_eq!(intent.requirement_revision, 2);
-    assert_eq!(intent.status, AnalysisStatus::Ready);
-    assert_eq!(intent.workflow, "hermes-sdlc:analyst");
-    assert_eq!(intent.mode, "analysis");
-    assert_eq!(intent.scope, "business");
+    assert_eq!(state.context(&owner).waiting_reason, None);
+    assert!(analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).is_err());
     let saved = canonical_hash(&state).unwrap();
     assert!(matches!(
         apply(&mut state, &owner, &config, &command),
@@ -1191,6 +1192,16 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         Err(AppError::Conflict(_))
     ));
     assert_eq!(canonical_hash(&state).unwrap(), saved);
+
+    // Historical/future-role fixtures must deliberately opt into Analysis; confirmation does not.
+    state.stage = Stage::Analysis;
+    let intent =
+        analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).unwrap();
+    assert_eq!(intent.requirement_revision, 2);
+    assert_eq!(intent.status, AnalysisStatus::Ready);
+    assert_eq!(intent.workflow, "hermes-sdlc:analyst");
+    assert_eq!(intent.mode, "analysis");
+    assert_eq!(intent.scope, "business");
 }
 
 #[test]

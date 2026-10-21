@@ -867,8 +867,15 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     assert_eq!(count(&db, "sdlc_confirmations").await, 0);
     assert_eq!(count(&db, "sdlc_task_routing_snapshots").await, 0);
     final_confirm["expected_routing_policy_version"] = routing["version"].clone();
-    let (confirmation, intent) =
-        analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
+    let (confirmation, intent) = analysis_intent::confirm_and_seed_analysis_fixture(
+        &db,
+        &client,
+        &url,
+        &owner,
+        &final_confirm,
+        task,
+    )
+    .await;
     let routing_snapshot = routing_policy::snapshot(&client, &base, task, &owner).await;
     assert_eq!(routing_snapshot["policy"], routing);
     analysis_intent::read(&client, &url, &foreign, 403).await;

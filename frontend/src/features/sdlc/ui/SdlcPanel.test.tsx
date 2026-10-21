@@ -254,7 +254,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     },
   )
-  it('requires exact owner acknowledgement and shows Analysis only after intent readback', async () => {
+  it('requires exact owner acknowledgement and shows historical Analysis only after intent readback', async () => {
     let finish!: (value: Confirmation) => void
     vi.mocked(confirmRequirements).mockReturnValue(
       new Promise((resolve) => {
@@ -297,6 +297,37 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       await screen.findByText('Requirements confirmation saved; refreshing queue state'),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Analysis \/ Ready/)).not.toBeInTheDocument()
+  })
+  it('keeps confirmed requirements at Backlog without inventing Analysis or PM completion', async () => {
+    vi.mocked(confirmRequirements).mockResolvedValue(receipt)
+    mount()
+    const button = await screen.findByRole('button', { name: 'Confirm requirements' })
+    expect(button).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox'))
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Backlog',
+        status: 'Ready',
+        waiting_reason: null,
+        permissions: { can_answer: false, can_confirm: false },
+      },
+    })
+    fireEvent.click(button)
+    expect(await screen.findByText('Backlog')).toBeInTheDocument()
+    expect(confirmRequirements).toHaveBeenCalledOnce()
+    expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
+      content_hash: hash,
+      idempotency_key: expect.any(String),
+    })
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Analysis \/ Ready|queued_for_analysis|Completed/),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Analysis intent was not found; queue state is not verified'),
+    ).not.toBeInTheDocument()
   })
   it('reuses the confirmation operation key after an unknown POST result', async () => {
     vi.mocked(confirmRequirements).mockRejectedValue(new SdlcRequestError(503))

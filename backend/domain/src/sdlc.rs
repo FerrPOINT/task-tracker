@@ -601,9 +601,20 @@ impl TaskState {
                     })
                 })
     }
+    pub fn current_confirmation(&self) -> Option<&Confirmation> {
+        let revision = self.revisions.last()?;
+        self.confirmations.iter().find(|confirmation| {
+            confirmation.task_id == self.task_id
+                && confirmation.owner_subject == self.owner_subject
+                && confirmation.revision == revision.revision
+                && confirmation.content_hash == revision.content_hash
+                && confirmation.stage == Stage::Backlog
+        })
+    }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
             && self.clarifying()
+            && self.current_confirmation().is_none()
             && self
                 .questions
                 .iter()
@@ -664,7 +675,9 @@ impl TaskState {
             },
             permissions: Permissions {
                 can_answer,
-                can_confirm: self.owner(actor) && self.ready(),
+                can_confirm: self.owner(actor)
+                    && self.current_confirmation().is_none()
+                    && self.ready(),
             },
             assignment: self.assignment.clone(),
         }
@@ -824,6 +837,25 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: &crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
     ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
+    async fn preflight_pm_bootstrap_retry(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
+    async fn retry_pm_bootstrap(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+        witness: crate::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn pm_bootstrap_retry_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
     async fn recover_unsubmitted_pm_execution_lease(
         &self,
         task: Uuid,

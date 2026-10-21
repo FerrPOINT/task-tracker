@@ -687,6 +687,11 @@ pub fn apply(
             "Analysis/Architecture intent freezes PM business writes",
         ));
     }
+    if state.current_confirmation().is_some() {
+        return Err(AppError::conflict(
+            "owner-confirmed requirements freeze PM business writes",
+        ));
+    }
     let now = chrono::Utc::now();
     let result = match command {
         SdlcCommand::Assign(c) => {
@@ -899,7 +904,7 @@ pub fn apply(
                 stage: Stage::Backlog,
             };
             state.confirmations.push(confirmation.clone());
-            state.stage = Stage::Analysis;
+            state.stage = Stage::Backlog;
             serde_json::to_value(confirmation)
         }
         SdlcCommand::Evidence(c) => {

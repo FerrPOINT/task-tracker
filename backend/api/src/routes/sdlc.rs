@@ -8,6 +8,7 @@ use axum::{
 use domain::sdlc::*;
 use domain::sdlc_execution_lease::*;
 use domain::sdlc_metadata::*;
+use domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand;
 use domain::sdlc_pm_draft::*;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
@@ -169,6 +170,8 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         )
         .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted", post(recover_unsubmitted_execution_lease))
         .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}", get(unsubmitted_execution_lease_operation))
+        .route("/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap", post(retry_pm_bootstrap))
+        .route("/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}", get(pm_bootstrap_retry_operation))
         .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
             get(pm_draft_assignment).post(reserve_pm_draft),
@@ -533,6 +536,49 @@ pub async fn unsubmitted_execution_lease_operation(
     Ok((
         [(axum::http::header::CACHE_CONTROL, "no-store")],
         Json(operation),
+    )
+        .into_response())
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=BootstrapRetryCommand,
+    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Exact original-key replay; no dispatch authority",body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn retry_pm_bootstrap(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<BootstrapRetryCommand>,
+) -> Result<Response, AppError> {
+    let (receipt, replayed) = service(&ctx)?
+        .retry_pm_bootstrap(id, &actor, command)
+        .await?;
+    Ok((
+        if replayed {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::CREATED
+        },
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
+    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422)),security(("bearer"=[])))]
+pub async fn pm_bootstrap_retry_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<Response, AppError> {
+    let receipt = service(&ctx)?
+        .pm_bootstrap_retry_operation(id, &actor, &key)
+        .await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
     )
         .into_response())
 }
