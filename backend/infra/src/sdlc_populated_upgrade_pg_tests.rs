@@ -658,7 +658,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 30));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 31));
     assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
         names[predecessor + 1],
@@ -669,8 +669,12 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         "m20261018_0000098_pm_unsubmitted_recovery"
     );
     assert_eq!(
-        names.last().unwrap(),
+        names[predecessor + 3],
         "m20261018_0000098_project_repository_catalog"
+    );
+    assert_eq!(
+        names.last().unwrap(),
+        "m20261021_0000099_pm_bootstrap_retry"
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("fresh isolated upgrade database required");
