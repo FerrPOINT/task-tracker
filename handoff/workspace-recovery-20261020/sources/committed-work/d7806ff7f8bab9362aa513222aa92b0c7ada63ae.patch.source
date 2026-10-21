@@ -1,0 +1,909 @@
+diff --git a/backend/api/src/middleware/attachment_pm_review_tests.rs b/backend/api/src/middleware/attachment_pm_review_tests.rs
+new file mode 100644
+index 0000000..2a12c8d
+--- /dev/null
++++ b/backend/api/src/middleware/attachment_pm_review_tests.rs
+@@ -0,0 +1,18 @@
++use super::*;
++use axum::{
++    http::{StatusCode, header},
++    response::IntoResponse,
++};
++
++#[test]
++fn pm_download_success_and_denials_never_cache() {
++    for result in [
++        Ok(StatusCode::OK.into_response()),
++        Err(AppError::Forbidden),
++        Err(AppError::conflict("synthetic changed scope")),
++        Err(AppError::Unavailable("synthetic disabled".into())),
++    ] {
++        let response = pm_no_store(result);
++        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
++    }
++}
+diff --git a/backend/app/src/attachment_pm_review.rs b/backend/app/src/attachment_pm_review.rs
+new file mode 100644
+index 0000000..7a44a9c
+--- /dev/null
++++ b/backend/app/src/attachment_pm_review.rs
+@@ -0,0 +1,45 @@
++//! PM single-download shape and exact saved evidence only; never general attachment authority.
++use domain::attachment_artifact::Seal;
++use domain::sdlc::Principal;
++use domain::sdlc_critical_blockers::{CriticalBlockerReceipt, CriticalBlockerState};
++use shared::AppError;
++
++pub fn route(actor: &Principal, method: &str, path: &str) -> Result<bool, AppError> {
++    let Some(_) = crate::sdlc::pm_grant_task(actor)? else {
++        return Ok(false);
++    };
++    if !actor.scopes.contains("task-tracker:read")
++        || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
++        || method != "GET"
++        || !crate::attachment_artifacts::is_download_path(path)
++    {
++        return Err(AppError::Forbidden);
++    }
++    Ok(true)
++}
++
++/// Caller first loads the current saved review with fresh PM/owner/project/lease authority.
++pub fn evidence(
++    blocker: &CriticalBlockerReceipt,
++    attachment: &domain::Attachment,
++    seal: &Seal,
++) -> Result<(), AppError> {
++    seal.validate_attachment(attachment)?;
++    if blocker.state != CriticalBlockerState::InPmReview
++        || attachment.storage_key.as_ref() != seal.key()
++        || blocker.task_id != blocker.root_task_id
++        || attachment.issue_id.as_uuid() != blocker.task_id
++        || seal.binding.assignment_id != blocker.proposal.fence.assignment_id
++        || seal.binding.execution_id != blocker.proposal.fence.execution_id
++        || seal.binding.role != blocker.role
++        || seal.run_id != blocker.run_id
++        || !blocker.proposal.evidence.contains(&seal.artifact())
++    {
++        return Err(AppError::Forbidden);
++    }
++    Ok(())
++}
++
++#[cfg(test)]
++#[path = "attachment_pm_review_tests.rs"]
++mod tests;
+diff --git a/backend/app/src/attachment_pm_review_tests.rs b/backend/app/src/attachment_pm_review_tests.rs
+new file mode 100644
+index 0000000..311c488
+--- /dev/null
++++ b/backend/app/src/attachment_pm_review_tests.rs
+@@ -0,0 +1,164 @@
++use super::*;
++use domain::attachment_artifact::ArtifactBinding;
++use domain::sdlc::PmAssignment;
++use domain::sdlc_lifecycle::DeliveryRole;
++use serde_json::json;
++use uuid::Uuid;
++
++fn actor(task: Uuid) -> Principal {
++    let assignment = PmAssignment {
++        assignment_id: Uuid::new_v4(),
++        execution_id: Uuid::new_v4(),
++        agent_id: Uuid::new_v4(),
++        version: 18,
++        machine_subject: "synthetic-pm".into(),
++    };
++    Principal {
++        subject: assignment.machine_subject.clone(),
++        human_session: false,
++        trusted_human: false,
++        scopes: ["task-tracker:read".into(), assignment.scope(task)].into(),
++    }
++}
++
++fn fixture(role: DeliveryRole) -> (CriticalBlockerReceipt, domain::Attachment, Seal, Vec<u8>) {
++    let task = Uuid::new_v4();
++    let bytes = b"{ \"critical\": true }\n".to_vec();
++    let seal = Seal::new(
++        task,
++        ArtifactBinding {
++            assignment_id: Uuid::new_v4(),
++            execution_id: Uuid::new_v4(),
++            role,
++        },
++        Uuid::new_v4(),
++        "critical.json",
++        "application/json",
++        crate::attachment_artifacts::raw_sha256(&bytes),
++    )
++    .unwrap();
++    let item = domain::Attachment {
++        id: shared::AttachmentId::from_uuid(seal.artifact_id),
++        issue_id: shared::IssueId::from_uuid(task),
++        author_id: shared::UserId::new(),
++        file_name: "critical.json".into(),
++        content_type: "application/json".into(),
++        size_bytes: bytes.len() as i64,
++        storage_key: seal.key().into(),
++        created_at: shared::now(),
++    };
++    let proposal = json!({"fence":{"assignment_id":seal.binding.assignment_id,"execution_id":seal.binding.execution_id,
++            "lease_id":Uuid::new_v4(),"fencing_token":5,"expected_lease_version":3},
++        "requirement_revision":4,"content_hash":"a".repeat(64),"kind":"requirements_contradiction",
++        "question":"Which rule is authoritative?","rationale":"The approved rules conflict.",
++        "options":[],"recommendation":null,"idempotency_key":"original-question","evidence":[seal.artifact()]});
++    let mut blocker:CriticalBlockerReceipt = serde_json::from_value(json!({
++        "blocker_id":Uuid::new_v4(),"version":3,"tracker_instance_id":"synthetic-tracker","project_id":Uuid::new_v4(),
++        "task_id":task,"root_task_id":task,"owner_subject":"synthetic-owner","producer_subject":"synthetic-role",
++        "agent_id":Uuid::new_v4(),"role":role,"assignment_hash":"b".repeat(64),"chat_id":Uuid::new_v4(),
++        "run_id":seal.run_id,"routing_snapshot_id":Uuid::new_v4(),"routing_generation":1,
++        "blocker_sha256":crate::sdlc::canonical_hash(&proposal).unwrap(),"proposal":proposal,
++        "state":"in_pm_review","pm_review":{"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4()},
++        "resolution":null,"technical_terminal":null,"created_at":chrono::Utc::now()
++    })).unwrap();
++    blocker.technical_terminal = Some(domain::sdlc_lifecycle::RuntimeTerminalObservation {
++        assignment_hash: blocker.assignment_hash.clone(),
++        chat_id: blocker.chat_id,
++        run_id: blocker.run_id,
++        state: domain::sdlc_lifecycle::RuntimeTerminalState::Cancelled,
++        receipt: domain::sdlc_lifecycle::ArtifactReceipt {
++            reference: "fixture://synthetic-terminal-not-live-proof".into(),
++            sha256: "e".repeat(64),
++        },
++    });
++    blocker.proposal.validate(role).unwrap();
++    (blocker, item, seal, bytes)
++}
++
++#[test]
++fn pm_route_is_only_single_canonical_get_never_ordinary_list_upload_or_delete() {
++    let task = Uuid::new_v4();
++    let mut pm = actor(task);
++    let id = Uuid::from_u128(0xabcdef);
++    let path = format!("/api/v1/attachments/{id}/download");
++    assert!(route(&pm, "GET", &path).unwrap());
++    for method in ["HEAD", "POST", "PUT", "PATCH", "DELETE"] {
++        assert!(route(&pm, method, &path).is_err());
++    }
++    for path in [
++        format!("/api/v1/issues/{task}/attachments"),
++        format!("/api/v1/attachments/{id}"),
++        format!("{path}/"),
++        format!(
++            "/api/v1/attachments/{}/download",
++            id.to_string().to_uppercase()
++        ),
++        "/api/v1/attachments/not-uuid/download".into(),
++        "/api/v1/attachments/00000000-0000-0000-0000-000000000000/download".into(),
++    ] {
++        assert!(route(&pm, "GET", &path).is_err());
++    }
++    pm.scopes.remove("task-tracker:read");
++    assert!(route(&pm, "GET", &path).is_err());
++    pm = actor(task);
++    pm.human_session = true;
++    assert!(route(&pm, "GET", &path).is_err());
++    pm = actor(task);
++    pm.scopes.extend(actor(Uuid::new_v4()).scopes);
++    assert!(route(&pm, "GET", &path).is_err());
++    pm = actor(task);
++    pm.scopes = ["task-tracker:read".into()].into();
++    assert!(!route(&pm, "GET", &path).unwrap());
++}
++
++#[test]
++fn all_six_saved_technical_roles_accept_only_exact_ref_hash_binding_run_and_raw_bytes() {
++    for role in [
++        DeliveryRole::Analyst,
++        DeliveryRole::Architect,
++        DeliveryRole::Developer,
++        DeliveryRole::Reviewer,
++        DeliveryRole::Tester,
++        DeliveryRole::DevOps,
++    ] {
++        let (blocker, item, seal, bytes) = fixture(role);
++        evidence(&blocker, &item, &seal).unwrap();
++        crate::attachment_artifacts::verify_bytes(&item, &bytes).unwrap();
++        assert!(crate::attachment_artifacts::verify_bytes(&item, b"{\"critical\":true}").is_err());
++        for mismatch in 0..9 {
++            let mut bad = blocker.clone();
++            match mismatch {
++                0 => bad.task_id = Uuid::new_v4(),
++                1 => bad.proposal.evidence.clear(),
++                2 => bad.proposal.evidence[0].receipt.sha256 = "f".repeat(64),
++                3 => {
++                    bad.proposal.evidence[0].receipt.reference =
++                        format!("tracker-attachment:{}", Uuid::new_v4())
++                }
++                4 => bad.proposal.evidence[0].binding.execution_id = Uuid::new_v4(),
++                5 => bad.proposal.fence.assignment_id = Uuid::new_v4(),
++                6 => bad.run_id = Uuid::new_v4(),
++                7 => bad.state = CriticalBlockerState::AwaitingPmReview,
++                _ => {
++                    bad.role = if role == DeliveryRole::Developer {
++                        DeliveryRole::Reviewer
++                    } else {
++                        DeliveryRole::Developer
++                    }
++                }
++            }
++            assert!(evidence(&bad, &item, &seal).is_err());
++        }
++        let mut ordinary = item.clone();
++        ordinary.storage_key = "ordinary-attachment".into();
++        assert!(
++            Seal::parse(ordinary.storage_key.as_ref())
++                .unwrap()
++                .is_none()
++        );
++        assert!(evidence(&blocker, &ordinary, &seal).is_err());
++        let mut foreign = item.clone();
++        foreign.issue_id = shared::IssueId::new();
++        assert!(evidence(&blocker, &foreign, &seal).is_err());
++    }
++}
+diff --git a/backend/infra/src/attachment_pm_review.rs b/backend/infra/src/attachment_pm_review.rs
+new file mode 100644
+index 0000000..53b6d40
+--- /dev/null
++++ b/backend/infra/src/attachment_pm_review.rs
+@@ -0,0 +1,105 @@
++//! Child of critical_blockers: the same current-PM read guard on both sides of blob I/O.
++use super::*;
++use shared::AttachmentId;
++
++struct Snapshot {
++    blocker: CriticalBlockerReceipt,
++    item: domain::Attachment,
++    seal: Seal,
++}
++
++async fn snapshot(
++    repo: &PostgresSdlcRepository,
++    actor: &Principal,
++    id: AttachmentId,
++) -> Result<Snapshot, AppError> {
++    let task = app::sdlc::pm_grant_task(actor)?.ok_or(AppError::Forbidden)?;
++    let tx = repo.db.begin().await.map_err(map_db)?;
++    let state = repo.load_read(&tx, task, actor).await?;
++    owner_access(&tx, &state).await?;
++    if !repo
++        .config
++        .single_task_project_ids
++        .contains(&state.project_id)
++    {
++        return Err(AppError::Unavailable(
++            "single-task artifact policy disabled".into(),
++        ));
++    }
++    let row = tx
++        .query_one(statement(
++            "SELECT v.after_blocker AS payload FROM sdlc_critical_blocker_heads h
++         JOIN sdlc_critical_pm_reviews v ON v.task_id=h.task_id AND v.blocker_id=h.blocker_id
++         WHERE h.task_id=$1",
++            vec![task.into()],
++        ))
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    let blocker: CriticalBlockerReceipt = decode(&row, "payload")?;
++    scope(&state, &blocker)?;
++    let model = attachment::Entity::find_by_id(id.as_uuid())
++        .one(&tx)
++        .await
++        .map_err(map_db)?
++        .ok_or(AppError::Forbidden)?;
++    let item = crate::repos::map_attachment(model);
++    let seal = Seal::parse(item.storage_key.as_ref())?.ok_or(AppError::Forbidden)?;
++    app::attachment_pm_review::evidence(&blocker, &item, &seal)?;
++    let (origin, binding) =
++        crate::sdlc::attachment_artifacts::provenance(&tx, &item, &seal).await?;
++    if origin.agent_id != blocker.agent_id
++        || origin.owner_subject != blocker.owner_subject
++        || origin.assignment_hash != blocker.assignment_hash
++        || binding.machine_subject != blocker.producer_subject
++        || binding.chat_id != blocker.chat_id
++        || binding.run_id != blocker.run_id
++    {
++        return Err(AppError::conflict(
++            "critical evidence origin differs from saved blocker",
++        ));
++    }
++    // The actual lease clock is read last, after metadata and retained provenance reads.
++    current_pm_reader(&tx, &state, actor, &blocker).await?;
++    tx.commit().await.map_err(map_db)?;
++    Ok(Snapshot {
++        blocker,
++        item,
++        seal,
++    })
++}
++
++pub(crate) async fn download(
++    db: &DatabaseConnection,
++    config: &SdlcConfig,
++    actor: &Principal,
++    id: AttachmentId,
++    storage: &dyn domain::FileStorage,
++) -> Result<(domain::Attachment, Vec<u8>), AppError> {
++    // Reuse the existing pool/config without connect(), writes, new credentials or a new port.
++    let repo = PostgresSdlcRepository {
++        db: db.clone(),
++        config: config.clone(),
++        file_storage: None,
++    };
++    let before = snapshot(&repo, actor, id).await?;
++    // No authorization/task/lease locks across storage I/O: revocation can commit meanwhile.
++    let bytes = storage
++        .get(
++            &before.item.issue_id.to_string(),
++            before.item.storage_key.as_ref(),
++        )
++        .await?;
++    app::attachment_artifacts::verify_bytes(&before.item, &bytes)?;
++    let after = snapshot(&repo, actor, id).await?;
++    if before.blocker != after.blocker
++        || before.seal != after.seal
++        || app::sdlc::canonical_hash(&before.item)? != app::sdlc::canonical_hash(&after.item)?
++    {
++        return Err(AppError::conflict(
++            "critical evidence read scope changed during storage read",
++        ));
++    }
++    app::attachment_artifacts::verify_bytes(&after.item, &bytes)?;
++    Ok((after.item, bytes))
++}
+diff --git a/backend/infra/src/attachment_pm_review_pg_tests.rs b/backend/infra/src/attachment_pm_review_pg_tests.rs
+new file mode 100644
+index 0000000..95dfd1d
+--- /dev/null
++++ b/backend/infra/src/attachment_pm_review_pg_tests.rs
+@@ -0,0 +1,216 @@
++//! Invoked by the existing ignored current-PM fixture, after the real claim (known producer dependency).
++use super::*;
++use std::sync::atomic::{AtomicUsize, Ordering};
++
++pub(super) async fn unlisted(
++    f: &Fixture,
++    r: &Running,
++    storage: &dyn domain::FileStorage,
++) -> shared::AttachmentId {
++    crate::sdlc::attachment_artifacts::publish(
++        &f.db,
++        &f.repo.config,
++        &r.producer,
++        shared::IssueId::from_uuid(r.task),
++        domain::attachment_artifact::ArtifactUpload {
++            file_name: "unlisted-evidence.json".into(),
++            content_type: "application/json".into(),
++            bytes: b"{\"synthetic\":\"not in saved blocker\"}".to_vec(),
++        },
++        storage,
++    )
++    .await
++    .unwrap()
++    .id
++}
++
++#[derive(Clone, Copy)]
++enum DuringIo {
++    None,
++    OwnerRevoked,
++    ProjectRevoked,
++    CorruptBytes,
++}
++
++struct ObservedStorage<'a> {
++    storage: &'a dyn domain::FileStorage,
++    f: &'a Fixture,
++    action: DuringIo,
++    calls: AtomicUsize,
++}
++
++#[async_trait::async_trait]
++impl domain::FileStorage for ObservedStorage<'_> {
++    async fn put(&self, _: &str, _: &str, _: Vec<u8>) -> Result<(), AppError> {
++        Err(AppError::Forbidden)
++    }
++    async fn delete(&self, _: &str, _: &str) -> Result<(), AppError> {
++        Err(AppError::Forbidden)
++    }
++    async fn get(&self, issue: &str, key: &str) -> Result<Vec<u8>, AppError> {
++        self.calls.fetch_add(1, Ordering::SeqCst);
++        let mut bytes = self.storage.get(issue, key).await?;
++        let write = async {
++            match self.action {
++                DuringIo::OwnerRevoked => {
++                    exec(
++                        &self.f.db,
++                        "UPDATE users SET is_active=false WHERE central_sub='owner'",
++                        vec![],
++                    )
++                    .await?
++                }
++                DuringIo::ProjectRevoked => {
++                    exec(
++                        &self.f.db,
++                        "DELETE FROM project_members WHERE project_id=$1
++                    AND user_id=(SELECT id FROM users WHERE central_sub='pm')",
++                        vec![self.f.project.into()],
++                    )
++                    .await?
++                }
++                DuringIo::CorruptBytes => bytes.push(b' '),
++                DuringIo::None => {}
++            }
++            Ok::<(), AppError>(())
++        };
++        // This also proves the reader did not retain ACL/task locks across FileStorage I/O.
++        tokio::time::timeout(std::time::Duration::from_secs(5), write)
++            .await
++            .expect("synthetic revocation must not wait for reader locks")?;
++        Ok(bytes)
++    }
++}
++
++pub(super) async fn check(
++    f: &Fixture,
++    r: &Running,
++    pm: &Principal,
++    old_pm: &Principal,
++    unlisted: shared::AttachmentId,
++    storage: &dyn domain::FileStorage,
++) {
++    let id: shared::AttachmentId = r
++        .evidence
++        .receipt
++        .reference
++        .strip_prefix("tracker-attachment:")
++        .unwrap()
++        .parse()
++        .unwrap();
++    let observed = ObservedStorage {
++        storage,
++        f,
++        action: DuringIo::None,
++        calls: AtomicUsize::new(0),
++    };
++    let before = read_snapshot(f, r.task).await;
++    let (item, bytes) =
++        crate::sdlc::attachment_artifacts::download(&f.db, &f.repo.config, pm, id, &observed)
++            .await
++            .unwrap();
++    assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++    assert!(
++        crate::sdlc::attachment_artifacts::download(&f.db, &f.repo.config, pm, unlisted, &observed)
++            .await
++            .is_err()
++    );
++    assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++    assert_eq!(
++        Seal::parse(item.storage_key.as_ref())
++            .unwrap()
++            .unwrap()
++            .artifact(),
++        r.evidence
++    );
++    app::attachment_artifacts::verify_bytes(&item, &bytes).unwrap();
++    assert_eq!(read_snapshot(f, r.task).await, before);
++    for denied in [old_pm, &f.reader] {
++        assert!(
++            crate::sdlc::critical_blockers::pm_evidence::download(
++                &f.db,
++                &f.repo.config,
++                denied,
++                id,
++                &observed
++            )
++            .await
++            .is_err()
++        );
++        assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++    }
++    assert!(
++        crate::sdlc::attachment_artifacts::download(
++            &f.db,
++            &f.repo.config,
++            pm,
++            shared::AttachmentId::new(),
++            &observed
++        )
++        .await
++        .is_err()
++    );
++    assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++
++    let ordinary = Uuid::new_v4();
++    exec(&f.db,"INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at)
++        SELECT $1,issue_id,author_id,'ordinary.txt','text/plain',1,'ordinary-private-file',created_at FROM attachments WHERE id=$2",
++        vec![ordinary.into(),id.as_uuid().into()]).await.unwrap();
++    assert!(
++        crate::sdlc::attachment_artifacts::download(
++            &f.db,
++            &f.repo.config,
++            pm,
++            shared::AttachmentId::from_uuid(ordinary),
++            &observed
++        )
++        .await
++        .is_err()
++    );
++    assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++    exec(
++        &f.db,
++        "DELETE FROM attachments WHERE id=$1",
++        vec![ordinary.into()],
++    )
++    .await
++    .unwrap();
++
++    for action in [
++        DuringIo::OwnerRevoked,
++        DuringIo::ProjectRevoked,
++        DuringIo::CorruptBytes,
++    ] {
++        let observed = ObservedStorage {
++            storage,
++            f,
++            action,
++            calls: AtomicUsize::new(0),
++        };
++        assert!(
++            crate::sdlc::attachment_artifacts::download(&f.db, &f.repo.config, pm, id, &observed)
++                .await
++                .is_err()
++        );
++        assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
++        match observed.action {
++            DuringIo::OwnerRevoked => exec(
++                &f.db,
++                "UPDATE users SET is_active=true WHERE central_sub='owner'",
++                vec![],
++            )
++            .await
++            .unwrap(),
++            DuringIo::ProjectRevoked => exec(
++                &f.db,
++                "INSERT INTO project_members(project_id,user_id,role)
++                SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",
++                vec![f.project.into()],
++            )
++            .await
++            .unwrap(),
++            _ => {}
++        }
++        assert_eq!(read_snapshot(f, r.task).await, before);
++    }
++}
+diff --git a/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs b/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs
+index aeb58f3..6ed172e 100644
+--- a/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs
++++ b/backend/infra/src/sdlc_critical_pm_blocker_read_pg_tests.rs
+@@ -3,6 +3,9 @@ use super::*;
+ use domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview;
+ use domain::sdlc_execution_lease::ClaimExecutionLease;
+ 
++#[path = "attachment_pm_review_pg_tests.rs"]
++mod sealed_evidence_tests;
++
+ async fn read_snapshot(f: &Fixture, task: Uuid) -> Json {
+     f.db.query_one(statement("SELECT jsonb_build_object(
+         'state',(SELECT state FROM sdlc_tasks WHERE task_id=$1),
+@@ -29,6 +32,7 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
+     .unwrap();
+     let storage = domain::InMemoryStorage::default();
+     let r = Box::pin(start(&f, "pm-blocker-reader", false, &storage)).await;
++    let unlisted = Box::pin(sealed_evidence_tests::unlisted(&f, &r, &storage)).await;
+     let (held, _) = Box::pin(f.repo.submit_critical_blocker_with_storage(
+         r.task,
+         &r.producer,
+@@ -151,6 +155,11 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
+         assignment.execution_id
+     );
+     assert_eq!(detail.proposal, held.proposal);
++    // Still reached only AFTER the actual producer claim succeeds; never inject/skip its lease.
++    Box::pin(sealed_evidence_tests::check(
++        &f, &r, &pm, &old_pm, unlisted, &storage,
++    ))
++    .await;
+     assert_eq!(read_snapshot(&f, r.task).await, before);
+     assert!(
+         f.repo
+diff --git a/docs/contracts/CRITICAL_PM_BLOCKER_READ.md b/docs/contracts/CRITICAL_PM_BLOCKER_READ.md
+index 172cb96..ee03f32 100644
+--- a/docs/contracts/CRITICAL_PM_BLOCKER_READ.md
++++ b/docs/contracts/CRITICAL_PM_BLOCKER_READ.md
+@@ -99,6 +99,13 @@ or claimed available here; metadata detail read alone is not evidence-download p
+ 
+ ## Dedicated authored regressions
+ 
++Known producer dependency (parent review after this packet): at `8ac333a`,
++`claim_pm_lease` changes top-level status without the lifecycle/head companion
++projection. Actual PG claim therefore rolls back BEFORE the new reader executes.
++Qualification is BLOCKED BY PRODUCER CLAIM PROJECTION until Locke/main supplies
++that existing lifecycle hook. Do not skip the claim, inject a lease or weaken SQL
++guards to make this fixture pass. Pure tests do not qualify this persisted path.
++
+ Seven new test functions, not executed:
+ 
+ - App (5): current review in all three Draft submodes, no mutation; old/foreign PM
+diff --git a/docs/contracts/CRITICAL_PM_EVIDENCE_READ.md b/docs/contracts/CRITICAL_PM_EVIDENCE_READ.md
+new file mode 100644
+index 0000000..1570058
+--- /dev/null
++++ b/docs/contracts/CRITICAL_PM_EVIDENCE_READ.md
+@@ -0,0 +1,126 @@
++# Current PM sealed evidence download (source only)
++
++Baseline: accepted reader source `98cd0f5` over Tracker `8ac333a`. The blocker
++reader companion patch is still required and is NOT silently applied here.
++
++## Frozen route and files
++
++ONLY existing `GET /api/v1/attachments/{id}/download` with the existing verified
++Central PM grant and READ scope. No new endpoint/controller, credential, public
++DTO, trait, API client, schema or codegen. No ordinary list/upload/delete access.
++
++New production helpers:
++
++- `app/src/attachment_pm_review.rs`: PM single-download route shape and exact
++  saved proposal evidence/seal validation; separate pure tests.
++- `infra/src/attachment_pm_review.rs`: child of critical blocker reader; download
++  using existing DB/config/FileStorage and the SAME `current_pm_reader` authority
++  from `98cd0f5`, before AND after blob I/O.
++
++Companion-only hooks, not applied to shared production files:
++
++`docs/contracts/critical-pm-evidence-read.patch`
++
++- Register new app helper and new infra child.
++- Existing attachment service authorizes only the PM single-download shape.
++- Existing attachment middleware retains Central validation/service permission,
++  registered-machine denial and PM exact grant parser. PM never becomes legacy
++  UserClaims; recognized PM responses/errors are no-store.
++- Existing infra download dispatches PM grants exclusively to the narrow helper.
++  Malformed/stale PM grants cannot fall back to technical/scheduler/human readers.
++- Existing private provenance reader returns its ALREADY decoded
++  `(DeliveryAssignment, RunBinding)` rather than discarding them. Existing callers
++  still discard the tuple; no authority/SQL changes or duplicate provenance queries.
++
++## Helper signatures
++
++```rust
++// app::attachment_pm_review
++pub fn route(actor: &Principal, method: &str, path: &str) -> Result<bool, AppError>;
++pub fn evidence(
++    blocker: &CriticalBlockerReceipt, attachment: &Attachment, seal: &Seal,
++) -> Result<(), AppError>;
++
++// infra, private sdlc::critical_blockers::pm_evidence module
++pub(crate) async fn download(
++    db: &DatabaseConnection, config: &SdlcConfig, actor: &Principal,
++    id: AttachmentId, storage: &dyn FileStorage,
++) -> Result<(Attachment, Vec<u8>), AppError>;
++```
++
++## Actual read sequence
++
++1. Borrow the configured DB pool/config, without `connect()`, registration writes
++   or new credentials. Derive the ONE task from the exact PM grant, never from the
++   requested attachment or a display name.
++2. In the existing task/ACL lock order, `load_read` and `owner_access` check current
++   PM assignment, active actor/owner and project ACL; retain existing project
++   artifact rollout. Read ONLY current head's saved PM review journal.
++3. The requested sealed attachment must be an exact `proposal.evidence` item:
++   reference UUID, raw SHA and typed assignment/execution/role binding. Check
++   task/root, seal storage key, original technical fence/role/run. Ordinary,
++   unlisted sealed, foreign task and malformed references fail before FileStorage.
++4. Reuse existing seal validation and persisted technical assignment/run/author
++   provenance; match saved blocker's producer, owner, agent, assignment hash,
++   chat and run. This is archived technical provenance, not new technical admission
++   or a fabricated native/Workflow witness.
++5. Invoke SAME current-PM journal/selector/lease/fence reader last, using the DB
++   clock after metadata/provenance reads. Close transaction BEFORE FileStorage I/O.
++6. Read existing blob, verify actual raw size/SHA with existing `verify_bytes`.
++   Repeat steps 2-5 in a NEW transaction: revocation, changed assignment/review,
++   lease expiry/fence drift or metadata/provenance drift denies returning bytes.
++7. Require the same immutable blocker/seal/attachment snapshot and verify raw bytes
++   against the final metadata again. Only then return the existing attachment DTO
++   and bytes through the existing route. No byte or credential logging.
++
++No task/ACL/lease locks span FileStorage I/O. Same-assignment heartbeats are allowed:
++mutable lease version/timestamps are NOT compared as immutable snapshot identity;
++each phase separately validates the actual current lease and fresh DB clock.
++No new state, journal, receipt model, queue, dispatch, run or owner confirmation.
++
++## Known producer dependency, not a test bypass
++
++At `8ac333a`, current review `claim_pm_lease` updates top-level status without
++lifecycle/head projection, so actual PG claim rolls back before the reader. This
++packet remains BLOCKED BY PRODUCER CLAIM PROJECTION until Locke/main supplies the
++existing lifecycle hook. SQL/routing/lifecycle guards are not changed here.
++
++The existing ignored reader fixture still performs that actual claim. Sealed
++reader cases are added AFTER it succeeds, not by skipping/replacing it or injecting
++lease state. An extra unlisted sealed artifact is legitimately published through
++the existing technical publisher BEFORE Hold, while its original lease is active.
++
++## Authored qualification
++
++Three new test functions (app 2, API no-store 1), plus a dedicated PG scenario
++called from the existing ignored current-PM reader test:
++
++- Canonical GET-only single-download route; deny list/upload/delete/HEAD, malformed
++  UUID, human/ambiguous PM grant and missing READ; preserve non-PM route fallback.
++- All six technical roles: exact evidence ref/SHA/binding/task/run and raw bytes;
++  ordinary/foreign/wrong role/hash/ref evidence denied.
++- Recognized PM success and errors no-store.
++- PG scenario: exact original bytes, old grant/scheduler/missing/ordinary/unlisted
++  sealed denial before storage; inactive owner and removed PM project membership
++  DURING FileStorage I/O cause post-I/O denial; corrupt returned bytes denied.
++  A five-second bounded mutation verifies there are no reader locks across I/O.
++  State/lease/journal/outbox unchanged. All data/custody synthetic, not live proof.
++
++Source checks only: rustfmt of new/changed owned Rust files, individual and combined
++companion patch applicability, staged whitespace. Cargo/Docker/compile/test/PG/live
++execution is forbidden here and NOT claimed. No changes to frozen QA source.
++
++After parent review, apply `critical-pm-blocker-read.patch` from `98cd0f5`, then
++`critical-pm-evidence-read.patch`, and integrate the producer claim projection fix.
++Targeted parent commands from `backend`:
++
++```text
++cargo test -p app attachment_pm_review::tests
++cargo test -p api middleware::attachment_auth::pm_review_tests
++cargo test -p infra actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_current_lease -- --ignored
++```
++
++The last command uses the existing fresh disposable candidates DB/protected runner
++and cleanup; no new harness or permanent resources. Prior pure expiry/fence tests
++are reused, not relabelled as executed PG evidence. Apply/compile/affected QA remain
++main-owned before claiming the PM download capability available.
+diff --git a/docs/contracts/critical-pm-evidence-read.patch b/docs/contracts/critical-pm-evidence-read.patch
+new file mode 100644
+index 0000000..9748f2b
+--- /dev/null
++++ b/docs/contracts/critical-pm-evidence-read.patch
+@@ -0,0 +1,141 @@
++diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
++--- a/backend/app/src/lib.rs
+++++ b/backend/app/src/lib.rs
++@@ -1,4 +1,5 @@
++ pub mod attachment_artifacts;
+++pub mod attachment_pm_review;
++ pub mod auth;
++ pub mod authz;
++ pub mod commands;
++diff --git a/backend/app/src/services/attachment.rs b/backend/app/src/services/attachment.rs
++--- a/backend/app/src/services/attachment.rs
+++++ b/backend/app/src/services/attachment.rs
++@@ -144,6 +144,9 @@
++         path: &str,
++     ) -> Result<(), AppError> {
++         let config = self.artifact_config()?;
+++        if crate::attachment_pm_review::route(actor, method, path)? {
+++            return Ok(());
+++        }
++         if crate::attachment_artifacts::delivery_attachment_route(actor, method, path)? {
++             return Ok(());
++         }
++diff --git a/backend/infra/src/sdlc_critical_blockers.rs b/backend/infra/src/sdlc_critical_blockers.rs
++--- a/backend/infra/src/sdlc_critical_blockers.rs
+++++ b/backend/infra/src/sdlc_critical_blockers.rs
++@@ -6,6 +6,9 @@
++ use domain::sdlc_lifecycle::*;
++ use sea_orm::EntityTrait;
++
+++#[path = "attachment_pm_review.rs"]
+++pub(super) mod pm_evidence;
+++
++ fn invalid_history() -> AppError {
++     AppError::conflict("critical blocker history inconsistent")
++ }
++diff --git a/backend/infra/src/attachment_artifacts.rs b/backend/infra/src/attachment_artifacts.rs
++--- a/backend/infra/src/attachment_artifacts.rs
+++++ b/backend/infra/src/attachment_artifacts.rs
++@@ -234,11 +234,11 @@
++     Ok(())
++ }
++
+++pub(super) async fn provenance(
++-async fn provenance(
++     tx: &DatabaseTransaction,
++     attachment: &domain::Attachment,
++     seal: &Seal,
+++) -> Result<(DeliveryAssignment, RunBinding), AppError> {
++-) -> Result<(), AppError> {
++     seal.validate_attachment(attachment)?;
++     let assignment: DeliveryAssignment = decode(
++         &tx.query_one(statement(
++@@ -276,13 +276,13 @@
++         "SELECT id FROM users WHERE id=$1 AND central_sub=$2",
++         vec![
++             attachment.author_id.as_uuid().into(),
+++            binding.machine_subject.clone().into(),
++-            binding.machine_subject.into(),
++         ],
++     ))
++     .await
++     .map_err(map_db)?
++     .ok_or_else(|| AppError::conflict("artifact author differs from actual producer"))?;
+++    Ok((assignment, binding))
++-    Ok(())
++ }
++
++ async fn allowed(
++@@ -485,6 +485,9 @@
++     id: AttachmentId,
++     storage: &dyn domain::FileStorage,
++ ) -> Result<(domain::Attachment, Vec<u8>), AppError> {
+++    if app::sdlc::has_pm_grant(&actor.scopes) {
+++        return super::critical_blockers::pm_evidence::download(db, config, actor, id, storage).await;
+++    }
++     let tx = db.begin().await.map_err(map_db)?;
++     let model = attachment::Entity::find_by_id(id.as_uuid())
++         .one(&tx)
++diff --git a/backend/api/src/middleware/attachment_auth.rs b/backend/api/src/middleware/attachment_auth.rs
++--- a/backend/api/src/middleware/attachment_auth.rs
+++++ b/backend/api/src/middleware/attachment_auth.rs
++@@ -3,7 +3,7 @@
++     extract::{OriginalUri, Request, State},
++     http::StatusCode,
++     middleware::Next,
+++    response::{IntoResponse, Response},
++-    response::Response,
++ };
++ use shared::AppError;
++ use std::sync::Arc;
++@@ -25,7 +25,32 @@
++     match super::central_auth::check_token(token).await {
++         super::central_auth::CentralCheck::Validated(central, _) => {
++             if app::sdlc::has_pm_grant(&central.scopes) {
+++                let outcome: Result<Response, AppError> = async {
+++                    if crate::routes::namespace::registered_machine(&central.user_id)
+++                        || !central.allows_service("task-tracker", request.method().as_str())
+++                    {
+++                        return Err(AppError::Forbidden);
+++                    }
+++                    let actor = domain::sdlc::Principal {
+++                        subject: central.user_id,
+++                        human_session: central.session_id.is_some(),
+++                        trusted_human: false,
+++                        scopes: central.scopes,
+++                    };
+++                    let path = request
+++                        .extensions()
+++                        .get::<OriginalUri>()
+++                        .map_or_else(|| request.uri().path(), |uri| uri.0.path());
+++                    ctx.services.attachment.authorize_artifact_route(
+++                        &actor,
+++                        request.method().as_str(),
+++                        path,
+++                    )?;
+++                    request.extensions_mut().insert(actor);
+++                    Ok(next.run(request).await)
+++                }
+++                .await;
+++                return Ok(pm_no_store(outcome));
++-                return Err(AppError::Forbidden);
++             }
++             let machine = app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
++                 || central.role.as_deref() == Some("service_account")
++@@ -73,3 +98,16 @@
++             _ => AppError::internal("attachment authentication failed"),
++         })
++ }
+++
+++fn pm_no_store(outcome: Result<Response, AppError>) -> Response {
+++    let mut response = outcome.unwrap_or_else(|error| error.into_response());
+++    response.headers_mut().insert(
+++        axum::http::header::CACHE_CONTROL,
+++        axum::http::HeaderValue::from_static("no-store"),
+++    );
+++    response
+++}
+++
+++#[cfg(test)]
+++#[path = "attachment_pm_review_tests.rs"]
+++mod pm_review_tests;

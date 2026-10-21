@@ -1,0 +1,1322 @@
+diff --git a/backend/api/src/lib.rs b/backend/api/src/lib.rs
+index 6b34d6f5..a15b3dcf 100644
+--- a/backend/api/src/lib.rs
++++ b/backend/api/src/lib.rs
+@@ -90,6 +90,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
+         routes::sdlc_reservation::current,
+         routes::sdlc_reservation::configuration_preflight,
+         routes::sdlc_reservation::operation,
++        routes::sdlc_reservation::submit_result,
++        routes::sdlc_reservation::result_operation,
+         routes::sdlc::project_access,
+         routes::sdlc::project_directory,
+         routes::sdlc::create_draft,
+@@ -1007,7 +1009,7 @@ mod tests {
+             serde_json::json!(["events"])
+         );
+         let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
+-        assert_eq!(variants.len(), 11);
++        assert_eq!(variants.len(), 12);
+         for variant in variants {
+             assert_eq!(variant["additionalProperties"], false);
+             assert_eq!(variant["required"].as_array().unwrap().len(), 7);
+diff --git a/backend/api/src/routes/sdlc_reservation.rs b/backend/api/src/routes/sdlc_reservation.rs
+index 24ca6548..aaaa8ee8 100644
+--- a/backend/api/src/routes/sdlc_reservation.rs
++++ b/backend/api/src/routes/sdlc_reservation.rs
+@@ -28,6 +28,11 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
+             "/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
+             get(operation),
+         )
++        .route("/issues/{id}/sdlc/analysis-result", post(submit_result))
++        .route(
++            "/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
++            get(result_operation),
++        )
+ }
+ fn no_store() -> HeaderMap {
+     let mut h = HeaderMap::new();
+@@ -123,6 +128,42 @@ pub async fn operation(
+         ),
+     ))
+ }
++#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/analysis-result",operation_id="submit_analysis_result",tag="sdlc",params(("id"=Uuid,Path)),request_body=SubmitAnalysisResult,
++    responses((status=201,body=AnalysisResultReceipt),(status=200,body=AnalysisResultReceipt,description="Original durable replay; no duplicate transition"),(status=401),(status=403),(status=404),(status=409,description="Stale lease/fence, released capacity or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
++pub async fn submit_result(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Path(task): Path<Uuid>,
++    Json(command): Json<SubmitAnalysisResult>,
++) -> Result<(StatusCode, HeaderMap, Json<AnalysisResultReceipt>), AppError> {
++    let (receipt, replay) = service(&ctx)?
++        .submit_analysis_result(task, &actor, command)
++        .await?;
++    Ok((
++        if replay {
++            StatusCode::OK
++        } else {
++            StatusCode::CREATED
++        },
++        no_store(),
++        Json(receipt),
++    ))
++}
++#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",operation_id="read_analysis_result_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=AnalysisResultOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
++pub async fn result_operation(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Path((task, key)): Path<(Uuid, String)>,
++) -> Result<(HeaderMap, Json<AnalysisResultOperation>), AppError> {
++    Ok((
++        no_store(),
++        Json(
++            service(&ctx)?
++                .analysis_result_operation(task, &actor, &key)
++                .await?,
++        ),
++    ))
++}
+ #[cfg(test)]
+ mod tests {
+     use utoipa::OpenApi;
+@@ -144,6 +185,9 @@ mod tests {
+             "PreparedAnalysisAssignment",
+             "AnalysisReservationReceipt",
+             "AnalysisReservationReadback",
++            "SubmitAnalysisResult",
++            "AnalysisResultReceipt",
++            "AnalysisResultOperation",
+         ] {
+             assert_eq!(
+                 s["components"]["schemas"][name]["additionalProperties"], false,
+@@ -153,9 +197,21 @@ mod tests {
+         for path in [
+             "/api/v1/issues/{id}/sdlc/analysis-reservation",
+             "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
++            "/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
+         ] {
+             assert!(s["paths"][path]["get"]["security"].is_array());
+         }
++        assert!(
++            s["paths"]["/api/v1/issues/{id}/sdlc/analysis-result"]["post"]["security"].is_array()
++        );
++        assert_eq!(
++            s["components"]["schemas"]["SubmitAnalysisResult"]["properties"]["contract_version"]["maximum"],
++            serde_json::json!(1)
++        );
++        assert_eq!(
++            s["components"]["schemas"]["AnalysisResultReceipt"]["properties"]["next_stage"]["$ref"],
++            "#/components/schemas/Stage"
++        );
+         assert!(
+             s["components"]["schemas"]["PreparedAnalysisAssignment"]["properties"]
+                 .get("run_id")
+diff --git a/backend/app/src/sdlc.rs b/backend/app/src/sdlc.rs
+index 8678db92..762cf251 100644
+--- a/backend/app/src/sdlc.rs
++++ b/backend/app/src/sdlc.rs
+@@ -121,6 +121,26 @@ impl SdlcService {
+             .analysis_reservation_operation(task, actor, key)
+             .await
+     }
++    pub async fn submit_analysis_result(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_reservation::SubmitAnalysisResult,
++    ) -> Result<(domain::sdlc_reservation::AnalysisResultReceipt, bool), AppError> {
++        self.repository
++            .submit_analysis_result(task, actor, command)
++            .await
++    }
++    pub async fn analysis_result_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
++        self.repository
++            .analysis_result_operation(task, actor, key)
++            .await
++    }
+     pub async fn set_routing_policy(
+         &self,
+         project: Uuid,
+@@ -637,9 +657,9 @@ pub fn apply(
+ ) -> Result<Value, AppError> {
+     authorize(state, actor, config, command)?;
+     validate_key(command.key())?;
+-    if matches!(state.stage, Stage::Analysis) {
++    if matches!(state.stage, Stage::Analysis | Stage::Architecture) {
+         return Err(AppError::conflict(
+-            "Analysis intent freezes PM business writes",
++            "Analysis/Architecture intent freezes PM business writes",
+         ));
+     }
+     let now = chrono::Utc::now();
+diff --git a/backend/app/src/sdlc_metadata.rs b/backend/app/src/sdlc_metadata.rs
+index f4b7406a..cc3108d6 100644
+--- a/backend/app/src/sdlc_metadata.rs
++++ b/backend/app/src/sdlc_metadata.rs
+@@ -303,6 +303,37 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
+                 assignment_hash: a.assignment_hash.clone(),
+             })?
+         }
++        "analysis.result_accepted" => {
++            let receipt: domain::sdlc_reservation::AnalysisResultReceipt = decode(&source.result)?;
++            revision(receipt.requirement_revision, &receipt.content_hash, &refs)?;
++            valid(
++                receipt.contract_version == 1
++                    && receipt.result_id == event.event_id
++                    && receipt.task_id == event.task_id
++                    && receipt.root_task_id == source.root_task_id
++                    && receipt.project_id == source.project_id
++                    && receipt.tracker_instance_id == source.tracker_instance_id
++                    && receipt.owner_subject == source.owner_subject
++                    && source.requirement_revision == Some(receipt.requirement_revision)
++                    && matches!(source.stage, Stage::Architecture)
++                    && matches!(receipt.previous_stage, Stage::Analysis)
++                    && matches!(receipt.next_stage, Stage::Architecture)
++                    && receipt.previous_status == "SDLC Analysis"
++                    && receipt.next_status == "SDLC Architecture",
++            )?;
++            hash(&receipt.terminal_receipt_sha256)?;
++            hash(&receipt.architecture_input_sha256)?;
++            valid(!receipt.terminal_receipt_ref.trim().is_empty())?;
++            value(AnalysisResultResource {
++                result_id: receipt.result_id,
++                assignment_id: receipt.assignment_id,
++                execution_id: receipt.execution_id,
++                workflow_task_ref: receipt.workflow_task_ref,
++                terminal_receipt_ref: receipt.terminal_receipt_ref,
++                terminal_receipt_sha256: receipt.terminal_receipt_sha256,
++                architecture_input_sha256: receipt.architecture_input_sha256,
++            })?
++        }
+         "analysis.intent_created" => {
+             let intent: AnalysisIntent = decode(&source.result)?;
+             revision(intent.requirement_revision, &intent.content_hash, &refs)?;
+diff --git a/backend/app/src/sdlc_reservation.rs b/backend/app/src/sdlc_reservation.rs
+index 47901b5f..c24fbb36 100644
+--- a/backend/app/src/sdlc_reservation.rs
++++ b/backend/app/src/sdlc_reservation.rs
+@@ -36,6 +36,34 @@ pub fn assignment_hash(assignment: &PreparedAnalysisAssignment) -> Result<String
+     crate::sdlc::canonical_hash(&value)
+ }
+ 
++pub fn validate_analysis_result(command: &SubmitAnalysisResult) -> Result<(), AppError> {
++    crate::sdlc::validate_key(&command.idempotency_key)?;
++    let hex = |value: &str| {
++        value.len() == 64
++            && value
++                .bytes()
++                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++    };
++    if command.contract_version != 1
++        || !hex(&command.content_hash)
++        || !hex(&command.assignment_hash)
++        || !hex(&command.terminal_receipt_sha256)
++        || !hex(&command.architecture_input_sha256)
++        || command.terminal_receipt_ref.trim().is_empty()
++        || command.terminal_receipt_ref.len() > 512
++        || command.summary.trim().is_empty()
++        || command.summary.len() > 100_000
++        || command
++            .terminal_receipt_ref
++            .chars()
++            .chain(command.summary.chars())
++            .any(|c| c == '\0')
++    {
++        return Err(AppError::validation("invalid Analysis terminal result"));
++    }
++    Ok(())
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -84,4 +112,49 @@ mod tests {
+         actor.human_session = true;
+         assert!(scheduler(&actor, &config).is_err());
+     }
++
++    #[test]
++    fn analysis_result_command_is_strict_and_requires_terminal_hashes() {
++        let command = json!({
++            "contract_version":1,
++            "assignment_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
++            "execution_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
++            "agent_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
++            "intent_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd",
++            "routing_snapshot_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
++            "requirement_revision":1,
++            "content_hash":"a".repeat(64),
++            "fencing_token":1,
++            "lease_id":"ffffffff-ffff-4fff-8fff-ffffffffffff",
++            "expected_lease_version":1,
++            "assignment_hash":"b".repeat(64),
++            "terminal_receipt_ref":"workflow/terminal/1",
++            "terminal_receipt_sha256":"c".repeat(64),
++            "architecture_input_sha256":"d".repeat(64),
++            "summary":"ready for architecture",
++            "idempotency_key":"analysis-result-1"
++        });
++        let parsed = serde_json::from_value::<SubmitAnalysisResult>(command.clone()).unwrap();
++        validate_analysis_result(&parsed).unwrap();
++        for field in [
++            "contract_version",
++            "assignment_id",
++            "terminal_receipt_sha256",
++        ] {
++            let mut c = command.clone();
++            c.as_object_mut().unwrap().remove(field);
++            assert!(serde_json::from_value::<SubmitAnalysisResult>(c).is_err());
++        }
++        let mut c = command.clone();
++        c["contract_version"] = json!(2);
++        assert!(serde_json::from_value::<SubmitAnalysisResult>(c).is_err());
++        let mut c = command.clone();
++        c["terminal_receipt_sha256"] = json!("not-a-hash");
++        let parsed = serde_json::from_value::<SubmitAnalysisResult>(c).unwrap();
++        assert!(validate_analysis_result(&parsed).is_err());
++        let mut c = command;
++        c["summary"] = json!("");
++        let parsed = serde_json::from_value::<SubmitAnalysisResult>(c).unwrap();
++        assert!(validate_analysis_result(&parsed).is_err());
++    }
+ }
+diff --git a/backend/domain/src/sdlc.rs b/backend/domain/src/sdlc.rs
+index e329da6d..4f9b6a19 100644
+--- a/backend/domain/src/sdlc.rs
++++ b/backend/domain/src/sdlc.rs
+@@ -86,12 +86,13 @@ pub enum QuestionState {
+     Cancelled,
+ }
+ 
+-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+ pub enum Stage {
+     Draft,
+     Clarification,
+     Backlog,
+     Analysis,
++    Architecture,
+ }
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+@@ -511,6 +512,7 @@ impl TaskState {
+                 Stage::Draft => Some("waiting_for_pm".into()),
+                 Stage::Backlog => None,
+                 Stage::Analysis => Some("queued_for_analysis".into()),
++                Stage::Architecture => Some("queued_for_architecture".into()),
+                 Stage::Clarification
+                     if self
+                         .questions
+@@ -593,6 +595,18 @@ pub trait SdlcRepository: Send + Sync {
+         actor: &Principal,
+         key: &str,
+     ) -> Result<crate::sdlc_reservation::AnalysisReservationOperation, AppError>;
++    async fn submit_analysis_result(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: crate::sdlc_reservation::SubmitAnalysisResult,
++    ) -> Result<(crate::sdlc_reservation::AnalysisResultReceipt, bool), AppError>;
++    async fn analysis_result_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
+     async fn set_routing_policy(
+         &self,
+         project: Uuid,
+diff --git a/backend/domain/src/sdlc_metadata.rs b/backend/domain/src/sdlc_metadata.rs
+index 8dacc3d8..5f8efb73 100644
+--- a/backend/domain/src/sdlc_metadata.rs
++++ b/backend/domain/src/sdlc_metadata.rs
+@@ -128,6 +128,20 @@ pub struct AnalysisReservationResource {
+     pub assignment_hash: String,
+ }
+ 
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct AnalysisResultResource {
++    pub result_id: Uuid,
++    pub assignment_id: Uuid,
++    pub execution_id: Uuid,
++    pub workflow_task_ref: String,
++    pub terminal_receipt_ref: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub terminal_receipt_sha256: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub architecture_input_sha256: String,
++}
++
+ macro_rules! metadata_events {
+     ($($variant:ident, $name:literal, $resource:ty);+ $(;)?) => {
+         #[derive(Clone, Debug, Serialize, Deserialize)]
+@@ -200,6 +214,7 @@ metadata_events! {
+     RequirementsConfirmed, "requirements.confirmed", ConfirmationResource;
+     AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
+     AnalysisAssignmentReserved, "analysis.assignment_reserved", AnalysisReservationResource;
++    AnalysisResultAccepted, "analysis.result_accepted", AnalysisResultResource;
+ }
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+diff --git a/backend/domain/src/sdlc_reservation.rs b/backend/domain/src/sdlc_reservation.rs
+index 2e696854..0becfd69 100644
+--- a/backend/domain/src/sdlc_reservation.rs
++++ b/backend/domain/src/sdlc_reservation.rs
+@@ -1,4 +1,4 @@
+-use crate::sdlc::{AnalysisStage, safe_version};
++use crate::sdlc::{AnalysisStage, Stage, safe_version};
+ use crate::sdlc_execution_lease::ExecutionLease;
+ use crate::sdlc_routing::RoleRoute;
+ use chrono::{DateTime, Utc};
+@@ -26,6 +26,14 @@ fn no_dispatch<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+     }
+     Ok(false)
+ }
++fn one<'de, D: Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
++    let n = u8::deserialize(d)?;
++    if n == 1 {
++        Ok(n)
++    } else {
++        Err(D::Error::custom("contract_version must be 1"))
++    }
++}
+ pub(crate) fn false_schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+     utoipa::openapi::schema::ObjectBuilder::new()
+         .schema_type(utoipa::openapi::schema::Type::Boolean)
+@@ -161,3 +169,94 @@ pub struct AnalysisReservationReadback {
+     pub dispatch_allowed: bool,
+     pub capacity_held: bool,
+ }
++
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct SubmitAnalysisResult {
++    #[serde(deserialize_with = "one")]
++    #[schema(minimum = 1, maximum = 1)]
++    pub contract_version: u8,
++    #[serde(deserialize_with = "uuid")]
++    pub assignment_id: Uuid,
++    #[serde(deserialize_with = "uuid")]
++    pub execution_id: Uuid,
++    #[serde(deserialize_with = "uuid")]
++    pub agent_id: Uuid,
++    #[serde(deserialize_with = "uuid")]
++    pub intent_id: Uuid,
++    #[serde(deserialize_with = "uuid")]
++    pub routing_snapshot_id: Uuid,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub requirement_revision: i64,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub content_hash: String,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub fencing_token: i64,
++    #[serde(deserialize_with = "uuid")]
++    pub lease_id: Uuid,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub expected_lease_version: i64,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub assignment_hash: String,
++    #[schema(min_length = 1, max_length = 512)]
++    pub terminal_receipt_ref: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub terminal_receipt_sha256: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub architecture_input_sha256: String,
++    #[schema(min_length = 1, max_length = 100000)]
++    pub summary: String,
++    #[schema(min_length = 1, max_length = 128)]
++    pub idempotency_key: String,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
++#[serde(deny_unknown_fields)]
++pub struct AnalysisResultReceipt {
++    #[schema(minimum = 1, maximum = 1)]
++    pub contract_version: u8,
++    pub result_id: Uuid,
++    pub tracker_instance_id: String,
++    pub project_id: Uuid,
++    pub task_id: Uuid,
++    pub root_task_id: Uuid,
++    pub owner_subject: String,
++    pub assignment_id: Uuid,
++    pub execution_id: Uuid,
++    pub agent_id: Uuid,
++    pub intent_id: Uuid,
++    pub routing_snapshot_id: Uuid,
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub requirement_revision: i64,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub content_hash: String,
++    pub workflow_task_ref: String,
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub fencing_token: i64,
++    pub lease_id: Uuid,
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub lease_version: i64,
++    pub previous_stage: Stage,
++    pub next_stage: Stage,
++    pub previous_status: String,
++    pub next_status: String,
++    pub terminal_receipt_ref: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub terminal_receipt_sha256: String,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
++    pub architecture_input_sha256: String,
++    pub summary: String,
++    pub idempotency_key: String,
++    pub created_at: DateTime<Utc>,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct AnalysisResultOperation {
++    pub idempotency_key: String,
++    pub request_sha256: String,
++    pub result: AnalysisResultReceipt,
++}
+diff --git a/backend/infra/src/repos.rs b/backend/infra/src/repos.rs
+index 40cbf362..c1a2bdc1 100644
+--- a/backend/infra/src/repos.rs
++++ b/backend/infra/src/repos.rs
+@@ -493,7 +493,7 @@ impl ProjectRepository for ProjectRepo {
+         limit: i64,
+         offset: i64,
+     ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
+-        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
++        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+         rows.into_iter()
+             .map(|row| {
+                 let command: shared::resource_context::OwnerCommand =
+diff --git a/backend/infra/src/repos_namespace.rs b/backend/infra/src/repos_namespace.rs
+index 90b8a123..277c7f43 100644
+--- a/backend/infra/src/repos_namespace.rs
++++ b/backend/infra/src/repos_namespace.rs
+@@ -47,7 +47,7 @@ pub async fn binding(
+ /// Foundation v1 has no verified stop/release protocol. Reserved ownership is
+ /// never inferred quiescent from an expired lease or dispatch_allowed=false.
+ async fn drained(db: &DatabaseConnection, project: Uuid) -> Result<bool, AppError> {
+-    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
++    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
+     row.try_get("", "drained").map_err(AppError::database)
+ }
+ 
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+index 3296dcee..3872c16a 100644
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -339,6 +339,7 @@ impl PostgresSdlcRepository {
+             Stage::Clarification => "SDLC Clarification",
+             Stage::Backlog => "Backlog",
+             Stage::Analysis => "SDLC Analysis",
++            Stage::Architecture => "SDLC Architecture",
+         };
+         if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
+             exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
+@@ -520,6 +521,12 @@ impl PostgresSdlcRepository {
+                 return Ok(None);
+             }
+         }
++        if event.event_type == "analysis.result_accepted" {
++            let row = tx.query_one(statement("SELECT result FROM sdlc_analysis_result_operations WHERE result_id=$1 AND task_id=$2",vec![event.event_id.into(),event.task_id.into()])).await.map_err(map_db)?;
++            if row.is_none_or(|r| r.try_get::<Json>("", "result").ok().as_ref() != Some(result)) {
++                return Ok(None);
++            }
++        }
+         if event.event_type == "clarification.answered" {
+             let Some(id) = result["question_id"]
+                 .as_str()
+@@ -547,6 +554,7 @@ impl PostgresSdlcRepository {
+             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
+             "analysis.intent_created" => result["requirement_revision"].as_i64(),
+             "analysis.assignment_reserved" => result["assignment"]["requirement_revision"].as_i64(),
++            "analysis.result_accepted" => result["requirement_revision"].as_i64(),
+             "clarification.published"
+             | "clarification.cancelled"
+             | "clarification.answered"
+@@ -604,6 +612,23 @@ impl SdlcRepository for PostgresSdlcRepository {
+         self.read_analysis_reservation_operation(task, actor, key)
+             .await
+     }
++    async fn submit_analysis_result(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_reservation::SubmitAnalysisResult,
++    ) -> Result<(domain::sdlc_reservation::AnalysisResultReceipt, bool), AppError> {
++        self.submit_analysis_terminal_result(task, actor, command)
++            .await
++    }
++    async fn analysis_result_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
++        self.read_analysis_result_operation(task, actor, key).await
++    }
+     async fn set_routing_policy(
+         &self,
+         project: Uuid,
+diff --git a/backend/infra/src/sdlc_reservation.rs b/backend/infra/src/sdlc_reservation.rs
+index 7d437e81..11aa8264 100644
+--- a/backend/infra/src/sdlc_reservation.rs
++++ b/backend/infra/src/sdlc_reservation.rs
+@@ -49,7 +49,7 @@ impl PostgresSdlcRepository {
+         tx: &DatabaseTransaction,
+         state: &TaskState,
+     ) -> Result<Option<AnalysisReservationReceipt>, AppError> {
+-        let row = tx.query_one(statement("SELECT r.payload,r.pool_slot,l.version,l.holder_subject,l.claimed_at,l.heartbeat_at,l.expires_at FROM sdlc_analysis_reservations r JOIN sdlc_analysis_reservation_leases l USING(assignment_id) WHERE r.task_id=$1 FOR UPDATE OF l",vec![state.task_id.into()])).await.map_err(map_db)?;
++        let row = tx.query_one(statement("SELECT r.payload,h.pool_slot,l.version,l.holder_subject,l.claimed_at,l.heartbeat_at,l.expires_at FROM sdlc_analysis_reservations r JOIN sdlc_analysis_reservation_leases l USING(assignment_id) JOIN sdlc_analysis_capacity_holds h USING(assignment_id) WHERE r.task_id=$1 FOR UPDATE OF l",vec![state.task_id.into()])).await.map_err(map_db)?;
+         let Some(row) = row else {
+             return Ok(None);
+         };
+@@ -125,6 +125,31 @@ impl PostgresSdlcRepository {
+     ) -> Result<(), AppError> {
+         exec(tx,"INSERT INTO sdlc_analysis_reservation_operations(task_id,idempotency_key,actor_subject,payload_hash,assignment_id,lease_version,result) VALUES($1,$2,$3,$4,$5,$6,$7)",vec![result.assignment.task_id.into(),key.into(),actor.subject.clone().into(),hash.into(),result.assignment.assignment_id.into(),result.lease.version.into(),json_value(result)?]).await
+     }
++    async fn result_operation(
++        tx: &DatabaseTransaction,
++        task: Uuid,
++        key: &str,
++    ) -> Result<Option<AnalysisResultOperation>, AppError> {
++        let row = tx.query_one(statement("SELECT payload_hash,result FROM sdlc_analysis_result_operations WHERE task_id=$1 AND idempotency_key=$2",vec![task.into(),key.into()])).await.map_err(map_db)?;
++        row.map(|r| {
++            Ok(AnalysisResultOperation {
++                idempotency_key: key.into(),
++                request_sha256: r.try_get("", "payload_hash").map_err(map_db)?,
++                result: serde_json::from_value(r.try_get("", "result").map_err(map_db)?)
++                    .map_err(|_| inconsistent())?,
++            })
++        })
++        .transpose()
++    }
++    async fn save_result_operation(
++        tx: &DatabaseTransaction,
++        actor: &Principal,
++        key: &str,
++        hash: &str,
++        result: &AnalysisResultReceipt,
++    ) -> Result<(), AppError> {
++        exec(tx,"INSERT INTO sdlc_analysis_result_operations(task_id,idempotency_key,actor_subject,payload_hash,result_id,result) VALUES($1,$2,$3,$4,$5,$6)",vec![result.task_id.into(),key.into(),actor.subject.clone().into(),hash.into(),result.result_id.into(),json_value(result)?]).await
++    }
+     pub(super) async fn reserve_analysis_intent(
+         &self,
+         task: Uuid,
+@@ -182,14 +207,14 @@ impl PostgresSdlcRepository {
+             return Err(AppError::conflict("pm_quiescence_unverified"));
+         }
+         let agent = snapshot.policy.routes.analyst.agent_id;
+-        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_reservations WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments WHERE payload->>'agent_id'=$2::text) AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
++        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments WHERE payload->>'agent_id'=$2::text) AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
+         if blocked.try_get::<bool>("", "pm").map_err(map_db)? {
+             return Err(AppError::conflict("pm_quiescence_unverified"));
+         }
+         if blocked.try_get::<bool>("", "busy").map_err(map_db)? {
+             return Err(AppError::conflict("root_or_agent_capacity_held"));
+         }
+-        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
++        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
+         let fence = tx
+             .query_one(statement(
+                 "SELECT nextval('sdlc_analysis_reservation_fence') AS n",
+@@ -266,6 +291,7 @@ impl PostgresSdlcRepository {
+         };
+         let a = &result.assignment;
+         exec(&tx,"INSERT INTO sdlc_analysis_reservations(assignment_id,execution_id,task_id,root_task_id,agent_id,intent_id,routing_snapshot_id,fencing_token,lease_id,pool_slot,payload,workflow_task_ordinal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",vec![id.into(),a.execution_id.into(),task.into(),a.root_task_id.into(),agent.into(),a.intent_id.into(),a.routing_snapshot_id.into(),fence.into(),lease_id.into(),slot.into(),json_value(a)?,workflow_ordinal.into()]).await?;
++        exec(&tx,"INSERT INTO sdlc_analysis_capacity_holds(assignment_id,root_task_id,agent_id,pool_slot) VALUES($1,$2,$3,$4)",vec![id.into(),a.root_task_id.into(),agent.into(),slot.into()]).await?;
+         exec(&tx,"INSERT INTO sdlc_analysis_reservation_leases(assignment_id,version,holder_subject,claimed_at,heartbeat_at,expires_at) VALUES($1,1,$2,$3,$3,$4)",vec![id.into(),actor.subject.clone().into(),now.into(),result.lease.expires_at.into()]).await?;
+         Self::save_reservation_operation(&tx, actor, &command.idempotency_key, &hash, &result)
+             .await?;
+@@ -373,17 +399,159 @@ impl PostgresSdlcRepository {
+         app::sdlc::validate_key(key)?;
+         let tx = self.db.begin().await.map_err(map_db)?;
+         let state = self.load(&tx, task, actor).await?;
+-        let current = Self::reservation_current(&tx, &state)
+-            .await?
+-            .ok_or_else(|| AppError::not_found("Analysis reservation", task))?;
+         let op = Self::reservation_operation(&tx, task, key)
+             .await?
+             .ok_or_else(|| AppError::not_found("reservation operation", key))?;
+-        if op.result.assignment != current.assignment
+-            || op.result.lease.version > current.lease.version
++        if let Some(current) = Self::reservation_current(&tx, &state).await? {
++            if op.result.assignment != current.assignment
++                || op.result.lease.version > current.lease.version
++            {
++                return Err(inconsistent());
++            }
++        } else {
++            let row = tx.query_one(statement("SELECT r.payload,EXISTS(SELECT 1 FROM sdlc_analysis_results ar WHERE ar.assignment_id=r.assignment_id) AS released FROM sdlc_analysis_reservations r WHERE r.task_id=$1 AND r.assignment_id=$2",
++                vec![task.into(), op.result.assignment.assignment_id.into()])).await.map_err(map_db)?
++                .ok_or_else(inconsistent)?;
++            let assignment: PreparedAnalysisAssignment =
++                serde_json::from_value(row.try_get("", "payload").map_err(map_db)?)
++                    .map_err(|_| inconsistent())?;
++            if assignment != op.result.assignment
++                || !row.try_get::<bool>("", "released").map_err(map_db)?
++            {
++                return Err(inconsistent());
++            }
++        }
++        tx.commit().await.map_err(map_db)?;
++        Ok(op)
++    }
++
++    pub(super) async fn submit_analysis_terminal_result(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: SubmitAnalysisResult,
++    ) -> Result<(AnalysisResultReceipt, bool), AppError> {
++        app::sdlc_reservation::scheduler(actor, &self.config)?;
++        app::sdlc_reservation::validate_analysis_result(&command)?;
++        let hash = app::sdlc::canonical_hash(
++            &json!({"operation":"submit_analysis_result","payload":&command}),
++        )?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        let mut state = self.load(&tx, task, actor).await?;
++        if let Some(op) = Self::result_operation(&tx, task, &command.idempotency_key).await? {
++            if op.request_sha256 != hash {
++                return Err(AppError::conflict("Analysis result key payload conflict"));
++            }
++            tx.commit().await.map_err(map_db)?;
++            return Ok((op.result, true));
++        }
++        if !matches!(state.stage, Stage::Analysis) {
++            return Err(AppError::conflict("active Analysis stage required"));
++        }
++        let current = Self::reservation_current(&tx, &state)
++            .await?
++            .ok_or_else(|| AppError::conflict("Analysis reservation absent or released"))?;
++        let now = clock(&tx).await?;
++        let a = &current.assignment;
++        if current.lease.holder_subject != actor.subject {
++            return Err(AppError::Forbidden);
++        }
++        if current.lease.expires_at <= now
++            || current.lease.version != command.expected_lease_version
++            || command.assignment_id != a.assignment_id
++            || command.execution_id != a.execution_id
++            || command.agent_id != a.agent_id
++            || command.intent_id != a.intent_id
++            || command.routing_snapshot_id != a.routing_snapshot_id
++            || command.requirement_revision != a.requirement_revision
++            || command.content_hash != a.content_hash
++            || command.fencing_token != a.fencing_token
++            || command.lease_id != a.lease_id
++            || command.assignment_hash != a.assignment_hash
+         {
+-            return Err(inconsistent());
++            return Err(AppError::conflict("stale Analysis terminal fence"));
++        }
++        let duplicate = tx.query_one(statement(
++            "SELECT result_id FROM sdlc_analysis_results WHERE task_id=$1 OR assignment_id=$2 OR intent_id=$3",
++            vec![task.into(), a.assignment_id.into(), a.intent_id.into()],
++        )).await.map_err(map_db)?;
++        if duplicate.is_some() {
++            return Err(AppError::conflict("Analysis result already accepted"));
+         }
++        let result = AnalysisResultReceipt {
++            contract_version: 1,
++            result_id: Uuid::now_v7(),
++            tracker_instance_id: a.tracker_instance_id.clone(),
++            project_id: a.project_id,
++            task_id: a.task_id,
++            root_task_id: a.root_task_id,
++            owner_subject: a.owner_subject.clone(),
++            assignment_id: a.assignment_id,
++            execution_id: a.execution_id,
++            agent_id: a.agent_id,
++            intent_id: a.intent_id,
++            routing_snapshot_id: a.routing_snapshot_id,
++            requirement_revision: a.requirement_revision,
++            content_hash: a.content_hash.clone(),
++            workflow_task_ref: a.workflow_task_ref.clone(),
++            fencing_token: a.fencing_token,
++            lease_id: a.lease_id,
++            lease_version: current.lease.version,
++            previous_stage: Stage::Analysis,
++            next_stage: Stage::Architecture,
++            previous_status: "SDLC Analysis".into(),
++            next_status: "SDLC Architecture".into(),
++            terminal_receipt_ref: command.terminal_receipt_ref.clone(),
++            terminal_receipt_sha256: command.terminal_receipt_sha256.clone(),
++            architecture_input_sha256: command.architecture_input_sha256.clone(),
++            summary: command.summary.clone(),
++            idempotency_key: command.idempotency_key.clone(),
++            created_at: now,
++        };
++        exec(&tx,"INSERT INTO sdlc_analysis_results(result_id,assignment_id,execution_id,task_id,intent_id,lease_version,terminal_receipt_ref,terminal_receipt_sha256,architecture_input_sha256,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
++            vec![result.result_id.into(),result.assignment_id.into(),result.execution_id.into(),task.into(),result.intent_id.into(),result.lease_version.into(),
++                result.terminal_receipt_ref.clone().into(),result.terminal_receipt_sha256.clone().into(),result.architecture_input_sha256.clone().into(),json_value(&result)?]).await?;
++        Self::save_result_operation(&tx, actor, &command.idempotency_key, &hash, &result).await?;
++        state.stage = Stage::Architecture;
++        let next_state = json_value(&state)?;
++        exec(&tx,"INSERT INTO sdlc_analysis_state_write_permits(task_id,transaction_id,next_state) VALUES($1,pg_current_xact_id(),$2)",
++            vec![task.into(),next_state.clone()]).await?;
++        exec(
++            &tx,
++            "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
++            vec![task.into(), next_state],
++        )
++        .await?;
++        exec(&tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
++            SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i
++            JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1)
++            JOIN users u ON u.central_sub=$4
++            WHERE i.id=$2 AND i.status_id<>s.id",
++            vec![Uuid::new_v4().into(), task.into(), result.next_status.clone().into(), actor.subject.clone().into()]).await?;
++        exec(&tx, "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name=$2 ORDER BY id LIMIT 1), sprint_id=NULL, updated_at=now() WHERE id=$1", vec![task.into(), result.next_status.clone().into()]).await?;
++        let payload = json!({"contract_version":1,"tracker_instance_id":&result.tracker_instance_id,
++            "project_id":result.project_id,"task_id":task,"root_task_id":result.root_task_id,
++            "owner_subject":&result.owner_subject,"stage":Stage::Architecture,
++            "requirement_revision":result.requirement_revision,"result":&result});
++        exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.result_accepted',$3)",
++            vec![result.result_id.into(), task.into(), payload.into()]).await?;
++        tx.commit().await.map_err(map_db)?;
++        Ok((result, false))
++    }
++
++    pub(super) async fn read_analysis_result_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<AnalysisResultOperation, AppError> {
++        app::sdlc_reservation::reader(actor)?;
++        app::sdlc::validate_key(key)?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        self.load(&tx, task, actor).await?;
++        let op = Self::result_operation(&tx, task, key)
++            .await?
++            .ok_or_else(|| AppError::not_found("Analysis result operation", key))?;
+         tx.commit().await.map_err(map_db)?;
+         Ok(op)
+     }
+diff --git a/backend/migration/src/lib.rs b/backend/migration/src/lib.rs
+index 2f6f829c..a483ee48 100644
+--- a/backend/migration/src/lib.rs
++++ b/backend/migration/src/lib.rs
+@@ -21,6 +21,7 @@ pub mod m20261001_0000034_sdlc_clarification;
+ mod m20261008_0000090_namespace;
+ mod m20261010_0000091_pm_native_admission;
+ mod m20261010_0000092_pm_state_write_permits;
++mod m20261012_0000093_analysis_result;
+ 
+ pub use sea_orm_migration::prelude::*;
+ 
+@@ -53,6 +54,7 @@ impl MigratorTrait for Migrator {
+             Box::new(m20261008_0000090_namespace::Migration),
+             Box::new(m20261010_0000091_pm_native_admission::Migration),
+             Box::new(m20261010_0000092_pm_state_write_permits::Migration),
++            Box::new(m20261012_0000093_analysis_result::Migration),
+         ]
+     }
+ }
+diff --git a/backend/migration/src/m20261012_0000093_analysis_result.rs b/backend/migration/src/m20261012_0000093_analysis_result.rs
+new file mode 100644
+index 00000000..61176e62
+--- /dev/null
++++ b/backend/migration/src/m20261012_0000093_analysis_result.rs
+@@ -0,0 +1,261 @@
++use sea_orm_migration::prelude::*;
++
++#[derive(DeriveMigrationName)]
++pub struct Migration;
++
++const UP_SQL: &str = r#"
++INSERT INTO statuses (name)
++SELECT name
++FROM (VALUES ('SDLC Architecture')) AS names(name)
++WHERE NOT EXISTS (SELECT 1 FROM statuses s WHERE s.name = names.name);
++
++ALTER TABLE sdlc_tasks DROP CONSTRAINT IF EXISTS sdlc_tasks_stage_known;
++DO $$ DECLARE constraint_name text; BEGIN
++    FOR constraint_name IN
++        SELECT conname FROM pg_constraint
++        WHERE conrelid='sdlc_tasks'::regclass AND contype='c'
++            AND pg_get_constraintdef(oid) LIKE '%state%stage%'
++    LOOP
++        EXECUTE format('ALTER TABLE sdlc_tasks DROP CONSTRAINT %I', constraint_name);
++    END LOOP;
++END $$;
++ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_tasks_stage_known
++    CHECK (state->>'stage' IN ('Draft', 'Clarification', 'Backlog', 'Analysis', 'Architecture'));
++
++DO $$ DECLARE constraint_name text; BEGIN
++    FOR constraint_name IN
++        SELECT conname FROM pg_constraint
++        WHERE conrelid='sdlc_analysis_reservations'::regclass AND contype='u'
++            AND pg_get_constraintdef(oid) IN ('UNIQUE (root_task_id)', 'UNIQUE (agent_id)', 'UNIQUE (pool_slot)')
++    LOOP
++        EXECUTE format('ALTER TABLE sdlc_analysis_reservations DROP CONSTRAINT %I', constraint_name);
++    END LOOP;
++END $$;
++
++CREATE TABLE sdlc_analysis_results (
++    result_id uuid PRIMARY KEY CHECK(result_id!='00000000-0000-0000-0000-000000000000'::uuid),
++    assignment_id uuid NOT NULL UNIQUE REFERENCES sdlc_analysis_reservations(assignment_id) ON DELETE RESTRICT,
++    execution_id uuid NOT NULL UNIQUE CHECK(execution_id!='00000000-0000-0000-0000-000000000000'::uuid),
++    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    intent_id uuid NOT NULL UNIQUE REFERENCES sdlc_analysis_intents(intent_id) ON DELETE RESTRICT,
++    lease_version bigint NOT NULL CHECK(lease_version BETWEEN 1 AND 9007199254740991),
++    terminal_receipt_ref text NOT NULL CHECK(octet_length(terminal_receipt_ref) BETWEEN 1 AND 512),
++    terminal_receipt_sha256 text NOT NULL CHECK(terminal_receipt_sha256 ~ '^[0-9a-f]{64}$'),
++    architecture_input_sha256 text NOT NULL CHECK(architecture_input_sha256 ~ '^[0-9a-f]{64}$'),
++    payload jsonb NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    CHECK((payload->'contract_version'='1'::jsonb
++        AND payload->>'result_id'=result_id::text
++        AND payload->>'assignment_id'=assignment_id::text
++        AND payload->>'execution_id'=execution_id::text
++        AND payload->>'task_id'=task_id::text
++        AND payload->>'intent_id'=intent_id::text
++        AND payload->'lease_version'=to_jsonb(lease_version)
++        AND payload->>'previous_stage'='Analysis'
++        AND payload->>'next_stage'='Architecture'
++        AND payload->>'previous_status'='SDLC Analysis'
++        AND payload->>'next_status'='SDLC Architecture'
++        AND payload->>'terminal_receipt_ref'=terminal_receipt_ref
++        AND payload->>'terminal_receipt_sha256'=terminal_receipt_sha256
++        AND payload->>'architecture_input_sha256'=architecture_input_sha256
++        AND payload->>'content_hash' ~ '^[0-9a-f]{64}$'
++        AND payload->'requirement_revision'=to_jsonb((payload->>'requirement_revision')::bigint)
++        AND (payload->>'requirement_revision')::bigint BETWEEN 1 AND 9007199254740991
++        AND char_length(payload->>'summary') BETWEEN 1 AND 100000
++        AND octet_length(payload->>'idempotency_key') BETWEEN 1 AND 128) IS TRUE)
++);
++
++CREATE TABLE sdlc_analysis_result_operations (
++    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
++    actor_subject text NOT NULL CHECK(length(actor_subject)>0),
++    payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
++    result_id uuid NOT NULL UNIQUE REFERENCES sdlc_analysis_results(result_id) ON DELETE RESTRICT,
++    result jsonb NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    PRIMARY KEY(task_id,idempotency_key),
++    CHECK((result->>'task_id'=task_id::text
++        AND result->>'result_id'=result_id::text
++        AND result->>'idempotency_key'=idempotency_key
++        AND result->>'next_stage'='Architecture') IS TRUE)
++);
++
++CREATE TABLE sdlc_analysis_state_write_permits (
++    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    transaction_id xid8 NOT NULL,
++    next_state jsonb NOT NULL,
++    PRIMARY KEY(task_id,transaction_id)
++);
++
++CREATE TABLE sdlc_analysis_capacity_holds (
++    assignment_id uuid PRIMARY KEY REFERENCES sdlc_analysis_reservations(assignment_id) ON DELETE RESTRICT,
++    root_task_id uuid NOT NULL UNIQUE REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
++    agent_id uuid NOT NULL UNIQUE CHECK(agent_id!='00000000-0000-0000-0000-000000000000'::uuid),
++    pool_slot smallint NOT NULL UNIQUE CHECK(pool_slot BETWEEN 1 AND 2),
++    created_at timestamptz NOT NULL DEFAULT now()
++);
++INSERT INTO sdlc_analysis_capacity_holds(assignment_id,root_task_id,agent_id,pool_slot)
++SELECT assignment_id,root_task_id,agent_id,pool_slot
++FROM sdlc_analysis_reservations
++ON CONFLICT DO NOTHING;
++
++CREATE OR REPLACE FUNCTION sdlc_analysis_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    PERFORM task_id FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
++    PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
++    IF EXISTS(SELECT 1 FROM sdlc_assignments WHERE task_id=NEW.root_task_id OR payload->>'agent_id'=NEW.agent_id::text)
++        OR EXISTS(SELECT 1 FROM sdlc_pm_executions WHERE task_id=NEW.root_task_id)
++        OR EXISTS(SELECT 1 FROM sdlc_tasks WHERE task_id=NEW.root_task_id AND (pm_execution_id IS NOT NULL OR state->'assignment' IS DISTINCT FROM 'null'::jsonb)) THEN
++        RAISE EXCEPTION 'SDLC pm_quiescence_unverified' USING ERRCODE='23514';
++    END IF;
++    IF EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=NEW.root_task_id OR agent_id=NEW.agent_id) THEN
++        RAISE EXCEPTION 'SDLC root/agent capacity held by Analysis reservation' USING ERRCODE='23514';
++    END IF;
++    IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents i JOIN sdlc_tasks t USING(task_id)
++        JOIN sdlc_task_routing_snapshots s ON s.snapshot_id=i.routing_snapshot_id
++        WHERE i.intent_id=NEW.intent_id AND i.task_id=NEW.task_id AND s.snapshot_id=NEW.routing_snapshot_id
++        AND t.state->>'stage'='Analysis' AND t.root_task_id=NEW.root_task_id
++        AND i.requirement_revision=(t.state->'revisions'->-1->>'revision')::bigint
++        AND i.content_hash=t.state->'revisions'->-1->>'content_hash'
++        AND NEW.payload->>'tracker_instance_id'=t.tracker_instance_id
++        AND NEW.payload->>'owner_subject'=t.owner_subject AND NEW.payload->>'project_id'=t.project_id::text
++        AND NEW.payload->>'confirmation_id'=i.confirmation_id::text
++        AND NEW.payload->'requirement_revision'=to_jsonb(i.requirement_revision)
++        AND NEW.payload->>'content_hash'=i.content_hash
++        AND NEW.payload->'routing_policy_version'=to_jsonb(s.policy_version)
++        AND NEW.payload->>'routing_hash'=s.payload->'policy'->>'routing_hash'
++        AND NEW.payload->'route'=s.payload->'policy'->'routes'->'analyst'
++        AND NEW.agent_id::text=s.payload->'policy'->'routes'->'analyst'->>'agent_id') THEN
++        RAISE EXCEPTION 'SDLC reservation requires exact routed current Analysis intent' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++
++CREATE OR REPLACE FUNCTION sdlc_pm_capacity_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    PERFORM task_id FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
++    PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
++    IF EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=NEW.task_id OR agent_id::text=NEW.payload->>'agent_id') THEN
++        RAISE EXCEPTION 'SDLC root/agent capacity held by Analysis reservation' USING ERRCODE='23514';
++    END IF;
++    RETURN NEW;
++END $$;
++
++CREATE FUNCTION sdlc_analysis_result_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r
++        JOIN sdlc_analysis_reservation_leases l USING(assignment_id)
++        JOIN sdlc_analysis_capacity_holds h USING(assignment_id)
++        JOIN sdlc_analysis_intents i ON i.intent_id=r.intent_id
++        JOIN sdlc_tasks t ON t.task_id=r.task_id
++        WHERE r.assignment_id=NEW.assignment_id AND r.execution_id=NEW.execution_id
++            AND r.task_id=NEW.task_id AND r.intent_id=NEW.intent_id
++            AND l.version=NEW.lease_version AND l.expires_at>clock_timestamp()
++            AND t.state->>'stage'='Analysis'
++            AND i.requirement_revision=(t.state->'revisions'->-1->>'revision')::bigint
++            AND i.content_hash=t.state->'revisions'->-1->>'content_hash'
++            AND NEW.payload->>'tracker_instance_id'=t.tracker_instance_id
++            AND NEW.payload->>'project_id'=t.project_id::text
++            AND NEW.payload->>'root_task_id'=t.root_task_id::text
++            AND NEW.payload->>'owner_subject'=t.owner_subject
++            AND NEW.payload->>'workflow_task_ref'=r.payload->>'workflow_task_ref'
++            AND NEW.payload->>'agent_id'=r.agent_id::text
++            AND NEW.payload->>'routing_snapshot_id'=r.routing_snapshot_id::text
++            AND NEW.payload->>'fencing_token'=r.fencing_token::text
++            AND NEW.payload->>'lease_id'=r.lease_id::text
++            AND NEW.payload->>'requirement_revision'=i.requirement_revision::text
++            AND NEW.payload->>'content_hash'=i.content_hash) THEN
++        RAISE EXCEPTION 'SDLC Analysis result requires active exact reservation lease' USING ERRCODE='23514';
++    END IF;
++    DELETE FROM sdlc_analysis_capacity_holds WHERE assignment_id=NEW.assignment_id;
++    RETURN NEW;
++END $$;
++CREATE TRIGGER sdlc_analysis_result_gate BEFORE INSERT ON sdlc_analysis_results
++FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_result_gate();
++
++CREATE OR REPLACE FUNCTION sdlc_analysis_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF OLD.state->>'stage'='Analysis' AND NEW IS DISTINCT FROM OLD THEN
++        IF NEW.state->>'stage'!='Architecture' THEN
++            RAISE EXCEPTION 'SDLC queued Analysis requires guarded admission before lifecycle mutation'
++                USING ERRCODE='23514';
++        END IF;
++        IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_state_write_permits p
++            WHERE p.task_id=OLD.task_id AND p.transaction_id=pg_current_xact_id()
++                AND p.next_state=NEW.state) THEN
++            RAISE EXCEPTION 'SDLC Analysis result requires an authorized state write'
++                USING ERRCODE='23514';
++        END IF;
++        IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_results r
++            WHERE r.task_id=OLD.task_id
++                AND r.payload->>'requirement_revision'=OLD.state->'revisions'->-1->>'revision'
++                AND r.payload->>'content_hash'=OLD.state->'revisions'->-1->>'content_hash') THEN
++            RAISE EXCEPTION 'SDLC Analysis result history absent' USING ERRCODE='23514';
++        END IF;
++        DELETE FROM sdlc_analysis_state_write_permits
++        WHERE task_id=OLD.task_id AND transaction_id=pg_current_xact_id()
++            AND next_state=NEW.state;
++    END IF;
++    RETURN NEW;
++END $$;
++
++CREATE OR REPLACE FUNCTION sdlc_issue_gate() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE binding sdlc_tasks%ROWTYPE; target_name text;
++BEGIN
++    SELECT * INTO binding FROM sdlc_tasks WHERE task_id = NEW.id;
++    IF NOT FOUND THEN RETURN NEW; END IF;
++    IF NEW.project_id != binding.project_id THEN
++        RAISE EXCEPTION 'SDLC project binding is immutable' USING ERRCODE = '23514';
++    END IF;
++    SELECT name INTO target_name FROM statuses WHERE id = NEW.status_id;
++    IF binding.state->>'stage' IN ('Draft', 'Clarification') THEN
++        IF target_name != 'SDLC ' || (binding.state->>'stage') OR NEW.sprint_id IS NOT NULL THEN
++            RAISE EXCEPTION 'SDLC confirmation gate blocks transition/sprint' USING ERRCODE = '23514';
++        END IF;
++    ELSIF NOT EXISTS (
++        SELECT 1 FROM sdlc_confirmations c WHERE c.task_id = NEW.id
++        AND c.revision = (binding.state->'revisions'->-1->>'revision')::bigint
++        AND c.content_hash = binding.state->'revisions'->-1->>'content_hash'
++    ) THEN
++        RAISE EXCEPTION 'SDLC exact revision confirmation absent' USING ERRCODE = '23514';
++    END IF;
++    IF binding.state->>'stage'='Analysis' THEN
++        IF target_name != 'SDLC Analysis' OR NEW.sprint_id IS NOT NULL OR NOT EXISTS (
++            SELECT 1 FROM sdlc_analysis_intents q WHERE q.task_id=NEW.id
++                AND q.requirement_revision=(binding.state->'revisions'->-1->>'revision')::bigint
++                AND q.content_hash=binding.state->'revisions'->-1->>'content_hash'
++        ) THEN
++            RAISE EXCEPTION 'SDLC queued Analysis requires guarded admission' USING ERRCODE='23514';
++        END IF;
++    ELSIF binding.state->>'stage'='Architecture' THEN
++        IF target_name != 'SDLC Architecture' OR NEW.sprint_id IS NOT NULL OR NOT EXISTS (
++            SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=NEW.id
++                AND r.payload->>'requirement_revision'=binding.state->'revisions'->-1->>'revision'
++                AND r.payload->>'content_hash'=binding.state->'revisions'->-1->>'content_hash'
++        ) THEN
++            RAISE EXCEPTION 'SDLC Architecture requires accepted Analysis result' USING ERRCODE='23514';
++        END IF;
++    END IF;
++    RETURN NEW;
++END $$;
++
++CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_analysis_results
++FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
++CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_analysis_result_operations
++FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
++"#;
++
++#[async_trait::async_trait]
++impl MigrationTrait for Migration {
++    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
++        manager.get_connection().execute_unprepared(UP_SQL).await?;
++        Ok(())
++    }
++
++    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
++        Err(DbErr::Custom(
++            "Analysis result history is additive; rollback requires preserving lifecycle history"
++                .into(),
++        ))
++    }
++}
+diff --git a/backend/server/tests/support/lifecycle_guard.rs b/backend/server/tests/support/lifecycle_guard.rs
+index b2d26574..3c6634a6 100644
+--- a/backend/server/tests/support/lifecycle_guard.rs
++++ b/backend/server/tests/support/lifecycle_guard.rs
+@@ -112,7 +112,8 @@ pub async fn queued_analysis(db: &DatabaseConnection, task: Uuid) {
+             .unwrap_err()
+             .to_string();
+         assert!(
+-            error.contains("guarded admission before lifecycle mutation"),
++            error.contains("guarded admission before lifecycle mutation")
++                || error.contains("authorized state write"),
+             "{error}"
+         );
+     }
+diff --git a/docs/API.md b/docs/API.md
+index 3a1256e2..f009e894 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -32,6 +32,15 @@ Receipt awaiting_admission/dispatch_allowed=false; GET явно показыва
+ Replay не продлевает lease. Release/ACK/run endpoints отсутствуют.
+ Полные DTO и hash semantics: [SDLC_RESERVATION_V1](SDLC_RESERVATION_V1.md).
+ 
++`POST /api/v1/issues/{id}/sdlc/analysis-result` is the first Tracker-authoritative
++terminal producer endpoint for Analyst work. It accepts the exact prepared
++assignment identity, active lease/fence, Workflow terminal receipt ref/hash and
++Architecture input hash; Tracker validates the current reservation and atomically
++records the result, releases Analysis capacity and advances the root task to
++`stage: Architecture` / `SDLC Architecture`. Same-key replay is retained at
++`/analysis-result/operations/{idempotency_key}` and never creates a second
++transition. Fleet/Hermes still do not mutate Tracker business state directly.
++
+ ## SDLC Clarification API
+ 
+ Маршрутизация SDLC проекта реализована как prerequisite под управлением владельца:
+diff --git a/docs/CHAT_CLARIFICATION_CONTRACT.md b/docs/CHAT_CLARIFICATION_CONTRACT.md
+index 22ec2f6e..eabce364 100644
+--- a/docs/CHAT_CLARIFICATION_CONTRACT.md
++++ b/docs/CHAT_CLARIFICATION_CONTRACT.md
+@@ -330,7 +330,7 @@ type SdlcContext = {
+   task_id: string;
+   root_task_id: string;
+   owner_subject: string;
+-  stage: "Draft" | "Clarification" | "Backlog" | "Analysis";
++  stage: "Draft" | "Clarification" | "Backlog" | "Analysis" | "Architecture";
+   requirement_revision: number | null; // 1..Number.MAX_SAFE_INTEGER when present
+   waiting_reason: string | null;
+   permissions: { can_answer: boolean; can_confirm: boolean };
+diff --git a/docs/DATA_MODEL.md b/docs/DATA_MODEL.md
+index d6f519d1..d7d558af 100644
+--- a/docs/DATA_MODEL.md
++++ b/docs/DATA_MODEL.md
+@@ -10,14 +10,17 @@ observation and its state change commit together; populated downgrade is refused
+ 
+ ## Ledger подготовленного Analysis assignment
+ 
+-Только pending 000034: append-only `sdlc_analysis_reservations` и
++Pending 000034 хранит append-only `sdlc_analysis_reservations` и
+ `sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
+ bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
+-Unique task/root/agent/pool slot сохраняют holds после expiry. Exact routed intent
+-и immutable route проверяют SQL gates; deferred FK требуют lease/current receipt
+-в той же транзакции. Heartbeat +1, TTL30; expired renewal/delete запрещены.
+-История PM неизменна и без trusted stop блокирует root/agent reservation.
+-[Модель, индексы и API](SDLC_RESERVATION_V1.md). Новая миграция не добавлена.
++Additive 000093 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
++capacity ledger, append-only `sdlc_analysis_results` и
++`sdlc_analysis_result_operations`, а также transaction-scoped
++`sdlc_analysis_state_write_permits`. Принятый terminal result удаляет hold в той
++же транзакции, но reservation/result history остаётся append-only. Exact routed
++intent, active lease и immutable route проверяют SQL gates; heartbeat +1, TTL30;
++expired renewal/delete запрещены. История PM неизменна и без trusted stop
++блокирует root/agent reservation. [Модель, индексы и API](SDLC_RESERVATION_V1.md).
+ 
+ ## SDLC: Additive Migration 000034
+ 
+diff --git a/docs/SDLC_LIFECYCLE_V1.md b/docs/SDLC_LIFECYCLE_V1.md
+index 474c4a01..6640b82c 100644
+--- a/docs/SDLC_LIFECYCLE_V1.md
++++ b/docs/SDLC_LIFECYCLE_V1.md
+@@ -74,7 +74,7 @@ intent. GET сверяет intent с текущим aggregate, exact confirmatio
+ | Prepared Analysis reservation | Реализован Tracker-only ledger/API: root1/agent1/pool2, immutable identity/hash, CAS/lease/outbox; [контракт](SDLC_RESERVATION_V1.md) |
+ | Execution admission / dispatch | Не реализованы; нужны fresh native/Workflow acceptance и trusted stop counterpart |
+ | До decomposition: root-only identity / queued Analysis fence | Реализован bounded guard ниже; не DAG/coverage/barrier |
+-| Analyst terminal → Architecture | Не реализован; accepted Workflow terminal receipt и guarded transition |
++| Analyst terminal → Architecture | Реализован Tracker-only result endpoint: active reservation lease, terminal receipt hash, guarded transition |
+ | Decomposition / children / DAG / coverage | Не реализованы; materialization owner-команды Tracker |
+ | Barrier / aggregate / Rework / deployment | Не реализованы; exact active revisions и trusted owner receipts |
+ | Сквозной PDLC / установка / acceptance | NOT RUN; этот срез не доказывает автономный runtime |
+@@ -191,9 +191,9 @@ B-SDLC-01/B-SDLC-05/guard и owned package/main changes; full gate остаёт
+ 
+ 2026-10-03: Main выбрал bounded fallback после сверки owner prerequisites:
+ ближайший concrete lifecycle guard вместо speculative Architect API.
+-`Stage` пока не содержит Architecture;
+-нет non-PM admitted assignment/fence/config ledger, accepted Analyst terminal
+-transition или authenticated Architect materialization/terminal capability.
++`Stage` теперь содержит Architecture только как результат accepted Analyst
++terminal transition; authenticated Architect materialization/terminal capability
++ещё не реализована.
+ Оператор, PM credential, Base source-admission receipt и caller-supplied flags
+ не заменяют эти prerequisites. Поэтому parent/children/dependencies, versioned
+ coverage, dependency cycle validation и root barrier не объявляются реализованными.
+@@ -208,15 +208,15 @@ missing root возвращает 422 без state/history/idempotency/outbox wr
+ 
+ `TaskState::require_root` и repository load отвергают retained non-root/nil task
+ identity с 409; application reads/commands и consent readiness также fail-closed.
+-Pending 000034 получает только root-only CHECK и `sdlc_analysis_gate`: changed
+-aggregate/control row после queued Analysis запрещён до future guarded admission.
++Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000093
++ослабляет gate только для одного transaction-permitted перехода
++Analysis -> Architecture после append-only `sdlc_analysis_results`.
+ Нельзя откатить stage к Backlog/Draft, подменить revision/hash/assignment либо
+ добавить invented accepted decomposition и затем обойти issue status gate.
+-No-op state update и обычный frozen readback остаются допустимыми. Новых assignments,
+-receipts, producer/scheduler, авторуна или миграции 000035 нет.
++No-op state update и обычный frozen readback остаются допустимыми.
+ 
+-Future Architect slice должен согласовать accepted Analyst -> Architecture
+-transition, actual non-PM admitted identity/fence и trusted terminal authority.
++Future Architect slice должен добавить actual Architect admission/materialization
++и trusted terminal authority.
+ Только вместе с этим root-only CHECK можно заменить на реальные ROOT/DELIVERY_CHILD
+ membership/parent/project/revision constraints, atomic materialization, DAG/coverage
+ validation и barrier по exact trusted DevOps deployment/acceptance receipts всех
+diff --git a/docs/SDLC_RESERVATION_V1.md b/docs/SDLC_RESERVATION_V1.md
+index 468a1c66..54bb5c57 100644
+--- a/docs/SDLC_RESERVATION_V1.md
++++ b/docs/SDLC_RESERVATION_V1.md
+@@ -10,6 +10,13 @@ session/run binding, release, ACK, stop proof или фонового второ
+ Fresh Fleet native admission, Workflow acceptance и trusted verified-stop остаются
+ обязательными следующими counterpart interfaces, а не результатом reserve.
+ 
++Terminal result фиксируется отдельным Tracker-authoritative endpoint
++`POST /api/v1/issues/{id}/sdlc/analysis-result`: caller передаёт exact assignment,
++lease/fence, Workflow terminal receipt ref/hash и `architecture_input_sha256`.
++Backend проверяет активный hold/lease и атомарно пишет append-only result,
++освобождает capacity и переводит root в `stage: Architecture` /
++`SDLC Architecture`. Fleet/Hermes не получают права прямой мутации business state.
++
+ Нужен snapshot явной публикации из [SDLC_ROUTING_V1](SDLC_ROUTING_V1.md).
+ UI confirmation включает routing только отдельным явным выбором опубликованной
+ policy, без автоматического enrollment. Legacy задачи без snapshot не
+@@ -46,6 +53,8 @@ GET требует существующий Central human/project ACL либо m
+ | GET | текущий receipt или null, observed time, lease state, reconciliation reason и retained capacity |
+ | POST `/heartbeat` | `assignment_id`, `execution_id`, `fencing_token`, `lease_id`, `expected_lease_version`, `idempotency_key`; 201 новая версия, 200 первоначальный replay |
+ | GET `/operations/{idempotency_key}` | original result и `request_sha256`; 404 при отсутствии операции |
++| POST `/../analysis-result` | exact assignment identity, current lease version, terminal receipt ref/hash, Architecture input hash, summary, `idempotency_key`; 201 accepted result, 200 replay |
++| GET `/../analysis-result/operations/{idempotency_key}` | original accepted result и `request_sha256`; 404 при отсутствии операции |
+ 
+ Unknown поля запрещены. UUID канонические, ненулевые; версии положительные safe
+ JSON integers до 9007199254740991, initial reservation CAS только integer 0.
+@@ -111,10 +120,11 @@ GET не делает renewal или reconciliation writes. `lease_state`:
+ `unreserved|active|expired`. Expiry явно возвращает `reconciliation_needed:true`,
+ `reason:lease_expired_stop_unverified` и `capacity_held:true`; прежний receipt
+ остаётся неизменным. Неизвестный PM даёт reason `pm_quiescence_unverified`.
+-Без trusted stop не существует release/reacquire/replace endpoint.
++Без accepted terminal result не существует release/reacquire/replace endpoint.
++Expired lease cannot submit a result; stale fence/lease/version returns 409.
+ 
+ Одна транзакция проверяет task/ACL/current publication, резервирует root1/agent1/
+-technical pool2, сохраняет assignment, lease, operation receipt и outbox
++technical pool2, сохраняет assignment, lease, mutable capacity hold, operation receipt и outbox
+ `analysis.assignment_reserved` (`event_id=assignment_id`). Все holds, включая
+ expired/unknown, занимают capacity. PM не занимает technical slot, но его
+ неподтверждённые root/agent bindings блокируют пересечение; новые PM assignment
+@@ -135,11 +145,12 @@ Reserved resource имеет ровно восемь полей: `assignment_id`
+ 
+ ## SQL и проверка
+ 
+-Расширена только pending 000034: singleton capacity lock, ограниченная sequence
+-fence, append-only `sdlc_analysis_reservations`,
+-`sdlc_analysis_reservation_operations` и CAS head
+-`sdlc_analysis_reservation_leases`. Unique root/agent/pool slot удерживают capacity
+-без expiry predicates. FK/insert gates сверяют exact intent/snapshot/route;
++Расширена pending 000034 плюс additive 000093: singleton capacity lock,
++ограниченная sequence fence, append-only `sdlc_analysis_reservations`,
++`sdlc_analysis_reservation_operations`, `sdlc_analysis_results`,
++`sdlc_analysis_result_operations`, mutable `sdlc_analysis_capacity_holds` и CAS head
++`sdlc_analysis_reservation_leases`. Capacity удерживается hold-таблицей без expiry
++predicates; accepted result удаляет hold в той же транзакции. FK/insert gates сверяют exact intent/snapshot/route;
+ deferred FK требуют lease и current operation receipt в той же транзакции.
+ Lease mutation gate запрещает delete, identity rewrite, version jump и expired
+ renewal. Исторические data не backfill-ятся и не enrolled автоматически.
+@@ -149,7 +160,7 @@ Scoped проверки находятся в `app::sdlc_reservation`, `api::rou
+ PG, без native admission/stop evidence. Полный build/CI/deploy/native acceptance
+ не являются частью проверки этого source-среза.
+ 
+-### Проверенный source-срез
++### Проверенный prepared-reservation source-срез
+ 
+ Scoped app command/authority test, Rust API reservation schema test (включая
+ уникальность operation IDs), metadata schema test и один PostgreSQL/HTTP lifecycle
+@@ -158,9 +169,10 @@ project ACL и отзыв membership, CAS/replay, rollback outbox, immutable rou
+ workflow task ref, реальный TTL expiry и durable readback после restart.
+ Deferred FK и SQL mutation gates проверены отрицательными транзакциями.
+ 
+-OpenAPI заново экспортирован штатным Rust `api --bin gen-openapi`, а не правкой
+-frozen JSON. Экспорт содержит Stage `Draft|Clarification|Backlog|Analysis` и
+-11 strict metadata event types. Generated TypeScript consistency и scoped
++OpenAPI source-аннотации расширены под штатный Rust `api --bin gen-openapi`, а не
++ручные schema edits. После экспорта frozen JSON должен содержать Stage
++`Draft|Clarification|Backlog|Analysis|Architecture` и 12 strict metadata event types.
++Generated TypeScript consistency и scoped
+ B05 typecheck прошли. Exhaustive B05 event-label map дополнен только нейтральной
+ подписью prepared/awaiting admission; отдельный history component test прошёл.
+ В reservation срезе policy/opt-in UI не добавлялись. Последующий
+diff --git a/docs/TZ.md b/docs/TZ.md
+index 6e5803b6..b2ae0c3f 100644
+--- a/docs/TZ.md
++++ b/docs/TZ.md
+@@ -54,13 +54,13 @@ readback supports reconciliation after restart. Dispatch/admission, other stage
+ transitions, decomposition/barrier/Rework and end-to-end PDLC remain incomplete:
+ [implemented slice and next interfaces](SDLC_LIFECYCLE_V1.md).
+ 
+-The next bounded B-SDLC-01 slice cannot safely accept Architect materialization:
+-Architecture/non-PM admitted assignment and trusted terminal authority do not yet
+-exist. Its concrete fallback closes root-binding/queued-state bypasses instead:
+-root-only strict binding, non-root PM lifecycle/read denial and a DB freeze of
+-queued Analysis. Real parent/root/dependencies, revisioned coverage, dependency
+-cycle validation and the active-decomposition root barrier remain unimplemented.
+-No operator/fixture assignment or receipt enables them.
++The next bounded B-SDLC-01 slices separate responsibilities: Tracker now accepts
++an exact Analyst terminal result and moves the root to Architecture, but Architect
++materialization and trusted Architect terminal authority still do not exist.
++Root-only strict binding, non-root PM lifecycle/read denial and guarded Analysis
++state writes remain the fallback until real parent/root/dependencies, revisioned
++coverage, dependency cycle validation and active-decomposition root barrier are
++implemented.
+ 
+ Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
+ revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.

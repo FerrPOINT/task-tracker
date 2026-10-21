@@ -1,0 +1,3724 @@
+diff --git a/docs/ui-routes.json b/docs/ui-routes.json
+new file mode 100644
+index 0000000..b0f1a55
+--- /dev/null
++++ b/docs/ui-routes.json
+@@ -0,0 +1,220 @@
++{
++  "schemaVersion": 1,
++  "product": "task-tracker",
++  "routeSource": "frontend/src/app/router.tsx",
++  "shellSource": "frontend/src/widgets/app-shell.tsx",
++  "runtimeSources": ["frontend/src", "frontend/nginx.conf", "backend"],
++  "acceptanceStatus": "pending",
++  "routes": [
++    {
++      "pattern": "/",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/projects",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/projects",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/projects/:projectKey/board",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/projects/DEMO/board",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/projects/:projectKey/backlog",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/projects/DEMO/backlog",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/projects/:projectKey/trash",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/projects/DEMO/trash",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/projects/:projectKey/settings/custom-fields",
++      "kind": "operational",
++      "layout": "reading",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/projects/DEMO/settings/custom-fields",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/search",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/search",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/notifications",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/notifications",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/reports",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/reports?project_key=DEMO",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/admin",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/admin",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/issues/create",
++      "kind": "operational",
++      "layout": "reading",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/issues/create?project_key=DEMO",
++      "states": [
++        "normal",
++        "loading",
++        "empty",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/issues/:id",
++      "kind": "operational",
++      "layout": "detail-with-aside",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/issues/issue-1",
++      "states": [
++        "normal",
++        "loading",
++        "permission-denied",
++        "not-found",
++        "error",
++        "partial-error"
++      ],
++      "qa": { "status": "not-run" }
++    },
++    {
++      "pattern": "/*",
++      "kind": "operational",
++      "layout": "wide",
++      "roles": ["authenticated_user"],
++      "fixture": "isolated:/unknown-page",
++      "states": ["not-found"],
++      "qa": { "status": "not-run" }
++    },
++    { "pattern": "/login", "kind": "public" },
++    { "pattern": "/sso/callback", "kind": "public" },
++    { "pattern": "/register", "kind": "redirect" }
++  ]
++}
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 5232eaf..55bc6c7 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -1,6 +1,4 @@
+ import { generateKeyPairSync, sign } from 'node:crypto'
+-import { mkdirSync } from 'node:fs'
+-import nodePath from 'node:path'
+ import { test, expect, type Page, type Route } from '@playwright/test'
+ 
+ const mockUser = {
+@@ -66,145 +64,160 @@ async function installSsoMocks(page: Page) {
+   await page.route('**/oidc/jwks', (route) => routeJson(route, { keys: [jwk] }))
+ }
+ 
+-test.describe('smoke', () => {
+-  test('login then navigate through dashboard, projects, board and create issue', async ({
+-    page,
+-    baseURL,
+-  }, testInfo) => {
+-    test.setTimeout(120_000)
+-    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+-    await installSsoMocks(page)
+-    await page.route('**/api/v1/auth/login', (route) =>
+-      routeJson(route, {
+-        access_token: 'demo-token',
+-        token_type: 'Bearer',
+-        user_id: mockUser.id,
+-        email: 'demo@example.com',
+-      }),
+-    )
+-    await page.route('**/api/v1/dashboard', (route) => routeJson(route, { assigned_issues: [] }))
+-    await page.route('**/api/v1/users/me', (route) =>
+-      routeJson(route, {
+-        id: mockUser.id,
+-        email: 'demo@example.com',
+-        username: 'demo',
+-        display_name: 'Demo User',
+-      }),
+-    )
+-    await page.route('**/api/v1/statuses', (route) =>
+-      routeJson(route, [
++async function installTrackerMocks(page: Page) {
++  await installSsoMocks(page)
++  await page.route('**/api/v1/auth/login', (route) =>
++    routeJson(route, {
++      access_token: 'demo-token',
++      token_type: 'Bearer',
++      user_id: mockUser.id,
++      email: 'demo@example.com',
++    }),
++  )
++  await page.route('**/api/v1/dashboard', (route) => routeJson(route, { assigned_issues: [] }))
++  await page.route('**/api/v1/users/me', (route) =>
++    routeJson(route, {
++      id: mockUser.id,
++      email: 'demo@example.com',
++      username: 'demo',
++      display_name: 'Demo User',
++    }),
++  )
++  await page.route('**/api/v1/statuses', (route) =>
++    routeJson(route, [
++      {
++        id: 'todo',
++        name: 'To Do',
++        category: 'todo',
++        position: 0,
++        is_default: true,
++        is_closed: false,
++      },
++      {
++        id: 'inprogress',
++        name: 'In Progress',
++        category: 'inprogress',
++        position: 1,
++        is_default: false,
++        is_closed: false,
++      },
++      {
++        id: 'done',
++        name: 'Done',
++        category: 'done',
++        position: 2,
++        is_default: false,
++        is_closed: true,
++      },
++    ]),
++  )
++  await page.route('**/api/v1/transitions', (route) => routeJson(route, []))
++  await page.route('**/api/v1/users', (route) =>
++    routeJson(route, {
++      users: [{ id: mockUser.id, username: 'demo', display_name: 'Demo User' }],
++    }),
++  )
++  await page.route('**/api/v1/issue-types**', (route) =>
++    routeJson(route, [
++      {
++        id: 'task',
++        name: 'Task',
++        description: 'Standard task',
++        icon: 'check-square',
++        color: '#6b78e5',
++        hierarchy_level: 0,
++        is_subtask: false,
++      },
++    ]),
++  )
++  await page.route('**/api/v1/projects', (route) =>
++    routeJson(route, {
++      projects: [
+         {
+-          id: 'todo',
+-          name: 'To Do',
+-          category: 'todo',
+-          position: 0,
+-          is_default: true,
+-          is_closed: false,
++          id: '00000000-0000-0000-0000-000000000010',
++          key: mockUser.key,
++          name: mockUser.name,
++          description: 'Smoke test project',
++          owner_id: mockUser.id,
++          todo_count: 1,
++          in_progress_count: 0,
++          done_count: 0,
+         },
++      ],
++    }),
++  )
++  await page.route('**/api/v1/projects/**/members**', (route) =>
++    routeJson(route, {
++      members: [
+         {
+-          id: 'inprogress',
+-          name: 'In Progress',
+-          category: 'inprogress',
+-          position: 1,
+-          is_default: false,
+-          is_closed: false,
++          project_id: '00000000-0000-0000-0000-000000000010',
++          user_id: mockUser.id,
++          role: 'owner',
+         },
++      ],
++    }),
++  )
++  await page.route('**/api/v1/projects/*/board', (route) =>
++    routeJson(route, {
++      columns: [
++        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [mockUser.issueId] },
++        { id: 'inprogress', name: 'In Progress', wip_limit: null, issue_ids: [] },
++        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
++      ],
++      issues: [
+         {
+-          id: 'done',
+-          name: 'Done',
+-          category: 'done',
+-          position: 2,
+-          is_default: false,
+-          is_closed: true,
++          id: mockUser.issueId,
++          key: `${mockUser.key}-1`,
++          summary: 'Smoke issue',
++          description: '',
++          issue_type: 'Task',
++          status: 'To Do',
++          priority: 'Medium',
++          labels: [],
++          assignee_id: null,
++          assignee_name: null,
++          reporter_id: mockUser.id,
++          reporter_name: 'Demo User',
++          project_name: mockUser.name,
+         },
+-      ]),
+-    )
+-    await page.route('**/api/v1/transitions', (route) => routeJson(route, []))
+-    await page.route('**/api/v1/users', (route) =>
+-      routeJson(route, {
+-        users: [{ id: mockUser.id, username: 'demo', display_name: 'Demo User' }],
+-      }),
+-    )
+-    await page.route('**/api/v1/issue-types**', (route) =>
+-      routeJson(route, [
++      ],
++      sprint: {
++        id: 'sprint-1',
++        name: 'Sprint 1',
++        goal: '',
++        state: 'active',
++        velocity: 0,
++        remaining_days: 14,
++        issue_ids: [mockUser.issueId],
++      },
++    }),
++  )
++  await page.route('**/api/v1/projects/*/backlog**', (route) =>
++    routeJson(route, {
++      project_id: '00000000-0000-0000-0000-000000000010',
++      project_key: mockUser.key,
++      sprint: {
++        id: 'sprint-1',
++        name: 'Sprint 1',
++        goal: '',
++        state: 'active',
++        issue_ids: [],
++        velocity: 0,
++        remaining_days: 14,
++        start_date: null,
++        end_date: null,
++      },
++      sprint_issues: [],
++      backlog_issues: [],
++      backlog_total: 0,
++      backlog_offset: 0,
++      backlog_limit: 100,
++    }),
++  )
++  await page.route('**/api/v1/projects/*/sprints', (route) =>
++    routeJson(route, {
++      sprints: [
+         {
+-          id: 'task',
+-          name: 'Task',
+-          description: 'Standard task',
+-          icon: 'check-square',
+-          color: '#6b78e5',
+-          hierarchy_level: 0,
+-          is_subtask: false,
+-        },
+-      ]),
+-    )
+-    await page.route('**/api/v1/projects', (route) =>
+-      routeJson(route, {
+-        projects: [
+-          {
+-            id: '00000000-0000-0000-0000-000000000010',
+-            key: mockUser.key,
+-            name: mockUser.name,
+-            description: 'Smoke test project',
+-            owner_id: mockUser.id,
+-            todo_count: 1,
+-            in_progress_count: 0,
+-            done_count: 0,
+-          },
+-        ],
+-      }),
+-    )
+-    await page.route('**/api/v1/projects/**/members**', (route) =>
+-      routeJson(route, {
+-        members: [
+-          {
+-            project_id: '00000000-0000-0000-0000-000000000010',
+-            user_id: mockUser.id,
+-            role: 'owner',
+-          },
+-        ],
+-      }),
+-    )
+-    await page.route('**/api/v1/projects/*/board', (route) =>
+-      routeJson(route, {
+-        columns: [
+-          { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [mockUser.issueId] },
+-          { id: 'inprogress', name: 'In Progress', wip_limit: null, issue_ids: [] },
+-          { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
+-        ],
+-        issues: [
+-          {
+-            id: mockUser.issueId,
+-            key: `${mockUser.key}-1`,
+-            summary: 'Smoke issue',
+-            description: '',
+-            issue_type: 'Task',
+-            status: 'To Do',
+-            priority: 'Medium',
+-            labels: [],
+-            assignee_id: null,
+-            assignee_name: null,
+-            reporter_id: mockUser.id,
+-            reporter_name: 'Demo User',
+-            project_name: mockUser.name,
+-          },
+-        ],
+-        sprint: {
+-          id: 'sprint-1',
+-          name: 'Sprint 1',
+-          goal: '',
+-          state: 'active',
+-          velocity: 0,
+-          remaining_days: 14,
+-          issue_ids: [mockUser.issueId],
+-        },
+-      }),
+-    )
+-    await page.route('**/api/v1/projects/*/backlog**', (route) =>
+-      routeJson(route, {
+-        project_id: '00000000-0000-0000-0000-000000000010',
+-        project_key: mockUser.key,
+-        sprint: {
+           id: 'sprint-1',
+           name: 'Sprint 1',
+           goal: '',
+@@ -215,114 +228,189 @@ test.describe('smoke', () => {
+           start_date: null,
+           end_date: null,
+         },
+-        sprint_issues: [],
+-        backlog_issues: [],
+-        backlog_total: 0,
+-        backlog_offset: 0,
+-        backlog_limit: 100,
+-      }),
+-    )
+-    await page.route('**/api/v1/projects/*/sprints', (route) =>
+-      routeJson(route, {
+-        sprints: [
+-          {
+-            id: 'sprint-1',
+-            name: 'Sprint 1',
+-            goal: '',
+-            state: 'active',
+-            issue_ids: [],
+-            velocity: 0,
+-            remaining_days: 14,
+-            start_date: null,
+-            end_date: null,
+-          },
+-        ],
+-      }),
+-    )
+-    await page.route('**/api/v1/projects/*/custom-fields', (route) =>
+-      routeJson(route, { fields: [] }),
+-    )
+-    await page.route('**/api/v1/projects/*/labels', (route) => routeJson(route, { labels: [] }))
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}`, (route) =>
+-      routeJson(route, {
+-        id: mockUser.issueId,
+-        key: `${mockUser.key}-1`,
+-        summary: 'Smoke issue',
+-        description: 'Issue detail smoke description',
+-        issue_type: 'Task',
+-        status: 'To Do',
+-        status_id: 'todo',
+-        priority: 'Medium',
+-        labels: [],
+-        assignee_id: null,
+-        assignee_name: null,
+-        reporter_id: '00000000-0000-0000-0000-000000000002',
+-        reporter_name: 'Reporter User',
+-        project_key: mockUser.key,
+-        project_name: mockUser.name,
+-        sprint_id: null,
+-        original_estimate_seconds: null,
+-        remaining_estimate_seconds: null,
+-        time_spent_seconds: 0,
+-      }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
+-      routeJson(route, { comments: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
+-      routeJson(route, { worklogs: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/attachments`, (route) =>
+-      routeJson(route, { attachments: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/labels`, (route) =>
+-      routeJson(route, { labels: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/links`, (route) =>
+-      routeJson(route, { links: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
+-      routeJson(route, { values: [] }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
+-      routeJson(route, {
+-        count: 1,
+-        votes: [
+-          {
+-            user_id: '00000000-0000-0000-0000-000000000003',
+-            username: 'voter',
+-            display_name: 'Voter User',
+-            voted_at: '2026-09-01T10:00:00Z',
+-          },
+-        ],
+-      }),
+-    )
+-    await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
+-      routeJson(route, {
+-        watchers: [
+-          {
+-            user_id: mockUser.id,
+-            username: 'demo',
+-            display_name: 'Demo User',
+-          },
+-        ],
+-      }),
+-    )
+-    await page.route('**/api/v1/notifications', (route) =>
+-      routeJson(route, { notifications: [], unread_count: 0 }),
+-    )
+-    await page.route('**/api/v1/events**', (route) => routeJson(route, ''))
+-    await page.route('**/api/v1/auth/refresh', (route) =>
+-      routeJson(route, {
+-        access_token: 'demo-token',
+-        token_type: 'Bearer',
+-        user_id: mockUser.id,
+-        email: 'demo@example.com',
+-      }),
+-    )
+-    await page.route('**/api/v1/notifications**', (route) =>
+-      routeJson(route, { notifications: [], unread_count: 0 }),
++      ],
++    }),
++  )
++  await page.route('**/api/v1/projects/*/custom-fields', (route) =>
++    routeJson(route, { fields: [] }),
++  )
++  await page.route('**/api/v1/projects/*/labels', (route) => routeJson(route, { labels: [] }))
++  await page.route(`**/api/v1/issues/${mockUser.issueId}`, (route) =>
++    routeJson(route, {
++      id: mockUser.issueId,
++      key: `${mockUser.key}-1`,
++      summary: 'Smoke issue',
++      description: 'Issue detail smoke description',
++      issue_type: 'Task',
++      status: 'To Do',
++      status_id: 'todo',
++      priority: 'Medium',
++      labels: [],
++      assignee_id: null,
++      assignee_name: null,
++      reporter_id: '00000000-0000-0000-0000-000000000002',
++      reporter_name: 'Reporter User',
++      project_key: mockUser.key,
++      project_name: mockUser.name,
++      sprint_id: null,
++      original_estimate_seconds: null,
++      remaining_estimate_seconds: null,
++      time_spent_seconds: 0,
++    }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
++    routeJson(route, { comments: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
++    routeJson(route, { worklogs: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/attachments`, (route) =>
++    routeJson(route, { attachments: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/labels`, (route) =>
++    routeJson(route, { labels: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/links`, (route) =>
++    routeJson(route, { links: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
++    routeJson(route, { values: [] }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
++    routeJson(route, {
++      count: 1,
++      votes: [
++        {
++          user_id: '00000000-0000-0000-0000-000000000003',
++          username: 'voter',
++          display_name: 'Voter User',
++          voted_at: '2026-09-01T10:00:00Z',
++        },
++      ],
++    }),
++  )
++  await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
++    routeJson(route, {
++      watchers: [
++        {
++          user_id: mockUser.id,
++          username: 'demo',
++          display_name: 'Demo User',
++        },
++      ],
++    }),
++  )
++  await page.route('**/api/v1/notifications', (route) =>
++    routeJson(route, { notifications: [], unread_count: 0 }),
++  )
++  await page.route('**/api/v1/events**', (route) => routeJson(route, ''))
++  await page.route('**/api/v1/auth/refresh', (route) =>
++    routeJson(route, {
++      access_token: 'demo-token',
++      token_type: 'Bearer',
++      user_id: mockUser.id,
++      email: 'demo@example.com',
++    }),
++  )
++  await page.route('**/api/v1/notifications**', (route) =>
++    routeJson(route, { notifications: [], unread_count: 0 }),
++  )
++}
++
++test.describe('smoke', () => {
++  test('preserves an unknown address through SSO and reload and restores mobile drawer focus', async ({
++    page,
++    baseURL,
++  }) => {
++    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.setViewportSize({ width: 375, height: 812 })
++    await page.goto(`${appBaseURL}/missing-page?keep=context`)
++    await expect(page).toHaveURL(`${appBaseURL}/missing-page?keep=context`)
++    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
++    await expect(page.locator('[data-page-layout]')).toHaveAttribute('data-page-layout', 'wide')
++    await page.reload()
++    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
++    const trigger = page.getByRole('button', { name: 'Открыть навигацию' })
++    await trigger.focus()
++    await page.keyboard.press('Enter')
++    const drawer = page.getByRole('dialog')
++    await expect(drawer).toBeVisible()
++    await expect(drawer.getByRole('link', { name: 'Проекты', exact: true })).toHaveCount(1)
++    await page.keyboard.press('Tab')
++    expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true)
++    await page.keyboard.press('Escape')
++    await expect(drawer).toBeHidden()
++    await expect(trigger).toBeFocused()
++  })
++
++  test('keeps a dirty issue draft across tabs and breakpoints and restores delete-menu focus', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(90_000)
++    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
++    await page.setViewportSize({ width: 1920, height: 1080 })
++    await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
++    const actions = page.getByRole('button', { name: 'Действия', exact: true })
++    await actions.click()
++    await page.getByRole('menuitem', { name: 'Удалить', exact: true }).click()
++    await expect(page.getByRole('alertdialog')).toBeVisible()
++    await page.getByRole('button', { name: 'Отмена', exact: true }).click()
++    await expect(page.getByRole('alertdialog')).toBeHidden()
++    await expect(actions).toBeFocused()
++    await page.getByRole('button', { name: 'Изменить', exact: true }).click()
++    const summary = page.getByRole('textbox', { name: 'Заголовок', exact: true })
++    const draft = `Draft ${'long-value-'.repeat(30)}`
++    await summary.fill(draft)
++    for (const width of [375, 1023, 1024, 1279, 1280, 1920, 2560]) {
++      await page.setViewportSize({ width, height: 1080 })
++      await expect(summary).toHaveValue(draft)
++      expect(
++        await page.evaluate(
++          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++        ),
++      ).toBe(true)
++    }
++    await page.getByRole('tab', { name: 'Комментарии', exact: true }).click()
++    await expect(page).toHaveURL(new RegExp(`/issues/${mockUser.issueId}\\?tab=comments$`))
++    await expect(summary).toHaveValue(draft)
++    await page.goBack()
++    await expect(page.getByRole('tab', { name: 'Активность', exact: true })).toHaveAttribute(
++      'data-state',
++      'active',
+     )
++    await expect(summary).toHaveValue(draft)
++    await page
++      .getByRole('navigation', { name: 'Основная навигация' })
++      .getByRole('link', { name: 'Проекты', exact: true })
++      .click()
++    await expect(page.getByRole('alertdialog')).toBeVisible()
++    await page.getByRole('button', { name: 'Отмена', exact: true }).click()
++    await expect(summary).toHaveValue(draft)
++    let submissions = 0
++    await page.route(`**/api/v1/issues/${mockUser.issueId}`, async (route) => {
++      if (route.request().method() !== 'PATCH') return route.fallback()
++      submissions++
++      return routeJson(route, { error: { code: 'UNAVAILABLE', message: 'Save unavailable' } }, 503)
++    })
++    await page.getByRole('button', { name: 'Сохранить', exact: true }).click()
++    await expect(
++      page.getByRole('alert').filter({ hasText: 'Failed to update issue' }),
++    ).toBeVisible()
++    await expect(summary).toHaveValue(draft)
++    expect(submissions).toBe(1)
++    await page.screenshot({ path: testInfo.outputPath('draft-save-failure.png'), fullPage: true })
++  })
++
++  test('login then navigate through dashboard, projects, board and create issue', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(360_000)
++    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await installTrackerMocks(page)
+ 
+     await page.goto(`${appBaseURL}/`)
+     await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
+@@ -354,73 +442,121 @@ test.describe('smoke', () => {
+     ).toBeVisible()
+     await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
+ 
+-    for (const viewport of [
+-      { width: 375, height: 812 },
+-      { width: 1440, height: 900 },
+-      { width: 1920, height: 1080 },
+-      { width: 2560, height: 1440 },
+-    ]) {
+-      await page.setViewportSize(viewport)
+-
+-      for (const [path, mode] of [
+-        ['/projects', 'wide'],
+-        [`/issues/create?project_key=${mockUser.key}`, 'reading'],
+-        [`/issues/${mockUser.issueId}`, 'detail-with-aside'],
+-      ] as const) {
+-        await page.goto(`${appBaseURL}${path}`)
+-        if (mode === 'wide') await expect(page.getByText(mockUser.name).first()).toBeVisible()
+-        if (mode === 'reading') {
+-          await expect(
+-            page.getByRole('heading', { name: /create issue|создать задачу/i }),
+-          ).toBeVisible()
+-        }
+-        if (mode === 'detail-with-aside') {
+-          await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+-        }
++    for (const theme of ['gray', 'dark', 'light']) {
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      for (const viewport of [
++        { width: 375, height: 812 },
++        { width: 767, height: 1080 },
++        { width: 768, height: 1080 },
++        { width: 1023, height: 1080 },
++        { width: 1024, height: 1080 },
++        { width: 1279, height: 1080 },
++        { width: 1280, height: 1080 },
++        { width: 1440, height: 900 },
++        { width: 1920, height: 1080 },
++        { width: 2560, height: 1440 },
++      ]) {
++        await page.setViewportSize(viewport)
+ 
+-        const layout = page.locator('[data-page-layout]')
+-        await expect(layout).toHaveAttribute('data-page-layout', mode)
+-        const geometry = await layout.evaluate((element) => {
+-          const frame = element.parentElement
+-          const frameStyle = frame ? getComputedStyle(frame) : null
+-          return {
+-            documentFits:
+-              document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+-            layoutWidth: element.getBoundingClientRect().width,
+-            availableWidth:
+-              (frame?.getBoundingClientRect().width ?? 0) -
+-              Number.parseFloat(frameStyle?.paddingLeft ?? '0') -
+-              Number.parseFloat(frameStyle?.paddingRight ?? '0'),
++        for (const [path, mode] of [
++          ['/', 'wide'],
++          ['/projects', 'wide'],
++          [`/issues/create?project_key=${mockUser.key}`, 'reading'],
++          [`/issues/${mockUser.issueId}`, 'detail-with-aside'],
++        ] as const) {
++          await page.goto(`${appBaseURL}${path}`)
++          if (mode === 'wide' && path !== '/')
++            await expect(page.getByText(mockUser.name).first()).toBeVisible()
++          if (path === '/') await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
++          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++          if (mode === 'reading') {
++            await expect(
++              page.getByRole('heading', { name: /create issue|создать задачу/i }),
++            ).toBeVisible()
++          }
++          if (mode === 'detail-with-aside') {
++            await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+           }
+-        })
+ 
+-        expect(geometry.documentFits).toBe(true)
+-        if (mode === 'reading') {
+-          expect(geometry.layoutWidth).toBeLessThanOrEqual(761)
+-        } else {
+-          expect(Math.abs(geometry.layoutWidth - geometry.availableWidth)).toBeLessThanOrEqual(1)
+-        }
+-        await page.waitForTimeout(1000)
+-        const testOutputPath = testInfo.outputPath(`shell-${viewport.width}-${mode}.png`)
+-        await page.screenshot({
+-          path: testOutputPath,
+-          fullPage: true,
+-        })
+-        if (
+-          process.env.UPDATE_README_SCREENSHOTS === '1' &&
+-          (viewport.width === 375 || viewport.width === 1920)
+-        ) {
+-          const viewportDir = `${viewport.width}x${viewport.height}`
+-          const readmeOutputDir = nodePath.resolve(
+-            process.cwd(),
+-            '..',
+-            'docs',
+-            'screenshots',
+-            viewportDir,
++          const layout = page.locator('[data-page-layout]')
++          await expect(layout).toHaveAttribute('data-page-layout', mode)
++          const geometry = await layout.evaluate((element) => {
++            const frame = element.parentElement
++            const frameStyle = frame ? getComputedStyle(frame) : null
++            return {
++              documentFits:
++                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++              layoutWidth: element.getBoundingClientRect().width,
++              availableWidth:
++                (frame?.getBoundingClientRect().width ?? 0) -
++                Number.parseFloat(frameStyle?.paddingLeft ?? '0') -
++                Number.parseFloat(frameStyle?.paddingRight ?? '0'),
++            }
++          })
++
++          expect(geometry.documentFits).toBe(true)
++          const smallControls = await page
++            .locator(
++              'main button, main select, main textarea, main input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"])',
++            )
++            .evaluateAll(
++              (elements, minimum) =>
++                elements.flatMap((element) => {
++                  const rect = element.getBoundingClientRect()
++                  if (rect.width <= 0 || rect.height <= 0) return []
++                  return rect.height + 0.5 < minimum
++                    ? [
++                        {
++                          tag: element.tagName,
++                          name:
++                            element.getAttribute('aria-label') ?? element.id ?? element.textContent,
++                          height: rect.height,
++                        },
++                      ]
++                    : []
++                }),
++              viewport.width < 768 ? 44 : 40,
++            )
++          expect(smallControls).toEqual([])
++          await expect(page.locator('[data-base-shell]')).toHaveCount(1)
++          await expect(page.locator('[data-platform-header]')).toHaveCount(1)
++          const header = page.locator('[data-platform-header]')
++          expect((await header.boundingBox())?.height).toBe(60)
++          const sidebar = page.locator('.base-shell-sidebar')
++          if (viewport.width >= 768) {
++            await expect(sidebar).toBeVisible()
++            expect((await sidebar.boundingBox())?.width).toBe(viewport.width >= 1280 ? 264 : 72)
++          } else await expect(sidebar).toBeHidden()
++          const slots = await header
++            .locator('[data-platform-header-slot]')
++            .evaluateAll((elements) =>
++              elements
++                .map((element) => {
++                  const rect = element.getBoundingClientRect()
++                  return { left: rect.left, right: rect.right, width: rect.width }
++                })
++                .filter((rect) => rect.width > 0),
++            )
++          for (let index = 1; index < slots.length; index++)
++            expect(slots[index].left).toBeGreaterThanOrEqual(slots[index - 1].right)
++          if (mode === 'reading') {
++            expect(geometry.layoutWidth).toBeLessThanOrEqual(761)
++          } else {
++            expect(Math.abs(geometry.layoutWidth - geometry.availableWidth)).toBeLessThanOrEqual(1)
++          }
++          if (mode === 'detail-with-aside') {
++            const split = page.locator('.page-split')
++            const columns = await split.evaluate((element) =>
++              getComputedStyle(element).gridTemplateColumns.split(' ').map(Number.parseFloat),
++            )
++            expect(columns).toHaveLength(viewport.width < 1024 ? 1 : 2)
++            if (viewport.width >= 1024) expect(columns[1]).toBe(320)
++          }
++          const testOutputPath = testInfo.outputPath(
++            `shell-${theme}-${viewport.width}-${mode}-${path === '/' ? 'dashboard' : 'page'}.png`,
+           )
+-          mkdirSync(readmeOutputDir, { recursive: true })
+           await page.screenshot({
+-            path: nodePath.join(readmeOutputDir, `${mode}.png`),
++            path: testOutputPath,
+             fullPage: true,
+           })
+         }
+diff --git a/frontend/package.json b/frontend/package.json
+index ab9de3c..338951c 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -8,6 +8,7 @@
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+     "typecheck": "tsc --noEmit",
++    "ui:check": "node ../../services-base/frontend/scripts/check-ui-contract.mjs --repo .. --require-installed",
+     "test": "vitest run",
+     "test:watch": "vitest",
+     "test:e2e": "playwright test",
+diff --git a/frontend/src/api/dashboard.ts b/frontend/src/api/dashboard.ts
+index 1e3b4fa..cf43c1d 100644
+--- a/frontend/src/api/dashboard.ts
++++ b/frontend/src/api/dashboard.ts
+@@ -1,11 +1,13 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type Issue = components['schemas']['IssueResponse']
+ export type Dashboard = components['schemas']['DashboardResponse']
+ 
+ export async function getDashboard(): Promise<Dashboard> {
+-  const { data, error } = await api.GET('/api/v1/dashboard')
+-  if (error || !data) throw new Error('failed to load dashboard')
++  const { data, error, response } = await api.GET('/api/v1/dashboard')
++  const status = response.status
++  if (error || !data) throw new ApiError(status, 'failed to load dashboard', error)
+   return data
+ }
+diff --git a/frontend/src/api/issue.ts b/frontend/src/api/issue.ts
+index 651827e..e354a55 100644
+--- a/frontend/src/api/issue.ts
++++ b/frontend/src/api/issue.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
+@@ -25,7 +26,8 @@ export async function getIssue(id: string): Promise<Issue | null> {
+     params: { path: { id } },
+   })
+   if (response.status === 404) return null
+-  if (error || !data) throw new Error('Failed to load issue')
++  const status = response.status
++  if (error || !data) throw new ApiError(status, 'Failed to load issue', error)
+   return data
+ }
+ 
+diff --git a/frontend/src/api/project.ts b/frontend/src/api/project.ts
+index dcf31bf..d2e690f 100644
+--- a/frontend/src/api/project.ts
++++ b/frontend/src/api/project.ts
+@@ -1,4 +1,5 @@
+ import { api } from './client'
++import { ApiError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type Project = components['schemas']['ProjectResponse']
+@@ -6,8 +7,9 @@ export type CreateProjectRequest = components['schemas']['CreateProjectRequest']
+ export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest']
+ 
+ export async function listProjects(): Promise<Project[]> {
+-  const { data, error } = await api.GET('/api/v1/projects')
+-  if (error || !data) throw new Error('failed to load projects')
++  const { data, error, response } = await api.GET('/api/v1/projects')
++  const status = response.status
++  if (error || !data) throw new ApiError(status, 'failed to load projects', error)
+   return data.projects
+ }
+ 
+diff --git a/frontend/src/api/read-states.test.ts b/frontend/src/api/read-states.test.ts
+new file mode 100644
+index 0000000..95f718c
+--- /dev/null
++++ b/frontend/src/api/read-states.test.ts
+@@ -0,0 +1,43 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { ApiError } from '@sdlc/ui/lib'
++import { getDashboard } from './dashboard'
++import { getIssue } from './issue'
++import { listProjects } from './project'
++
++const get = vi.hoisted(() => vi.fn())
++vi.mock('./client', () => ({ api: { GET: get } }))
++
++describe('read response states', () => {
++  beforeEach(() => {
++    get.mockReset()
++  })
++  for (const [name, read] of [
++    ['dashboard', getDashboard],
++    ['projects', listProjects],
++    ['issue', () => getIssue('missing')],
++  ] as const) {
++    it.each([403, 503])(
++      `preserves HTTP %s from ${name} for Base state handling`,
++      async (status) => {
++        const error = {
++          error: { code: status === 403 ? 'FORBIDDEN' : 'UNAVAILABLE', message: 'Rejected' },
++        }
++        get.mockResolvedValue({ data: undefined, error, response: new Response(null, { status }) })
++        await expect(read()).rejects.toBeInstanceOf(ApiError)
++        await expect(read()).rejects.toMatchObject({ status, body: error })
++      },
++    )
++  }
++  it('retains the existing null contract for an absent issue', async () => {
++    get.mockResolvedValue({
++      data: undefined,
++      error: {},
++      response: new Response(null, { status: 404 }),
++    })
++    await expect(getIssue('missing')).resolves.toBeNull()
++  })
++  it('does not swallow a network failure or substitute an empty project catalog', async () => {
++    get.mockRejectedValue(new Error('Network unavailable'))
++    await expect(listProjects()).rejects.toThrow('Network unavailable')
++  })
++})
+diff --git a/frontend/src/app/router.tsx b/frontend/src/app/router.tsx
+index 811d40d..9307c96 100644
+--- a/frontend/src/app/router.tsx
++++ b/frontend/src/app/router.tsx
+@@ -1,6 +1,7 @@
+ import { lazy, Suspense } from 'react'
+ import { createBrowserRouter, Navigate } from 'react-router'
+ import { AppShell } from '@/widgets/app-shell'
++import { ResourceStateView } from '@sdlc/ui/ui'
+ import { RequireAuth } from '@/shared/auth/require-auth'
+ 
+ // Route-level code splitting: all pages are lazy-loaded so each route
+@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
+           { path: '/admin', element: withSuspense(<AdminPage />) },
+           { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
+           { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },
++          { path: '*', element: <ResourceStateView state={{ kind: 'not-found' }} /> },
+         ],
+       },
+     ],
+@@ -83,5 +85,4 @@ export const router = createBrowserRouter([
+   { path: '/login', element: withSuspense(<LoginPage />) },
+   { path: '/sso/callback', element: withSuspense(<SsoCallbackPage />) },
+   { path: '/register', element: <Navigate to="/login" replace /> },
+-  { path: '*', element: <Navigate to="/" replace /> },
+ ])
+diff --git a/frontend/src/features/comments/model/use-comments.ts b/frontend/src/features/comments/model/use-comments.ts
+index 618ad46..3e549c0 100644
+--- a/frontend/src/features/comments/model/use-comments.ts
++++ b/frontend/src/features/comments/model/use-comments.ts
+@@ -2,11 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+ import { listComments, createComment, updateComment, deleteComment } from '@/api/comment'
+ import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
+ 
+-export function useComments(issueId: string) {
++export function useComments(issueId: string, enabled = true) {
+   return useQuery<Comment[]>({
+     queryKey: ['comments', issueId],
+     queryFn: () => listComments(issueId),
+-    enabled: Boolean(issueId),
++    enabled: enabled && Boolean(issueId),
+   })
+ }
+ 
+diff --git a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
+index ef0ec3a..6b2280d 100644
+--- a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
++++ b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx
+@@ -131,4 +131,30 @@ describe('CustomFieldsPanel', () => {
+ 
+     expect(screen.getByRole('textbox')).toHaveValue('Acme')
+   })
++
++  it('does not overwrite an edited custom field on refetch and accepts a confirmed save', () => {
++    const field = {
++      id: 'f-text',
++      project_id: 'p1',
++      name: 'Customer',
++      field_type: 'text' as const,
++      options: [],
++      is_required: false,
++      created_at: '2026-08-01T00:00:00Z',
++    }
++    const onSave = vi.fn()
++    const { rerender } = render(
++      wrapper(<CustomFieldValueInput field={field} value="Initial" onSave={onSave} />),
++    )
++    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Draft' } })
++    rerender(wrapper(<CustomFieldValueInput field={field} value="Refetched" onSave={onSave} />))
++    expect(screen.getByRole('textbox')).toHaveValue('Draft')
++    fireEvent.blur(screen.getByRole('textbox'))
++    expect(onSave).toHaveBeenCalledWith('Draft')
++    rerender(wrapper(<CustomFieldValueInput field={field} value="Draft" onSave={onSave} />))
++    rerender(
++      wrapper(<CustomFieldValueInput field={field} value="Next server value" onSave={onSave} />),
++    )
++    expect(screen.getByRole('textbox')).toHaveValue('Next server value')
++  })
+ })
+diff --git a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
+index 528d35d..a83278e 100644
+--- a/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
++++ b/frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx
+@@ -7,6 +7,7 @@ import {
+ } from '@/shared/api/hooks'
+ import type { CustomField } from '@/api/custom-fields'
+ import { toast } from 'sonner'
++import { Input, Select } from '@sdlc/ui/ui'
+ 
+ export function customFieldDateInputValue(value: unknown) {
+   if (typeof value !== 'string') return ''
+@@ -47,34 +48,34 @@ export function CustomFieldValueInput({
+ }) {
+   const { t } = useTranslation()
+   const current = customFieldInputValue(field, value)
+-  const [draft, setDraft] = useState(current)
++  const [draft, setDraft] = useState({ source: current, value: current })
+ 
+   useEffect(() => {
+-    setDraft(current)
++    setDraft((previous) =>
++      previous.value === previous.source || previous.value === current
++        ? { source: current, value: current }
++        : previous,
++    )
+   }, [current])
+ 
+   if (field.field_type === 'select') {
+     return (
+-      <select
+-        className="w-full rounded border border-border bg-background p-2"
+-        value={current}
+-        onChange={(e) => onSave(e.target.value)}
+-      >
++      <Select value={current} onChange={(e) => onSave(e.target.value)}>
+         <option value="">{t('customFields.selectPlaceholder')}</option>
+         {field.options.map((option) => (
+           <option key={option} value={option}>
+             {option}
+           </option>
+         ))}
+-      </select>
++      </Select>
+     )
+   }
+   if (field.field_type === 'multi-select') {
+     const selected = Array.isArray(value) ? value.map(String) : []
+     return (
+-      <select
++      <Select
+         multiple
+-        className="w-full rounded border border-border bg-background p-2"
++        className="h-auto min-h-24"
+         value={selected}
+         onChange={(e) => onSave(Array.from(e.target.selectedOptions, (o) => o.value))}
+       >
+@@ -83,15 +84,14 @@ export function CustomFieldValueInput({
+             {option}
+           </option>
+         ))}
+-      </select>
++      </Select>
+     )
+   }
+   const type =
+     field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'
+   if (commit === 'change') {
+     return (
+-      <input
+-        className="w-full rounded border border-border bg-background p-2"
++      <Input
+         type={type}
+         value={current}
+         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
+@@ -99,12 +99,11 @@ export function CustomFieldValueInput({
+     )
+   }
+   return (
+-    <input
+-      className="w-full rounded border border-border bg-background p-2"
++    <Input
+       type={type}
+-      value={draft}
+-      onChange={(e) => setDraft(e.target.value)}
+-      onBlur={() => onSave(customFieldValueFromInput(field, draft))}
++      value={draft.value}
++      onChange={(e) => setDraft({ ...draft, value: e.target.value })}
++      onBlur={() => onSave(customFieldValueFromInput(field, draft.value))}
+     />
+   )
+ }
+diff --git a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx
+index 15c5dac..092d96a 100644
+--- a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx
+@@ -1,6 +1,6 @@
+ import { describe, it, expect, vi, beforeAll } from 'vitest'
+ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+-import { MemoryRouter } from 'react-router'
++import { createMemoryRouter, RouterProvider, Link } from 'react-router'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+ import i18n from '@/shared/i18n/config'
+ import { IssueDescriptionEditor } from './IssueDescriptionEditor'
+@@ -11,9 +11,21 @@ beforeAll(() => {
+ })
+ 
+ function wrapper(children: React.ReactNode) {
++  const router = createMemoryRouter([
++    {
++      path: '/',
++      element: (
++        <>
++          {children}
++          <Link to="/other">Leave issue</Link>
++        </>
++      ),
++    },
++    { path: '/other', element: <p>Other page</p> },
++  ])
+   return (
+     <ThemeProvider>
+-      <MemoryRouter>{children}</MemoryRouter>
++      <RouterProvider router={router} />
+     </ThemeProvider>
+   )
+ }
+@@ -85,4 +97,18 @@ describe('IssueDescriptionEditor', () => {
+     expect(summary).toHaveValue('Revised summary')
+     expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+   })
++
++  it('blocks leaving a dirty draft and retains it after cancelling navigation', async () => {
++    render(wrapper(<IssueDescriptionEditor issue={issue} onSubmit={vi.fn()} />))
++    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
++    fireEvent.change(screen.getByRole('textbox', { name: /summary/i }), {
++      target: { value: 'Unsaved change' },
++    })
++    fireEvent.click(screen.getByRole('link', { name: 'Leave issue' }))
++    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
++    expect(screen.queryByText('Other page')).not.toBeInTheDocument()
++    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
++    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
++    expect(screen.getByRole('textbox', { name: /summary/i })).toHaveValue('Unsaved change')
++  })
+ })
+diff --git a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
+index 94a3240..5f077ed 100644
+--- a/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx
+@@ -7,6 +7,7 @@ import { Pencil, Check, X } from 'lucide-react'
+ import type { Issue } from '@/api/issue'
+ import { Button } from '@sdlc/ui/ui'
+ import { Textarea } from '@sdlc/ui/ui'
++import { FormField, Input, PendingForm, UnsavedChangesGuard } from '@sdlc/ui/ui'
+ 
+ const schema = z.object({
+   summary: z.string().min(1),
+@@ -19,9 +20,15 @@ interface IssueDescriptionEditorProps {
+   issue: Issue
+   onSubmit: (patch: { summary: string; description: string | null }) => Promise<unknown>
+   disabled?: boolean
++  showTitle?: boolean
+ }
+ 
+-export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
++export function IssueDescriptionEditor({
++  issue,
++  onSubmit,
++  disabled,
++  showTitle = true,
++}: IssueDescriptionEditorProps) {
+   const { t } = useTranslation()
+   const [editing, setEditing] = useState(false)
+   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+@@ -37,7 +44,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+     register,
+     handleSubmit,
+     reset,
+-    formState: { errors, isSubmitting },
++    formState: { errors, isSubmitting, isDirty },
+   } = useForm<FormData>({
+     resolver: zodResolver(schema),
+     defaultValues: {
+@@ -47,6 +54,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+   })
+ 
+   const startEdit = () => {
++    if (disabled) return
+     reset({ summary: issue.summary, description: issue.description ?? '' })
+     setSaveError(null)
+     setEditing(true)
+@@ -74,13 +82,17 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+     return (
+       <div className="group min-w-0 cursor-pointer" onClick={startEdit}>
+         <div className="mb-2 flex items-start justify-between">
+-          <h1 className="min-w-0 break-words text-2xl font-semibold text-text-primary">
+-            {issue.summary}
+-          </h1>
++          {showTitle ? (
++            <h1 className="min-w-0 break-words text-2xl font-semibold text-text-primary">
++              {issue.summary}
++            </h1>
++          ) : (
++            <h2 className="text-sm font-semibold">{t('issue.description')}</h2>
++          )}
+           <Button
+             variant="ghost"
+             size="icon"
+-            className="h-10 w-10 shrink-0 opacity-100 xl:h-9 xl:w-9 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
++            className="shrink-0"
+             onClick={(e) => {
+               e.stopPropagation()
+               startEdit()
+@@ -104,7 +116,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+                 type="button"
+                 variant="ghost"
+                 size="sm"
+-                className="mt-1 h-10 px-0 lg:hidden"
++                className="mt-1 lg:hidden"
+                 aria-controls={descriptionId}
+                 aria-expanded={descriptionExpanded}
+                 onClick={(event) => {
+@@ -126,29 +138,33 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+   }
+ 
+   return (
+-    <form onSubmit={submit} className="space-y-3">
+-      <div>
+-        <input
+-          {...register('summary')}
+-          aria-label={t('issueCreate.summary')}
+-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-2xl font-semibold text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+-        />
+-        {errors.summary && (
+-          <p className="mt-1 text-xs text-red-500">{t('issue.summaryRequired')}</p>
++    <PendingForm onSubmit={submit} pending={disabled || isSubmitting}>
++      <UnsavedChangesGuard when={isDirty} allowSearchChanges />
++      <FormField
++        id={`${descriptionId}-summary`}
++        label={t('issueCreate.summary')}
++        required
++        error={errors.summary ? t('issue.summaryRequired') : undefined}
++      >
++        {(attrs) => <Input {...attrs} {...register('summary')} />}
++      </FormField>
++      <FormField id={`${descriptionId}-body`} label={t('issue.description')}>
++        {(attrs) => (
++          <Textarea
++            {...attrs}
++            {...register('description')}
++            rows={8}
++            placeholder={t('issue.descriptionPlaceholder')}
++          />
+         )}
+-      </div>
+-      <Textarea
+-        {...register('description')}
+-        rows={8}
+-        placeholder={t('issue.descriptionPlaceholder')}
+-      />
++      </FormField>
+       {saveError && (
+         <p role="alert" className="text-sm text-danger">
+           {saveError}
+         </p>
+       )}
+       <div className="flex gap-2">
+-        <Button type="submit" size="sm" className="h-10 xl:h-8" disabled={disabled || isSubmitting}>
++        <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
+           <Check className="mr-1 h-4 w-4" />
+           {isSubmitting ? t('common.saving') : t('common.save')}
+         </Button>
+@@ -156,7 +172,6 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+           type="button"
+           variant="secondary"
+           size="sm"
+-          className="h-10 xl:h-8"
+           onClick={cancel}
+           disabled={disabled || isSubmitting}
+         >
+@@ -164,7 +179,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
+           {t('common.cancel')}
+         </Button>
+       </div>
+-    </form>
++    </PendingForm>
+   )
+ }
+ 
+diff --git a/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx b/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
+index cc3fde6..231ee45 100644
+--- a/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
+@@ -1,6 +1,6 @@
+ import { useTranslation } from 'react-i18next'
+ import { useMemo } from 'react'
+-import { Button } from '@sdlc/ui/ui'
++import { Button, Select } from '@sdlc/ui/ui'
+ import type { Issue } from '@/api/issue'
+ import type { Sprint } from '@/api/sprint'
+ import type { Board } from '@/api/board'
+@@ -73,66 +73,60 @@ export function IssueMetaEditor({
+     ]
+   }, [issue.assignee_id, issue.assignee_name, t, usersQuery.data])
+ 
+-  const selectClass =
+-    'h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50'
+-
+   return (
+     <div className="space-y-4 text-sm">
+       <div className="space-y-1.5">
+         <label htmlFor="issue-status" className="block text-text-muted">
+           {t('issue.status')}
+         </label>
+-        <select
++        <Select
+           id="issue-status"
+           value={issue.status_id}
+           onChange={(e) => onChange({ status_id: e.target.value })}
+           disabled={disabled}
+-          className={selectClass}
+         >
+           {statusOptions.map((s) => (
+             <option key={s.id} value={s.id}>
+               {statusLabel(s.name, t)}
+             </option>
+           ))}
+-        </select>
++        </Select>
+       </div>
+ 
+       <div className="space-y-1.5">
+         <label htmlFor="issue-priority" className="block text-text-muted">
+           {t('issue.priority')}
+         </label>
+-        <select
++        <Select
+           id="issue-priority"
+           value={issue.priority}
+           onChange={(e) => onChange({ priority: e.target.value })}
+           disabled={disabled}
+-          className={selectClass}
+         >
+           {priorities.map((p) => (
+             <option key={p} value={p}>
+               {t(`priority.${p.toLowerCase()}`, { defaultValue: p })}
+             </option>
+           ))}
+-        </select>
++        </Select>
+       </div>
+ 
+       <div className="space-y-1.5">
+         <label htmlFor="issue-assignee" className="block text-text-muted">
+           {t('issue.assignee')}
+         </label>
+-        <select
++        <Select
+           id="issue-assignee"
+           value={issue.assignee_id ?? ''}
+           onChange={(e) => onChange({ assignee_id: e.target.value || null })}
+           disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
+-          className={selectClass}
+         >
+           {assigneeOptions.map((opt) => (
+             <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+               {opt.label}
+             </option>
+           ))}
+-        </select>
++        </Select>
+         {usersQuery.isError && (
+           <div className="flex flex-wrap items-center gap-2">
+             <p role="alert" className="text-xs text-danger">
+@@ -161,12 +155,11 @@ export function IssueMetaEditor({
+           <label htmlFor="issue-sprint" className="block text-text-muted">
+             {t('issue.sprint')}
+           </label>
+-          <select
++          <Select
+             id="issue-sprint"
+             value={issue.sprint_id ?? ''}
+             onChange={(e) => onChange({ sprint_id: e.target.value || null })}
+             disabled={disabled}
+-            className={selectClass}
+           >
+             <option value="">{t('issue.noSprint')}</option>
+             {sprints.map((s) => (
+@@ -174,7 +167,7 @@ export function IssueMetaEditor({
+                 {s.name}
+               </option>
+             ))}
+-          </select>
++          </Select>
+         </div>
+       )}
+     </div>
+diff --git a/frontend/src/features/issue-detail/ui/LinkEditor.tsx b/frontend/src/features/issue-detail/ui/LinkEditor.tsx
+index 78a8869..f5a5ea0 100644
+--- a/frontend/src/features/issue-detail/ui/LinkEditor.tsx
++++ b/frontend/src/features/issue-detail/ui/LinkEditor.tsx
+@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
+ import { Link2, Plus, X } from 'lucide-react'
+ import { Link } from 'react-router'
+ import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
+-import { Button } from '@sdlc/ui/ui'
++import { Button, Select } from '@sdlc/ui/ui'
+ import { Input } from '@sdlc/ui/ui'
+ import { toast } from 'sonner'
+ 
+@@ -58,8 +58,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
+                     {otherKey}
+                   </Link>
+                 </span>
+-                <button
++                <Button
+                   type="button"
++                  variant="ghost"
++                  size="icon"
+                   aria-label={t('links.delete', { key: otherKey })}
+                   onClick={() =>
+                     remove.mutate(l.id, {
+@@ -67,10 +69,11 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
+                       onError: (error) => toast.error(error.message),
+                     })
+                   }
+-                  className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
++                  disabled={remove.isPending}
++                  className="shrink-0 text-text-muted hover:text-danger"
+                 >
+                   <X className="h-3.5 w-3.5" aria-hidden />
+-                </button>
++                </Button>
+               </li>
+             )
+           })}
+@@ -94,10 +97,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
+               }
+             }}
+           />
+-          <select
++          <Select
+             value={linkType}
+             onChange={(e) => setLinkType(e.target.value as (typeof LINK_TYPES)[number])}
+-            className="min-h-10 rounded-md border border-border bg-background px-2 text-xs"
++            className="w-auto"
+             aria-label={t('links.typeLabel')}
+           >
+             {LINK_TYPES.map((lt) => (
+@@ -105,11 +108,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
+                 {t(`links.type.${lt}`)}
+               </option>
+             ))}
+-          </select>
++          </Select>
+           <Button
+             type="button"
+             size="sm"
+-            className="h-10 xl:h-8"
+             onClick={() => void onAdd()}
+             disabled={create.isPending || !targetKey.trim()}
+             data-testid="link-submit"
+@@ -127,7 +129,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
+           type="button"
+           variant="ghost"
+           size="sm"
+-          className="h-10 px-2 text-xs xl:h-8"
++          className="px-2"
+           onClick={() => setAdding(true)}
+         >
+           <Plus className="mr-1 h-3 w-3" aria-hidden />
+diff --git a/frontend/src/features/time-tracking/model/use-worklogs.ts b/frontend/src/features/time-tracking/model/use-worklogs.ts
+index d2c4b43..7d2c0f0 100644
+--- a/frontend/src/features/time-tracking/model/use-worklogs.ts
++++ b/frontend/src/features/time-tracking/model/use-worklogs.ts
+@@ -27,10 +27,11 @@ async function refreshAfterWorklogMutation(qc: QueryClient, issueId: string) {
+   invalidateIssueCollectionCaches(qc, issue?.project_key)
+ }
+ 
+-export function useWorklogs(issueId: string) {
++export function useWorklogs(issueId: string, enabled = true) {
+   return useQuery({
+     queryKey: key(issueId),
+     queryFn: () => listWorklogs(issueId),
++    enabled: enabled && Boolean(issueId),
+   })
+ }
+ 
+diff --git a/frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx b/frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx
+index 2a83f3e..7a1af6c 100644
+--- a/frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx
++++ b/frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx
+@@ -51,7 +51,7 @@ export function TimeTrackingPanel({
+           </span>
+         )}
+       </div>
+-      <Button variant="secondary" size="sm" className="h-10 w-full xl:h-8" onClick={onLogWork}>
++      <Button variant="secondary" size="sm" className="w-full" onClick={onLogWork}>
+         {t('timeTracking.logWork')}
+       </Button>
+     </div>
+diff --git a/frontend/src/pages/dashboard/dashboard.test.tsx b/frontend/src/pages/dashboard/dashboard.test.tsx
+index 7f2cb1c..11103ab 100644
+--- a/frontend/src/pages/dashboard/dashboard.test.tsx
++++ b/frontend/src/pages/dashboard/dashboard.test.tsx
+@@ -1,5 +1,5 @@
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+-import { render, screen } from '@testing-library/react'
++import { render, screen, within } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ import { MemoryRouter } from 'react-router'
+@@ -48,8 +48,8 @@ vi.mock('@/api/project', () => ({
+   listProjects,
+ }))
+ 
+-function wrapper(children: React.ReactNode) {
+-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++function wrapper(children: React.ReactNode, client?: QueryClient) {
++  const qc = client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })
+   return (
+     <ThemeProvider>
+       <QueryClientProvider client={qc}>
+@@ -60,6 +60,43 @@ function wrapper(children: React.ReactNode) {
+ }
+ 
+ describe('DashboardPage', () => {
++  it.each([403, 404])(
++    'hides cached projects and creation without retry on HTTP %s',
++    async (status) => {
++      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++      client.setQueryData(['projects'], [{ id: 'old', key: 'OLD', name: 'Denied cached project' }])
++      listProjects.mockRejectedValueOnce({ status })
++      render(wrapper(<DashboardPage />, client))
++      const section = within(screen.getByRole('region', { name: /Проекты/ }))
++      await section.findByRole('heading', {
++        name: status === 403 ? 'Нет доступа' : 'Объект не найден',
++      })
++      expect(screen.queryByText(/Denied cached project/)).not.toBeInTheDocument()
++      expect(section.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
++      expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
++      expect(await screen.findByText('Fix tests')).toBeInTheDocument()
++    },
++  )
++
++  it('retains a cached project overview on 503 while refusing a stale parent write', async () => {
++    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
++    client.setQueryData(['projects'], [{ id: 'old', key: 'OLD', name: 'Cached project' }])
++    listProjects.mockRejectedValueOnce({ status: 503 })
++    render(wrapper(<DashboardPage />, client))
++    const section = within(screen.getByRole('region', { name: /Проекты/ }))
++    await section.findByText('Не удалось загрузить проекты. Повторите попытку.')
++    expect(screen.getByText('OLD · Cached project')).toBeInTheDocument()
++    expect(document.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(section.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
++    expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
++  })
++
++  it('does not offer issue creation when no accessible project exists', async () => {
++    listProjects.mockResolvedValueOnce([])
++    render(wrapper(<DashboardPage />))
++    await screen.findByText('Пока нет проектов.')
++    expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
++  })
+   beforeEach(() => {
+     vi.clearAllMocks()
+     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+diff --git a/frontend/src/pages/dashboard/index.tsx b/frontend/src/pages/dashboard/index.tsx
+index fe619d2..da76532 100644
+--- a/frontend/src/pages/dashboard/index.tsx
++++ b/frontend/src/pages/dashboard/index.tsx
+@@ -1,136 +1,156 @@
+ import { Link } from 'react-router'
++import { Plus } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { Button } from '@sdlc/ui/ui'
+-import { ErrorState } from '@sdlc/ui/ui'
++import {
++  Button,
++  DashboardLayout,
++  EmptyState,
++  ResourceStateView,
++  resourceErrorState,
++  type ResourceState,
++} from '@sdlc/ui/ui'
+ import { useDashboard, useProjects } from '@/shared/api/hooks'
+ import { statusLabel } from '@/shared/lib/status-label'
+ import { useAuthStore } from '@/shared/auth/store'
+ 
+-const PREVIEW_LIMIT = 5
++const previewLimit = 5
+ 
+ export function DashboardPage() {
+   const { t } = useTranslation()
+-  const {
+-    data: dashboard,
+-    isLoading: dashboardLoading,
+-    error: dashboardError,
+-    refetch: refetchDashboard,
+-  } = useDashboard()
+-  const {
+-    data: projects,
+-    isLoading: projectsLoading,
+-    error: projectsError,
+-    refetch: refetchProjects,
+-  } = useProjects()
++  const dashboardQuery = useDashboard()
++  const projectsQuery = useProjects()
+   const userId = useAuthStore((state) => state.userId)
+-
+-  const assigned = dashboard?.assigned_issues ?? []
++  const assignedState: ResourceState = dashboardQuery.error
++    ? resourceErrorState(dashboardQuery.error, () => void dashboardQuery.refetch(), {
++        hasData: dashboardQuery.data !== undefined,
++        message: t('dashboard.loadError'),
++      })
++    : dashboardQuery.isLoading
++      ? { kind: 'loading', message: t('dashboard.loadingAssigned') }
++      : { kind: 'ready' }
++  const projectsState: ResourceState = projectsQuery.error
++    ? resourceErrorState(projectsQuery.error, () => void projectsQuery.refetch(), {
++        hasData: projectsQuery.data !== undefined,
++        message: t('dashboard.projectsError'),
++      })
++    : projectsQuery.isLoading
++      ? { kind: 'loading', message: t('dashboard.loadingProjects') }
++      : { kind: 'ready' }
++  const hasAssigned = assignedState.kind === 'ready' || assignedState.kind === 'partial-error'
++  const hasProjects = projectsState.kind === 'ready' || projectsState.kind === 'partial-error'
++  const assigned = hasAssigned ? (dashboardQuery.data?.assigned_issues ?? []) : []
++  const projects = hasProjects ? (projectsQuery.data ?? []) : []
+   const assignedSearch = userId ? `/search?assignee_id=${encodeURIComponent(userId)}` : '/search'
+ 
+   return (
+-    <div className="space-y-4">
+-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+-        <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
+-        <Button size="sm" className="min-h-11 gap-1 sm:min-h-9" asChild>
+-          <Link to="/issues/create">{t('navigation.create')}</Link>
+-        </Button>
+-      </div>
+-
+-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+-        <section className="min-w-0 border-t border-border pt-4">
++    <DashboardLayout
++      title={t('dashboard.title')}
++      actions={
++        projectsState.kind === 'ready' &&
++        projects.length > 0 && (
++          <Button asChild>
++            <Link to="/issues/create">
++              <Plus className="h-4 w-4" aria-hidden />
++              {t('navigation.create')}
++            </Link>
++          </Button>
++        )
++      }
++    >
++      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
++        <section
++          aria-labelledby="assigned-overview"
++          className="min-w-0 border-t border-border pt-4"
++        >
+           <div className="mb-3 flex items-center justify-between gap-3">
+-            <h2 className="text-sm font-semibold">{t('dashboard.assignedToMe')}</h2>
+-            {assigned.length > PREVIEW_LIMIT && (
++            <h2 id="assigned-overview" className="text-sm font-semibold">
++              {t('dashboard.assignedToMe')}
++            </h2>
++            {assigned.length > previewLimit && (
+               <Link
+                 to={assignedSearch}
+-                className="text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++                className="base-control inline-flex items-center text-sm text-accent hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+               >
+                 {t('dashboard.viewAllAssigned')}
+               </Link>
+             )}
+           </div>
+-          {dashboardLoading ? (
+-            <p className="text-sm text-text-muted">{t('dashboard.loadingAssigned')}</p>
+-          ) : dashboardError ? (
+-            <ErrorState
+-              message={t('dashboard.loadError')}
+-              onRetry={() => void refetchDashboard()}
+-            />
+-          ) : assigned.length === 0 ? (
+-            <p className="text-sm text-text-muted">{t('dashboard.noAssigned')}</p>
+-          ) : (
+-            <div className="divide-y divide-border rounded-md border border-border">
+-              {assigned.slice(0, PREVIEW_LIMIT).map((item) => (
+-                <Link
+-                  key={item.id}
+-                  to={`/issues/${item.id}`}
+-                  className="grid min-h-11 gap-1.5 rounded-sm px-3 py-2 text-sm hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+-                >
+-                  <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+-                    <span className="shrink-0 font-mono text-xs text-text-muted">{item.key}</span>
+-                    <span className="line-clamp-2 break-words sm:line-clamp-1">{item.summary}</span>
+-                  </span>
+-                  <span className="w-fit rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+-                    {statusLabel(item.status, t)}
+-                  </span>
+-                </Link>
+-              ))}
+-            </div>
+-          )}
++          <ResourceStateView state={assignedState} />
++          {hasAssigned &&
++            (assigned.length === 0 ? (
++              <EmptyState message={t('dashboard.noAssigned')} />
++            ) : (
++              <div className="divide-y divide-border border-y border-border">
++                {assigned.slice(0, previewLimit).map((item) => (
++                  <Link
++                    key={item.id}
++                    to={`/issues/${item.id}`}
++                    className="grid min-h-11 gap-1.5 px-3 py-2 text-sm hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-focus sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
++                  >
++                    <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
++                      <span className="shrink-0 font-mono text-xs text-text-muted">{item.key}</span>
++                      <span className="line-clamp-2 break-words sm:line-clamp-1">
++                        {item.summary}
++                      </span>
++                    </span>
++                    <span className="w-fit rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
++                      {statusLabel(item.status, t)}
++                    </span>
++                  </Link>
++                ))}
++              </div>
++            ))}
+         </section>
+-
+-        <section className="min-w-0 border-t border-border pt-4">
++        <section
++          aria-labelledby="projects-overview"
++          className="min-w-0 border-t border-border pt-4"
++        >
+           <div className="mb-3 flex items-center justify-between gap-3">
+-            <h2 className="text-sm font-semibold">
++            <h2 id="projects-overview" className="text-sm font-semibold">
+               {t('dashboard.projects')}
+-              {projects ? ` · ${projects.length}` : ''}
++              {hasProjects && projectsQuery.data ? ` · ${projects.length}` : ''}
+             </h2>
+-            {(projects?.length ?? 0) > PREVIEW_LIMIT && (
++            {projects.length > previewLimit && (
+               <Link
+                 to="/projects"
+-                className="text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++                className="base-control inline-flex items-center text-sm text-accent hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+               >
+                 {t('projects.all')}
+               </Link>
+             )}
+           </div>
+-          {projectsLoading ? (
+-            <p className="text-sm text-text-muted">{t('dashboard.loadingProjects')}</p>
+-          ) : projectsError ? (
+-            <ErrorState
+-              message={t('dashboard.projectsError')}
+-              onRetry={() => void refetchProjects()}
+-            />
+-          ) : !projects?.length ? (
+-            <p className="text-sm text-text-muted">{t('dashboard.noProjects')}</p>
+-          ) : (
+-            <div className="divide-y divide-border rounded-md border border-border">
+-              {projects.slice(0, PREVIEW_LIMIT).map((project) => (
+-                <Link
+-                  key={project.id}
+-                  to={`/projects/${project.key}/board`}
+-                  className="block min-h-11 rounded-sm p-3 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+-                >
+-                  <div className="mb-1 break-words text-sm font-medium text-text-primary">
+-                    {project.key} · {project.name}
+-                  </div>
+-                  <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
+-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+-                      {t('board.todo')}: {project.todo_count ?? 0}
+-                    </span>
+-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+-                      {t('board.inProgress')}: {project.in_progress_count ?? 0}
+-                    </span>
+-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+-                      {t('board.done')}: {project.done_count ?? 0}
+-                    </span>
+-                  </div>
+-                </Link>
+-              ))}
+-            </div>
+-          )}
++          <ResourceStateView state={projectsState} />
++          {hasProjects &&
++            (projects.length === 0 ? (
++              <EmptyState message={t('dashboard.noProjects')} />
++            ) : (
++              <div className="divide-y divide-border border-y border-border">
++                {projects.slice(0, previewLimit).map((project) => (
++                  <Link
++                    key={project.id}
++                    to={`/projects/${encodeURIComponent(project.key)}/board`}
++                    className="block min-h-11 p-3 hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-focus"
++                  >
++                    <div className="mb-1 break-words text-sm font-medium text-text-primary">
++                      {project.key} · {project.name}
++                    </div>
++                    <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
++                      <span className="rounded bg-surface-raised px-1.5 py-0.5">
++                        {t('board.todo')}: {project.todo_count ?? 0}
++                      </span>
++                      <span className="rounded bg-surface-raised px-1.5 py-0.5">
++                        {t('board.inProgress')}: {project.in_progress_count ?? 0}
++                      </span>
++                      <span className="rounded bg-surface-raised px-1.5 py-0.5">
++                        {t('board.done')}: {project.done_count ?? 0}
++                      </span>
++                    </div>
++                  </Link>
++                ))}
++              </div>
++            ))}
+         </section>
+       </div>
+-    </div>
++    </DashboardLayout>
+   )
+ }
+diff --git a/frontend/src/pages/issue-create/index.tsx b/frontend/src/pages/issue-create/index.tsx
+index b83e43a..72af89b 100644
+--- a/frontend/src/pages/issue-create/index.tsx
++++ b/frontend/src/pages/issue-create/index.tsx
+@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
+ import { useLocation, useNavigate, useSearchParams } from 'react-router'
+ import { Plus } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { Button } from '@sdlc/ui/ui'
++import { Button, Select, Textarea } from '@sdlc/ui/ui'
+ import { ErrorState } from '@sdlc/ui/ui'
+ import { Input } from '@sdlc/ui/ui'
+ import {
+@@ -199,9 +199,8 @@ export function IssueCreatePage() {
+             <label htmlFor="issue-project" className="text-sm font-medium">
+               {t('issueCreate.project')} *
+             </label>
+-            <select
++            <Select
+               id="issue-project"
+-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+               value={selectedProjectKey}
+               onChange={(e) => updateProjectKey(e.target.value)}
+               disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
+@@ -217,15 +216,14 @@ export function IssueCreatePage() {
+                   {p.name} ({p.key})
+                 </option>
+               ))}
+-            </select>
++            </Select>
+           </div>
+           <div className="space-y-2">
+             <label htmlFor="issue-type" className="text-sm font-medium">
+               {t('issueCreate.type')} *
+             </label>
+-            <select
++            <Select
+               id="issue-type"
+-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+               value={selectedType}
+               onChange={(e) => setType(e.target.value)}
+               disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
+@@ -238,7 +236,7 @@ export function IssueCreatePage() {
+                   })}
+                 </option>
+               ))}
+-            </select>
++            </Select>
+           </div>
+         </div>
+ 
+@@ -265,9 +263,9 @@ export function IssueCreatePage() {
+           <label htmlFor="issue-description" className="text-sm font-medium">
+             {t('issueCreate.description')}
+           </label>
+-          <textarea
++          <Textarea
+             id="issue-description"
+-            className="min-h-[120px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
++            rows={5}
+             placeholder={t('issueCreate.descriptionPlaceholder')}
+             value={description}
+             onChange={(e) => setDescription(e.target.value)}
+@@ -280,9 +278,8 @@ export function IssueCreatePage() {
+             <label htmlFor="issue-priority" className="text-sm font-medium">
+               {t('issueCreate.priority')}
+             </label>
+-            <select
++            <Select
+               id="issue-priority"
+-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+               value={priority}
+               onChange={(e) => setPriority(e.target.value)}
+               disabled={isPending}
+@@ -292,15 +289,14 @@ export function IssueCreatePage() {
+               <option value="High">{t('priority.high')}</option>
+               <option value="Low">{t('priority.low')}</option>
+               <option value="Lowest">{t('priority.lowest')}</option>
+-            </select>
++            </Select>
+           </div>
+           <div className="space-y-2">
+             <label htmlFor="issue-assignee" className="text-sm font-medium">
+               {t('issueCreate.assignee')}
+             </label>
+-            <select
++            <Select
+               id="issue-assignee"
+-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+               value={assignee_id}
+               onChange={(e) => setAssigneeId(e.target.value)}
+               disabled={
+@@ -316,7 +312,7 @@ export function IssueCreatePage() {
+                   {u.display_name || u.username}
+                 </option>
+               ))}
+-            </select>
++            </Select>
+           </div>
+         </div>
+ 
+diff --git a/frontend/src/pages/issue-detail/index.tsx b/frontend/src/pages/issue-detail/index.tsx
+index 9e6f437..098e23f 100644
+--- a/frontend/src/pages/issue-detail/index.tsx
++++ b/frontend/src/pages/issue-detail/index.tsx
+@@ -1,10 +1,9 @@
+ import { Link, useParams, useSearchParams } from 'react-router'
+-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
++import { useEffect, useRef, useState, type ReactNode } from 'react'
+ import { useTranslation } from 'react-i18next'
+ import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
+ import { toast } from 'sonner'
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
+-import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
+ import { Button } from '@sdlc/ui/ui'
+ import { ConfirmDialog } from '@sdlc/ui/ui'
+ import {
+@@ -14,6 +13,11 @@ import {
+   DropdownMenuTrigger,
+   LoadingState,
+   ErrorState,
++  ResourceStateView,
++  resourceErrorState,
++  DetailPage,
++  type PageHeaderProps,
++  type ResourceState,
+ } from '@sdlc/ui/ui'
+ import {
+   useWorklogs,
+@@ -56,14 +60,23 @@ export function IssueDetailPage() {
+   const [dialogOpen, setDialogOpen] = useState(false)
+   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
+   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
++  const actionsRef = useRef<HTMLButtonElement>(null)
+ 
+   const issueQuery = useIssue(id)
+-  const boardQuery = useBoard(issueQuery.data?.project_key)
+-  const sprintsQuery = useSprints(issueQuery.data?.project_key)
++  const issueErrorState = issueQuery.error
++    ? resourceErrorState(issueQuery.error, () => void issueQuery.refetch(), {
++        hasData: Boolean(issueQuery.data),
++        message: t('issue.loadError'),
++      })
++    : undefined
++  const hasIssue =
++    Boolean(issueQuery.data) && (!issueErrorState || issueErrorState.kind === 'partial-error')
++  const boardQuery = useBoard(hasIssue ? issueQuery.data?.project_key : undefined)
++  const sprintsQuery = useSprints(hasIssue ? issueQuery.data?.project_key : undefined)
+   const updateIssue = useUpdateIssue(id)
+   const deleteIssueMutation = useDeleteIssue()
+-  const worklogsQuery = useWorklogs(id)
+-  const commentsQuery = useComments(id)
++  const worklogsQuery = useWorklogs(id, hasIssue)
++  const commentsQuery = useComments(id, hasIssue)
+   const create = useCreateWorklog(id)
+   const update = useUpdateWorklog(id)
+   const remove = useDeleteWorklog(id)
+@@ -90,12 +103,11 @@ export function IssueDetailPage() {
+     return <LoadingState message={t('issue.loading')} />
+   }
+ 
+-  if (issueQuery.error && !issueQuery.data) {
+-    return <ErrorState message={t('issue.loadError')} onRetry={() => void issueQuery.refetch()} />
+-  }
++  if (issueErrorState && issueErrorState.kind !== 'partial-error')
++    return <ResourceStateView state={issueErrorState} />
+ 
+   if (!issueQuery.data) {
+-    return <ErrorState message={t('issue.notFound')} />
++    return <ResourceStateView state={{ kind: 'not-found', message: t('issue.notFound') }} />
+   }
+ 
+   const issue = issueQuery.data
+@@ -160,29 +172,30 @@ export function IssueDetailPage() {
+ 
+   return (
+     <div className="min-w-0 bg-background">
+-      <div>
+-        {issueQuery.error && (
+-          <ErrorState message={t('issue.refreshError')} onRetry={() => void issueQuery.refetch()} />
+-        )}
+-        <div className="mb-2 text-sm text-text-muted">
+-          <Link
+-            to={`/projects/${issue.project_key}/board`}
+-            className="inline-flex min-h-6 items-center rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+-          >
+-            {issue.project_name}
+-          </Link>{' '}
+-          / {issue.key}
+-        </div>
+-
+-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+-          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
+-            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
+-          </span>
+-          <div className="flex flex-wrap items-center gap-2">
++      <IssueDetailLayout
++        title={issue.summary}
++        state={
++          issueErrorState ? { ...issueErrorState, message: t('issue.refreshError') } : undefined
++        }
++        context={
++          <div className="flex min-w-0 flex-wrap items-center gap-2">
++            <Link
++              to={`/projects/${encodeURIComponent(issue.project_key)}/board`}
++              className="base-control inline-flex items-center rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++            >
++              {issue.project_name}
++            </Link>{' '}
++            / {issue.key}
++            <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
++              {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
++            </span>
++          </div>
++        }
++        actions={
++          <>
+             <Button
+               variant="secondary"
+               size="sm"
+-              className="h-10 xl:h-8"
+               disabled={
+                 updateIssue.isPending || !currentUserId || currentUserId === issue.assignee_id
+               }
+@@ -202,7 +215,7 @@ export function IssueDetailPage() {
+                 <Button
+                   variant="secondary"
+                   size="icon"
+-                  className="h-10 w-10 xl:h-9 xl:w-9"
++                  ref={actionsRef}
+                   aria-label={t('issue.actions')}
+                 >
+                   <MoreHorizontal className="h-4 w-4" />
+@@ -224,156 +237,137 @@ export function IssueDetailPage() {
+                 </DropdownMenuItem>
+               </DropdownMenuContent>
+             </DropdownMenu>
+-          </div>
+-        </div>
+-
+-        <IssueDetailLayout
+-          description={
+-            <section className="min-w-0 border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
+-              <IssueDescriptionEditor
++          </>
++        }
++        description={
++          <section className="min-w-0">
++            <IssueDescriptionEditor
++              key={issue.id}
++              issue={issue}
++              showTitle={false}
++              disabled={updateIssue.isPending}
++              onSubmit={async (patch) => {
++                await updateIssue.mutateAsync(patch)
++                toast.success(t('common.saved'))
++              }}
++            />
++          </section>
++        }
++        details={
++          <section className="base-page-stack">
++            <h2 className="text-sm font-semibold">{t('issue.details')}</h2>
++            <div className="text-sm">
++              <IssueMetaEditor
+                 issue={issue}
++                columns={boardQuery.data?.columns ?? []}
++                sprints={sprintsQuery.data ?? []}
+                 disabled={updateIssue.isPending}
+-                onSubmit={async (patch) => {
+-                  await updateIssue.mutateAsync(patch)
+-                  toast.success(t('common.saved'))
+-                }}
++                onChange={(patch) =>
++                  updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
++                }
+               />
+-            </section>
+-          }
+-          details={
+-            <Card>
+-              <CardHeader>
+-                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
+-              </CardHeader>
+-              <CardContent className="text-sm">
+-                <IssueMetaEditor
+-                  issue={issue}
+-                  columns={boardQuery.data?.columns ?? []}
+-                  sprints={sprintsQuery.data ?? []}
+-                  disabled={updateIssue.isPending}
+-                  onChange={(patch) =>
+-                    updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
+-                  }
+-                />
+-              </CardContent>
+-            </Card>
+-          }
+-          activity={
+-            <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
+-              <Tabs value={activeTab} onValueChange={updateActiveTab}>
+-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+-                  <TabsTrigger className="min-h-10" value="activity">
+-                    {t('issue.activity')}
+-                  </TabsTrigger>
+-                  <TabsTrigger className="min-h-10" value="comments">
+-                    {t('issue.comments')}
+-                  </TabsTrigger>
+-                  <TabsTrigger className="min-h-10" value="worklog">
+-                    {t('timeTracking.worklog.title')}
+-                  </TabsTrigger>
+-                  <TabsTrigger className="min-h-10" value="attachments">
+-                    {t('attachments.title')}
+-                  </TabsTrigger>
+-                </TabsList>
+-                <TabsContent value="activity">
+-                  {commentsQuery.error && (
+-                    <ErrorState
+-                      message={t('comments.loadError')}
+-                      onRetry={() => void commentsQuery.refetch()}
+-                    />
+-                  )}
+-                  {worklogsQuery.error && (
+-                    <ErrorState
+-                      message={t('timeTracking.worklog.loadError')}
+-                      onRetry={() => void worklogsQuery.refetch()}
+-                    />
+-                  )}
+-                  {activityLoading ? (
+-                    <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+-                  ) : hasActivityData || !activityError ? (
+-                    <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
+-                  ) : null}
+-                </TabsContent>
+-                <TabsContent value="comments">
+-                  <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+-                </TabsContent>
+-                <TabsContent value="worklog">
+-                  {worklogsQuery.error ? (
+-                    <ErrorState
+-                      message={t('timeTracking.worklog.loadError')}
+-                      onRetry={() => void worklogsQuery.refetch()}
+-                    />
+-                  ) : worklogsQuery.isLoading ? (
+-                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+-                  ) : (
+-                    <WorklogTab
+-                      worklogs={worklogs}
+-                      onEdit={handleEdit}
+-                      onDelete={handleDelete}
+-                      currentUserId={currentUserId ?? ''}
+-                    />
+-                  )}
+-                </TabsContent>
+-                <TabsContent value="attachments">
+-                  <AttachmentPanel issueId={id} />
+-                </TabsContent>
+-              </Tabs>
+-
+-              <div className="grid gap-4 md:grid-cols-2">
+-                <Card>
+-                  <CardContent className="pt-5">
+-                    <LabelEditor issueId={id} projectKey={issue.project_key} />
+-                  </CardContent>
+-                </Card>
+-                <Card>
+-                  <CardHeader>
+-                    <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
+-                  </CardHeader>
+-                  <CardContent>
+-                    <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+-                  </CardContent>
+-                </Card>
+-                <Card className="md:col-span-2">
+-                  <CardContent className="pt-5">
+-                    <LinkEditor issueId={id} currentKey={issue.key} />
+-                  </CardContent>
+-                </Card>
+-              </div>
+             </div>
+-          }
+-          supplemental={
+-            <>
+-              <Card>
+-                <CardHeader>
+-                  <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
+-                </CardHeader>
+-                <CardContent>
+-                  <TimeTrackingPanel
+-                    timeSpentSeconds={issue.time_spent_seconds}
+-                    originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+-                    remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+-                    onLogWork={handleLogWork}
++          </section>
++        }
++        activity={
++          <div className="base-page-stack">
++            <Tabs value={activeTab} onValueChange={updateActiveTab}>
++              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
++                <TabsTrigger className="min-h-10" value="activity">
++                  {t('issue.activity')}
++                </TabsTrigger>
++                <TabsTrigger className="min-h-10" value="comments">
++                  {t('issue.comments')}
++                </TabsTrigger>
++                <TabsTrigger className="min-h-10" value="worklog">
++                  {t('timeTracking.worklog.title')}
++                </TabsTrigger>
++                <TabsTrigger className="min-h-10" value="attachments">
++                  {t('attachments.title')}
++                </TabsTrigger>
++              </TabsList>
++              <TabsContent value="activity">
++                {commentsQuery.error && (
++                  <ErrorState
++                    message={t('comments.loadError')}
++                    onRetry={() => void commentsQuery.refetch()}
+                   />
+-                </CardContent>
+-              </Card>
+-
+-              <Card>
+-                <CardHeader>
+-                  <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
+-                </CardHeader>
+-                <CardContent>
+-                  <IssueEngagementPanel
+-                    issueId={id}
+-                    projectKey={issue.project_key}
+-                    currentUserId={currentUserId}
+-                    reporterId={issue.reporter_id}
++                )}
++                {worklogsQuery.error && (
++                  <ErrorState
++                    message={t('timeTracking.worklog.loadError')}
++                    onRetry={() => void worklogsQuery.refetch()}
+                   />
+-                </CardContent>
+-              </Card>
+-            </>
+-          }
+-        />
+-      </div>
++                )}
++                {activityLoading ? (
++                  <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
++                ) : hasActivityData || !activityError ? (
++                  <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
++                ) : null}
++              </TabsContent>
++              <TabsContent value="comments">
++                <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
++              </TabsContent>
++              <TabsContent value="worklog">
++                {worklogsQuery.error ? (
++                  <ErrorState
++                    message={t('timeTracking.worklog.loadError')}
++                    onRetry={() => void worklogsQuery.refetch()}
++                  />
++                ) : worklogsQuery.isLoading ? (
++                  <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
++                ) : (
++                  <WorklogTab
++                    worklogs={worklogs}
++                    onEdit={handleEdit}
++                    onDelete={handleDelete}
++                    currentUserId={currentUserId ?? ''}
++                  />
++                )}
++              </TabsContent>
++              <TabsContent value="attachments">
++                <AttachmentPanel issueId={id} />
++              </TabsContent>
++            </Tabs>
++
++            <div className="grid gap-5 md:grid-cols-2">
++              <section className="min-w-0">
++                <LabelEditor issueId={id} projectKey={issue.project_key} />
++              </section>
++              <section className="base-page-stack">
++                <h2 className="text-sm font-semibold">{t('customFields.title')}</h2>
++                <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
++              </section>
++              <section className="min-w-0 md:col-span-2">
++                <LinkEditor issueId={id} currentKey={issue.key} />
++              </section>
++            </div>
++          </div>
++        }
++        supplemental={
++          <>
++            <section className="base-page-stack">
++              <h2 className="text-sm font-semibold">{t('timeTracking.title')}</h2>
++              <TimeTrackingPanel
++                timeSpentSeconds={issue.time_spent_seconds}
++                originalEstimateSeconds={issue.original_estimate_seconds ?? null}
++                remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
++                onLogWork={handleLogWork}
++              />
++            </section>
++
++            <section className="base-page-stack">
++              <h2 className="text-sm font-semibold">{t('engagement.title')}</h2>
++              <IssueEngagementPanel
++                issueId={id}
++                projectKey={issue.project_key}
++                currentUserId={currentUserId}
++                reporterId={issue.reporter_id}
++              />
++            </section>
++          </>
++        }
++      />
+ 
+       <LogWorkDialog
+         open={dialogOpen}
+@@ -393,61 +387,46 @@ export function IssueDetailPage() {
+         error={deleteIssueMutation.error ? t('issue.deleteError') : null}
+         title={t('issue.delete')}
+         description={t('issue.deleteConfirm')}
++        returnFocusRef={actionsRef}
+         onConfirm={() => deleteIssueMutation.mutate(id)}
+       />
+     </div>
+   )
+ }
+ 
+-const desktopLayoutQuery = '(min-width: 1024px)'
+-
+-function getDesktopLayout() {
+-  return (
+-    typeof window !== 'undefined' &&
+-    typeof window.matchMedia === 'function' &&
+-    window.matchMedia(desktopLayoutQuery).matches
+-  )
+-}
+-
+-function subscribeDesktopLayout(onChange: () => void) {
+-  if (typeof window.matchMedia !== 'function') return () => {}
+-  const query = window.matchMedia(desktopLayoutQuery)
+-  query.addEventListener('change', onChange)
+-  return () => query.removeEventListener('change', onChange)
+-}
+-
+ function IssueDetailLayout({
++  title,
++  context,
++  actions,
++  state,
+   description,
+   details,
+   activity,
+   supplemental,
+-}: {
++}: PageHeaderProps & {
++  state?: ResourceState
+   description: ReactNode
+   details: ReactNode
+   activity: ReactNode
+   supplemental: ReactNode
+ }) {
+-  const desktop = useSyncExternalStore(subscribeDesktopLayout, getDesktopLayout, () => false)
+-
+   return (
+-    <div
+-      className={
+-        desktop
+-          ? 'grid min-w-0 grid-cols-[minmax(0,1fr)_320px] grid-rows-[min-content_minmax(0,1fr)] gap-6'
+-          : 'grid min-w-0 gap-4'
+-      }
+-    >
+-      {description}
+-      {desktop ? (
+-        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 self-start space-y-4">
++    <DetailPage
++      title={title}
++      context={context}
++      actions={actions}
++      state={state}
++      aside={
++        <div className="base-page-stack">
+           {details}
+           {supplemental}
+-        </aside>
+-      ) : (
+-        details
+-      )}
+-      {activity}
+-      {!desktop && <aside className="space-y-4">{supplemental}</aside>}
+-    </div>
++        </div>
++      }
++    >
++      <div className="base-page-stack">
++        {description}
++        {activity}
++      </div>
++    </DetailPage>
+   )
+ }
+diff --git a/frontend/src/pages/issue-detail/issue-detail.test.tsx b/frontend/src/pages/issue-detail/issue-detail.test.tsx
+index 52a7bd3..28185bd 100644
+--- a/frontend/src/pages/issue-detail/issue-detail.test.tsx
++++ b/frontend/src/pages/issue-detail/issue-detail.test.tsx
+@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+ import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
++import { createMemoryRouter, RouterProvider, useLocation, useNavigate } from 'react-router'
+ 
+ import { IssueDetailPage } from './'
+ import { ThemeProvider } from '@sdlc/ui/lib'
+@@ -163,22 +163,24 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/i1') {
+   const qc = new QueryClient({
+     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+   })
++  const router = createMemoryRouter(
++    [
++      {
++        path: '/issues/:id',
++        element: (
++          <>
++            {children}
++            <LocationProbe />
++          </>
++        ),
++      },
++    ],
++    { initialEntries: [initialEntry] },
++  )
+   return (
+     <ThemeProvider>
+       <QueryClientProvider client={qc}>
+-        <MemoryRouter initialEntries={[initialEntry]}>
+-          <Routes>
+-            <Route
+-              path="/issues/:id"
+-              element={
+-                <>
+-                  {children}
+-                  <LocationProbe />
+-                </>
+-              }
+-            />
+-          </Routes>
+-        </MemoryRouter>
++        <RouterProvider router={router} />
+       </QueryClientProvider>
+     </ThemeProvider>
+   )
+@@ -231,6 +233,47 @@ describe('IssueDetailPage', () => {
+     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
+     render(wrapper(<IssueDetailPage />))
+     expect(document.querySelector('.animate-spin')).toBeInTheDocument()
++    expect(mockComments).toHaveBeenCalledWith('i1', false)
++    expect(mockWorklogs).toHaveBeenCalledWith('i1', false)
++  })
++
++  it.each([403, 404])('hides cached issue and disables dependent reads after HTTP %s', (status) => {
++    mockUseIssue.mockReturnValue({
++      data: issueData,
++      error: { status },
++      isLoading: false,
++      refetch: vi.fn(),
++    })
++    const { container } = render(wrapper(<IssueDetailPage />))
++    expect(
++      container.querySelector(
++        `[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`,
++      ),
++    ).toBeInTheDocument()
++    expect(screen.queryByText('Test issue summary')).not.toBeInTheDocument()
++    expect(
++      screen.queryByRole('button', { name: /назначить на себя|assign to me/i }),
++    ).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
++    expect(mockComments).toHaveBeenCalledWith('i1', false)
++    expect(mockWorklogs).toHaveBeenCalledWith('i1', false)
++  })
++
++  it('retains cached issue with a partial state after a retryable refresh failure', async () => {
++    const refetch = vi.fn()
++    mockUseIssue.mockReturnValue({
++      data: issueData,
++      error: { status: 503 },
++      isLoading: false,
++      refetch,
++    })
++    const { container } = render(wrapper(<IssueDetailPage />))
++    expect(container.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByText('Test issue summary')).toBeInTheDocument()
++    expect(mockComments).toHaveBeenCalledWith('i1', true)
++    expect(mockWorklogs).toHaveBeenCalledWith('i1', true)
++    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
++    expect(refetch).toHaveBeenCalledOnce()
+   })
+ 
+   it('keeps issue details available while worklogs load', () => {
+@@ -309,15 +352,17 @@ describe('IssueDetailPage', () => {
+     expect(retry).toHaveBeenCalledOnce()
+   })
+ 
+-  it('places editable details between the heading and activity in document order', () => {
++  it('uses the Base detail composition with one heading and an independent aside', () => {
+     render(wrapper(<IssueDetailPage />))
+     const heading = screen.getByText('Test issue summary')
+     const details = screen.getByText(/^(детали|details)$/i)
+     const activity = screen.getByRole('tab', { name: /активность|activity/i })
+     expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+     expect(
+-      details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
++      activity.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING,
+     ).toBeTruthy()
++    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
++    expect(document.querySelector('.page-split')).toBeInTheDocument()
+   })
+ 
+   it('links the issue back to its project board', () => {
+@@ -411,7 +456,7 @@ describe('IssueDetailPage', () => {
+     render(wrapper(<IssueDetailPage />))
+ 
+     const sidebar = screen.getByRole('complementary')
+-    expect(sidebar).toHaveClass('sticky')
++    expect(sidebar.parentElement).toHaveClass('page-split')
+     expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+     expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
+     expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
+@@ -428,6 +473,8 @@ describe('IssueDetailPage', () => {
+     vi.stubGlobal('matchMedia', () => media)
+     render(wrapper(<IssueDetailPage />))
+ 
++    const originalAside = screen.getByRole('complementary')
++
+     await userEvent.setup().click(screen.getByRole('button', { name: /изменить|edit/i }))
+     fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
+       target: { value: 'Unsaved draft' },
+@@ -438,7 +485,7 @@ describe('IssueDetailPage', () => {
+     })
+ 
+     expect(screen.getByDisplayValue('Unsaved draft')).toBeInTheDocument()
+-    expect(screen.getByRole('complementary')).toHaveClass('sticky')
++    expect(screen.getByRole('complementary')).toBe(originalAside)
+   })
+ 
+   it('describes deletion as recoverable from the trash', async () => {
+diff --git a/frontend/src/pages/project-board/index.tsx b/frontend/src/pages/project-board/index.tsx
+index 08e6cf8..300dad4 100644
+--- a/frontend/src/pages/project-board/index.tsx
++++ b/frontend/src/pages/project-board/index.tsx
+@@ -363,7 +363,7 @@ export function ProjectBoardPage() {
+               </div>
+ 
+               <Link
+-                to="/issues/create"
++                to={`/issues/create?project_key=${encodeURIComponent(key)}`}
+                 state={{ project_key: key }}
+                 className={`${density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'} flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary`}
+               >
+diff --git a/frontend/src/pages/project-board/project-board.test.tsx b/frontend/src/pages/project-board/project-board.test.tsx
+index 3a7962f..252225e 100644
+--- a/frontend/src/pages/project-board/project-board.test.tsx
++++ b/frontend/src/pages/project-board/project-board.test.tsx
+@@ -57,6 +57,9 @@ describe('ProjectBoardPage', () => {
+     expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
+     expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
+     expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
++    for (const link of screen.getAllByRole('link', { name: /Создать/ })) {
++      expect(link).toHaveAttribute('href', '/issues/create?project_key=TT')
++    }
+   })
+ 
+   it('switches to compact density without shrinking issue actions', async () => {
+diff --git a/frontend/src/widgets/app-shell.test.tsx b/frontend/src/widgets/app-shell.test.tsx
+index 84a5ad0..e538bed 100644
+--- a/frontend/src/widgets/app-shell.test.tsx
++++ b/frontend/src/widgets/app-shell.test.tsx
+@@ -69,6 +69,8 @@ describe('AppShell notifications', () => {
+     )
+     const header = screen.getByRole('banner')
+     expect(container.querySelectorAll('[data-platform-header]')).toHaveLength(1)
++    expect(container.querySelectorAll('[data-base-shell]')).toHaveLength(1)
++    expect(within(header).queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
+     expect(
+       [...header.querySelectorAll('[data-platform-header-slot]')].map((slot) =>
+         slot.getAttribute('data-platform-header-slot'),
+@@ -85,7 +87,54 @@ describe('AppShell notifications', () => {
+     ).toHaveAttribute('href', '/search')
+   })
+ 
+-  it('keeps contextual task creation reachable in the mobile drawer and closes it on navigation', async () => {
++  it('keeps logout available after profile loading fails', async () => {
++    mockHooks([])
++    const mutate = vi.fn()
++    useCurrentUser.mockReturnValue({ error: new Error('Profile unavailable') })
++    useLogout.mockReturnValue({ mutate, isPending: false })
++    const user = userEvent.setup()
++    render(
++      <ThemeProvider>
++        <MemoryRouter>
++          <AppShell />
++        </MemoryRouter>
++      </ThemeProvider>,
++    )
++    await user.click(screen.getByRole('button', { name: 'Аккаунт' }))
++    await user.click(screen.getByRole('menuitem', { name: 'Выйти' }))
++    expect(mutate).toHaveBeenCalledTimes(1)
++  })
++
++  it.each([403, 404])('does not retain a cached issue project context after HTTP %s', (status) => {
++    mockHooks([])
++    useIssue.mockReturnValue({ data: { project_key: 'OLD' }, error: { status } })
++    render(
++      <ThemeProvider>
++        <MemoryRouter initialEntries={['/issues/old']}>
++          <AppShell />
++        </MemoryRouter>
++      </ThemeProvider>,
++    )
++    expect(screen.queryByRole('link', { name: 'Доска' })).not.toBeInTheDocument()
++  })
++
++  it('retains issue project context after a recoverable cached refresh failure', () => {
++    mockHooks([])
++    useIssue.mockReturnValue({ data: { project_key: 'XP' }, error: { status: 503 } })
++    render(
++      <ThemeProvider>
++        <MemoryRouter initialEntries={['/issues/old']}>
++          <AppShell />
++        </MemoryRouter>
++      </ThemeProvider>,
++    )
++    expect(screen.getByRole('link', { name: 'Доска' })).toHaveAttribute(
++      'href',
++      '/projects/XP/board',
++    )
++  })
++
++  it('keeps contextual project destinations in the shared drawer without duplicating page CRUD', async () => {
+     mockHooks([])
+     const user = userEvent.setup()
+     render(
+@@ -95,12 +144,13 @@ describe('AppShell notifications', () => {
+         </MemoryRouter>
+       </ThemeProvider>,
+     )
+-    const trigger = screen.getByRole('button', { name: 'Открыть меню' })
++    const trigger = screen.getByRole('button', { name: 'Открыть навигацию' })
+     await user.click(trigger)
+     const dialog = await screen.findByRole('dialog')
+-    const create = within(dialog).getByRole('link', { name: 'Создать' })
+-    expect(create).toHaveAttribute('href', '/issues/create?project_key=XP')
+-    await user.click(create)
++    expect(within(dialog).queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
++    const backlog = within(dialog).getByRole('link', { name: 'Бэклог' })
++    expect(backlog).toHaveAttribute('href', '/projects/XP/backlog')
++    await user.click(backlog)
+     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+     await waitFor(() => expect(trigger).toHaveFocus())
+   })
+@@ -178,19 +228,22 @@ describe('AppShell notifications', () => {
+       </ThemeProvider>,
+     )
+ 
+-    const navigation = screen.getByRole('navigation', { name: 'Навигация проекта' })
++    const navigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+     expect(within(navigation).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+       'aria-current',
+       'page',
+     )
+     expect(within(navigation).getByRole('link', { name: 'Бэклог' })).not.toHaveAttribute(
+       'aria-current',
++      'page',
+     )
+     expect(within(navigation).getByRole('link', { name: 'Корзина' })).not.toHaveAttribute(
+       'aria-current',
++      'page',
+     )
+     expect(within(navigation).getByRole('link', { name: 'Настройки проекта' })).not.toHaveAttribute(
+       'aria-current',
++      'page',
+     )
+   })
+ 
+@@ -204,7 +257,7 @@ describe('AppShell notifications', () => {
+       </ThemeProvider>,
+     )
+ 
+-    const projectNavigation = screen.getByRole('navigation', { name: 'Навигация проекта' })
++    const projectNavigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+     expect(within(projectNavigation).getByRole('link', { name: 'Отчёты проекта' })).toHaveAttribute(
+       'aria-current',
+       'page',
+@@ -213,11 +266,8 @@ describe('AppShell notifications', () => {
+       within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
+         name: 'Отчёты',
+       }),
+-    ).not.toHaveAttribute('aria-current')
+-    expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute(
+-      'href',
+-      '/issues/create?project_key=XP',
+-    )
++    ).not.toHaveAttribute('aria-current', 'page')
++    expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
+   })
+ 
+   it('closes the mobile navigation dialog with Escape and after choosing a link', async () => {
+@@ -231,7 +281,7 @@ describe('AppShell notifications', () => {
+       </ThemeProvider>,
+     )
+ 
+-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
++    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
+     let dialog = await screen.findByRole('dialog')
+     expect(within(dialog).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+       'aria-current',
+@@ -240,7 +290,7 @@ describe('AppShell notifications', () => {
+     await user.keyboard('{Escape}')
+     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+ 
+-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
++    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
+     dialog = await screen.findByRole('dialog')
+     await user.click(within(dialog).getByRole('link', { name: 'Бэклог' }))
+     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+@@ -345,10 +395,14 @@ describe('AppShell notifications', () => {
+       </ThemeProvider>,
+     )
+ 
++    expect(screen.getByRole('link', { name: 'Администрирование' })).toHaveAttribute(
++      'href',
++      '/admin',
++    )
+     await user.click(screen.getByRole('button', { name: /аккаунт|account/i }))
+     expect(
+-      await screen.findByRole('menuitem', { name: /администрирование|administration/i }),
+-    ).toHaveAttribute('href', '/admin')
++      screen.queryByRole('menuitem', { name: /администрирование|administration/i }),
++    ).not.toBeInTheDocument()
+   })
+ 
+   it('opens an empty notification dropdown without a badge', async () => {
+diff --git a/frontend/src/widgets/app-shell.tsx b/frontend/src/widgets/app-shell.tsx
+index 473e09d..e32cceb 100644
+--- a/frontend/src/widgets/app-shell.tsx
++++ b/frontend/src/widgets/app-shell.tsx
+@@ -1,7 +1,4 @@
+-import { useEffect, useState } from 'react'
+ import { Link, useLocation, Outlet } from 'react-router'
+-import * as DialogPrimitive from '@radix-ui/react-dialog'
+-import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
+ import {
+   LayoutDashboard,
+   FolderKanban,
+@@ -9,40 +6,24 @@ import {
+   List,
+   Columns2,
+   Trash2,
+-  Bell,
+-  User,
+-  Plus,
+   ChevronDown,
+-  Menu,
+-  X,
+-  LogOut,
+   BarChart3,
+   ShieldCheck,
+   Settings2,
+-  PanelLeftClose,
+-  PanelLeftOpen,
+-  Check,
+ } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
+-import { ThemeToggle } from '@sdlc/ui/ui'
+-import { PlatformHeader } from '@sdlc/ui/ui'
+-import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
+-import {
+-  useCurrentUser,
+-  useLogout,
+-  useMarkAllNotificationsRead,
+-  useMarkNotificationRead,
+-  useIssue,
+-  useNotifications,
+-  useProjects,
+-} from '@/shared/api/hooks'
+ import {
++  AppShell as BaseAppShell,
++  Button,
+   DropdownMenu,
+   DropdownMenuContent,
+   DropdownMenuItem,
+   DropdownMenuTrigger,
++  resourceErrorState,
+ } from '@sdlc/ui/ui'
++import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
++import { useCurrentUser, useLogout, useIssue, useProjects } from '@/shared/api/hooks'
++import { NotificationMenu } from './notification-menu'
+ 
+ const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
+ const issuePattern = /^\/issues\/([^/]+)$/
+@@ -61,74 +42,31 @@ function useCurrentProjectKey() {
+     location.pathname === '/reports'
+       ? new URLSearchParams(location.search).get('project_key')
+       : undefined
+-  // On the issue page the project is not part of the URL; resolve it from
+-  // the loaded issue so sidebar Board/Backlog/Trash keep their context.
+-  const { data: issue } = useIssue(issueId ?? '')
++  const issueQuery = useIssue(issueId ?? '')
++  const issue =
++    issueQuery.error &&
++    resourceErrorState(issueQuery.error, undefined, { hasData: Boolean(issueQuery.data) }).kind !==
++      'partial-error'
++      ? undefined
++      : issueQuery.data
+   return match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue?.project_key
+ }
+ 
+-function SidebarLink({
+-  to,
+-  icon: Icon,
+-  label,
+-  active,
+-  onClick,
+-  compact = false,
+-}: {
+-  to: string
+-  icon: React.ElementType
+-  label: string
+-  active: boolean
+-  onClick?: () => void
+-  compact?: boolean
+-}) {
+-  return (
+-    <Link
+-      to={to}
+-      onClick={onClick}
+-      title={compact ? label : undefined}
+-      aria-label={compact ? label : undefined}
+-      aria-current={active ? 'page' : undefined}
+-      className={`flex min-h-11 items-center rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-3'} ${
+-        active
+-          ? 'bg-surface-raised text-text-primary'
+-          : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
+-      }`}
+-    >
+-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+-      {!compact && <span className="truncate">{label}</span>}
+-    </Link>
+-  )
+-}
+-
+ export function AppShell() {
+   const { t } = useTranslation()
+   const location = useLocation()
+   const projectKey = useCurrentProjectKey()
+-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+-    () =>
+-      typeof window !== 'undefined' &&
+-      window.localStorage.getItem('tt-sidebar-collapsed') === 'true',
+-  )
+-  useEffect(() => {
+-    if (!window.matchMedia) return
+-    const desktop = window.matchMedia('(min-width: 768px)')
+-    const closeOnDesktop = () => {
+-      if (desktop.matches) setMobileMenuOpen(false)
+-    }
+-    desktop.addEventListener('change', closeOnDesktop)
+-    return () => desktop.removeEventListener('change', closeOnDesktop)
+-  }, [])
+   const { data: user } = useCurrentUser()
+-  const { data: projects = [] } = useProjects()
+-  const { data: notificationList } = useNotifications()
+-  const markNotificationRead = useMarkNotificationRead()
+-  const markAllNotificationsRead = useMarkAllNotificationsRead()
++  const projectsQuery = useProjects()
++  const projects =
++    projectsQuery.error &&
++    resourceErrorState(projectsQuery.error, undefined, {
++      hasData: projectsQuery.data !== undefined,
++    }).kind !== 'partial-error'
++      ? []
++      : (projectsQuery.data ?? [])
+   useTrackerEvents()
+   const logout = useLogout()
+-  const notifications = notificationList?.notifications ?? []
+-  const unreadCount = notificationList?.unread_count ?? 0
+   const currentProject = projects.find((project) => project.key === projectKey)
+   const pageLayout =
+     location.pathname === '/issues/create' || location.pathname.endsWith('/settings/custom-fields')
+@@ -136,7 +74,7 @@ export function AppShell() {
+       : /^\/issues\/[^/]+$/.test(location.pathname)
+         ? 'detail-with-aside'
+         : 'wide'
+-
++  const projectPath = projectKey ? `/projects/${encodeURIComponent(projectKey)}` : ''
+   const navItems = [
+     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
+     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
+@@ -144,19 +82,18 @@ export function AppShell() {
+     { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
+     { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
+   ]
+-
+   const projectItems = projectKey
+     ? [
+-        { to: `/projects/${projectKey}/board`, icon: Columns2, labelKey: 'navigation.board' },
+-        { to: `/projects/${projectKey}/backlog`, icon: List, labelKey: 'navigation.backlog' },
++        { to: `${projectPath}/board`, icon: Columns2, labelKey: 'navigation.board' },
++        { to: `${projectPath}/backlog`, icon: List, labelKey: 'navigation.backlog' },
+         {
+-          to: `/reports?project_key=${projectKey}`,
++          to: `/reports?${new URLSearchParams({ project_key: projectKey })}`,
+           icon: BarChart3,
+           labelKey: 'navigation.projectReports',
+         },
+-        { to: `/projects/${projectKey}/trash`, icon: Trash2, labelKey: 'trash.title' },
++        { to: `${projectPath}/trash`, icon: Trash2, labelKey: 'trash.title' },
+         {
+-          to: `/projects/${projectKey}/settings/custom-fields`,
++          to: `${projectPath}/settings/custom-fields`,
+           icon: Settings2,
+           labelKey: 'navigation.settings',
+         },
+@@ -167,374 +104,74 @@ export function AppShell() {
+     const [pathname, query] = path.split('?')
+     if (location.pathname !== pathname) return false
+     if (pathname === '/reports') {
+-      const selectedProject = new URLSearchParams(location.search).get('project_key')
+-      const targetProject = new URLSearchParams(query).get('project_key')
+-      return selectedProject === targetProject
++      return (
++        new URLSearchParams(location.search).get('project_key') ===
++        new URLSearchParams(query).get('project_key')
++      )
+     }
+     return true
+   }
+ 
+-  function closeMobileMenu() {
+-    setMobileMenuOpen(false)
+-  }
+-
+   return (
+-    <div className="min-h-screen bg-background text-text-primary">
+-      <PlatformHeader
+-        currentServiceKey="task-tracker"
+-        leading={
+-          <>
+-            <DialogPrimitive.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+-              <DialogPrimitive.Trigger asChild>
+-                <Button
+-                  variant="ghost"
+-                  size="icon"
+-                  className="h-11 w-11 md:hidden"
+-                  aria-label={t('navigation.openMenu')}
+-                >
+-                  <Menu className="h-[18px] w-[18px]" aria-hidden="true" />
+-                </Button>
+-              </DialogPrimitive.Trigger>
+-              <DialogPrimitive.Portal>
+-                <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:hidden" />
+-                <DialogPrimitive.Content
+-                  aria-describedby={undefined}
+-                  className="fixed inset-y-0 left-0 z-[61] h-dvh w-[calc(100vw-2rem)] max-w-72 overflow-y-auto border-r border-border bg-surface p-3 shadow-lg focus:outline-none md:hidden"
+-                >
+-                  <div className="mb-3 flex min-h-11 items-center justify-between gap-2 border-b border-border pb-2">
+-                    <DialogPrimitive.Title className="text-sm font-semibold">
+-                      {t('app.name')}
+-                    </DialogPrimitive.Title>
+-                    <DialogPrimitive.Close asChild>
+-                      <Button
+-                        variant="ghost"
+-                        size="icon"
+-                        className="h-11 w-11"
+-                        aria-label={t('navigation.closeMenu')}
+-                      >
+-                        <X className="h-4 w-4" aria-hidden="true" />
+-                      </Button>
+-                    </DialogPrimitive.Close>
+-                  </div>
+-                  <Button asChild className="mb-3 min-h-11 w-full gap-2">
+-                    <Link
+-                      to={
+-                        projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'
+-                      }
+-                      onClick={closeMobileMenu}
+-                      aria-label={t('navigation.create')}
+-                    >
+-                      <Plus className="h-4 w-4" aria-hidden="true" />
+-                      {t('navigation.create')}
+-                    </Link>
+-                  </Button>
+-                  <nav aria-label={t('navigation.mainNav')}>
+-                    {navItems.map((item) => (
+-                      <SidebarLink
+-                        key={item.to}
+-                        to={item.to}
+-                        icon={item.icon}
+-                        label={t(item.labelKey)}
+-                        active={isActive(item.to)}
+-                        onClick={closeMobileMenu}
+-                      />
+-                    ))}
+-                  </nav>
+-                  {projectKey && (
+-                    <nav
+-                      aria-label={t('navigation.projectNav')}
+-                      className="mt-4 border-t border-border pt-3"
+-                    >
+-                      <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
+-                        {currentProject?.name ?? projectKey}
+-                      </div>
+-                      {projectItems.map((item) => (
+-                        <SidebarLink
+-                          key={item.to}
+-                          to={item.to}
+-                          icon={item.icon}
+-                          label={t(item.labelKey)}
+-                          active={isActive(item.to)}
+-                          onClick={closeMobileMenu}
+-                        />
+-                      ))}
+-                    </nav>
+-                  )}
+-                </DialogPrimitive.Content>
+-              </DialogPrimitive.Portal>
+-            </DialogPrimitive.Root>
+-            <Link
+-              to="/"
+-              className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus min-[360px]:flex"
+-              aria-label={t('app.name')}
+-            >
+-              <PlatformMark size="sm" withName={false} />
+-            </Link>
+-          </>
+-        }
+-        context={
+-          <DropdownMenu modal={false}>
+-            <DropdownMenuTrigger asChild>
+-              <button
+-                type="button"
+-                aria-label={t('navigation.projects')}
+-                title={currentProject?.name ?? t('navigation.projects')}
+-                className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
+-              >
+-                <span className="truncate">{currentProject?.name ?? t('navigation.projects')}</span>
+-                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+-              </button>
+-            </DropdownMenuTrigger>
+-            <DropdownMenuContent
+-              align="start"
+-              className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
+-            >
+-              <DropdownMenuItem asChild>
+-                <Link to="/projects" className="gap-2">
+-                  <FolderKanban className="h-4 w-4" />
+-                  {t('navigation.allProjects')}
+-                </Link>
+-              </DropdownMenuItem>
+-              {projects.map((project) => (
+-                <DropdownMenuItem key={project.key} asChild>
+-                  <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
+-                    <span className="truncate">{project.name}</span>
+-                    <span className="text-xs text-text-muted">{project.key}</span>
+-                  </Link>
+-                </DropdownMenuItem>
+-              ))}
+-            </DropdownMenuContent>
+-          </DropdownMenu>
+-        }
+-        actions={
+-          <>
+-            <Button
+-              asChild
+-              size="sm"
+-              className="hidden min-h-10 min-w-10 gap-1 px-2.5 text-xs md:inline-flex"
+-            >
+-              <Link
+-                to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+-                aria-label={t('navigation.create')}
+-              >
+-                <Plus className="h-4 w-4" aria-hidden="true" />
+-                <span className="hidden xl:inline">{t('navigation.create')}</span>
+-              </Link>
+-            </Button>
+-            <ThemeToggle />
+-            <DropdownMenu modal={false}>
+-              <DropdownMenuTrigger asChild>
+-                <Button
+-                  variant="ghost"
+-                  size="icon"
+-                  className="relative h-11 w-11 md:h-10 md:w-10"
+-                  aria-label={t('notifications.open')}
+-                  data-testid="notification-trigger"
+-                >
+-                  <Bell className="h-[18px] w-[18px]" />
+-                  {unreadCount > 0 && (
+-                    <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+-                      {unreadCount}
+-                    </span>
+-                  )}
+-                </Button>
+-              </DropdownMenuTrigger>
+-              <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
+-                <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+-                  <DropdownMenuPrimitive.Label className="text-sm font-semibold">
+-                    {t('notifications.title')}
+-                  </DropdownMenuPrimitive.Label>
+-                  <DropdownMenuItem
+-                    className="min-h-11 px-2 text-xs"
+-                    onSelect={() => markAllNotificationsRead.mutate()}
+-                    disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+-                  >
+-                    {t('notifications.markAllRead')}
+-                  </DropdownMenuItem>
+-                </DropdownMenuPrimitive.Group>
+-                <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
+-                  {notifications.slice(0, 10).map((notification) => {
+-                    const content = (
+-                      <div className="min-w-0">
+-                        <div className="line-clamp-2 break-words font-medium">
+-                          {notification.title}
+-                        </div>
+-                        {notification.body && (
+-                          <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+-                            {notification.body}
+-                          </div>
+-                        )}
+-                      </div>
+-                    )
+-                    return (
+-                      <DropdownMenuPrimitive.Group
+-                        key={notification.id}
+-                        className="flex items-start gap-1"
+-                      >
+-                        {notification.action_url ? (
+-                          <DropdownMenuItem
+-                            asChild
+-                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+-                          >
+-                            <Link
+-                              to={notification.action_url}
+-                              onClick={() => {
+-                                if (!notification.is_read)
+-                                  markNotificationRead.mutate(notification.id)
+-                              }}
+-                            >
+-                              {content}
+-                            </Link>
+-                          </DropdownMenuItem>
+-                        ) : (
+-                          <DropdownMenuItem
+-                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+-                            onSelect={() => {
+-                              if (!notification.is_read)
+-                                markNotificationRead.mutate(notification.id)
+-                            }}
+-                          >
+-                            {content}
+-                          </DropdownMenuItem>
+-                        )}
+-                        {!notification.is_read && (
+-                          <DropdownMenuItem
+-                            className="min-h-11 w-11 shrink-0 justify-center p-0"
+-                            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+-                            title={t('notifications.markRead')}
+-                            onSelect={() => markNotificationRead.mutate(notification.id)}
+-                          >
+-                            <Check className="h-4 w-4" aria-hidden="true" />
+-                          </DropdownMenuItem>
+-                        )}
+-                      </DropdownMenuPrimitive.Group>
+-                    )
+-                  })}
+-                  {notifications.length === 0 && (
+-                    <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
+-                      {t('notifications.empty')}
+-                    </DropdownMenuPrimitive.Label>
+-                  )}
+-                </DropdownMenuPrimitive.Group>
+-                <DropdownMenuPrimitive.Separator className="h-px bg-border" />
+-                <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+-                  <Link to="/notifications">{t('notifications.viewAll')}</Link>
+-                </DropdownMenuItem>
+-              </DropdownMenuContent>
+-            </DropdownMenu>
+-            <DropdownMenu modal={false}>
+-              <DropdownMenuTrigger asChild>
+-                <Button
+-                  variant="ghost"
+-                  size="icon"
+-                  className="h-11 w-11 md:h-10 md:w-10"
+-                  aria-label={t('navigation.account')}
+-                >
+-                  <User className="h-[18px] w-[18px]" />
+-                </Button>
+-              </DropdownMenuTrigger>
+-              <DropdownMenuContent align="end" className="w-56">
+-                <div className="break-words px-2 py-1.5 text-sm font-medium text-text-primary">
+-                  {user?.display_name ?? user?.email ?? t('navigation.user')}
+-                </div>
+-                {user?.display_name && user.display_name !== user.email && (
+-                  <div className="break-words px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
+-                )}
+-                <DropdownMenuItem asChild>
+-                  <Link to="/admin" className="gap-2 text-text-secondary">
+-                    <ShieldCheck className="h-4 w-4" />
+-                    <span>{t('navigation.admin')}</span>
+-                  </Link>
+-                </DropdownMenuItem>
+-                <DropdownMenuItem
+-                  onSelect={() => logout.mutate()}
+-                  disabled={logout.isPending}
+-                  className="gap-2 text-text-secondary"
+-                >
+-                  <LogOut className="h-4 w-4" />
+-                  <span>{t('navigation.logout')}</span>
+-                </DropdownMenuItem>
+-              </DropdownMenuContent>
+-            </DropdownMenu>
+-          </>
+-        }
+-      />
+-
+-      <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
+-        <aside
+-          className={`hidden shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
+-        >
+-          <div
+-            className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
+-          >
+-            {!sidebarCollapsed && (
+-              <span className="truncate text-xs font-medium uppercase text-text-muted">
+-                {t('navigation.menu')}
+-              </span>
+-            )}
++    <BaseAppShell
++      currentServiceKey="task-tracker"
++      title={t('app.name')}
++      navigation={[...navItems, ...projectItems].map(({ labelKey, ...item }) => ({
++        ...item,
++        label: t(labelKey),
++        active: isActive(item.to),
++        end: true,
++      }))}
++      layout={pageLayout}
++      context={
++        <DropdownMenu>
++          <DropdownMenuTrigger asChild>
+             <Button
+               variant="ghost"
+-              size="icon"
+-              className="h-9 w-9"
+-              aria-label={
+-                sidebarCollapsed ? t('navigation.expandSidebar') : t('navigation.collapseSidebar')
+-              }
+-              aria-expanded={!sidebarCollapsed}
+-              onClick={() => {
+-                const next = !sidebarCollapsed
+-                setSidebarCollapsed(next)
+-                window.localStorage.setItem('tt-sidebar-collapsed', String(next))
+-              }}
++              aria-label={t('navigation.projects')}
++              title={currentProject?.name ?? projectKey ?? t('navigation.projects')}
++              className="min-w-0 gap-1 px-2 md:max-w-52"
+             >
+-              {sidebarCollapsed ? (
+-                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+-              ) : (
+-                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+-              )}
++              <FolderKanban className="h-4 w-4 shrink-0" aria-hidden />
++              <span className="hidden truncate md:inline">
++                {currentProject?.name ?? projectKey ?? t('navigation.projects')}
++              </span>
++              <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 md:block" aria-hidden />
+             </Button>
+-          </div>
+-          <nav aria-label={t('navigation.mainNav')}>
+-            {navItems.map((item) => (
+-              <SidebarLink
+-                key={item.to}
+-                to={item.to}
+-                icon={item.icon}
+-                label={t(item.labelKey)}
+-                active={isActive(item.to)}
+-                compact={sidebarCollapsed}
+-              />
++          </DropdownMenuTrigger>
++          <DropdownMenuContent
++            align="start"
++            className="max-h-[calc(100dvh-4rem)] w-64 max-w-[calc(100vw-2rem)] overflow-y-auto"
++          >
++            <DropdownMenuItem asChild>
++              <Link to="/projects" className="gap-2">
++                <FolderKanban className="h-4 w-4" aria-hidden />
++                {t('navigation.allProjects')}
++              </Link>
++            </DropdownMenuItem>
++            {projects.map((project) => (
++              <DropdownMenuItem key={project.key} asChild>
++                <Link
++                  to={`/projects/${encodeURIComponent(project.key)}/board`}
++                  className="min-w-0 justify-between gap-2"
++                >
++                  <span className="truncate">{project.name}</span>
++                  <span className="text-xs text-text-muted">{project.key}</span>
++                </Link>
++              </DropdownMenuItem>
+             ))}
+-          </nav>
+-          {projectKey && (
+-            <nav
+-              aria-label={t('navigation.projectNav')}
+-              className="mt-3 border-t border-border pt-3"
+-            >
+-              {!sidebarCollapsed && (
+-                <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
+-                  {currentProject?.name ?? projectKey}
+-                </div>
+-              )}
+-              {projectItems.map((item) => (
+-                <SidebarLink
+-                  key={item.to}
+-                  to={item.to}
+-                  icon={item.icon}
+-                  label={t(item.labelKey)}
+-                  active={isActive(item.to)}
+-                  compact={sidebarCollapsed}
+-                />
+-              ))}
+-            </nav>
+-          )}
+-        </aside>
+-
+-        <main className="shell-main flex-1">
+-          <PageFrame mode={pageLayout}>
+-            <Outlet />
+-          </PageFrame>
+-        </main>
+-      </div>
+-    </div>
++          </DropdownMenuContent>
++        </DropdownMenu>
++      }
++      actions={<NotificationMenu />}
++      account={{
++        label: user?.display_name ?? user?.email ?? t('navigation.user'),
++        secondary: user?.display_name && user.display_name !== user.email ? user.email : undefined,
++        onLogout: () => logout.mutate(),
++        pending: logout.isPending,
++      }}
++    >
++      <Outlet />
++    </BaseAppShell>
+   )
+ }
+diff --git a/frontend/src/widgets/notification-menu.tsx b/frontend/src/widgets/notification-menu.tsx
+new file mode 100644
+index 0000000..178c0b1
+--- /dev/null
++++ b/frontend/src/widgets/notification-menu.tsx
+@@ -0,0 +1,118 @@
++import { Link } from 'react-router'
++import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
++import { Bell, Check } from 'lucide-react'
++import { useTranslation } from 'react-i18next'
++import {
++  Button,
++  DropdownMenu,
++  DropdownMenuContent,
++  DropdownMenuItem,
++  DropdownMenuTrigger,
++} from '@sdlc/ui/ui'
++import {
++  useMarkAllNotificationsRead,
++  useMarkNotificationRead,
++  useNotifications,
++} from '@/shared/api/hooks'
++
++export function NotificationMenu() {
++  const { t } = useTranslation()
++  const { data: list } = useNotifications()
++  const markRead = useMarkNotificationRead()
++  const markAll = useMarkAllNotificationsRead()
++  const notifications = list?.notifications ?? []
++  const unreadCount = list?.unread_count ?? 0
++  return (
++    <DropdownMenu>
++      <DropdownMenuTrigger asChild>
++        <Button
++          variant="ghost"
++          size="icon"
++          className="relative"
++          aria-label={t('notifications.open')}
++          title={t('notifications.open')}
++          data-testid="notification-trigger"
++        >
++          <Bell className="h-5 w-5" aria-hidden />
++          {unreadCount > 0 && (
++            <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
++              {unreadCount}
++            </span>
++          )}
++        </Button>
++      </DropdownMenuTrigger>
++      <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
++        <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
++          <DropdownMenuPrimitive.Label className="text-sm font-semibold">
++            {t('notifications.title')}
++          </DropdownMenuPrimitive.Label>
++          <DropdownMenuItem
++            className="min-h-11 px-2 text-xs"
++            onSelect={() => markAll.mutate()}
++            disabled={unreadCount === 0 || markAll.isPending}
++          >
++            {t('notifications.markAllRead')}
++          </DropdownMenuItem>
++        </DropdownMenuPrimitive.Group>
++        <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
++          {notifications.slice(0, 10).map((notification) => {
++            const content = (
++              <div className="min-w-0">
++                <div className="line-clamp-2 break-words font-medium">{notification.title}</div>
++                {notification.body && (
++                  <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
++                    {notification.body}
++                  </div>
++                )}
++              </div>
++            )
++            return (
++              <DropdownMenuPrimitive.Group key={notification.id} className="flex items-start gap-1">
++                {notification.action_url ? (
++                  <DropdownMenuItem asChild className="min-h-11 min-w-0 flex-1 items-start p-2">
++                    <Link
++                      to={notification.action_url}
++                      onClick={() => {
++                        if (!notification.is_read) markRead.mutate(notification.id)
++                      }}
++                    >
++                      {content}
++                    </Link>
++                  </DropdownMenuItem>
++                ) : (
++                  <DropdownMenuItem
++                    className="min-h-11 min-w-0 flex-1 items-start p-2"
++                    onSelect={() => {
++                      if (!notification.is_read) markRead.mutate(notification.id)
++                    }}
++                  >
++                    {content}
++                  </DropdownMenuItem>
++                )}
++                {!notification.is_read && (
++                  <DropdownMenuItem
++                    className="min-h-11 w-11 shrink-0 justify-center p-0"
++                    aria-label={`${t('notifications.markRead')}: ${notification.title}`}
++                    title={t('notifications.markRead')}
++                    onSelect={() => markRead.mutate(notification.id)}
++                  >
++                    <Check className="h-4 w-4" aria-hidden />
++                  </DropdownMenuItem>
++                )}
++              </DropdownMenuPrimitive.Group>
++            )
++          })}
++          {notifications.length === 0 && (
++            <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
++              {t('notifications.empty')}
++            </DropdownMenuPrimitive.Label>
++          )}
++        </DropdownMenuPrimitive.Group>
++        <DropdownMenuPrimitive.Separator className="h-px bg-border" />
++        <DropdownMenuItem asChild className="m-1 justify-center text-accent">
++          <Link to="/notifications">{t('notifications.viewAll')}</Link>
++        </DropdownMenuItem>
++      </DropdownMenuContent>
++    </DropdownMenu>
++  )
++}

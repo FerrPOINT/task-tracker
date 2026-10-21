@@ -1,0 +1,16 @@
+import type { NotificationItem } from '@/api/notifications'
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const legacyIssuePath = /^\/issues\/[A-Za-z0-9-]{1,10}-\d+([?#].*)?$/
+
+export function notificationTarget(
+  notification: Pick<NotificationItem, 'action_url' | 'entity_type' | 'entity_id'>,
+) {
+  const url = notification.action_url
+  // Historical notifications use issue keys; the detail API requires UUIDs.
+  const legacy = url?.match(legacyIssuePath)
+  if (legacy && notification.entity_type === 'issue' && uuid.test(notification.entity_id ?? '')) {
+    return `/issues/${notification.entity_id}${legacy[1] ?? ''}`
+  }
+  return url
+}

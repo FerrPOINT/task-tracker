@@ -1,0 +1,367 @@
+//! Known native run cessation proved by its original SDK namespace exit.
+//! This is distinct from a Hermes terminal readback and never proves success.
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NamespaceExitKind {
+    SdkNamespaceExit,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum KnownRunStopReason {
+    ManualStop,
+    OwnerInactive,
+    AuthorityRevoked,
+    Deadline,
+}
+impl KnownRunStopReason {
+    pub fn from_protective_reason(reason: &str) -> Result<Self, AppError> {
+        match reason {
+            "cancellation_requested" => Ok(Self::ManualStop),
+            "owner_inactive" => Ok(Self::OwnerInactive),
+            "tracker_authority_revoked" => Ok(Self::AuthorityRevoked),
+            "execution_deadline" => Ok(Self::Deadline),
+            _ => Err(invalid()),
+        }
+    }
+}
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KnownRunNamespaceExit {
+    pub contract_version: u8,
+    pub kind: NamespaceExitKind,
+    pub reason: KnownRunStopReason,
+    pub context_id: Uuid,
+    pub generation: Uuid,
+    pub initial_operation_id: Uuid,
+    pub stop_operation_id: Uuid,
+    pub original_command_sha256: String,
+    pub journal_ref: String,
+    pub registration_sha256: String,
+    pub original_running_receipt: Value,
+    pub stop_proof: Value,
+    pub stop_proof_sha256: String,
+}
+impl std::fmt::Debug for KnownRunNamespaceExit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KnownRunNamespaceExit")
+            .field("context_id", &self.context_id)
+            .finish_non_exhaustive()
+    }
+}
+fn invalid() -> AppError {
+    AppError::validation("invalid original known-run namespace exit observation")
+}
+fn sha(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+fn text(value: &str, max: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Engine {
+    #[serde(rename = "ID")]
+    id: String,
+    #[serde(rename = "KernelVersion")]
+    kernel_version: String,
+    #[serde(rename = "ServerVersion")]
+    server_version: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Snapshot {
+    contract_version: u8,
+    container_id: String,
+    engine: Engine,
+    policy_sha256: String,
+    inventory_sha256: String,
+    started_at: String,
+    init_pid: u32,
+    #[serde(default)]
+    network_sha256: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Running {
+    contract_version: u8,
+    operation_id: Uuid,
+    container_id: String,
+    resource_id: Uuid,
+    generation: Uuid,
+    registration_sha256: String,
+    state: String,
+    observation: String,
+    snapshot: Snapshot,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Exit {
+    contract_version: u8,
+    operation_id: Uuid,
+    container_id: String,
+    resource_id: Uuid,
+    generation: Uuid,
+    snapshot_sha256: String,
+    state: String,
+    observation: String,
+}
+impl KnownRunNamespaceExit {
+    /// Structural validation only: the producer must independently verify its
+    /// actual original SDK operation; a caller's valid-looking JSON is no proof.
+    pub fn validate(
+        &self,
+        execution: Uuid,
+        agent: Uuid,
+        status: crate::bug_search_terminal::BugRuntimeTerminalStatus,
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || !matches!(
+                status,
+                crate::bug_search_terminal::BugRuntimeTerminalStatus::Stopped
+                    | crate::bug_search_terminal::BugRuntimeTerminalStatus::Cancelled
+            )
+            || [
+                self.context_id,
+                self.generation,
+                self.initial_operation_id,
+                self.stop_operation_id,
+                execution,
+                agent,
+            ]
+            .iter()
+            .any(Uuid::is_nil)
+            || self.initial_operation_id == self.stop_operation_id
+            || self.journal_ref != format!("fleet:bug-protective-context-stop:{execution}")
+            || [
+                &self.original_command_sha256,
+                &self.registration_sha256,
+                &self.stop_proof_sha256,
+            ]
+            .iter()
+            .any(|s| !sha(s))
+            || !serde_json::to_vec_pretty(self).is_ok_and(|v| v.len() <= 16384)
+            || !serde_json::to_vec_pretty(&self.stop_proof).is_ok_and(|v| v.len() <= 8192)
+        {
+            return Err(invalid());
+        }
+        let running: Running =
+            serde_json::from_value(self.original_running_receipt.clone()).map_err(|_| invalid())?;
+        let proof: Exit = serde_json::from_value(self.stop_proof.clone()).map_err(|_| invalid())?;
+        let snapshot = &running.snapshot;
+        let started = DateTime::parse_from_rfc3339(&snapshot.started_at).map_err(|_| invalid())?;
+        if running.contract_version != 4
+            || running.operation_id != self.initial_operation_id
+            || running.resource_id != agent
+            || running.generation != self.generation
+            || running.registration_sha256 != self.registration_sha256
+            || !sha(&running.container_id)
+            || running.state != "observed"
+            || running.observation != "running"
+            || snapshot.contract_version != 4
+            || snapshot.container_id != running.container_id
+            || !sha(&snapshot.policy_sha256)
+            || !sha(&snapshot.inventory_sha256)
+            || snapshot.network_sha256.as_deref().is_none_or(|s| !sha(s))
+            || snapshot.init_pid == 0
+            || snapshot.started_at.starts_with("0001-")
+            || !text(&snapshot.started_at, 128)
+            || started.with_timezone(&Utc) > observed_at + chrono::Duration::seconds(5)
+            || [
+                &snapshot.engine.id,
+                &snapshot.engine.kernel_version,
+                &snapshot.engine.server_version,
+            ]
+            .iter()
+            .any(|s| !text(s, 512))
+            || proof.contract_version != 4
+            || proof.operation_id != self.stop_operation_id
+            || proof.resource_id != agent
+            || proof.generation != self.generation
+            || proof.container_id != running.container_id
+            || !sha(&proof.snapshot_sha256)
+            || proof.state != "observed"
+            || proof.observation != "namespace_exited"
+        {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+    /// SDK proof hashes use Base's sorted/compact ASCII JSON, independently of
+    /// the UTF-8 Workflow snapshot contract. Hash RAW JSON, never a typed rewrite.
+    pub fn require_hashes(&self, sha256_bytes: impl Fn(&[u8]) -> String) -> Result<(), AppError> {
+        if sha256_bytes(&base_bytes(&self.stop_proof)?) != self.stop_proof_sha256
+            || self
+                .stop_proof
+                .get("snapshot_sha256")
+                .and_then(Value::as_str)
+                != Some(
+                    sha256_bytes(&base_bytes(&self.original_running_receipt["snapshot"])?).as_str(),
+                )
+        {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+}
+
+fn base_bytes(value: &Value) -> Result<Vec<u8>, AppError> {
+    Ok(sdk_canonical_json(value)?.into_bytes())
+}
+/// Base SDK sorted compact JSON, with ensure_ascii=True (including DEL and
+/// surrogate pairs). Workflow/Fleet snapshot identities use another contract.
+pub fn sdk_canonical_json(value: &impl Serialize) -> Result<String, AppError> {
+    use std::fmt::Write;
+    let mut sorted = serde_json::to_value(value).map_err(|_| invalid())?;
+    sorted.sort_all_objects();
+    let json = serde_json::to_string(&sorted).map_err(|_| invalid())?;
+    let mut ascii = String::with_capacity(json.len());
+    for c in json.chars() {
+        if c < '\u{7f}' {
+            ascii.push(c);
+        } else {
+            for unit in c.encode_utf16(&mut [0; 2]) {
+                write!(ascii, "\\u{unit:04x}").map_err(|_| invalid())?;
+            }
+        }
+    }
+    Ok(ascii)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    type Observation = crate::bug_search_terminal::BugRuntimeObservation;
+    fn fixture() -> (Observation, Value) {
+        let wire: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/bug-known-run-namespace-exit-v1.json"
+        ))
+        .unwrap();
+        (
+            serde_json::from_value(wire["observation"].clone()).unwrap(),
+            wire,
+        )
+    }
+    fn validate(o: &Observation) -> Result<(), AppError> {
+        o.observation_source.as_ref().unwrap().validate(
+            o.execution_id,
+            o.agent_id,
+            o.terminal_status,
+            o.observed_at,
+        )
+    }
+    #[test]
+    fn known_namespace_exit_is_closed_exact_original_scope_and_never_success() {
+        let (o, wire) = fixture();
+        validate(&o).unwrap();
+        for pointer in [
+            "/observation_source/generation",
+            "/observation_source/context_id",
+            "/observation_source/stop_proof/resource_id",
+            "/observation_source/stop_proof/generation",
+            "/observation_source/original_running_receipt/operation_id",
+        ] {
+            let mut bad = wire["observation"].clone();
+            *bad.pointer_mut(pointer).unwrap() = json!(Uuid::nil());
+            assert!(
+                validate(&serde_json::from_value(bad).unwrap()).is_err(),
+                "{pointer}"
+            );
+        }
+        for (pointer, field) in [
+            (
+                "/observation_source/original_running_receipt",
+                "environment",
+            ),
+            (
+                "/observation_source/original_running_receipt/snapshot",
+                "environment",
+            ),
+            (
+                "/observation_source/original_running_receipt/snapshot/engine",
+                "API_SERVER_KEY",
+            ),
+            ("/observation_source/stop_proof", "process"),
+        ] {
+            let mut bad = wire["observation"].clone();
+            bad.pointer_mut(pointer).unwrap()[field] = json!("must-never-be-public");
+            assert!(validate(&serde_json::from_value(bad).unwrap()).is_err());
+        }
+        for status in ["succeeded", "failed", "interrupted"] {
+            let mut bad = wire["observation"].clone();
+            bad["terminal_status"] = json!(status);
+            assert!(validate(&serde_json::from_value(bad).unwrap()).is_err());
+        }
+        let mut cancelled = wire["observation"].clone();
+        cancelled["terminal_status"] = json!("cancelled");
+        validate(&serde_json::from_value(cancelled).unwrap()).unwrap();
+        let mut extra = wire["observation"].clone();
+        extra["observation_source"]["caller_says_verified"] = json!(true);
+        assert!(serde_json::from_value::<Observation>(extra).is_err());
+        let mut long = o.clone();
+        long.observation_source
+            .as_mut()
+            .unwrap()
+            .original_running_receipt["oversized"] = json!("x".repeat(16384));
+        assert!(validate(&long).is_err());
+        assert_eq!(
+            KnownRunStopReason::from_protective_reason("cancellation_requested").unwrap(),
+            KnownRunStopReason::ManualStop
+        );
+        assert!(KnownRunStopReason::from_protective_reason("success").is_err());
+    }
+    #[test]
+    fn legacy_observation_omits_new_source_and_debug_never_exposes_raw_receipts() {
+        let (o, wire) = fixture();
+        let old: Observation = serde_json::from_value(wire["legacy_observation"].clone()).unwrap();
+        assert!(old.observation_source.is_none());
+        assert_eq!(
+            serde_json::to_value(old).unwrap(),
+            wire["legacy_observation"]
+        );
+        let mut contaminated = o.observation_source.unwrap();
+        contaminated.stop_proof["arbitrary_secret"] = json!("private-provider-credential");
+        let debug = format!("{contaminated:?}");
+        assert!(!debug.contains("private-provider-credential"));
+        assert!(!debug.contains("stop_proof"));
+        assert!(debug.contains("context_id"));
+    }
+    #[test]
+    fn sdk_bytes_preserve_base_unicode_del_and_surrogate_contract() {
+        let input = json!({"z":{"\\":"\"\\\n\t\u{7f}","\u{1f600}":"/srv/\u{430}\u{433}\u{435}\u{43d}\u{442}\u{44b}"},"\u{e9}":"\u{2028}\u{2029}"});
+        let expected = r#"{"z":{"\\":"\"\\\n\t\u007f","\ud83d\ude00":"/srv/\u0430\u0433\u0435\u043d\u0442\u044b"},"\u00e9":"\u2028\u2029"}"#;
+        assert_eq!(sdk_canonical_json(&input).unwrap(), expected);
+    }
+    #[test]
+    fn new_bug_search_source_does_not_implicitly_extend_ordinary_bug_work() {
+        use crate::bug_search_cancel::{BugPreRunCustodyDisposition, BugPreRunRuntimeCustody};
+        let (runtime, _) = fixture();
+        let source = runtime.observation_source.as_ref().unwrap();
+        let custody = BugPreRunRuntimeCustody {
+            contract_version: 1,
+            disposition: BugPreRunCustodyDisposition::NamespaceExited,
+            context_id: Some(source.context_id),
+            stop_proof: Some(source.stop_proof.clone()),
+            stop_proof_sha256: Some(source.stop_proof_sha256.clone()),
+        };
+        let mut ordinary = crate::bug_work::BugWorkTerminalObservation {
+            runtime,
+            journal_ref: "ordinary-original-runtime".into(),
+            runtime_custody: custody,
+        };
+        let protected = ordinary.runtime.observation_source.take();
+        ordinary.validate().unwrap();
+        ordinary.runtime.observation_source = protected;
+        assert!(ordinary.validate().is_err());
+    }
+}

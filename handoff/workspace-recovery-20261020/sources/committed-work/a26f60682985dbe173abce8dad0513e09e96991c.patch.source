@@ -1,0 +1,394 @@
+diff --git a/.base-revision b/.base-revision
+index 2190a35..35b27eb 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-b12c6830c40836ffe103d97430a10ad8fb4eb7d7
++d22ca2205f5068eba976745ed5fad93c6daacfa1
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d734d1c..027ba9c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,10 @@
+ 
+ ## [Unreleased]
+ 
++- Notification host теперь принадлежит Base: общий placement, themes, semantic
++  colors и keyboard targets вместо локального AppToaster. Sonner2.0.8 используется
++  как единый peer; продуктовые callbacks и подтверждение записей не меняются.
++
+ - Доска проекта использует Base ListPage/Tabs/FormField/Select и targets40/44.
+   Создание задачи принадлежит одному action header; колонки больше не создают
+   карточки-контейнеры вокруг карточек задач. Плотность ограничивает summary до
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 874f77a..2fde97a 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -172,3 +172,12 @@ Actual-image/role/SSO acceptance остаётся обязательной.
+    интегрировать принятые источники и выполнить штатный mirror sync.
+ 
+ Все исходные findings остаются открытыми до требуемых выпускных доказательств.
++
++## 2026-10-05: Notification Host Candidate
++
++Base notification entry заменяет локальный top-center host; состав theme/auth/
++query providers сохранён. Sonner2.0.8 общий peer, callbacks остаются продуктовыми.
++Scope и правила изоляции: [план](plans/2026-10-05-base-notifications.md).
++Кандидат создан из clean parent отдельно от foreign sprint overlay; source,
++browser/native gates, combined checkout integration и actual-image acceptance
++не объявляются завершёнными самим этим описанием.
+diff --git a/docs/plans/2026-10-05-base-notifications.md b/docs/plans/2026-10-05-base-notifications.md
+new file mode 100644
+index 0000000..acee1b1
+--- /dev/null
++++ b/docs/plans/2026-10-05-base-notifications.md
+@@ -0,0 +1,30 @@
++# Task Tracker: Base Notifications
++
++## Scope
++
++Parent: `2d1323b337b4ec912c33da7e56e2d8630ec5500e`.
++Base: `d22ca2205f5068eba976745ed5fad93c6daacfa1`.
++
++Use one `Toaster` from `@sdlc/ui/notifications` inside the existing ThemeProvider.
++Remove AppToaster and its top-center/theme overrides. Keep product Sonner
++callbacks, queries, API, auth, database and draft behavior unchanged.
++Sonner 2.0.8 must be the same physical peer for product callbacks and Base.
++Other locked dependency versions must remain unchanged.
++
++## Isolation
++
++The selected Task checkout contains 12 foreign files, including sprint work and
++documentation. This candidate is a detached clean worktree of the same parent:
++`../task-tracker-notifications`. It does not include or revert that overlay.
++Integration must preserve the foreign bytes and reconcile overlapping documents
++explicitly. Do not claim candidate tests cover the combined dirty checkout.
++
++## Acceptance
++
++- Test actual bootstrap, single notification host, all themes and focus retention.
++- Exercise the existing board move success only after a confirmed API response;
++  check pending/no premature success, dimensions, keyboard dismissal and overflow.
++- Run frozen install, component tests, typecheck/lint/format/build, UI/docs gates.
++- Keep mocked source/browser evidence distinct from actual images, persistence,
++  live SSO, role matrices, README captures and release acceptance.
++- Source integration and runtime promotion remain open until their gates pass.
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index e3d855d..5bb5903 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -100,6 +100,111 @@ async function installBoardFixtures(page: Page, count = 20, projectKey = 'DEMO')
+   return control
+ }
+ 
++test.describe('Base notifications', () => {
++  for (const theme of ['dark', 'gray', 'light'] as const) {
++    for (const width of [375, 1440, 1920, 2560]) {
++      test(`confirmed board move host in ${theme} at ${width}`, async ({
++        page,
++        baseURL,
++      }, testInfo) => {
++        await page.setViewportSize({ width, height: 1080 })
++        await page.addInitScript((value) => localStorage.setItem('theme', value), theme)
++        const fixture = await installBoardFixtures(page, 1)
++        let acknowledge!: () => void
++        fixture.writeBarrier = new Promise<void>((resolve) => {
++          acknowledge = resolve
++        })
++        const errors: string[] = []
++        page.on('pageerror', (error) => errors.push(error.message))
++        page.on('console', (message) => {
++          if (message.type() === 'error') errors.push(message.text())
++        })
++        const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++        const target = `${app}/projects/DEMO/board?source=notification#context`
++        await page.goto(target)
++        await expect(page.locator('main article')).toHaveCount(1)
++        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++        await page.reload()
++        await expect(page).toHaveURL(target)
++        await expect(page.locator('[data-page-layout]')).toHaveAttribute('data-page-layout', 'wide')
++        const host = page.getByRole('region', { name: 'Уведомления', exact: true })
++        await expect(host).toHaveCount(1)
++        await page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }).click()
++        await page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }).click()
++        await expect.poll(() => fixture.writes).toBe(1)
++        await expect(host.locator('[data-sonner-toast]')).toHaveCount(0)
++        acknowledge()
++        const notification = host.locator('[data-sonner-toast]')
++        await expect(notification).toHaveCount(1)
++        await expect(notification).toContainText('Статус задачи изменён')
++        await expect(notification).toHaveAttribute('data-type', 'success')
++        const focusRemainsInPage = await page.evaluate(() =>
++          Boolean(document.activeElement?.closest('main')),
++        )
++        expect(focusRemainsInPage).toBe(true)
++        expect(fixture.rows[0].status_id).toBe('done')
++        if (width < 768) {
++          await page
++            .getByRole('combobox', { name: 'Статус задач', exact: true })
++            .selectOption('done')
++          const selected = new URL(target)
++          selected.searchParams.set('status', 'done')
++          await expect(page).toHaveURL(selected.toString())
++        }
++        await expect(
++          page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
++        ).toHaveCount(1)
++        await expect(host.locator('[data-sonner-toaster]')).toHaveClass(/base-toaster/)
++        await expect(host.locator('[data-sonner-toaster]')).toHaveAttribute(
++          'data-x-position',
++          'right',
++        )
++        await expect(host.locator('[data-sonner-toaster]')).toHaveAttribute(
++          'data-y-position',
++          'bottom',
++        )
++        const close = host.getByRole('button', { name: 'Закрыть уведомление', exact: true })
++        const bounds = await close.boundingBox()
++        expect(bounds).not.toBeNull()
++        const minimum = width < 768 ? 44 : 40
++        expect(bounds!.width).toBeGreaterThanOrEqual(minimum)
++        expect(bounds!.height).toBeGreaterThanOrEqual(minimum)
++        expect(
++          await page.evaluate(
++            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++          ),
++        ).toBe(true)
++        expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
++        await page.screenshot({
++          path: testInfo.outputPath('base-notification.png'),
++          fullPage: true,
++        })
++        await close.focus()
++        await expect(close).toBeFocused()
++        await page.keyboard.press('Enter')
++        await expect(notification).toHaveCount(0)
++        expect(errors).toEqual([])
++        await testInfo.attach('base-notification-scope.json', {
++          body: JSON.stringify({
++            theme,
++            viewport: { width, height: 1080 },
++            route: '/projects/DEMO/board',
++            writes: fixture.writes,
++            prematureSuccess: false,
++            focusRemainsInPage,
++            keyboardDismiss: true,
++            target: bounds,
++            fixtureOnly: true,
++            actualImages: false,
++            releaseAcceptance: false,
++          }),
++          contentType: 'application/json',
++        })
++      })
++    }
++  }
++})
++
+ test.describe('Base project board', () => {
+   for (const projectKey of ['toString', 'valueOf']) {
+     test(`valid project key ${projectKey} does not inherit a failed-move state`, async ({
+diff --git a/frontend/package.json b/frontend/package.json
+index b55f839..e4aad58 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -48,7 +48,7 @@
+     "react-i18next": "^15.5.0",
+     "react-router": "^8.4.0",
+     "recharts": "^2.15.0",
+-    "sonner": "^2.0.3",
++    "sonner": "^2.0.8",
+     "tailwind-merge": "^3.2.0",
+     "zod": "^3.25.60",
+     "zustand": "^5.0.3"
+diff --git a/frontend/pnpm-lock.yaml b/frontend/pnpm-lock.yaml
+index aa15a90..c46f173 100644
+--- a/frontend/pnpm-lock.yaml
++++ b/frontend/pnpm-lock.yaml
+@@ -48,7 +48,7 @@ importers:
+         version: 1.1.18(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+       '@sdlc/ui':
+         specifier: file:../../services-base/frontend
+-        version: file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))
++        version: file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(sonner@2.0.8(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))
+       '@tanstack/react-query':
+         specifier: ^5.74.4
+         version: 5.101.2(react@19.2.7)
+@@ -92,8 +92,8 @@ importers:
+         specifier: ^2.15.0
+         version: 2.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+       sonner:
+-        specifier: ^2.0.3
+-        version: 2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
++        specifier: ^2.0.8
++        version: 2.0.8(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+       tailwind-merge:
+         specifier: ^3.2.0
+         version: 3.6.0
+@@ -1230,6 +1230,7 @@ packages:
+       react-dom: '>=19 <20'
+       react-i18next: '>=15 <17'
+       react-router: '>=8.1 <9'
++      sonner: '>=2.0.8 <3'
+       zustand: ^5.0.0
+ 
+   '@standard-schema/spec@1.1.0':
+@@ -2466,11 +2467,15 @@ packages:
+   siginfo@2.0.0:
+     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
+ 
+-  sonner@2.0.7:
+-    resolution: {integrity: sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w==}
++  sonner@2.0.8:
++    resolution: {integrity: sha512-UM/ByIoFra8yzV75n1o0Puu0bw5U/9UNnDacrJNspekBewIfsQ3D6ez1nvlWpt7aTsO6rujQtifBpycwIivqlg==}
+     peerDependencies:
++      '@types/react': ^18.0.0 || ^19.0.0
+       react: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
+       react-dom: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
++    peerDependenciesMeta:
++      '@types/react':
++        optional: true
+ 
+   source-map-js@1.2.1:
+     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+@@ -3707,7 +3712,7 @@ snapshots:
+   '@rollup/rollup-win32-x64-msvc@4.62.2':
+     optional: true
+ 
+-  '@sdlc/ui@file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))':
++  '@sdlc/ui@file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(sonner@2.0.8(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))':
+     dependencies:
+       '@radix-ui/react-alert-dialog': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+       '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.2.17)(react@19.2.7)
+@@ -3725,6 +3730,7 @@ snapshots:
+       react-dom: 19.2.7(react@19.2.7)
+       react-i18next: 15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
+       react-router: 8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
++      sonner: 2.0.8(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+       tailwind-merge: 3.7.0
+       zustand: 5.0.14(@types/react@19.2.17)(react@19.2.7)
+     transitivePeerDependencies:
+@@ -4925,10 +4931,12 @@ snapshots:
+ 
+   siginfo@2.0.0: {}
+ 
+-  sonner@2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
++  sonner@2.0.8(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+     dependencies:
+       react: 19.2.7
+       react-dom: 19.2.7(react@19.2.7)
++    optionalDependencies:
++      '@types/react': 19.2.17
+ 
+   source-map-js@1.2.1: {}
+ 
+diff --git a/frontend/src/main.notifications.test.tsx b/frontend/src/main.notifications.test.tsx
+new file mode 100644
+index 0000000..730f2fd
+--- /dev/null
++++ b/frontend/src/main.notifications.test.tsx
+@@ -0,0 +1,64 @@
++import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
++import type { ReactElement } from 'react'
++import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
++import { toast } from 'sonner'
++import { useTheme } from '@sdlc/ui/lib'
++import i18n from './shared/i18n/config'
++
++const bootstrap = vi.hoisted(() => ({ element: null as ReactElement | null }))
++vi.mock('react-dom/client', () => ({
++  createRoot: () => ({
++    render: (element: ReactElement) => {
++      bootstrap.element = element
++    },
++  }),
++}))
++vi.mock('./app/router', () => ({ router: {} }))
++vi.mock('react-router', async (original) => {
++  const actual = await original<typeof import('react-router')>()
++  return {
++    ...actual,
++    RouterProvider: () => {
++      const { setTheme } = useTheme()
++      return <button onClick={() => setTheme('light')}>Fixture theme</button>
++    },
++  }
++})
++import './main'
++
++beforeAll(async () => {
++  await i18n.changeLanguage('ru')
++})
++
++afterEach(() => {
++  toast.dismiss()
++  cleanup()
++  localStorage.clear()
++})
++
++describe('Task Tracker bootstrap Base notifications', () => {
++  it.each(['dark', 'gray', 'light'] as const)('uses one shared peer host in %s', async (theme) => {
++    localStorage.setItem('theme', theme)
++    const { container } = render(bootstrap.element!)
++    const trigger = await screen.findByRole('button', { name: 'Fixture theme' })
++    trigger.focus()
++    await act(async () => {
++      toast.message('Fixture only', { duration: Infinity })
++    })
++    await screen.findByText('Fixture only')
++    expect(screen.getAllByRole('region', { name: 'Уведомления' })).toHaveLength(1)
++    const hosts = container.querySelectorAll('[data-sonner-toaster]')
++    expect(hosts).toHaveLength(1)
++    const host = hosts[0]
++    expect(host).toHaveClass('base-toaster')
++    expect(host).toHaveAttribute('data-sonner-theme', theme === 'light' ? 'light' : 'dark')
++    expect(host).toHaveAttribute('data-x-position', 'right')
++    expect(host).toHaveAttribute('data-y-position', 'bottom')
++    expect(trigger).toHaveFocus()
++    fireEvent.click(trigger)
++    expect(container.querySelector('[data-sonner-toaster]')).toBe(host)
++    expect(host).toHaveAttribute('data-sonner-theme', 'light')
++    fireEvent.click(screen.getByRole('button', { name: 'Закрыть уведомление' }))
++    await waitFor(() => expect(screen.queryByText('Fixture only')).not.toBeInTheDocument())
++  })
++})
+diff --git a/frontend/src/main.tsx b/frontend/src/main.tsx
+index bf1581f..9ebf4e0 100644
+--- a/frontend/src/main.tsx
++++ b/frontend/src/main.tsx
+@@ -2,11 +2,11 @@ import { StrictMode, useEffect, useState } from 'react'
+ import { createRoot } from 'react-dom/client'
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ import { I18nextProvider } from 'react-i18next'
+-import { Toaster } from 'sonner'
++import { Toaster } from '@sdlc/ui/notifications'
+ import i18n from './shared/i18n/config'
+ import { RouterProvider } from 'react-router'
+ import { router } from './app/router'
+-import { ThemeProvider, PlatformProvider, PlatformServicesProvider, useTheme } from '@sdlc/ui/lib'
++import { ThemeProvider, PlatformProvider, PlatformServicesProvider } from '@sdlc/ui/lib'
+ import './index.css'
+ 
+ const queryClient = new QueryClient({
+@@ -26,11 +26,6 @@ const queryClient = new QueryClient({
+   },
+ })
+ 
+-function AppToaster() {
+-  const { theme } = useTheme()
+-  return <Toaster theme={theme === 'light' ? 'light' : 'dark'} position="top-center" />
+-}
+-
+ function Boot() {
+   const [ready, setReady] = useState(i18n.isInitialized)
+   useEffect(() => {
+@@ -56,7 +51,7 @@ function Boot() {
+               <RouterProvider router={router} />
+             </PlatformServicesProvider>
+           </PlatformProvider>
+-          <AppToaster />
++          <Toaster />
+         </ThemeProvider>
+       </QueryClientProvider>
+     </I18nextProvider>

@@ -1,0 +1,65 @@
+//! Fixed exact-service due readback, bounded to one; GET never admits an execution.
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    routing::{get, post},
+};
+use domain::{bug_search_due::*, sdlc::Principal};
+use serde::Deserialize;
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+#[derive(Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+pub struct DueQuery {
+    pub limit: Option<u8>,
+}
+pub(super) fn router() -> Router<Arc<app::AppContext>> {
+    Router::new()
+        .route("/sdlc/bug-search/due", get(read))
+        .route(
+            "/projects/{project_id}/sdlc/bug-search/defer-due",
+            post(defer),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(8192))
+}
+fn service(ctx: &app::AppContext) -> Result<&app::bug_search::BugSearchService, AppError> {
+    ctx.bug_search
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Tracker Bug Search is not configured".into()))
+}
+fn no_store() -> HeaderMap {
+    let mut h = HeaderMap::new();
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h
+}
+#[utoipa::path(get,path="/api/v1/sdlc/bug-search/due",tag="bug-search",params(DueQuery),responses((status=200,body=BugSearchDueReadback),(status=401),(status=403),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn read(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Query(q): Query<DueQuery>,
+) -> Result<(HeaderMap, Json<BugSearchDueReadback>), AppError> {
+    if q.limit.unwrap_or(1) != 1 {
+        return Err(AppError::validation("due read is bounded to one"));
+    }
+    Ok((no_store(), Json(service(&ctx)?.due(&a).await?)))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-search/defer-due",tag="bug-search",params(("project_id"=Uuid,Path)),request_body=DeferBugSearchDue,responses((status=201,body=BugSearchDueDeferral),(status=200,body=BugSearchDueDeferral),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn defer(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path(p): Path<Uuid>,
+    Json(c): Json<DeferBugSearchDue>,
+) -> Result<(StatusCode, HeaderMap, Json<BugSearchDueDeferral>), AppError> {
+    let (r, replay) = service(&ctx)?.defer_due(p, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}

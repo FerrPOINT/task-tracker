@@ -1,0 +1,1477 @@
+diff --git a/backend/api/src/routes/sdlc_candidates.rs b/backend/api/src/routes/sdlc_candidates.rs
+new file mode 100644
+index 0000000..e623ae7
+--- /dev/null
++++ b/backend/api/src/routes/sdlc_candidates.rs
+@@ -0,0 +1,85 @@
++//! Parent mounts this handler on the existing SDLC-authenticated v1 router.
++use super::sdlc::service;
++use axum::{
++    Extension, Json,
++    extract::{Query, State},
++    http::{HeaderMap, HeaderValue, header},
++};
++use domain::{
++    sdlc::Principal,
++    sdlc_candidates::{DeliveryCandidates, DeliveryCandidatesQuery},
++};
++use shared::AppError;
++use std::sync::Arc;
++
++#[utoipa::path(get, path="/api/v1/sdlc/delivery-candidates", operation_id="read_single_task_delivery_candidates", tag="sdlc",
++    params(DeliveryCandidatesQuery), responses((status=200,body=DeliveryCandidates),(status=400),(status=401),
++        (status=403),(status=404),(status=409),(status=422),(status=503)), security(("bearer"=[])))]
++pub async fn delivery_candidates(
++    State(ctx): State<Arc<app::AppContext>>,
++    Extension(actor): Extension<Principal>,
++    Query(query): Query<DeliveryCandidatesQuery>,
++) -> Result<(HeaderMap, Json<DeliveryCandidates>), AppError> {
++    let result = service(&ctx)?.delivery_candidates(&actor, query).await?;
++    let mut headers = HeaderMap::new();
++    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
++    Ok((headers, Json(result)))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use utoipa::OpenApi;
++
++    #[test]
++    fn candidate_handler_schema_is_bounded_authenticated_get_only() {
++        #[derive(utoipa::OpenApi)]
++        #[openapi(paths(delivery_candidates))]
++        struct Contract;
++        let schema = serde_json::to_value(Contract::openapi()).unwrap();
++        let path = &schema["paths"]["/api/v1/sdlc/delivery-candidates"];
++        assert!(path.get("post").is_none());
++        assert!(path["get"]["security"].is_array());
++        let parameters = path["get"]["parameters"].as_array().unwrap();
++        assert_eq!(parameters.len(), 3);
++        let limit = parameters.iter().find(|p| p["name"] == "limit").unwrap();
++        assert_eq!(limit["schema"]["default"], 50);
++        assert_eq!(limit["schema"]["minimum"], 1);
++        assert_eq!(limit["schema"]["maximum"], 100);
++        assert_eq!(limit["required"], false);
++    }
++
++    #[test]
++    fn actual_query_extractor_defaults_rejects_unknowns_and_validates_bounds() {
++        let project = uuid::Uuid::new_v4();
++        let uri = format!("/api/v1/sdlc/delivery-candidates?project_id={project}")
++            .parse()
++            .unwrap();
++        let Query(query) = Query::<DeliveryCandidatesQuery>::try_from_uri(&uri).unwrap();
++        assert_eq!(query.limit, 50);
++        query.validate().unwrap();
++        for suffix in [
++            "&limit=0",
++            "&limit=101",
++            "&after=00000000-0000-0000-0000-000000000000",
++        ] {
++            let uri = format!("/api/v1/sdlc/delivery-candidates?project_id={project}{suffix}")
++                .parse()
++                .unwrap();
++            let Query(query) = Query::<DeliveryCandidatesQuery>::try_from_uri(&uri).unwrap();
++            assert!(query.validate().is_err());
++        }
++        for suffix in [
++            "&claim=true",
++            "&limit=-1",
++            "&limit=abc",
++            "&after=invalid",
++            "&limit=1&limit=2",
++        ] {
++            let uri = format!("/api/v1/sdlc/delivery-candidates?project_id={project}{suffix}")
++                .parse()
++                .unwrap();
++            assert!(Query::<DeliveryCandidatesQuery>::try_from_uri(&uri).is_err());
++        }
++    }
++}
+diff --git a/backend/app/src/sdlc_candidates.rs b/backend/app/src/sdlc_candidates.rs
+new file mode 100644
+index 0000000..8d309b4
+--- /dev/null
++++ b/backend/app/src/sdlc_candidates.rs
+@@ -0,0 +1,98 @@
++//! Discovery declares the existing next command; it never chooses roles or reserves capacity.
++use domain::sdlc::{DraftFlow, Principal, SdlcConfig, Stage, TaskState};
++use domain::sdlc_candidates::*;
++use domain::sdlc_lifecycle::{LifecycleReceipt, LifecycleStage, LifecycleStatus, RuntimeState};
++use shared::AppError;
++
++impl crate::sdlc::SdlcService {
++    pub async fn delivery_candidates(
++        &self,
++        actor: &Principal,
++        query: DeliveryCandidatesQuery,
++    ) -> Result<DeliveryCandidates, AppError> {
++        query.validate()?;
++        self.repository
++            .lifecycle_repository()
++            .ok_or_else(|| {
++                AppError::Unavailable("single-task lifecycle repository not configured".into())
++            })?
++            .delivery_candidates(actor, query)
++            .await
++    }
++}
++
++pub fn authorize(actor: &Principal, config: &SdlcConfig) -> Result<(), AppError> {
++    crate::sdlc_lifecycle::scheduler_read(actor, config)
++}
++
++/// Routing/revision/SQL owner predicates are checked by the repository in the same read.
++pub fn candidate(
++    state: &TaskState,
++    current: Option<&LifecycleReceipt>,
++    pm_completed: bool,
++) -> Result<Option<DeliveryCandidate>, AppError> {
++    if state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
++        return Ok(None);
++    }
++    state.require_root()?;
++    let Some(revision) = state.current_revision() else {
++        return Ok(None);
++    };
++    let (next_operation, task_version) = match current {
++        None if pm_completed && matches!(state.stage, Stage::Analysis | Stage::Architecture) => {
++            (CandidateOperation::EnsureQueued, None)
++        }
++        Some(receipt)
++            if receipt.task.status == LifecycleStatus::Ready
++                && receipt.task.runtime == RuntimeState::Queued
++                && receipt.assignment.is_none()
++                && receipt.task.stage.role().is_some()
++                && receipt.task.stage == LifecycleStage::from_legacy(state.stage) =>
++        {
++            (CandidateOperation::Reserve, Some(receipt.task.version))
++        }
++        _ => return Ok(None),
++    };
++    let candidate = DeliveryCandidate {
++        task_id: state.task_id,
++        root_task_id: state.root_task_id,
++        requirement_revision: revision,
++        next_operation,
++        task_version,
++    };
++    candidate.validate()?;
++    Ok(Some(candidate))
++}
++
++pub fn page(
++    query: &DeliveryCandidatesQuery,
++    mut items: Vec<DeliveryCandidate>,
++) -> Result<(Vec<DeliveryCandidate>, Option<uuid::Uuid>), AppError> {
++    query.validate()?;
++    let mut previous = query.after;
++    for item in &items {
++        item.validate()?;
++        if previous.is_some_and(|id| item.task_id <= id) {
++            return Err(AppError::conflict(
++                "delivery candidate UUID order is inconsistent",
++            ));
++        }
++        previous = Some(item.task_id);
++    }
++    if items.len() > usize::from(query.limit) + 1 {
++        return Err(AppError::conflict(
++            "delivery candidate query exceeded its bound",
++        ));
++    }
++    let next_cursor = if items.len() > usize::from(query.limit) {
++        items.truncate(usize::from(query.limit));
++        items.last().map(|item| item.task_id)
++    } else {
++        None
++    };
++    Ok((items, next_cursor))
++}
++
++#[cfg(test)]
++#[path = "sdlc_candidates_tests.rs"]
++mod tests;
+diff --git a/backend/app/src/sdlc_candidates_tests.rs b/backend/app/src/sdlc_candidates_tests.rs
+new file mode 100644
+index 0000000..c7570dc
+--- /dev/null
++++ b/backend/app/src/sdlc_candidates_tests.rs
+@@ -0,0 +1,249 @@
++//! Synthetic policy fixtures only; no native execution or artifact acceptance claim.
++use super::*;
++use domain::sdlc_lifecycle::{LifecycleTask, RuntimeState};
++use domain::sdlc_routing::{RoleRoutes, RoutingPolicy, RoutingVerification, TaskRoutingSnapshot};
++use serde_json::json;
++use uuid::Uuid;
++
++fn config() -> SdlcConfig {
++    SdlcConfig {
++        instance_id: "candidates-test".into(),
++        orchestrator_subject: "pm".into(),
++        verifier_subject: "verifier".into(),
++        reservation_scheduler_subject: "scheduler".into(),
++        single_task_project_ids: Default::default(),
++    }
++}
++
++#[test]
++fn only_configured_scheduler_with_read_only_scope_can_discover() {
++    let actor = Principal {
++        subject: "scheduler".into(),
++        human_session: false,
++        trusted_human: false,
++        scopes: ["task-tracker:read".into()].into_iter().collect(),
++    };
++    authorize(&actor, &config()).unwrap();
++    for scopes in [
++        vec![],
++        vec!["task-tracker:write"],
++        vec!["task-tracker:read", "task-tracker:write"],
++        vec!["task-tracker:read", "task-tracker:sdlc:delivery:foreign"],
++    ] {
++        let mut wrong = actor.clone();
++        wrong.scopes = scopes.into_iter().map(str::to_owned).collect();
++        assert!(matches!(
++            authorize(&wrong, &config()),
++            Err(AppError::Forbidden)
++        ));
++    }
++    for subject in ["owner", "pm", "verifier", "another-scheduler"] {
++        let mut wrong = actor.clone();
++        wrong.subject = subject.into();
++        assert!(matches!(
++            authorize(&wrong, &config()),
++            Err(AppError::Forbidden)
++        ));
++    }
++    let mut human = actor.clone();
++    human.human_session = true;
++    assert!(matches!(
++        authorize(&human, &config()),
++        Err(AppError::Forbidden)
++    ));
++    let mut missing = config();
++    missing.reservation_scheduler_subject.clear();
++    assert!(matches!(
++        authorize(&actor, &missing),
++        Err(AppError::Unavailable(_))
++    ));
++}
++
++fn fixture() -> (TaskState, LifecycleReceipt) {
++    let task = Uuid::new_v4();
++    let project = Uuid::new_v4();
++    let mut routes = json!({});
++    for (i, role) in [
++        "project_manager",
++        "analyst",
++        "architect",
++        "developer",
++        "reviewer",
++        "tester",
++        "devops",
++    ]
++    .iter()
++    .enumerate()
++    {
++        let suffix = role.replace('_', "-");
++        routes[*role] = json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":1,
++            "instruction_profile":"single-task-v1","instruction_manifest_sha256":"a".repeat(64),
++            "namespace_id":(i+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
++            "workflow_id":(i+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),
++            "profile":format!("single-task-v1-{suffix}"),"workflow_catalog_version":1,"workflow_catalog_sha256":"b".repeat(64)});
++    }
++    let routes: RoleRoutes = serde_json::from_value(routes).unwrap();
++    let policy = RoutingPolicy {
++        contract_version: 2,
++        tracker_instance_id: "candidates-test".into(),
++        project_id: project,
++        version: 1,
++        routing_hash: crate::sdlc::canonical_hash(&routes).unwrap(),
++        routes,
++        verification: RoutingVerification::Declared,
++        native_ready: false,
++        dispatch_allowed: false,
++        author_subject: "owner".into(),
++        created_at: chrono::Utc::now(),
++    };
++    let snapshot = TaskRoutingSnapshot {
++        contract_version: 2,
++        snapshot_id: Uuid::new_v4(),
++        tracker_instance_id: "candidates-test".into(),
++        project_id: project,
++        task_id: task,
++        root_task_id: task,
++        confirmation_id: Uuid::new_v4(),
++        requirement_revision: 1,
++        content_hash: "c".repeat(64),
++        policy,
++        created_at: chrono::Utc::now(),
++    };
++    let state: TaskState = serde_json::from_value(json!({"tracker_instance_id":"candidates-test",
++        "project_id":project,"task_id":task,"root_task_id":task,"owner_subject":"owner","stage":"Analysis",
++        "flow":"single-task-v1","confirmation_revision":1,"assignment":null,"questions":[],"confirmations":[],"evidence":[],
++        "revisions":[{"revision":1,"content_hash":"c".repeat(64),"goal":"fixture","scope":[],"exclusions":[],
++        "scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],
++        "prerequisites":[],"author_subject":"pm","created_at":chrono::Utc::now()}]})).unwrap();
++    let receipt = LifecycleReceipt {
++        task: LifecycleTask {
++            task_id: task,
++            owner_subject: "owner".into(),
++            version: 7,
++            stage: LifecycleStage::Analysis,
++            status: LifecycleStatus::Ready,
++            cycle: 0,
++            transient_retries: 0,
++            waiting_reason: Some("queued_for_assignment".into()),
++            runtime: RuntimeState::Queued,
++            routing: snapshot,
++            previous_result_id: None,
++            resume_chat_id: None,
++        },
++        assignment: None,
++        lease: None,
++        binding: None,
++        result: None,
++    };
++    (state, receipt)
++}
++
++#[test]
++fn consent_alone_never_discovers_analyst_before_actual_pm_completion() {
++    let (state, _) = fixture();
++    assert!(candidate(&state, None, false).unwrap().is_none());
++    let ready = candidate(&state, None, true).unwrap().unwrap();
++    assert_eq!(ready.next_operation, CandidateOperation::EnsureQueued);
++    assert_eq!(ready.task_version, None);
++    let mut legacy = state.clone();
++    legacy.retained_fields.remove("flow");
++    assert!(candidate(&legacy, None, true).unwrap().is_none());
++    for stage in [
++        Stage::Draft,
++        Stage::Backlog,
++        Stage::Development,
++        Stage::Deployment,
++    ] {
++        let mut early = state.clone();
++        early.stage = stage;
++        assert!(candidate(&early, None, true).unwrap().is_none());
++    }
++}
++
++#[test]
++fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
++    let (state, head) = fixture();
++    let ready = candidate(&state, Some(&head), false).unwrap().unwrap();
++    assert_eq!(ready.next_operation, CandidateOperation::Reserve);
++    assert_eq!(ready.task_version, Some(7));
++    for runtime in [
++        RuntimeState::Reserved,
++        RuntimeState::Running,
++        RuntimeState::Unknown,
++        RuntimeState::Terminal,
++    ] {
++        let mut wrong = head.clone();
++        wrong.task.runtime = runtime;
++        assert!(candidate(&state, Some(&wrong), true).unwrap().is_none());
++    }
++    for status in [LifecycleStatus::InProgress, LifecycleStatus::Completed] {
++        let mut wrong = head.clone();
++        wrong.task.status = status;
++        assert!(candidate(&state, Some(&wrong), true).unwrap().is_none());
++    }
++    let mut wrong = head.clone();
++    wrong.task.version = 0;
++    assert!(candidate(&state, Some(&wrong), true).is_err());
++    let mut assigned = head.clone();
++    assigned.assignment = Some(serde_json::from_value(json!({"assignment_id":Uuid::new_v4(),
++        "execution_id":Uuid::new_v4(),"task_id":state.task_id,"owner_subject":"owner","role":"analyst",
++        "stage":"Analysis","cycle":0,"attempt":1,"agent_id":head.task.routing.policy.routes.analyst.agent_id,
++        "routing":head.task.routing,"previous_result_id":null,"fencing_token":1,"lease_id":Uuid::new_v4(),
++        "assignment_hash":"a".repeat(64)})).unwrap());
++    assert!(candidate(&state, Some(&assigned), true).unwrap().is_none());
++    let mut wrong = state.clone();
++    wrong.root_task_id = Uuid::new_v4();
++    assert!(candidate(&wrong, Some(&head), true).is_err());
++    for stage in [
++        Stage::Analysis,
++        Stage::Architecture,
++        Stage::Development,
++        Stage::Review,
++        Stage::Testing,
++        Stage::Rework,
++        Stage::Deployment,
++    ] {
++        let mut state = state.clone();
++        let mut head = head.clone();
++        state.stage = stage;
++        head.task.stage = LifecycleStage::from_legacy(stage);
++        assert_eq!(
++            candidate(&state, Some(&head), true)
++                .unwrap()
++                .unwrap()
++                .next_operation,
++            CandidateOperation::Reserve
++        );
++    }
++}
++
++#[test]
++fn uuid_keyset_uses_last_returned_not_lookahead_and_empty_pages_have_null_cursor() {
++    let query = DeliveryCandidatesQuery {
++        project_id: Uuid::new_v4(),
++        after: None,
++        limit: 2,
++    };
++    let item = |n| DeliveryCandidate {
++        task_id: Uuid::from_u128(n),
++        root_task_id: Uuid::from_u128(n),
++        requirement_revision: 1,
++        next_operation: CandidateOperation::Reserve,
++        task_version: Some(7),
++    };
++    let (first, cursor) = page(&query, vec![item(2), item(7), item(99)]).unwrap();
++    assert_eq!(first.len(), 2);
++    assert_eq!(cursor, Some(Uuid::from_u128(7)));
++    let second = DeliveryCandidatesQuery {
++        after: cursor,
++        ..query.clone()
++    };
++    let (last, cursor) = page(&second, vec![item(99)]).unwrap();
++    assert_eq!(last.len(), 1);
++    assert_eq!(cursor, None);
++    assert_eq!(page(&query, vec![]).unwrap(), (vec![], None));
++    assert!(page(&second, vec![item(7)]).is_err());
++    assert!(page(&query, vec![item(7), item(2)]).is_err());
++    assert!(page(&query, vec![item(2), item(2)]).is_err());
++    assert!(page(&query, vec![item(1), item(2), item(3), item(4)]).is_err());
++}
+diff --git a/backend/domain/src/sdlc_candidates.rs b/backend/domain/src/sdlc_candidates.rs
+new file mode 100644
+index 0000000..fd3609f
+--- /dev/null
++++ b/backend/domain/src/sdlc_candidates.rs
+@@ -0,0 +1,224 @@
++//! Read-only discovery of existing single-task lifecycle work, never a reservation.
++use crate::sdlc::{MAX_SAFE_VERSION, safe_optional_version, safe_version};
++use chrono::{DateTime, Utc};
++use serde::{Deserialize, Serialize};
++use shared::AppError;
++use uuid::Uuid;
++
++pub const DEFAULT_LIMIT: u16 = 50;
++pub const MAX_LIMIT: u16 = 100;
++
++fn default_limit() -> u16 {
++    DEFAULT_LIMIT
++}
++
++#[derive(Clone, Debug, Deserialize, utoipa::IntoParams)]
++#[serde(deny_unknown_fields)]
++pub struct DeliveryCandidatesQuery {
++    pub project_id: Uuid,
++    pub after: Option<Uuid>,
++    #[serde(default = "default_limit")]
++    #[param(value_type = Option<u16>, minimum = 1, maximum = 100, default = 50)]
++    pub limit: u16,
++}
++
++impl DeliveryCandidatesQuery {
++    pub fn validate(&self) -> Result<(), AppError> {
++        if self.project_id.is_nil()
++            || self.after.is_some_and(|id| id.is_nil())
++            || !(1..=MAX_LIMIT).contains(&self.limit)
++        {
++            return Err(AppError::validation("invalid delivery candidates query"));
++        }
++        Ok(())
++    }
++}
++
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++#[serde(rename_all = "snake_case")]
++pub enum CandidateOperation {
++    EnsureQueued,
++    Reserve,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct DeliveryCandidate {
++    pub task_id: Uuid,
++    pub root_task_id: Uuid,
++    #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
++    pub requirement_revision: i64,
++    pub next_operation: CandidateOperation,
++    #[serde(deserialize_with = "safe_optional_version")]
++    #[schema(
++        required = true,
++        nullable = true,
++        minimum = 1,
++        maximum = 9007199254740991i64
++    )]
++    pub task_version: Option<i64>,
++}
++
++impl DeliveryCandidate {
++    pub fn validate(&self) -> Result<(), AppError> {
++        if self.task_id.is_nil()
++            || self.root_task_id != self.task_id
++            || !(1..=MAX_SAFE_VERSION).contains(&self.requirement_revision)
++            || match (self.next_operation, self.task_version) {
++                (CandidateOperation::EnsureQueued, None) => false,
++                (CandidateOperation::Reserve, Some(version)) => {
++                    !(1..=MAX_SAFE_VERSION).contains(&version)
++                }
++                _ => true,
++            }
++        {
++            return Err(AppError::conflict(
++                "invalid delivery candidate identity/version",
++            ));
++        }
++        Ok(())
++    }
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct DeliveryCandidates {
++    #[schema(minimum = 1, maximum = 1)]
++    pub contract_version: u8,
++    pub tracker_instance_id: String,
++    pub project_id: Uuid,
++    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
++    pub observed_at: DateTime<Utc>,
++    pub items: Vec<DeliveryCandidate>,
++    #[schema(required = true, nullable = true)]
++    pub next_cursor: Option<Uuid>,
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use serde_json::json;
++
++    #[test]
++    fn query_defaults_bounds_and_closed_shape() {
++        let project = Uuid::new_v4();
++        let query: DeliveryCandidatesQuery =
++            serde_json::from_value(json!({"project_id":project})).unwrap();
++        assert_eq!(query.limit, DEFAULT_LIMIT);
++        query.validate().unwrap();
++        for limit in [0, 101, u16::MAX] {
++            assert!(
++                DeliveryCandidatesQuery {
++                    limit,
++                    ..query.clone()
++                }
++                .validate()
++                .is_err()
++            );
++        }
++        for limit in [1, MAX_LIMIT] {
++            DeliveryCandidatesQuery {
++                limit,
++                ..query.clone()
++            }
++            .validate()
++            .unwrap();
++        }
++        assert!(
++            DeliveryCandidatesQuery {
++                project_id: Uuid::nil(),
++                ..query.clone()
++            }
++            .validate()
++            .is_err()
++        );
++        assert!(
++            DeliveryCandidatesQuery {
++                after: Some(Uuid::nil()),
++                ..query
++            }
++            .validate()
++            .is_err()
++        );
++        assert!(
++            serde_json::from_value::<DeliveryCandidatesQuery>(
++                json!({"project_id":project,"claim":true})
++            )
++            .is_err()
++        );
++    }
++
++    #[test]
++    fn wire_is_closed_nullable_and_never_claims_an_assignment() {
++        let task = Uuid::new_v4();
++        let item = DeliveryCandidate {
++            task_id: task,
++            root_task_id: task,
++            requirement_revision: 1,
++            next_operation: CandidateOperation::EnsureQueued,
++            task_version: None,
++        };
++        let value = serde_json::to_value(&item).unwrap();
++        assert_eq!(
++            value,
++            json!({"task_id":task,"root_task_id":task,"requirement_revision":1,
++            "next_operation":"ensure_queued","task_version":null})
++        );
++        item.validate().unwrap();
++        for (operation, version) in [
++            (CandidateOperation::EnsureQueued, Some(1)),
++            (CandidateOperation::Reserve, None),
++            (CandidateOperation::Reserve, Some(0)),
++        ] {
++            assert!(
++                DeliveryCandidate {
++                    next_operation: operation,
++                    task_version: version,
++                    ..item.clone()
++                }
++                .validate()
++                .is_err()
++            );
++        }
++        assert!(
++            DeliveryCandidate {
++                root_task_id: Uuid::new_v4(),
++                ..item.clone()
++            }
++            .validate()
++            .is_err()
++        );
++        let mut unknown = value.clone();
++        unknown["assignment_id"] = json!(Uuid::new_v4());
++        assert!(serde_json::from_value::<DeliveryCandidate>(unknown).is_err());
++        let mut missing = value;
++        missing.as_object_mut().unwrap().remove("task_version");
++        assert!(serde_json::from_value::<DeliveryCandidate>(missing).is_err());
++        let page = DeliveryCandidates {
++            contract_version: 1,
++            tracker_instance_id: "fixture".into(),
++            project_id: Uuid::new_v4(),
++            observed_at: Utc::now(),
++            items: vec![item],
++            next_cursor: None,
++        };
++        let wire = serde_json::to_value(page).unwrap();
++        assert_eq!(wire.as_object().unwrap().len(), 6);
++        assert!(wire["next_cursor"].is_null());
++        assert!(wire["observed_at"].as_str().unwrap().ends_with('Z'));
++        assert_eq!(
++            wire["observed_at"]
++                .as_str()
++                .unwrap()
++                .split('.')
++                .last()
++                .unwrap()
++                .len(),
++            10
++        );
++        let mut unknown = wire;
++        unknown["dispatch_allowed"] = json!(true);
++        assert!(serde_json::from_value::<DeliveryCandidates>(unknown).is_err());
++    }
++}
+diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
+index 4b0cd8f..254d2c8 100644
+--- a/backend/domain/src/sdlc_lifecycle.rs
++++ b/backend/domain/src/sdlc_lifecycle.rs
+@@ -526,6 +526,16 @@ pub struct LifecycleReadback {
+ 
+ #[async_trait::async_trait]
+ pub trait LifecycleRepository: Send + Sync {
++    async fn delivery_candidates(
++        &self,
++        _actor: &Principal,
++        _query: crate::sdlc_candidates::DeliveryCandidatesQuery,
++    ) -> Result<crate::sdlc_candidates::DeliveryCandidates, AppError> {
++        Err(AppError::Unavailable(
++            "delivery candidate discovery not configured".into(),
++        ))
++    }
++
+     async fn submit_pm_feedback(
+         &self,
+         task: Uuid,
+diff --git a/backend/infra/src/sdlc_candidates.rs b/backend/infra/src/sdlc_candidates.rs
+new file mode 100644
+index 0000000..26beb66
+--- /dev/null
++++ b/backend/infra/src/sdlc_candidates.rs
+@@ -0,0 +1,132 @@
++//! Bounded SELECT-only discovery on existing Tracker owner tables.
++use super::*;
++use domain::sdlc_candidates::*;
++use domain::sdlc_lifecycle::LifecycleReceipt;
++use domain::sdlc_routing::TaskRoutingSnapshot;
++
++// Filter business eligibility before LIMIT, including current PM completion, not consent alone.
++const CANDIDATES_SQL: &str = r#"
++SELECT t.state, s.payload AS routing, d.receipt,
++       COALESCE(sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state),false) AS pm_completed
++FROM sdlc_tasks t
++JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND issue.deleted_at IS NULL
++JOIN sdlc_task_routing_snapshots s ON s.task_id=t.task_id AND s.project_id=t.project_id
++JOIN sdlc_confirmations c ON c.task_id=t.task_id AND c.id=s.confirmation_id
++JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id AND intent.routing_snapshot_id=s.snapshot_id
++LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
++WHERE t.project_id=$1 AND t.tracker_instance_id=$2
++  AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
++  AND t.state->'flow'='"single-task-v1"'::jsonb
++  AND ($3::uuid IS NULL OR t.task_id>$3)
++  AND s.payload->'contract_version'='2'::jsonb AND s.payload->'policy'->'contract_version'='2'::jsonb
++  AND s.requirement_revision::text=t.state->'revisions'->-1->>'revision'
++  AND s.requirement_revision BETWEEN 1 AND 9007199254740991
++  AND s.content_hash=t.state->'revisions'->-1->>'content_hash'
++  AND c.revision=s.requirement_revision AND c.content_hash=s.content_hash
++  AND c.payload->>'owner_subject'=t.owner_subject
++  AND (d.task_id IS NULL AND t.state->>'stage' IN ('Analysis','Architecture')
++       AND sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)
++       AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h WHERE h.root_task_id=t.task_id)
++       AND (t.state->>'stage'='Analysis' OR EXISTS(
++           SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=t.task_id
++             AND r.payload->>'requirement_revision'=s.requirement_revision::text
++             AND r.payload->>'content_hash'=s.content_hash))
++       OR d.task_id IS NOT NULL AND d.receipt->'task'->>'status'='Ready'
++       AND d.receipt->'task'->>'runtime'='queued' AND d.receipt->'assignment'='null'::jsonb
++       AND d.receipt->'task'->'routing'=s.payload
++       AND d.receipt->'task'->>'stage' IN ('Analysis','Architecture','Development','Review','Testing','Rework','Deployment')
++       AND EXISTS(SELECT 1 FROM sdlc_issue_status_mapping m
++           WHERE m.stage=d.receipt->'task'->>'stage' AND m.status='Ready' AND m.status_id=issue.status_id))
++ORDER BY t.task_id LIMIT $4
++"#;
++
++impl PostgresSdlcRepository {
++    pub(super) async fn read_delivery_candidates(
++        &self,
++        actor: &Principal,
++        query: DeliveryCandidatesQuery,
++    ) -> Result<DeliveryCandidates, AppError> {
++        app::sdlc_candidates::authorize(actor, &self.config)?;
++        query.validate()?;
++        let tx = self.db.begin().await.map_err(map_db)?;
++        self.project_access(&tx, query.project_id, actor).await?;
++        if !self
++            .config
++            .single_task_project_ids
++            .contains(&query.project_id)
++        {
++            return Err(AppError::Unavailable(
++                "single_task_lifecycle_project_not_enabled".into(),
++            ));
++        }
++        let rows = tx
++            .query_all(statement(
++                CANDIDATES_SQL,
++                vec![
++                    query.project_id.into(),
++                    self.config.instance_id.clone().into(),
++                    query.after.into(),
++                    (i64::from(query.limit) + 1).into(),
++                ],
++            ))
++            .await
++            .map_err(map_db)?;
++        let mut items = Vec::with_capacity(rows.len());
++        for row in rows {
++            let state: TaskState =
++                serde_json::from_value(row.try_get::<Json>("", "state").map_err(map_db)?)
++                    .map_err(|_| AppError::conflict("delivery candidate state inconsistent"))?;
++            let snapshot: TaskRoutingSnapshot =
++                serde_json::from_value(row.try_get::<Json>("", "routing").map_err(map_db)?)
++                    .map_err(|_| AppError::conflict("delivery candidate routing inconsistent"))?;
++            let current: Option<LifecycleReceipt> = row
++                .try_get::<Option<Json>>("", "receipt")
++                .map_err(map_db)?
++                .map(serde_json::from_value)
++                .transpose()
++                .map_err(|_| AppError::conflict("delivery candidate head inconsistent"))?;
++            app::sdlc_draft_flow::validate_policy(
++                &snapshot.policy,
++                query.project_id,
++                &self.config.instance_id,
++            )?;
++            super::lifecycle::exact_snapshot(&state, &snapshot)?;
++            if let Some(receipt) = &current {
++                super::lifecycle::exact_revision(&state, receipt)?;
++                if receipt.task.routing != snapshot {
++                    return Err(AppError::conflict(
++                        "delivery candidate frozen routing differs",
++                    ));
++                }
++            }
++            let item = app::sdlc_candidates::candidate(
++                &state,
++                current.as_ref(),
++                row.try_get::<bool>("", "pm_completed").map_err(map_db)?,
++            )?
++            .ok_or_else(|| AppError::conflict("delivery candidate projection inconsistent"))?;
++            items.push(item);
++        }
++        let (items, next_cursor) = app::sdlc_candidates::page(&query, items)?;
++        let observed_at = tx
++            .query_one(statement("SELECT clock_timestamp() AS observed_at", vec![]))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(|| AppError::internal("candidate clock unavailable"))?
++            .try_get("", "observed_at")
++            .map_err(map_db)?;
++        tx.commit().await.map_err(map_db)?;
++        Ok(DeliveryCandidates {
++            contract_version: 1,
++            tracker_instance_id: self.config.instance_id.clone(),
++            project_id: query.project_id,
++            observed_at,
++            items,
++            next_cursor,
++        })
++    }
++}
++
++#[cfg(test)]
++#[path = "sdlc_candidates_pg_tests.rs"]
++mod tests;
+diff --git a/backend/infra/src/sdlc_candidates_pg_tests.rs b/backend/infra/src/sdlc_candidates_pg_tests.rs
+new file mode 100644
+index 0000000..cb105d2
+--- /dev/null
++++ b/backend/infra/src/sdlc_candidates_pg_tests.rs
+@@ -0,0 +1,472 @@
++//! Existing PostgreSQL owner ledgers; Fleet/Workflow observations below are explicitly synthetic.
++use super::*;
++use domain::sdlc_execution_lease::ClaimExecutionLease;
++use domain::sdlc_lifecycle::*;
++use domain::sdlc_reservation::CompletePmDraft;
++use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
++use sea_orm_migration::MigratorTrait;
++use serde::de::DeserializeOwned;
++
++fn parse<T: DeserializeOwned>(value: Json) -> T {
++    serde_json::from_value(value).unwrap()
++}
++
++fn actor(subject: &str, human: bool, scopes: &[&str]) -> Principal {
++    Principal {
++        subject: subject.into(),
++        human_session: human,
++        trusted_human: human,
++        scopes: scopes.iter().map(|scope| (*scope).into()).collect(),
++    }
++}
++
++fn routes() -> RoleRoutes {
++    let mut value = json!({});
++    for (n, role) in [
++        "project_manager",
++        "analyst",
++        "architect",
++        "developer",
++        "reviewer",
++        "tester",
++        "devops",
++    ]
++    .iter()
++    .enumerate()
++    {
++        let suffix = role.replace('_', "-");
++        value[*role] = json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":1,
++            "instruction_profile":"single-task-v1","instruction_manifest_sha256":"a".repeat(64),
++            "namespace_id":(n+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
++            "workflow_id":(n+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),
++            "profile":format!("single-task-v1-{suffix}"),"workflow_catalog_version":1,"workflow_catalog_sha256":"b".repeat(64)});
++    }
++    parse(value)
++}
++
++struct Fixture {
++    db: DatabaseConnection,
++    repo: PostgresSdlcRepository,
++    project: Uuid,
++    owner: Principal,
++    writer: Principal,
++    reader: Principal,
++    roles: RoleRoutes,
++}
++
++impl Fixture {
++    async fn new() -> Self {
++        let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
++            .expect("fresh disposable candidates DB required");
++        let db = Database::connect(&url).await.unwrap();
++        let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![]))
++            .await.unwrap().unwrap();
++        assert!(
++            row.try_get::<String>("", "name")
++                .unwrap()
++                .ends_with("_candidates_test")
++        );
++        assert!(
++            row.try_get::<bool>("", "fresh").unwrap(),
++            "use a fresh disposable database"
++        );
++        migration::Migrator::up(&db, None).await.unwrap();
++        let owner_id = Uuid::new_v4();
++        let project = Uuid::new_v4();
++        for (subject, id) in [
++            ("owner", owner_id),
++            ("pm", Uuid::new_v4()),
++            ("verifier", Uuid::new_v4()),
++            ("scheduler", Uuid::new_v4()),
++            ("foreign", Uuid::new_v4()),
++        ] {
++            exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
++                vec![id.into(),format!("{subject}@example.test").into(),subject.into()]).await.unwrap();
++        }
++        exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'CAND','Candidates',$2,$3)",
++            vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
++        exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Candidates','[]' FROM projects WHERE id=$1",
++            vec![project.into()]).await.unwrap();
++        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub IN ('pm','verifier','scheduler')",
++            vec![project.into()]).await.unwrap();
++        let repo = PostgresSdlcRepository::connect(
++            &url,
++            SdlcConfig {
++                instance_id: "candidates-test".into(),
++                orchestrator_subject: "pm".into(),
++                verifier_subject: "verifier".into(),
++                reservation_scheduler_subject: "scheduler".into(),
++                single_task_project_ids: [project].into_iter().collect(),
++            },
++        )
++        .await
++        .unwrap();
++        let roles = routes();
++        let owner = actor("owner", true, &[]);
++        repo.set_routing_policy(
++            project,
++            &owner,
++            SetRoutingPolicy {
++                expected_version: None,
++                routes: roles.clone(),
++                idempotency_key: "policy".into(),
++            },
++        )
++        .await
++        .unwrap();
++        Self {
++            db,
++            repo,
++            project,
++            owner,
++            roles,
++            writer: actor("scheduler", false, &["task-tracker:write"]),
++            reader: actor("scheduler", false, &["task-tracker:read"]),
++        }
++    }
++
++    fn query(&self, after: Option<Uuid>, limit: u16) -> DeliveryCandidatesQuery {
++        DeliveryCandidatesQuery {
++            project_id: self.project,
++            after,
++            limit,
++        }
++    }
++
++    async fn draft(&self, key: &str, flow: Option<DraftFlow>) -> Uuid {
++        self.repo
++            .create_draft(
++                self.project,
++                &self.owner,
++                CreateDraftCommand {
++                    flow,
++                    title: key.into(),
++                    description: "Synthetic test input, not live execution".into(),
++                    idempotency_key: key.into(),
++                },
++            )
++            .await
++            .unwrap()
++            .0
++            .task_id
++    }
++
++    async fn confirmed(&self, key: &str, completed: bool) -> Uuid {
++        let task = self.draft(key, Some(DraftFlow::SingleTaskV1)).await;
++        let (reservation, _) = self
++            .repo
++            .reserve_pm_draft(
++                task,
++                &self.owner,
++                parse(json!({
++            "requested_agent_id":self.roles.project_manager.agent_id,"expected_owner_version":0,
++            "expected_assignment_version":null,"idempotency_key":"pm-reserve"})),
++            )
++            .await
++            .unwrap();
++        let mut pm = actor("pm", false, &["task-tracker:read", "task-tracker:write"]);
++        pm.scopes.insert(reservation.assignment.scope(task));
++        let fence = MachineFence {
++            assignment_id: reservation.assignment.assignment_id,
++            execution_id: reservation.assignment.execution_id,
++            agent_id: reservation.assignment.agent_id,
++            assignment_version: reservation.assignment.version,
++        };
++        let (lease, _) = self
++            .repo
++            .claim_execution_lease(
++                task,
++                &pm,
++                ClaimExecutionLease {
++                    expected_owner_version: reservation.owner_cas.version,
++                    fence: fence.clone(),
++                    idempotency_key: "claim".into(),
++                },
++            )
++            .await
++            .unwrap();
++        let document: RequirementsDocument = parse(
++            json!({"goal":"Candidate fixture","scope":["scope"],"exclusions":[],
++            "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],
++            "checklist":["check"],"prerequisites":["pre"]}),
++        );
++        let hash = app::sdlc::canonical_hash(&document).unwrap();
++        self.repo
++            .execute_verified(
++                task,
++                &pm,
++                SdlcCommand::PublishRevision(PublishRevision {
++                    fence: fence.clone(),
++                    expected_requirement_revision: None,
++                    document,
++                    idempotency_key: "publish".into(),
++                }),
++                reservation.clone(),
++                None,
++            )
++            .await
++            .unwrap();
++        let mut verifier = actor("verifier", false, &["task-tracker:write"]);
++        verifier
++            .scopes
++            .insert(format!("task-tracker:sdlc:evidence:{task}:1"));
++        for check in ["check", "pre"] {
++            self.repo
++                .execute_verified(
++                    task,
++                    &verifier,
++                    SdlcCommand::Evidence(EvidenceCommand {
++                        fence: fence.clone(),
++                        requirement_revision: 1,
++                        content_hash: hash.clone(),
++                        check_id: check.into(),
++                        evidence_reference: format!("fixture://{check}"),
++                        idempotency_key: check.into(),
++                    }),
++                    reservation.clone(),
++                    None,
++                )
++                .await
++                .unwrap();
++        }
++        self.repo
++            .execute_verified(
++                task,
++                &self.owner,
++                SdlcCommand::Confirm {
++                    revision: 1,
++                    command: ConfirmCommand {
++                        content_hash: hash.clone(),
++                        idempotency_key: "confirm".into(),
++                        expected_routing_policy_version: Some(1),
++                    },
++                },
++                reservation,
++                None,
++            )
++            .await
++            .unwrap();
++        if completed {
++            self.repo
++                .complete_pm_draft(
++                    task,
++                    &self.writer,
++                    CompletePmDraft {
++                        contract_version: 1,
++                        fence,
++                        lease_id: lease.current.lease_id,
++                        lease_version: lease.current.version,
++                        requirement_revision: 1,
++                        content_hash: hash,
++                        terminal_receipt_ref: "fixture://synthetic-native-terminal".into(),
++                        terminal_receipt_sha256: "a".repeat(64),
++                        workflow_receipt_ref: "fixture://synthetic-workflow-complete".into(),
++                        workflow_receipt_sha256: "b".repeat(64),
++                        idempotency_key: "complete".into(),
++                    },
++                )
++                .await
++                .unwrap();
++        }
++        task
++    }
++
++    async fn snapshot(&self) -> Json {
++        self.db.query_one(statement("SELECT jsonb_build_object(
++            'tasks',(SELECT jsonb_agg(to_jsonb(t) ORDER BY task_id) FROM sdlc_tasks t),
++            'heads',(SELECT jsonb_agg(to_jsonb(h) ORDER BY task_id) FROM sdlc_delivery_heads h),
++            'pm_leases',(SELECT jsonb_agg(to_jsonb(l) ORDER BY lease_id) FROM sdlc_pm_execution_leases l),
++            'assignments',(SELECT count(*) FROM sdlc_delivery_assignments),
++            'holds',(SELECT count(*) FROM sdlc_delivery_holds),
++            'operations',(SELECT count(*) FROM sdlc_delivery_operations),
++            'outbox',(SELECT count(*) FROM sdlc_outbox),
++            'issue_history',(SELECT count(*) FROM issue_status_history)) AS snapshot", vec![]))
++            .await.unwrap().unwrap().try_get("", "snapshot").unwrap()
++    }
++}
++
++#[tokio::test]
++#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
++async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
++    let f = Fixture::new().await;
++    let mut expected = vec![];
++    for key in ["first", "second", "third"] {
++        expected.push(f.confirmed(key, true).await);
++    }
++    let pending = f.confirmed("consent-without-completion", false).await;
++    f.draft("unconfirmed", Some(DraftFlow::SingleTaskV1)).await;
++    f.draft("legacy", None).await;
++    expected.sort();
++    let before = f.snapshot().await;
++    let mut cursor = None;
++    let mut actual = vec![];
++    loop {
++        let page = f
++            .repo
++            .read_delivery_candidates(&f.reader, f.query(cursor, 1))
++            .await
++            .unwrap();
++        assert_eq!(page.contract_version, 1);
++        assert_eq!(page.tracker_instance_id, "candidates-test");
++        assert_eq!(page.project_id, f.project);
++        assert_eq!(page.items.len(), 1);
++        let item = &page.items[0];
++        assert_eq!(item.root_task_id, item.task_id);
++        assert_eq!(item.requirement_revision, 1);
++        assert_eq!(item.next_operation, CandidateOperation::EnsureQueued);
++        assert_eq!(item.task_version, None);
++        assert_ne!(item.task_id, pending);
++        actual.push(item.task_id);
++        if page.next_cursor.is_none() {
++            break;
++        }
++        assert_eq!(page.next_cursor, Some(item.task_id));
++        cursor = page.next_cursor;
++        assert!(actual.len() < 4, "pagination must advance");
++    }
++    assert_eq!(actual, expected);
++    let empty = f
++        .repo
++        .read_delivery_candidates(&f.reader, f.query(actual.last().copied(), 100))
++        .await
++        .unwrap();
++    assert!(empty.items.is_empty());
++    assert_eq!(empty.next_cursor, None);
++    assert_eq!(f.snapshot().await, before);
++    let foreign_project = Uuid::new_v4();
++    exec(
++        &f.db,
++        "INSERT INTO projects(id,key,name,owner_id,default_board_id)
++        SELECT $1,'FOREIGN','Foreign project',id,$2 FROM users WHERE central_sub='foreign'",
++        vec![foreign_project.into(), Uuid::new_v4().into()],
++    )
++    .await
++    .unwrap();
++    let foreign_query = DeliveryCandidatesQuery {
++        project_id: foreign_project,
++        ..f.query(None, 50)
++    };
++    assert!(matches!(
++        f.repo
++            .read_delivery_candidates(&f.reader, foreign_query)
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    for principal in [
++        &f.owner,
++        &f.writer,
++        &actor("foreign", false, &["task-tracker:read"]),
++    ] {
++        assert!(matches!(
++            f.repo
++                .read_delivery_candidates(principal, f.query(None, 50))
++                .await,
++            Err(AppError::Forbidden)
++        ));
++    }
++    let mut disabled_config = f.repo.config.clone();
++    disabled_config.single_task_project_ids.clear();
++    let disabled = PostgresSdlcRepository {
++        db: f.db.clone(),
++        config: disabled_config,
++    };
++    assert!(matches!(
++        disabled
++            .read_delivery_candidates(&f.reader, f.query(None, 50))
++            .await,
++        Err(AppError::Unavailable(_))
++    ));
++    let task = actual[0];
++    let (queued, _) = f
++        .repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::EnsureQueued {
++                idempotency_key: "queue".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let before = f.snapshot().await;
++    let page = f
++        .repo
++        .read_delivery_candidates(&f.reader, f.query(None, 100))
++        .await
++        .unwrap();
++    let candidate = page.items.iter().find(|item| item.task_id == task).unwrap();
++    assert_eq!(candidate.next_operation, CandidateOperation::Reserve);
++    assert_eq!(candidate.task_version, Some(queued.task.version));
++    assert_eq!(f.snapshot().await, before);
++    assert!(
++        f.repo
++            .lifecycle_command(
++                task,
++                &f.writer,
++                LifecycleCommand::Reserve {
++                    expected_task_version: queued.task.version + 1,
++                    idempotency_key: "stale-reserve".into(),
++                }
++            )
++            .await
++            .is_err()
++    );
++    assert_eq!(f.snapshot().await, before);
++    f.repo
++        .lifecycle_command(
++            task,
++            &f.writer,
++            LifecycleCommand::Reserve {
++                expected_task_version: queued.task.version,
++                idempotency_key: "reserve".into(),
++            },
++        )
++        .await
++        .unwrap();
++    let page = f
++        .repo
++        .read_delivery_candidates(&f.reader, f.query(None, 100))
++        .await
++        .unwrap();
++    assert!(
++        !page
++            .items
++            .iter()
++            .any(|item| item.task_id == task || item.task_id == pending)
++    );
++    let state = f.repo.read(actual[1], &f.owner).await.unwrap();
++    let snapshot = f
++        .repo
++        .task_routing_snapshot(actual[1], &f.reader)
++        .await
++        .unwrap();
++    let mut stale = snapshot.clone();
++    stale.requirement_revision += 1;
++    assert!(super::super::lifecycle::exact_snapshot(&state, &stale).is_err());
++    stale = snapshot;
++    stale.content_hash = "f".repeat(64);
++    assert!(super::super::lifecycle::exact_snapshot(&state, &stale).is_err());
++    exec(&f.db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='scheduler')",
++        vec![f.project.into()]).await.unwrap();
++    assert!(matches!(
++        f.repo
++            .read_delivery_candidates(&f.reader, f.query(None, 50))
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='scheduler'",
++        vec![f.project.into()]).await.unwrap();
++    exec(
++        &f.db,
++        "UPDATE users SET is_active=false WHERE central_sub='scheduler'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        f.repo
++            .read_delivery_candidates(&f.reader, f.query(None, 50))
++            .await,
++        Err(AppError::Forbidden)
++    ));
++}
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+index 2f738ea..1e2bcbf 100644
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -167,12 +167,22 @@ async fn operation(
+     .transpose()
+ }
+ 
+-fn exact_revision(state: &TaskState, receipt: &LifecycleReceipt) -> Result<(), AppError> {
+-    let snapshot = &receipt.task.routing;
++pub(super) fn exact_revision(
++    state: &TaskState,
++    receipt: &LifecycleReceipt,
++) -> Result<(), AppError> {
++    if receipt.task.task_id != state.task_id || receipt.task.owner_subject != state.owner_subject {
++        return Err(corrupt());
++    }
++    exact_snapshot(state, &receipt.task.routing)
++}
++
++pub(super) fn exact_snapshot(
++    state: &TaskState,
++    snapshot: &TaskRoutingSnapshot,
++) -> Result<(), AppError> {
+     let revision = state.revisions.last().ok_or_else(corrupt)?;
+-    if receipt.task.task_id != state.task_id
+-        || receipt.task.owner_subject != state.owner_subject
+-        || snapshot.task_id != state.task_id
++    if snapshot.task_id != state.task_id
+         || snapshot.root_task_id != state.task_id
+         || snapshot.project_id != state.project_id
+         || snapshot.tracker_instance_id != state.tracker_instance_id
+@@ -514,6 +524,14 @@ impl PostgresSdlcRepository {
+ 
+ #[async_trait]
+ impl LifecycleRepository for PostgresSdlcRepository {
++    async fn delivery_candidates(
++        &self,
++        actor: &Principal,
++        query: domain::sdlc_candidates::DeliveryCandidatesQuery,
++    ) -> Result<domain::sdlc_candidates::DeliveryCandidates, AppError> {
++        self.read_delivery_candidates(actor, query).await
++    }
++
+     async fn submit_pm_feedback(
+         &self,
+         task: Uuid,
+diff --git a/docs/SDLC_DELIVERY_CANDIDATES.md b/docs/SDLC_DELIVERY_CANDIDATES.md
+new file mode 100644
+index 0000000..621a5a5
+--- /dev/null
++++ b/docs/SDLC_DELIVERY_CANDIDATES.md
+@@ -0,0 +1,107 @@
++# Discovery готовой single-task работы
++
++Source-only пакет от `cd14059b8b19c81c06e11a4869dbf391743aef2a`.
++Это read producer Tracker, не второй planner, reserve, claim или proof service.
++Registrations/generated OpenAPI принадлежат main; до их интеграции endpoint
++не объявляется доступным в runtime. Нет новой таблицы или миграции.
++
++## Frozen Wire
++
++`GET /api/v1/sdlc/delivery-candidates?project_id=UUID&after=UUID&limit=N`
++
++`project_id` обязателен; `after` опционален; `limit` по умолчанию 50, от 1 до 100.
++Unknown/duplicate query fields, неверные UUID/числа отклоняет штатный extractor;
++недопустимые bounds отклоняет application validation. Ответ строго закрыт:
++
++```text
++contract_version: 1
++tracker_instance_id: string
++project_id: UUID
++observed_at: UTC RFC3339 с девятью знаками наносекунд и Z
++items: [{task_id, root_task_id, requirement_revision, next_operation, task_version}]
++next_cursor: UUID | null
++```
++
++`root_task_id == task_id`; revision положительный. Для `ensure_queued`
++`task_version` явно null, для `reserve` это actual positive lifecycle version.
++Никаких assignment/run/lease refs, permission или dispatch claims в ответе нет.
++
++## Owner Boundary
++
++Только configured reservation scheduler с отдельным ровно `task-tracker:read`.
++Human, другой subject, PM/delivery grants, write/mixed scopes запрещены.
++Каждый read повторно проверяет active local user, project owner/member и opt-in
++project config. ACL rows удерживаются существующим shared-lock механизмом до
++завершения read; отсутствующий доступ не заменяется Central/global-admin hints.
++
++SELECT фильтрует explicit `flow=single-task-v1`, task=root, exact latest owner
++confirmation, v2 frozen routing и current revision/hash до ORDER/LIMIT.
++Совместимость семи routes проверяется existing policy validator; exact snapshot
++проверяется тем же helper, который сохраняет все прежние lifecycle guards.
++Corrupt frozen source fail-closed с 409, не выдаёт permissive partial proof.
++
++Initial `ensure_queued` появляется только при existing Analysis/Architecture intent
++и `sdlc_current_pm_completed` текущего PM execution/current requirements. Consent,
++AnalysisReady intent, завершённый чужой/старый run или owner feedback недостаточны.
++Legacy Analysis hold блокирует initial seed; Architecture seed также требует
++existing accepted legacy Analysis result, как существующий EnsureQueued.
++
++`reserve` выдаётся только current Ready/Queued/unassigned head с exact frozen
++routing и согласованной issue-status projection. Completed/running/reserved/unknown
++и terminal heads не превращаются в новую работу. Capacity не резервируется этим
++GET: существующий Reserve повторяет CAS, root/agent/pool holds и остальные guards.
++
++UUID ordering/keyset применяется только после SQL eligibility. Запрашивается
++`limit+1`; next_cursor при lookahead равен последнему **возвращённому** task UUID.
++Empty/last page содержит null. Новый проход начинает без after: mutable eligibility
++не означает snapshot across requests, claim или lossless event subscription.
++Consumer выполняет объявленный existing command, затем fresh lifecycle readback/CAS;
++не выбирает stage/role/agent сам и не трактует discovery как permit на dispatch.
++
++Owner confirmation НЕ запускает Analyst. Fleet сначала проверяет PM final Workflow
++completion и actual native terminal, затем принимает existing PM completion в
++Tracker. Только matching persisted completion открывает initial discovery/seed.
++Тестовые terminal observations ниже synthetic, не доказательство live execution.
++
++## Main Integration
++
++Main добавляет только существующие registrations:
++
++- `domain/src/lib.rs`: `pub mod sdlc_candidates;`
++- `app/src/lib.rs`: `pub mod sdlc_candidates;`
++- `infra/src/sdlc.rs`: `#[path = "sdlc_candidates.rs"] mod candidates;`
++- `api/src/routes/mod.rs`: объявление `sdlc_candidates`.
++- Existing SDLC-authenticated v1 router: GET `/sdlc/delivery-candidates` ->
++  `sdlc_candidates::delivery_candidates`.
++- ApiDoc: handler и `DeliveryCandidates`, `DeliveryCandidate`, `CandidateOperation`;
++  query `DeliveryCandidatesQuery` через `params`; regenerate existing OpenAPI.
++
++Existing LifecycleRepository имеет additive default unavailable method для старых
++test doubles; реальный Postgres delegate вызывает новый SELECT-only implementation.
++Existing exact_revision остаётся wrapper с прежней task/owner проверкой; extracted
++exact_snapshot сохраняет остальные прежние predicates без ослабления.
++
++## Test Request
++
++Пакет не запускает Cargo build/test, Docker или PG. Source inventory: 8 unit/API
++tests и 1 ignored PG test; это не compiled collection. После main registrations
++parent из `backend/` сначала проверяет ненулевой inventory через `--list`, затем запускает:
++
++```text
++cargo test -p domain sdlc_candidates::tests::
++cargo test -p app sdlc_candidates::tests::
++cargo test -p api sdlc_candidates::tests::
++cargo test -p infra sdlc::candidates::tests::actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated -- --ignored --exact
++```
++
++Последний тест использует existing Migrator/repository/commands и fresh disposable
++`TT_CANDIDATES_TEST_DATABASE_URL` с database name suffix `_candidates_test`.
++Fixture сама не создаёт DB/контейнер/runner; parent владеет disposable QA lifecycle.
++Покрываются consent-without-terminal exclusion, actual saved PM completion,
++legacy/unconfirmed exclusions, pagination, state/ledger immutability, queue ->
++reserve, stale CAS, reserved exclusion, foreign project, fresh ACL revocation и disabled config.
++Native/Workflow receipts в fixture явно synthetic; DB commands и constraints реальные.
++
++Role-artifact publisher/resolver остаётся отдельной согласуемой owner dependency.
++Discovery, Workflow terminal receipt и Base evidence instructions не публикуют
++analysis/design/review/test/change/check/deployment bytes и не заменяют их hash/readback.

@@ -1,0 +1,3128 @@
+import { generateKeyPairSync, sign } from 'node:crypto'
+import { test, expect, type Page, type Route } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+
+async function installSprintFixtures(page: Page) {
+  await installTrackerMocks(page)
+  const sprints = [
+    {
+      id: 'sprint-1',
+      name: 'Sprint 1',
+      goal: 'Safe fixture goal',
+      state: 'active',
+      issue_ids: [],
+      velocity: 0,
+      remaining_days: 14,
+      start_date: '2026-10-01T00:00:00Z',
+      end_date: '2026-10-14T00:00:00Z',
+    },
+  ]
+  const control = {
+    sprints,
+    readStatus: 200,
+    backlogStatus: 200,
+    writeStatus: 201,
+    malformed: false,
+    applyWrite: true,
+    reads: 0,
+    backlogReads: 0,
+    writes: 0,
+    payloads: [] as Record<string, unknown>[],
+    readBarrier: null as Promise<void> | null,
+    writeBarrier: null as Promise<void> | null,
+  }
+  await page.route('**/api/v1/projects/*/sprints**', async (route) => {
+    const method = route.request().method()
+    if (method === 'GET') {
+      control.reads++
+      if (control.readBarrier) await control.readBarrier
+      return routeJson(
+        route,
+        control.readStatus === 200
+          ? { sprints }
+          : { error: { message: 'private sprint diagnostic' } },
+        control.readStatus,
+      )
+    }
+    control.writes++
+    const payload = route.request().postDataJSON() as Record<string, unknown>
+    control.payloads.push(payload)
+    if (control.writeBarrier) await control.writeBarrier
+    const previous = sprints[0]
+    const saved = {
+      ...previous,
+      ...payload,
+      id: method === 'PATCH' ? previous.id : `sprint-${control.writes + 1}`,
+      goal: typeof payload.goal === 'string' ? payload.goal : '',
+      state: method === 'PATCH' ? previous.state : 'future',
+      start_date:
+        method === 'PATCH' && !Object.hasOwn(payload, 'start_date')
+          ? previous.start_date
+          : (payload.start_date ?? null),
+      end_date:
+        method === 'PATCH' && !Object.hasOwn(payload, 'end_date')
+          ? previous.end_date
+          : (payload.end_date ?? null),
+    }
+    if (control.applyWrite) {
+      if (method === 'PATCH') Object.assign(previous, saved)
+      else sprints.push(saved)
+    }
+    return routeJson(
+      route,
+      control.malformed
+        ? {}
+        : control.writeStatus < 400
+          ? saved
+          : { error: { message: 'private save diagnostic' } },
+      control.writeStatus,
+    )
+  })
+  await page.route('**/api/v1/projects/*/backlog**', (route) => {
+    control.backlogReads++
+    return routeJson(
+      route,
+      control.backlogStatus === 200
+        ? {
+            project_id: 'fixture-demo',
+            project_key: 'DEMO',
+            sprint: sprints[0],
+            sprint_issues: [],
+            backlog_issues: [],
+            backlog_total: 0,
+            backlog_offset: 0,
+            backlog_limit: 100,
+          }
+        : { error: { message: 'private backlog diagnostic' } },
+      control.backlogStatus,
+    )
+  })
+  return control
+}
+
+test.describe('Base sprint forms', () => {
+  test('fits create and edit dialogs in every theme and shell boundary', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(300_000)
+    await installSprintFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    const observations: Array<Record<string, unknown>> = []
+    for (const theme of ['dark', 'gray', 'light']) {
+      await page.goto(`${app}/projects/DEMO/backlog`)
+      await expect(page.getByRole('button', { name: 'Создать спринт', exact: true })).toBeEnabled()
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: 1080 })
+        await page.reload()
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        for (const mode of ['create', 'edit']) {
+          if (mode === 'create')
+            await page.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+          else {
+            await expect(page.getByRole('button', { name: 'Изменить', exact: true })).toBeEnabled()
+            await page.getByRole('button', { name: 'Изменить', exact: true }).click()
+            await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
+          }
+          const dialog = page.getByRole('dialog')
+          await expect(dialog).toBeVisible()
+          await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toBeVisible()
+          await dialog
+            .getByRole('textbox', { name: 'Название', exact: true })
+            .fill('Long-safe-name-'.repeat(30))
+          await dialog.getByLabel('Цель', { exact: true }).fill('Safe-goal-'.repeat(100))
+          const geometry = await dialog.evaluate((element) => {
+            const rect = element.getBoundingClientRect()
+            const controls = Array.from(
+              element.querySelectorAll<HTMLElement>('input,textarea,button'),
+            ).filter((control) => {
+              const box = control.getBoundingClientRect()
+              return box.width > 0 && box.height > 0 && !control.closest('[hidden],[inert]')
+            })
+            return {
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+              viewportWidth: innerWidth,
+              viewportHeight: innerHeight,
+              documentWidth: document.documentElement.scrollWidth,
+              localOverflow: element.scrollWidth > element.clientWidth + 1,
+              minimumHeight: Math.min(
+                ...controls.map((control) => control.getBoundingClientRect().height),
+              ),
+              targetsFit: controls.every((control) => {
+                const box = control.getBoundingClientRect()
+                return box.left >= rect.left - 1 && box.right <= rect.right + 1
+              }),
+            }
+          })
+          expect(geometry.documentWidth).toBeLessThanOrEqual(width + 1)
+          expect(geometry.localOverflow).toBe(false)
+          expect(geometry.left).toBeGreaterThanOrEqual(0)
+          expect(geometry.right).toBeLessThanOrEqual(width + 1)
+          expect(geometry.top).toBeGreaterThanOrEqual(0)
+          expect(geometry.bottom).toBeLessThanOrEqual(1081)
+          expect(geometry.minimumHeight).toBeGreaterThanOrEqual(width < 768 ? 44 : 40)
+          expect(geometry.targetsFit).toBe(true)
+          observations.push({ theme, width, mode, ...geometry })
+          if ([375, 1920, 2560].includes(width)) {
+            await page.screenshot({
+              path: testInfo.outputPath(`${theme}-${width}-${mode}-full.png`),
+              fullPage: true,
+            })
+            await page.screenshot({
+              path: testInfo.outputPath(`${theme}-${width}-${mode}-viewport.png`),
+            })
+          }
+          if ([375, 1920].includes(width)) {
+            const axe = await new AxeBuilder({ page })
+              .include('[role="dialog"]')
+              .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+              .analyze()
+            expect(axe.violations).toEqual([])
+          }
+          await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+          await page
+            .getByRole('alertdialog')
+            .getByRole('button', { name: 'Подтвердить', exact: true })
+            .click()
+          await expect(dialog).not.toBeVisible()
+        }
+      }
+    }
+    expect(observations).toHaveLength(60)
+    expect(failures).toEqual([])
+    await testInfo.attach('sprint-form-geometry.json', {
+      body: Buffer.from(JSON.stringify({ observations, failures }, null, 2)),
+      contentType: 'application/json',
+    })
+  })
+
+  test('returns focus after pristine closing and traps keyboard focus while open', async ({
+    page,
+    baseURL,
+  }) => {
+    await installSprintFixtures(page)
+    await page.goto(`${baseURL}/projects/DEMO/backlog`)
+    const trigger = page.getByRole('button', { name: 'Создать спринт', exact: true })
+    await trigger.click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toBeFocused()
+    for (let index = 0; index < 12; index++) {
+      await page.keyboard.press(index % 2 ? 'Shift+Tab' : 'Tab')
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      )
+    }
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible()
+    await expect(trigger).toBeFocused()
+    await page.getByRole('button', { name: 'Изменить', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible()
+    await expect(page.locator('main h1')).toBeFocused()
+  })
+
+  test('links date validation, confirms discard and sends nullable update fields', async ({
+    page,
+    baseURL,
+  }) => {
+    const fixture = await installSprintFixtures(page)
+    fixture.writeStatus = 200
+    await page.goto(`${baseURL}/projects/DEMO/backlog`)
+    await page.getByRole('button', { name: 'Изменить', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Дата окончания', { exact: true }).fill('2026-09-30')
+    await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toHaveText('Дата окончания не может быть раньше начала')
+    await expect(dialog.getByLabel('Дата окончания', { exact: true })).toBeFocused()
+    expect(fixture.writes).toBe(0)
+    await page.keyboard.press('Escape')
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(dialog.getByLabel('Дата окончания', { exact: true })).toHaveValue('2026-09-30')
+    for (const name of ['Цель', 'Дата начала', 'Дата окончания'])
+      await dialog.getByLabel(name, { exact: true }).fill('')
+    await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    expect(fixture.payloads).toEqual([
+      { name: 'Sprint 1', goal: null, start_date: null, end_date: null },
+    ])
+  })
+
+  test('keeps writes and closing locked until the mutation promise settles', async ({
+    page,
+    baseURL,
+  }) => {
+    const fixture = await installSprintFixtures(page)
+    let release!: () => void
+    fixture.writeBarrier = new Promise<void>((done) => {
+      release = done
+    })
+    await page.goto(`${baseURL}/projects/DEMO/backlog`)
+    await page.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: 'Название', exact: true }).fill('Safe new sprint')
+    await dialog.locator('form').evaluate((form) => {
+      form.requestSubmit()
+      form.requestSubmit()
+    })
+    await expect.poll(() => fixture.writes).toBe(1)
+    await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    release()
+    await expect(dialog).not.toBeVisible()
+    expect(fixture.writes).toBe(1)
+  })
+
+  for (const status of [403, 404, 422]) {
+    test(`retains draft and distinguishes confirmed ${status} rejection`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      const fixture = await installSprintFixtures(page)
+      fixture.writeStatus = status
+      fixture.applyWrite = false
+      await page.goto(`${baseURL}/projects/DEMO/backlog`)
+      await page.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('textbox', { name: 'Название', exact: true }).fill('Retained draft')
+      await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+      await expect(dialog.getByRole('alert')).toBeVisible()
+      await expect(dialog.getByRole('alert')).not.toContainText('private')
+      await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toHaveValue(
+        'Retained draft',
+      )
+      if (status === 422)
+        await expect(
+          dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
+        ).toBeEnabled()
+      else
+        await expect(
+          dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
+        ).toBeDisabled()
+      await page.screenshot({ path: testInfo.outputPath(`save-${status}.png`), fullPage: true })
+      expect(fixture.writes).toBe(1)
+    })
+  }
+
+  for (const malformed of [false, true]) {
+    test(`blocks unknown ${malformed ? 'malformed' : '503'} write until explicit catalog review`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      const fixture = await installSprintFixtures(page)
+      fixture.writeStatus = malformed ? 201 : 503
+      fixture.malformed = malformed
+      await page.goto(`${baseURL}/projects/DEMO/backlog`)
+      await page.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog
+        .getByRole('textbox', { name: 'Название', exact: true })
+        .fill('Possibly committed sprint')
+      await dialog.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+      await expect(dialog.getByRole('alert')).toHaveText(
+        'Результат сохранения не подтверждён. Повторная отправка заблокирована.',
+      )
+      await expect(
+        dialog.getByRole('button', { name: 'Создать спринт', exact: true }),
+      ).toBeDisabled()
+      await dialog
+        .locator('form')
+        .evaluate((form) =>
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+        )
+      expect(fixture.writes).toBe(1)
+      await page.screenshot({
+        path: testInfo.outputPath(`unknown-${malformed ? 'malformed' : '503'}-draft.png`),
+        fullPage: true,
+      })
+      await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: 'Подтвердить', exact: true })
+        .click()
+      const create = page.getByRole('button', { name: 'Создать спринт', exact: true })
+      await expect(create).toBeDisabled()
+      const before = fixture.reads
+      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await expect.poll(() => fixture.reads).toBeGreaterThan(before)
+      await expect(page.getByText('Possibly committed sprint', { exact: true })).toBeVisible()
+      await expect(create).toBeDisabled()
+      await page.getByRole('button', { name: 'Проверить сохранённые спринты', exact: true }).click()
+      await expect(create).toBeEnabled()
+      expect(fixture.writes).toBe(1)
+      await create.click()
+      await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toHaveValue('')
+      await expect(dialog.getByRole('alert')).not.toBeVisible()
+    })
+  }
+
+  test('retains the same dialog and draft through a failed backlog refresh', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(60_000)
+    const fixture = await installSprintFixtures(page)
+    await page.goto(`${baseURL}/projects/DEMO/backlog`)
+    await page.getByRole('button', { name: 'Создать спринт', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog
+      .getByRole('textbox', { name: 'Название', exact: true })
+      .fill('Do not lose this draft')
+    fixture.backlogStatus = 503
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.locator('main')).toContainText('Не удалось загрузить бэклог.', {
+      timeout: 30_000,
+    })
+    await expect(dialog.getByRole('textbox', { name: 'Название', exact: true })).toHaveValue(
+      'Do not lose this draft',
+    )
+    await expect(dialog.getByRole('button', { name: 'Создать спринт', exact: true })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
+    await page.screenshot({
+      path: testInfo.outputPath('backlog-refresh-draft.png'),
+      fullPage: true,
+    })
+    expect(fixture.writes).toBe(0)
+  })
+})
+
+async function installBoardFixtures(page: Page, count = 20, projectKey = 'DEMO') {
+  await installTrackerMocks(page)
+  const statuses = [
+    { id: 'todo', name: 'To Do' },
+    { id: 'inprogress', name: 'In Progress' },
+    { id: 'review', name: 'Review' },
+    { id: 'done', name: 'Done' },
+  ]
+  const rows = Array.from({ length: count }, (_, index) => ({
+    ...searchIssue(index + 1),
+    key: `${projectKey}-${index + 1}`,
+    project_key: projectKey,
+    status_id: statuses[index % statuses.length].id,
+    status: statuses[index % statuses.length].name,
+  }))
+  const transitions = statuses.flatMap((from) =>
+    statuses
+      .filter((to) => from.id !== to.id)
+      .map((to) => ({
+        id: `${from.id}-${to.id}`,
+        from_status_id: from.id,
+        to_status_id: to.id,
+        name: null,
+      })),
+  )
+  const control = {
+    rows,
+    readStatus: 200,
+    rulesStatus: 200,
+    writeStatus: 200,
+    applyWrite: true,
+    reads: 0,
+    ruleReads: 0,
+    writes: 0,
+    readBarrier: null as Promise<void> | null,
+    writeBarrier: null as Promise<void> | null,
+  }
+  function board() {
+    return {
+      project_id: 'fixture-demo',
+      project_key: projectKey,
+      backlog_total: 0,
+      columns: statuses.map((status) => ({
+        ...status,
+        wip_limit: null,
+        issue_ids: rows.filter((issue) => issue.status_id === status.id).map((issue) => issue.id),
+      })),
+      issues: rows,
+      sprint: {
+        id: 'sprint-1',
+        name: 'Safe fixture sprint',
+        goal: '',
+        state: 'active',
+        velocity: 0,
+        remaining_days: 10,
+        issue_ids: rows.map((issue) => issue.id),
+        start_date: null,
+        end_date: null,
+      },
+    }
+  }
+  await page.route('**/api/v1/projects/*/board', async (route) => {
+    control.reads++
+    if (control.readBarrier) await control.readBarrier
+    return routeJson(
+      route,
+      control.readStatus === 200 ? board() : { error: { message: 'private board diagnostic' } },
+      control.readStatus,
+    )
+  })
+  await page.route('**/api/v1/transitions', (route) => {
+    control.ruleReads++
+    return routeJson(
+      route,
+      control.rulesStatus === 200
+        ? transitions
+        : { error: { message: 'private rules diagnostic' } },
+      control.rulesStatus,
+    )
+  })
+  await page.route('**/api/v1/projects/*/board/move', async (route) => {
+    control.writes++
+    if (control.writeBarrier) await control.writeBarrier
+    const input = route.request().postDataJSON() as { issue_id: string; status_id: string }
+    const issue = rows.find((row) => row.id === input.issue_id)
+    if (issue && control.applyWrite) {
+      issue.status_id = input.status_id
+      issue.status = statuses.find((status) => status.id === input.status_id)?.name ?? issue.status
+    }
+    return routeJson(
+      route,
+      control.writeStatus === 200 ? board() : { error: { message: 'private move diagnostic' } },
+      control.writeStatus,
+    )
+  })
+  return control
+}
+
+test.describe('Base project board', () => {
+  for (const projectKey of ['toString', 'valueOf']) {
+    test(`valid project key ${projectKey} does not inherit a failed-move state`, async ({
+      page,
+      baseURL,
+    }) => {
+      const fixture = await installBoardFixtures(page, 1, projectKey)
+      await page.goto(`${baseURL}/projects/${projectKey}/board`)
+      await page
+        .getByRole('button', { name: `Изменить статус ${projectKey}-1`, exact: true })
+        .click()
+      await page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }).click()
+      await expect.poll(() => fixture.writes).toBe(1)
+      await expect(
+        page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
+      ).toHaveCount(1)
+    })
+  }
+  test('fits both densities, long cards and controls in every theme and shell boundary', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(300_000)
+    await installBoardFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const failures: string[] = []
+    const observations: Array<Record<string, unknown>> = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    for (const theme of ['dark', 'gray', 'light']) {
+      await page.goto(`${app}/projects/DEMO/board`)
+      await expect(page.locator('main article')).toHaveCount(20)
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const density of ['comfortable', 'compact']) {
+        for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+          await page.setViewportSize({ width, height: 1080 })
+          for (const entry of ['direct', 'reload']) {
+            if (entry === 'direct')
+              await page.goto(
+                `${app}/projects/DEMO/board?source=qa${density === 'compact' ? '&density=compact' : ''}#context`,
+              )
+            else await page.reload()
+            await expect(page.locator('main article')).toHaveCount(20)
+            await expect(
+              page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
+            ).toBeEnabled()
+            await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+            await expect(
+              page.getByRole('tab', {
+                name: density === 'compact' ? 'Компактная' : 'Обычная',
+                exact: true,
+              }),
+            ).toHaveAttribute('aria-selected', 'true')
+            await expect(page.locator('main h1')).toHaveCount(1)
+            await expect(
+              page.getByRole('link', { name: 'Создать задачу', exact: true }),
+            ).toHaveCount(1)
+            const layout = page.locator('[data-page-layout]')
+            await expect(layout).toHaveAttribute('data-page-layout', 'wide')
+            const geometry = await layout.evaluate((element) => {
+              const parent = element.parentElement!
+              const style = getComputedStyle(parent)
+              const pageHeader = element.querySelector('.base-page-header')!.getBoundingClientRect()
+              const grid = element.querySelector('[aria-label="Колонки доски"]')!
+              const slots = Array.from(document.querySelectorAll('[data-platform-header-slot]'))
+                .map((slot) => slot.getBoundingClientRect())
+                .filter((rect) => rect.width > 0)
+              return {
+                viewportWidth: innerWidth,
+                viewportHeight: innerHeight,
+                width: element.getBoundingClientRect().width,
+                expectedWidth:
+                  parent.clientWidth -
+                  Number.parseFloat(style.paddingLeft) -
+                  Number.parseFloat(style.paddingRight),
+                gutter: Number.parseFloat(style.paddingLeft),
+                gap: Number.parseFloat(getComputedStyle(grid).gap),
+                titleSize: Number.parseFloat(
+                  getComputedStyle(element.querySelector('h1')!).fontSize,
+                ),
+                headerHeight: document
+                  .querySelector('[data-platform-header]')!
+                  .getBoundingClientRect().height,
+                sidebarWidth: document.querySelector('.base-shell-sidebar')!.getBoundingClientRect()
+                  .width,
+                documentFits:
+                  document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+                localFits: element.scrollWidth <= element.clientWidth,
+                gridAfterHeader: grid.getBoundingClientRect().top >= pageHeader.bottom,
+                headerFits: slots.every(
+                  (rect, index) => index === 0 || rect.left >= slots[index - 1].right,
+                ),
+              }
+            })
+            expect(geometry.viewportWidth).toBe(width)
+            expect(geometry.viewportHeight).toBe(1080)
+            expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
+            expect(
+              Math.abs(geometry.gutter - Math.min(32, Math.max(16, width * 0.02))),
+            ).toBeLessThan(1)
+            expect(geometry.gap).toBe(20)
+            expect(geometry.titleSize).toBe(24)
+            expect(geometry.headerHeight).toBe(60)
+            expect(geometry.sidebarWidth).toBe(width < 768 ? 0 : width < 1280 ? 72 : 264)
+            expect(
+              geometry.documentFits &&
+                geometry.localFits &&
+                geometry.gridAfterHeader &&
+                geometry.headerFits,
+            ).toBe(true)
+            const undersized = await page.locator('main button, main a, main select').evaluateAll(
+              (elements, minimum) =>
+                elements.flatMap((element) => {
+                  const rect = element.getBoundingClientRect()
+                  return rect.width > 0 &&
+                    rect.height > 0 &&
+                    (rect.height + 0.5 < minimum || rect.width + 0.5 < minimum)
+                    ? [{ html: element.outerHTML, width: rect.width, height: rect.height }]
+                    : []
+                }),
+              width < 768 ? 44 : 40,
+            )
+            expect(undersized).toEqual([])
+            observations.push({
+              theme,
+              density,
+              entry,
+              mode: 'wide',
+              viewport: { width, height: 1080 },
+              ...geometry,
+            })
+          }
+          if (width === 375 || width === 1920)
+            expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual(
+              [],
+            )
+          if ([375, 1920, 2560].includes(width)) {
+            await page.screenshot({
+              path: testInfo.outputPath(`board-${theme}-${density}-${width}.png`),
+              fullPage: true,
+            })
+            await page.evaluate(() => window.scrollTo(0, 0))
+            await page.screenshot({
+              path: testInfo.outputPath(`board-${theme}-${density}-${width}-viewport.png`),
+            })
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    await testInfo.attach('board-geometry', {
+      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
+      contentType: 'application/json',
+    })
+  })
+
+  test('restores URL modes and status through reload and Back/Forward without losing hash', async ({
+    page,
+    baseURL,
+  }) => {
+    await installBoardFixtures(page)
+    await page.setViewportSize({ width: 375, height: 1080 })
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await page.goto(`${app}/projects/DEMO/board?source=qa&density=invalid#context`)
+    await expect(page).toHaveURL(`${app}/projects/DEMO/board?source=qa#context`)
+    await page.getByRole('tab', { name: 'Компактная', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Статус задач', exact: true }).selectOption('done')
+    await expect(page).toHaveURL(
+      `${app}/projects/DEMO/board?source=qa&density=compact&status=done#context`,
+    )
+    await page.reload()
+    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
+      'done',
+    )
+    await expect(page.getByRole('tab', { name: 'Компактная', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await page.goBack()
+    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
+      'todo',
+    )
+    await page.goForward()
+    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
+      'done',
+    )
+    await expect(page.getByRole('link', { name: 'Бэклог', exact: true })).toHaveAttribute(
+      'href',
+      '/projects/DEMO/backlog?source=qa&density=compact&status=done#context',
+    )
+  })
+
+  test('distinguishes loading and an empty board while preserving the Base header', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    const fixture = await installBoardFixtures(page, 0)
+    let release!: () => void
+    fixture.readBarrier = new Promise<void>((done) => {
+      release = done
+    })
+    await page.goto(`${baseURL}/projects/DEMO/board`)
+    await expect(page.getByText('Загрузка доски…', { exact: true })).toBeVisible()
+    await expect(page.locator('main h1')).toHaveCount(1)
+    await expect(page.getByRole('link', { name: 'Создать задачу', exact: true })).toHaveCount(0)
+    release()
+    await expect(page.getByText('В этом статусе нет задач', { exact: true })).toHaveCount(4)
+    await expect(page.locator('main article')).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('board-empty.png'), fullPage: true })
+  })
+
+  for (const status of [403, 404, 422, 503]) {
+    test(`cold board HTTP ${status} does not invent an empty board or expose CRUD`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      const fixture = await installBoardFixtures(page)
+      fixture.readStatus = status
+      await page.goto(`${baseURL}/projects/DEMO/board`)
+      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
+      const main = page.locator('main')
+      if (status === 403 || status === 404)
+        await expect(
+          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
+        ).toBeVisible()
+      else await expect(main.getByRole('alert')).toBeVisible()
+      await expect(main.locator('article')).toHaveCount(0)
+      await expect(main.getByRole('link', { name: 'Создать задачу', exact: true })).toHaveCount(0)
+      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+        status === 503 ? 1 : 0,
+      )
+      await expect(main.getByText('private board diagnostic', { exact: true })).toHaveCount(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`board-cold-${status}.png`),
+        fullPage: true,
+      })
+    })
+
+    test(`cached board HTTP ${status} enforces privacy and write freshness`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      const fixture = await installBoardFixtures(page)
+      await page.goto(`${baseURL}/projects/DEMO/board`)
+      await expect(page.locator('main article')).toHaveCount(20)
+      fixture.readStatus = status
+      const previousReads = fixture.reads
+      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await expect
+        .poll(() => fixture.reads - previousReads, { timeout: 30_000 })
+        .toBe(status === 503 ? 5 : 1)
+      if (status === 503) {
+        await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible()
+        await expect(page.locator('main article')).toHaveCount(20)
+        await expect(
+          page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
+        ).toBeDisabled()
+        await expect(
+          page.getByRole('button', { name: 'Создать задачу', exact: true }),
+        ).toBeDisabled()
+      } else {
+        await expect(page.locator('main article')).toHaveCount(0)
+        await expect(
+          page.getByRole('tablist', { name: 'Плотность доски', exact: true }),
+        ).toHaveCount(0)
+      }
+      expect(fixture.writes).toBe(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`board-cached-${status}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  for (const status of [403, 422, 503]) {
+    test(`independent transition HTTP ${status} keeps the board readable but disables moves`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      const fixture = await installBoardFixtures(page)
+      fixture.rulesStatus = status
+      await page.goto(`${baseURL}/projects/DEMO/board`)
+      await expect.poll(() => fixture.ruleReads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
+      await expect(
+        page.getByText('Не удалось загрузить правила переходов. Перенос задач недоступен.', {
+          exact: true,
+        }),
+      ).toBeVisible()
+      await expect(page.locator('main article')).toHaveCount(20)
+      await expect(
+        page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
+      ).toBeDisabled()
+      await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+        status === 503 ? 1 : 0,
+      )
+      await expect(page.getByText('private rules diagnostic', { exact: true })).toHaveCount(0)
+      expect(fixture.writes).toBe(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`board-rules-${status}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  test('keyboard move holds pending controls and returns focus after the card changes column', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    const fixture = await installBoardFixtures(page, 1)
+    let release!: () => void
+    fixture.writeBarrier = new Promise<void>((done) => {
+      release = done
+    })
+    await page.goto(`${baseURL}/projects/DEMO/board`)
+    const trigger = page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true })
+    await expect(trigger).toBeEnabled()
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('menu')).toBeVisible()
+    await page.keyboard.press('End')
+    await expect(
+      page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }),
+    ).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => fixture.writes).toBe(1)
+    await expect(trigger).toBeDisabled()
+    await expect(page.locator('main article')).toHaveAttribute('draggable', 'false')
+    release()
+    await expect(
+      page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
+    ).toHaveCount(1)
+    await expect(page.getByRole('region', { name: 'Доска задач', exact: true })).toBeFocused()
+    expect(fixture.writes).toBe(1)
+    await page.screenshot({ path: testInfo.outputPath('board-keyboard-focus.png'), fullPage: true })
+  })
+
+  for (const applied of [false, true]) {
+    test(`unknown move applied=${applied} requires an explicit readback and never silently retries`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      const fixture = await installBoardFixtures(page, 1)
+      fixture.writeStatus = 503
+      fixture.applyWrite = applied
+      await page.goto(`${baseURL}/projects/DEMO/board`)
+      const trigger = page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true })
+      await trigger.click()
+      await page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }).click()
+      await expect(page.getByText(/Результат переноса DEMO-1 неизвестен/)).toBeVisible()
+      await expect(trigger).toBeDisabled()
+      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await expect(trigger).toBeDisabled()
+      expect(fixture.writes).toBe(1)
+      await expect(page.getByText('Статус задачи изменён', { exact: true })).toHaveCount(0)
+      await page.getByRole('button', { name: 'Проверить состояние', exact: true }).click()
+      await expect(trigger).toBeEnabled()
+      if (applied) {
+        await expect(
+          page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
+        ).toHaveCount(1)
+        await expect(page.getByText(/результат предыдущего переноса не подтверждён/)).toBeVisible()
+      }
+      expect(fixture.writes).toBe(1)
+      await page.screenshot({
+        path: testInfo.outputPath(`board-unknown-applied-${applied}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  test('native drag/drop performs a single allowed move', async ({ page, baseURL }) => {
+    const fixture = await installBoardFixtures(page, 1)
+    await page.goto(`${baseURL}/projects/DEMO/board`)
+    await expect(
+      page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
+    ).toBeEnabled()
+    await page
+      .locator('main article')
+      .dragTo(page.getByRole('region', { name: 'Готово', exact: true }))
+    await expect.poll(() => fixture.writes).toBe(1)
+    await expect(
+      page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
+    ).toHaveCount(1)
+  })
+})
+
+async function installCreateFixtures(page: Page) {
+  await installTrackerMocks(page)
+  await page.route('**/api/v1/projects', (route) =>
+    routeJson(route, {
+      projects: ['DEMO', 'OPS'].map((key) => ({
+        id: `fixture-${key}`,
+        key,
+        name: key === 'DEMO' ? mockUser.name : 'Operations',
+        owner_id: mockUser.id,
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      })),
+    }),
+  )
+  await page.route('**/api/v1/projects/*/custom-fields', (route) =>
+    routeJson(route, {
+      fields: [
+        {
+          id: 'fixture-text',
+          project_id: 'fixture-project',
+          name: 'Required text',
+          field_type: 'text',
+          is_required: true,
+          options: [],
+          created_at: '2026-10-01T10:00:00Z',
+        },
+      ],
+    }),
+  )
+}
+
+test.describe('Base issue create', () => {
+  test('retains project drafts and protects navigation with keyboard focus return', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installCreateFixtures(page)
+    await page.goto(`${baseURL}/issues/create?project_key=DEMO&source=board`)
+    await page.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Safe fixture draft')
+    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('DEMO draft')
+    await page.getByLabel('Исполнитель', { exact: true }).selectOption(mockUser.id)
+    await page.getByRole('combobox', { name: 'Проект', exact: true }).selectOption('OPS')
+    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('OPS draft')
+    await page.goBack()
+    await expect(page.getByRole('combobox', { name: 'Проект', exact: true })).toHaveValue('DEMO')
+    await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toHaveValue(
+      'DEMO draft',
+    )
+    await expect(page.getByLabel('Исполнитель', { exact: true })).toHaveValue(mockUser.id)
+    await expect(page).toHaveURL(/project_key=DEMO&source=board$/)
+    const leave = page
+      .getByRole('navigation', { name: 'Основная навигация' })
+      .getByRole('link', { name: 'Проекты', exact: true })
+    await leave.click()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await expect(leave).toBeFocused()
+    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toHaveValue(
+      'Safe fixture draft',
+    )
+    await page.screenshot({
+      path: testInfo.outputPath('create-draft-retained.png'),
+      fullPage: true,
+    })
+  })
+
+  test('keeps failed saves and sends only one request during pending', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installCreateFixtures(page)
+    let count = 0
+    let release!: () => void
+    await page.route('**/api/v1/issues', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      count++
+      await new Promise<void>((done) => {
+        release = done
+      })
+      return routeJson(
+        route,
+        { error: { code: 'UNAVAILABLE', message: 'private diagnostic must not render' } },
+        503,
+      )
+    })
+    await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
+    await page.getByRole('textbox', { name: 'Заголовок', exact: true }).fill('Safe fixture draft')
+    await page.getByRole('textbox', { name: 'Required text', exact: true }).fill('Retained value')
+    const submit = page.getByRole('button', { name: 'Создать', exact: true })
+    await expect(submit).toBeEnabled()
+    await page.locator('main form').evaluate((form) => {
+      ;(form as HTMLFormElement).requestSubmit()
+      ;(form as HTMLFormElement).requestSubmit()
+    })
+    await expect.poll(() => count).toBe(1)
+    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toBeDisabled()
+    release()
+    await expect(
+      page.getByText('Не удалось создать задачу. Проверьте данные и повторите попытку.'),
+    ).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toHaveValue(
+      'Retained value',
+    )
+    await expect(page.getByRole('textbox', { name: 'Заголовок', exact: true })).toHaveValue(
+      'Safe fixture draft',
+    )
+    await expect(submit).toBeEnabled()
+    await expect(page.getByText('private diagnostic must not render', { exact: true })).toHaveCount(
+      0,
+    )
+    expect(count).toBe(1)
+    await page.screenshot({ path: testInfo.outputPath('create-save-error.png'), fullPage: true })
+  })
+
+  for (const status of [403, 404, 422, 503]) {
+    test(`required field HTTP ${status} preserves the correct state and write boundary`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      await installCreateFixtures(page)
+      let reads = 0
+      await page.route('**/api/v1/projects/*/custom-fields', (route) => {
+        reads++
+        return routeJson(
+          route,
+          { error: { code: 'CONTROLLED', message: 'private diagnostic must not render' } },
+          status,
+        )
+      })
+      await page.goto(`${baseURL}/issues/create?project_key=DEMO`)
+      await expect.poll(() => reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
+      await expect(
+        page.getByText('Не удалось загрузить поля проекта. Повторите попытку.'),
+      ).toBeVisible()
+      const main = page.locator('main')
+      if (status === 403 || status === 404) {
+        await expect(
+          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
+        ).toBeVisible()
+        await expect(main.locator('form')).toHaveCount(0)
+        await expect(main.getByRole('button', { name: 'Создать', exact: true })).toHaveCount(0)
+      } else await expect(main.getByRole('button', { name: 'Создать', exact: true })).toBeDisabled()
+      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+        status === 503 ? 1 : 0,
+      )
+      await expect(
+        main.getByText('private diagnostic must not render', { exact: true }),
+      ).toHaveCount(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`create-required-${status}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  test('reading form remains compact and accessible in every theme and shell breakpoint', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    await installCreateFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    for (const theme of ['dark', 'gray', 'light']) {
+      await page.goto(`${app}/issues/create?project_key=DEMO`)
+      await expect(page.getByRole('textbox', { name: 'Required text', exact: true })).toBeVisible()
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: 1080 })
+        await page.reload()
+        await expect(
+          page.getByRole('textbox', { name: 'Required text', exact: true }),
+        ).toBeVisible()
+        await page
+          .getByRole('textbox', { name: 'Заголовок', exact: true })
+          .fill('Long safe fixture summary '.repeat(18))
+        await page
+          .getByRole('textbox', { name: 'Required text', exact: true })
+          .fill('UnbrokenSafeValue'.repeat(20))
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        await expect(page.locator('main h1')).toHaveCount(1)
+        await expect(page.locator('[data-page-layout]')).toHaveAttribute(
+          'data-page-layout',
+          'reading',
+        )
+        const geometry = await page.locator('[data-page-layout]').evaluate((element) => {
+          const rect = element.getBoundingClientRect()
+          const parent = element.parentElement!
+          const style = getComputedStyle(parent)
+          const header = element.querySelector('.base-page-header')!.getBoundingClientRect()
+          const actions = element.querySelector('.base-page-actions')!.getBoundingClientRect()
+          return {
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            width: rect.width,
+            left: rect.left,
+            expectedLeft:
+              parent.getBoundingClientRect().left + Number.parseFloat(style.paddingLeft),
+            headerTop: header.top,
+            actionsTop: actions.top,
+            formBottom: element.querySelector('form')!.getBoundingClientRect().bottom,
+            actionsBottom: actions.bottom,
+          }
+        })
+        expect(geometry.overflow).toBe(false)
+        expect(geometry.width).toBeLessThanOrEqual(760)
+        expect(Math.abs(geometry.left - geometry.expectedLeft)).toBeLessThan(1)
+        expect(geometry.actionsTop).toBeGreaterThan(geometry.headerTop)
+        expect(geometry.actionsBottom).toBeLessThanOrEqual(geometry.formBottom)
+        const smallTargets = await page
+          .locator('main input, main select, main textarea, main button')
+          .evaluateAll(
+            (elements, minimum) =>
+              elements
+                .filter((element) => {
+                  const rect = element.getBoundingClientRect()
+                  return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
+                })
+                .map((element) => element.id || element.textContent),
+            width < 768 ? 44 : 40,
+          )
+        expect(smallTargets).toEqual([])
+        if (width === 375 || width === 1920)
+          expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([])
+        await page.screenshot({
+          path: testInfo.outputPath(`create-${theme}-${width}.png`),
+          fullPage: true,
+        })
+      }
+    }
+    expect(failures).toEqual([])
+  })
+})
+
+const mockUser = {
+  id: '00000000-0000-0000-0000-000000000001',
+  key: 'DEMO',
+  name: 'Demo Project',
+  issueId: 'issue-1',
+}
+
+const searchIssue = (index: number) => ({
+  id: `search-issue-${index}`,
+  key: `DEMO-${index}`,
+  summary: `Safe result ${index}: ${'UnbrokenSafeSummary'.repeat(16)}`,
+  description: '',
+  issue_type: 'Task',
+  status: 'In Progress',
+  status_id: 'inprogress',
+  priority: 'High',
+  labels: [],
+  project_key: 'DEMO',
+  project_name: mockUser.name,
+  reporter_id: mockUser.id,
+  assignee_id: mockUser.id,
+  assignee_name: 'UnbrokenAssignee'.repeat(20),
+  time_spent_seconds: 0,
+  created_at: '2026-10-01T10:00:00Z',
+  updated_at: '2026-10-01T10:00:00Z',
+})
+
+async function installSearchFixtures(page: Page) {
+  await installTrackerMocks(page)
+  await page.route('**/api/v1/search**', (route) =>
+    routeJson(route, {
+      issues: Array.from({ length: 26 }, (_, index) => searchIssue(index + 1)),
+    }),
+  )
+  await page.route('**/api/v1/projects', (route) =>
+    routeJson(route, {
+      projects: [
+        {
+          id: 'search-project',
+          key: 'DEMO',
+          name: 'UnbrokenProjectName'.repeat(20),
+          owner_id: mockUser.id,
+          todo_count: 26,
+          in_progress_count: 0,
+          done_count: 0,
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/users', (route) =>
+    routeJson(route, {
+      users: [{ id: mockUser.id, username: 'demo', display_name: 'UnbrokenAssignee'.repeat(20) }],
+    }),
+  )
+}
+
+test.describe('Base search page', () => {
+  test('wide list and both modes fit all themes and shell boundaries', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(240_000)
+    await installSearchFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    for (const theme of ['dark', 'gray', 'light']) {
+      await page.goto(`${app}/search?project_key=DEMO`)
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const mode of ['simple', 'jql'])
+        for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+          await page.setViewportSize({ width, height: 1080 })
+          await page.goto(
+            `${app}/search?${mode === 'simple' ? `project_key=DEMO&assignee_id=${mockUser.id}` : 'mode=jql&jql=project%20%3D%20DEMO'}&view=compact#results`,
+          )
+          await expect(page.locator('main h1')).toHaveText('Поиск задач')
+          await expect(page.locator('main h1')).toHaveCount(1)
+          await expect(page.locator('main li')).toHaveCount(25)
+          await page.reload()
+          await expect(page.locator('main li')).toHaveCount(25)
+          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+          if (mode === 'simple' && width < 640)
+            await page.getByRole('button', { name: /^Фильтры/ }).click()
+          await expect(page.locator('[data-page-layout]')).toHaveAttribute(
+            'data-page-layout',
+            'wide',
+          )
+          const geometry = await page.locator('[data-page-layout]').evaluate((element) => {
+            const rect = element.getBoundingClientRect()
+            const parent = element.parentElement!
+            return {
+              width: rect.width,
+              expectedWidth:
+                parent.clientWidth -
+                Number.parseFloat(getComputedStyle(parent).paddingLeft) -
+                Number.parseFloat(getComputedStyle(parent).paddingRight),
+              gap: Number.parseFloat(
+                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
+              ),
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+              localOverflow: element.scrollWidth > element.clientWidth,
+            }
+          })
+          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
+          expect(geometry.gap).toBe(20)
+          expect(geometry.overflow).toBe(false)
+          expect(geometry.localOverflow).toBe(false)
+          const titles = page.locator('main li a > span')
+          await expect(titles).toHaveCount(25)
+          const clippedTitles = await titles.evaluateAll(
+            (elements, { lines, singleLine }) =>
+              elements.flatMap((element) => {
+                const rect = element.getBoundingClientRect()
+                const style = getComputedStyle(element)
+                const lineHeight = Number.parseFloat(style.lineHeight)
+                const targetWidth = element.parentElement!.clientWidth
+                return rect.height > lineHeight * lines + 0.5 ||
+                  Math.abs(rect.width - targetWidth) > 0.5 ||
+                  (singleLine && style.whiteSpace !== 'nowrap')
+                  ? [{ height: rect.height, width: rect.width, lineHeight, targetWidth }]
+                  : []
+              }),
+            { lines: width < 640 ? 2 : 1, singleLine: width >= 640 },
+          )
+          expect(clippedTitles).toEqual([])
+          await expect(
+            page.getByRole('link', { name: searchIssue(1).summary, exact: true }),
+          ).toHaveAttribute('title', searchIssue(1).summary)
+          const undersized = await page
+            .locator('main button, main input, main select, main a')
+            .evaluateAll(
+              (elements, minimum) =>
+                elements.flatMap((element) => {
+                  const rect = element.getBoundingClientRect()
+                  return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
+                    ? [{ html: element.outerHTML, height: rect.height }]
+                    : []
+                }),
+              width < 768 ? 44 : 40,
+            )
+          expect(undersized).toEqual([])
+          if (width === 375 || width === 1920)
+            expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual(
+              [],
+            )
+          await page.screenshot({
+            path: testInfo.outputPath(`search-${mode}-${theme}-${width}.png`),
+            fullPage: true,
+          })
+        }
+    }
+    expect(failures).toEqual([])
+  })
+
+  test('preserves context, reload and history through filters, reset and keyboard mode changes', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installSearchFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await page.goto(`${app}/search?project_key=DEMO&page=3&view=compact&source=board#results`)
+    await page.getByRole('combobox', { name: 'Приоритет', exact: true }).selectOption('High')
+    await expect(page).toHaveURL(
+      `${app}/search?project_key=DEMO&view=compact&source=board&priority=High#results`,
+    )
+    await page.goBack()
+    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('')
+    await expect(page).toHaveURL(/page=3.*#results$/)
+    await page.goForward()
+    await page.reload()
+    await expect(page.getByRole('combobox', { name: 'Приоритет', exact: true })).toHaveValue('High')
+    const simple = page.getByRole('tab', { name: 'Простой', exact: true })
+    await simple.focus()
+    await page.keyboard.press('ArrowRight')
+    const jql = page.getByRole('tab', { name: 'JQL', exact: true })
+    await expect(jql).toBeFocused()
+    await expect(jql).toHaveAttribute('aria-selected', 'true')
+    const input = page.getByRole('textbox', { name: 'JQL-запрос', exact: true })
+    await input.fill('project = DEMO')
+    await page.getByRole('button', { name: 'Выполнить', exact: true }).click()
+    await expect(page).toHaveURL(/jql=project\+%3D\+DEMO#results$/)
+    await page.reload()
+    await expect(input).toHaveValue('project = DEMO')
+    await jql.focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect(simple).toBeFocused()
+    await page.getByRole('textbox', { name: 'Поиск задач', exact: true }).fill('Safe query')
+    await page.getByRole('button', { name: 'Сбросить', exact: true }).click()
+    await expect(page).toHaveURL(`${app}/search?view=compact&source=board#results`)
+    await page.screenshot({ path: testInfo.outputPath('search-url-history.png'), fullPage: true })
+  })
+
+  test('keeps cached rows for partial failure but hides them after denied refresh', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(60_000)
+    await installSearchFixtures(page)
+    let status = 200
+    let reads = 0
+    await page.route('**/api/v1/search**', (route) => {
+      reads++
+      return routeJson(
+        route,
+        status === 200
+          ? { issues: [searchIssue(1)] }
+          : { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+        status,
+      )
+    })
+    await page.goto(`${baseURL}/search?project_key=DEMO`)
+    await expect(page.locator('main li')).toHaveCount(1)
+    status = 503
+    const before = reads
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect.poll(() => reads, { timeout: 30_000 }).toBe(before + 3)
+    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible()
+    await expect(page.locator('main li')).toHaveCount(1)
+    await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+    status = 200
+    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
+    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
+    status = 403
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.locator('main [data-page-state="permission-denied"]')).toBeVisible()
+    await expect(page.locator('main li')).toHaveCount(0)
+    await expect(
+      page.locator('main').getByRole('button', { name: 'Повторить', exact: true }),
+    ).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('search-cached-denied.png'), fullPage: true })
+  })
+
+  for (const status of [400, 403, 404, 422, 503])
+    test(`HTTP ${status} is not empty and respects retry policy`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      await installSearchFixtures(page)
+      let reads = 0
+      await page.route('**/api/v1/search**', (route) => {
+        reads++
+        return routeJson(
+          route,
+          { error: { code: 'CONTROLLED', message: 'Private diagnostic' } },
+          status,
+        )
+      })
+      await page.goto(
+        `${baseURL}/search?${status === 400 ? 'mode=jql&jql=invalid' : 'project_key=DEMO'}`,
+      )
+      await expect.poll(() => reads, { timeout: 30_000 }).toBe(status === 503 ? 3 : 1)
+      const main = page.locator('main')
+      await expect(main.getByText('Ничего не найдено', { exact: true })).toHaveCount(0)
+      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+        status === 503 ? 1 : 0,
+      )
+      if (status === 400) {
+        const input = main.getByRole('textbox', { name: 'JQL-запрос', exact: true })
+        await expect(input).toHaveAttribute('aria-invalid', 'true')
+        await expect(input).toHaveAttribute('aria-describedby', 'search-jql-hint search-jql-error')
+        await expect(main.getByRole('alert')).toHaveCount(1)
+        await expect(input).toHaveValue('invalid')
+      } else if (status === 403 || status === 404) {
+        await expect(
+          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
+        ).toBeVisible()
+        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
+      } else
+        await expect(
+          main.getByText('Не удалось загрузить результаты поиска', { exact: true }),
+        ).toBeVisible()
+      await page.screenshot({
+        path: testInfo.outputPath(`search-error-${status}.png`),
+        fullPage: true,
+      })
+    })
+})
+
+async function installTrashFixtures(page: Page, count = 53) {
+  await installTrackerMocks(page)
+  const fixture = {
+    issues: Array.from({ length: count }, (_, index) => searchIssue(index + 1)),
+    readStatus: 200,
+    reads: 0,
+    restores: 0,
+    purges: 0,
+    writeStatus: 0,
+    applyWrite: false,
+    readBarrier: undefined as Promise<void> | undefined,
+    writeBarrier: undefined as Promise<void> | undefined,
+  }
+  await page.route('**/api/v1/projects/*/trash**', async (route) => {
+    fixture.reads++
+    await fixture.readBarrier
+    if (fixture.readStatus !== 200)
+      return routeJson(
+        route,
+        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+        fixture.readStatus,
+      )
+    const query = new URL(route.request().url()).searchParams
+    const offset = Number(query.get('offset') ?? '0')
+    const limit = Number(query.get('limit') ?? '50')
+    return routeJson(route, { issues: fixture.issues.slice(offset, offset + limit) })
+  })
+  async function write(route: Route, kind: 'restore' | 'purge') {
+    if (route.request().method() !== (kind === 'restore' ? 'POST' : 'DELETE'))
+      return route.fallback()
+    if (kind === 'restore') fixture.restores++
+    else fixture.purges++
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)
+    const issue = fixture.issues.find((item) => item.id === id)
+    await fixture.writeBarrier
+    const status = fixture.writeStatus || (kind === 'restore' ? 200 : 204)
+    if (fixture.applyWrite || status < 400)
+      fixture.issues = fixture.issues.filter((item) => item.id !== id)
+    if (status >= 400)
+      return routeJson(
+        route,
+        { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+        status,
+      )
+    if (status === 204) return route.fulfill({ status })
+    return routeJson(route, issue, status)
+  }
+  await page.route('**/api/v1/issues/*/restore', (route) => write(route, 'restore'))
+  await page.route('**/api/v1/issues/*/trash', (route) => write(route, 'purge'))
+  return fixture
+}
+
+test.describe('Base project trash', () => {
+  test('wide list fits long values in all themes and boundaries on direct open and reload', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(240_000)
+    await installTrashFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const failures: string[] = []
+    const observations: unknown[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    for (const theme of ['dark', 'gray', 'light']) {
+      await page.goto(`${app}/projects/DEMO/trash`)
+      await expect(page.locator('main article')).toHaveCount(50)
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: 1080 })
+        for (const entry of ['direct', 'reload']) {
+          if (entry === 'direct') await page.goto(`${app}/projects/DEMO/trash?source=qa#context`)
+          else await page.reload()
+          await expect(page.locator('main article')).toHaveCount(50)
+          await expect(page.locator('main h1')).toHaveText('Корзина · DEMO')
+          await expect(page.locator('main h1')).toHaveCount(1)
+          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+          const layout = page.locator('[data-page-layout]')
+          await expect(layout).toHaveAttribute('data-page-layout', 'wide')
+          const geometry = await layout.evaluate((element) => {
+            const parent = element.parentElement!
+            const style = getComputedStyle(parent)
+            const header = element.querySelector('.base-page-header')!.getBoundingClientRect()
+            const list = element.querySelector('article')!.parentElement!.getBoundingClientRect()
+            const sidebar = document.querySelector('.base-shell-sidebar')!.getBoundingClientRect()
+            const headerSlots = Array.from(document.querySelectorAll('[data-platform-header-slot]'))
+              .map((slot) => slot.getBoundingClientRect())
+              .filter((rect) => rect.width > 0)
+            return {
+              viewportWidth: window.innerWidth,
+              viewportHeight: window.innerHeight,
+              width: element.getBoundingClientRect().width,
+              expectedWidth:
+                parent.clientWidth -
+                Number.parseFloat(style.paddingLeft) -
+                Number.parseFloat(style.paddingRight),
+              gutter: Number.parseFloat(style.paddingLeft),
+              gap: Number.parseFloat(
+                getComputedStyle(element.querySelector('.base-page-stack')!).gap,
+              ),
+              titleSize: Number.parseFloat(getComputedStyle(element.querySelector('h1')!).fontSize),
+              documentFits:
+                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+              localFits: element.scrollWidth <= element.clientWidth,
+              listAfterHeader: list.top >= header.bottom,
+              headerFits: headerSlots.every(
+                (rect, index) => index === 0 || rect.left >= headerSlots[index - 1].right,
+              ),
+              headerHeight: document
+                .querySelector('[data-platform-header]')!
+                .getBoundingClientRect().height,
+              sidebarWidth: sidebar.width,
+            }
+          })
+          expect(geometry.viewportWidth).toBe(width)
+          expect(geometry.viewportHeight).toBe(1080)
+          expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
+          expect(Math.abs(geometry.gutter - Math.min(32, Math.max(16, width * 0.02)))).toBeLessThan(
+            1,
+          )
+          expect(geometry.gap).toBe(20)
+          expect(geometry.titleSize).toBe(24)
+          expect(
+            geometry.documentFits &&
+              geometry.localFits &&
+              geometry.listAfterHeader &&
+              geometry.headerFits,
+          ).toBe(true)
+          expect(geometry.headerHeight).toBe(60)
+          expect(geometry.sidebarWidth).toBe(width < 768 ? 0 : width < 1280 ? 72 : 264)
+          const undersized = await page.locator('main button, main a').evaluateAll(
+            (elements, minimum) =>
+              elements.flatMap((element) => {
+                const rect = element.getBoundingClientRect()
+                return rect.width > 0 &&
+                  rect.height > 0 &&
+                  (rect.height + 0.5 < minimum || rect.width + 0.5 < minimum)
+                  ? [{ html: element.outerHTML, width: rect.width, height: rect.height }]
+                  : []
+              }),
+            width < 768 ? 44 : 40,
+          )
+          expect(undersized).toEqual([])
+          observations.push({
+            theme,
+            viewport: { width, height: 1080 },
+            entry,
+            mode: 'wide',
+            ...geometry,
+          })
+        }
+        if (width === 375 || width === 1920)
+          expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([])
+        if ([375, 1920, 2560].includes(width)) {
+          await page.screenshot({
+            path: testInfo.outputPath(`trash-${theme}-${width}.png`),
+            fullPage: true,
+          })
+          await page.evaluate(() => window.scrollTo(0, 0))
+          await page.screenshot({
+            path: testInfo.outputPath(`trash-${theme}-${width}-viewport.png`),
+          })
+        }
+      }
+    }
+    expect(failures).toEqual([])
+    await testInfo.attach('trash-geometry', {
+      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
+      contentType: 'application/json',
+    })
+  })
+
+  test('preserves pagination context through history, reload, canonicalization and board return', async ({
+    page,
+    baseURL,
+  }) => {
+    await installTrashFixtures(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await page.goto(`${app}/projects/DEMO/trash?source=qa&page=-3#context`)
+    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa#context`)
+    await expect(page.locator('main article')).toHaveCount(50)
+    await page.getByRole('button', { name: 'Вперёд', exact: true }).click()
+    await expect(page).toHaveURL(`${app}/projects/DEMO/trash?source=qa&page=2#context`)
+    await expect(page.locator('main article')).toHaveCount(3)
+    await page.reload()
+    await expect(page.locator('main article')).toHaveCount(3)
+    await page.goBack()
+    await expect(page.locator('main article')).toHaveCount(50)
+    await page.goForward()
+    await expect(page.locator('main article')).toHaveCount(3)
+    const back = page.getByRole('link', { name: 'Вернуться на доску проекта' })
+    await expect(back).toHaveAttribute('href', '/projects/DEMO/board?source=qa#context')
+    await back.click()
+    await expect(page).toHaveURL(`${app}/projects/DEMO/board?source=qa#context`)
+  })
+
+  test('shows loading and then genuine empty without mutation controls', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    const fixture = await installTrashFixtures(page, 0)
+    let release!: () => void
+    fixture.readBarrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.goto(`${baseURL}/projects/DEMO/trash`)
+    await expect(
+      page.locator('main').getByRole('status', { name: 'Загрузка…', exact: true }),
+    ).toBeVisible()
+    await expect(page.locator('main article')).toHaveCount(0)
+    release()
+    await expect(page.locator('main').getByRole('status')).toHaveText('Корзина пуста.')
+    await expect(page.getByText('Корзина пуста.', { exact: true })).toBeVisible()
+    expect(fixture.purges + fixture.restores).toBe(0)
+    await page.screenshot({ path: testInfo.outputPath('trash-empty.png'), fullPage: true })
+  })
+
+  for (const status of [403, 404, 422, 503]) {
+    test(`cold HTTP ${status} is not empty or a write surface`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      const fixture = await installTrashFixtures(page, 1)
+      fixture.readStatus = status
+      await page.goto(`${baseURL}/projects/DEMO/trash`)
+      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
+      const main = page.locator('main')
+      if (status === 403 || status === 404)
+        await expect(main.locator('[data-page-state]')).toHaveAttribute(
+          'data-page-state',
+          status === 403 ? 'permission-denied' : 'not-found',
+        )
+      else await expect(main.getByRole('alert')).toHaveText(/Не удалось загрузить корзину\./)
+      await expect(main.locator('article')).toHaveCount(0)
+      await expect(main.getByText('Корзина пуста.', { exact: true })).toHaveCount(0)
+      await expect(main.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
+        status === 503 ? 1 : 0,
+      )
+      if (status === 403 || status === 404)
+        await expect(main.getByRole('link', { name: 'К проектам', exact: true })).toBeVisible()
+      expect(fixture.purges + fixture.restores).toBe(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`trash-cold-${status}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  for (const status of [403, 404, 422, 503]) {
+    test(`cached HTTP ${status} preserves only retryable data and invalidates stale confirmation`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      test.setTimeout(60_000)
+      const fixture = await installTrashFixtures(page, 1)
+      await page.goto(`${baseURL}/projects/DEMO/trash`)
+      const trigger = page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' })
+      await trigger.click()
+      fixture.readStatus = status
+      let release!: () => void
+      fixture.readBarrier = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await expect(page.getByRole('button', { name: 'Подтвердить', exact: true })).toBeDisabled()
+      release()
+      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 6 : 2)
+      const main = page.locator('main')
+      if (status === 422)
+        await expect(main.getByRole('alert')).toHaveText('Не удалось загрузить корзину.')
+      else
+        await expect(main.locator('[data-page-state]')).toHaveAttribute(
+          'data-page-state',
+          status === 503 ? 'partial-error' : status === 403 ? 'permission-denied' : 'not-found',
+        )
+      await expect(main.locator('article')).toHaveCount(status === 503 ? 1 : 0)
+      if (status === 503) {
+        await expect(page.getByRole('alertdialog')).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
+        await page.keyboard.press('Escape')
+      } else await expect(page.getByRole('alertdialog')).toHaveCount(0)
+      await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
+      fixture.readStatus = 200
+      if (status === 503) await main.getByRole('button', { name: 'Повторить', exact: true }).click()
+      else await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await expect(main.locator('article')).toHaveCount(1)
+      await expect(trigger).toBeEnabled()
+      await expect(page.getByRole('alertdialog')).toHaveCount(0)
+      expect(fixture.purges).toBe(0)
+      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+      await page.screenshot({
+        path: testInfo.outputPath(`trash-cached-recovered-${status}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  test('restores and purges with same-tick locks, pending close protection and safe focus', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    const fixture = await installTrashFixtures(page, 2)
+    await page.goto(`${baseURL}/projects/DEMO/trash`)
+    let release!: () => void
+    fixture.writeBarrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page
+      .getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
+      .evaluate((element) => {
+        ;(element as HTMLButtonElement).click()
+        ;(element as HTMLButtonElement).click()
+      })
+    await expect.poll(() => fixture.restores).toBe(1)
+    await expect(page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })).toBeDisabled()
+    release()
+    await expect(page.locator('main article')).toHaveCount(1)
+    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
+    const region = page.getByRole('region', { name: 'Корзина', exact: true })
+    await expect(region).toBeFocused()
+    const trigger = page.getByRole('button', { name: 'Удалить DEMO-2 навсегда' })
+    await expect(trigger).toBeEnabled()
+    await trigger.click()
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await expect(dialog.getByRole('button', { name: 'Подтвердить', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await trigger.click()
+    fixture.writeBarrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await dialog.getByRole('button', { name: 'Подтвердить', exact: true }).evaluate((element) => {
+      ;(element as HTMLButtonElement).click()
+      ;(element as HTMLButtonElement).click()
+    })
+    await expect.poll(() => fixture.purges).toBe(1)
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    release()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.locator('main article')).toHaveCount(0)
+    await expect(region).toBeFocused()
+    await expect(page.getByText('Задача DEMO-2 удалена навсегда.', { exact: true })).toBeVisible()
+    expect(fixture.restores + fixture.purges).toBe(2)
+    await page.screenshot({ path: testInfo.outputPath('trash-write-focus.png'), fullPage: true })
+  })
+
+  for (const applied of [false, true]) {
+    test(`unknown purge applied=${applied} requires readback and never invents success`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      const fixture = await installTrashFixtures(page, 1)
+      fixture.writeStatus = 503
+      fixture.applyWrite = applied
+      await page.goto(`${baseURL}/projects/DEMO/trash`)
+      await page.getByRole('button', { name: 'Удалить DEMO-1 навсегда' }).click()
+      const dialog = page.getByRole('alertdialog')
+      const confirm = dialog.getByRole('button', { name: 'Подтвердить', exact: true })
+      await confirm.click()
+      await expect(
+        page.getByText(
+          'Результат действия с DEMO-1 неизвестен. Проверьте состояние корзины перед повтором.',
+          { exact: true },
+        ),
+      ).toBeVisible()
+      await expect(confirm).toBeDisabled()
+      expect(fixture.purges).toBe(1)
+      await expect(page.getByText('Private diagnostic', { exact: true })).toHaveCount(0)
+      await expect(page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true })).toHaveCount(
+        0,
+      )
+      await dialog.getByRole('button', { name: 'Проверить состояние', exact: true }).click()
+      if (applied) {
+        await expect(dialog).toHaveCount(0)
+        await expect(
+          page.getByText(
+            'DEMO-1 больше не отображается в корзине. Результат предыдущего действия не подтверждён.',
+            { exact: true },
+          ),
+        ).toBeVisible()
+        await expect(page.getByRole('region', { name: 'Корзина', exact: true })).toBeFocused()
+        await expect(
+          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
+        ).toHaveCount(0)
+        expect(fixture.purges).toBe(1)
+      } else {
+        await expect(confirm).toBeEnabled()
+        expect(fixture.purges).toBe(1)
+        fixture.writeStatus = 0
+        await confirm.click()
+        await expect(dialog).toHaveCount(0)
+        await expect(
+          page.getByText('Задача DEMO-1 удалена навсегда.', { exact: true }),
+        ).toBeVisible()
+        expect(fixture.purges).toBe(2)
+      }
+      await page.screenshot({
+        path: testInfo.outputPath(`trash-unknown-applied-${applied}.png`),
+        fullPage: true,
+      })
+    })
+  }
+
+  test('failed restore readback stays locked even after a background recovery until explicit reconciliation', async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(60_000)
+    const fixture = await installTrashFixtures(page, 1)
+    fixture.writeStatus = 503
+    await page.goto(`${baseURL}/projects/DEMO/trash`)
+    const restore = page.getByRole('button', { name: 'Восстановить DEMO-1', exact: true })
+    await restore.click()
+    const recheck = page.getByRole('button', { name: 'Проверить состояние', exact: true })
+    await expect(recheck).toBeVisible()
+    fixture.readStatus = 503
+    await recheck.click()
+    await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(restore).toBeDisabled()
+    fixture.readStatus = 200
+    await page.getByRole('button', { name: 'Повторить', exact: true }).click()
+    await expect(page.locator('main [data-page-state="partial-error"]')).toHaveCount(0)
+    await expect(restore).toBeDisabled()
+    fixture.writeStatus = 0
+    await recheck.click()
+    await expect(restore).toBeEnabled()
+    expect(fixture.restores).toBe(1)
+    await restore.click()
+    await expect(page.getByText('Задача DEMO-1 восстановлена.', { exact: true })).toBeVisible()
+    expect(fixture.restores).toBe(2)
+  })
+})
+
+function routeJson(route: Route, body: unknown, status = 200) {
+  return route.fulfill({
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  })
+}
+
+async function installSsoMocks(page: Page) {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'qa', alg: 'ES256', use: 'sig' }
+  let issuer = 'http://localhost:7701'
+  let nonce = ''
+
+  await page.route('**/oidc/authorize**', async (route) => {
+    const url = new URL(route.request().url())
+    issuer = url.origin
+    nonce = url.searchParams.get('nonce') ?? ''
+    const callback = new URL(url.searchParams.get('redirect_uri') ?? '/')
+    callback.searchParams.set('code', 'qa-code')
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
+    await route.fulfill({
+      status: 302,
+      headers: { location: callback.toString() },
+      body: '',
+    })
+  })
+  await page.route('**/oidc/token', async (route) => {
+    const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'qa' })).toString(
+      'base64url',
+    )
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: issuer,
+        aud: 'task-tracker',
+        sub: mockUser.id,
+        email: 'demo@example.com',
+        nonce,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    ).toString('base64url')
+    const content = `${header}.${payload}`
+    const signature = sign('sha256', Buffer.from(content), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url')
+    return routeJson(route, {
+      access_token: 'demo-token',
+      id_token: `${content}.${signature}`,
+      expires_in: 3600,
+    })
+  })
+  await page.route('**/oidc/jwks', (route) => routeJson(route, { keys: [jwk] }))
+}
+
+async function installTrackerMocks(page: Page) {
+  await installSsoMocks(page)
+  await page.route('**/api/v1/auth/login', (route) =>
+    routeJson(route, {
+      access_token: 'demo-token',
+      token_type: 'Bearer',
+      user_id: mockUser.id,
+      email: 'demo@example.com',
+    }),
+  )
+  await page.route('**/api/v1/dashboard', (route) => routeJson(route, { assigned_issues: [] }))
+  await page.route('**/api/v1/users/me', (route) =>
+    routeJson(route, {
+      id: mockUser.id,
+      email: 'demo@example.com',
+      username: 'demo',
+      display_name: 'Demo User',
+    }),
+  )
+  await page.route('**/api/v1/statuses', (route) =>
+    routeJson(route, [
+      {
+        id: 'todo',
+        name: 'To Do',
+        category: 'todo',
+        position: 0,
+        is_default: true,
+        is_closed: false,
+      },
+      {
+        id: 'inprogress',
+        name: 'In Progress',
+        category: 'inprogress',
+        position: 1,
+        is_default: false,
+        is_closed: false,
+      },
+      {
+        id: 'done',
+        name: 'Done',
+        category: 'done',
+        position: 2,
+        is_default: false,
+        is_closed: true,
+      },
+    ]),
+  )
+  await page.route('**/api/v1/transitions', (route) => routeJson(route, []))
+  await page.route('**/api/v1/users', (route) =>
+    routeJson(route, {
+      users: [{ id: mockUser.id, username: 'demo', display_name: 'Demo User' }],
+    }),
+  )
+  await page.route('**/api/v1/issue-types**', (route) =>
+    routeJson(route, [
+      {
+        id: 'task',
+        name: 'Task',
+        description: 'Standard task',
+        icon: 'check-square',
+        color: '#6b78e5',
+        hierarchy_level: 0,
+        is_subtask: false,
+      },
+    ]),
+  )
+  await page.route('**/api/v1/projects', (route) =>
+    routeJson(route, {
+      projects: [
+        {
+          id: '00000000-0000-0000-0000-000000000010',
+          key: mockUser.key,
+          name: mockUser.name,
+          description: 'Smoke test project',
+          owner_id: mockUser.id,
+          todo_count: 1,
+          in_progress_count: 0,
+          done_count: 0,
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/projects/**/members**', (route) =>
+    routeJson(route, {
+      members: [
+        {
+          project_id: '00000000-0000-0000-0000-000000000010',
+          user_id: mockUser.id,
+          role: 'owner',
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/projects/*/board', (route) =>
+    routeJson(route, {
+      project_id: '00000000-0000-0000-0000-000000000010',
+      project_key: mockUser.key,
+      backlog_total: 0,
+      columns: [
+        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [mockUser.issueId] },
+        { id: 'inprogress', name: 'In Progress', wip_limit: null, issue_ids: [] },
+        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
+      ],
+      issues: [
+        {
+          id: mockUser.issueId,
+          key: `${mockUser.key}-1`,
+          summary: 'Smoke issue',
+          description: '',
+          issue_type: 'Task',
+          status: 'To Do',
+          status_id: 'todo',
+          priority: 'Medium',
+          labels: [],
+          assignee_id: null,
+          assignee_name: null,
+          reporter_id: mockUser.id,
+          reporter_name: 'Demo User',
+          project_name: mockUser.name,
+        },
+      ],
+      sprint: {
+        id: 'sprint-1',
+        name: 'Sprint 1',
+        goal: '',
+        state: 'active',
+        velocity: 0,
+        remaining_days: 14,
+        issue_ids: [mockUser.issueId],
+      },
+    }),
+  )
+  await page.route('**/api/v1/projects/*/backlog**', (route) =>
+    routeJson(route, {
+      project_id: '00000000-0000-0000-0000-000000000010',
+      project_key: mockUser.key,
+      sprint: {
+        id: 'sprint-1',
+        name: 'Sprint 1',
+        goal: '',
+        state: 'active',
+        issue_ids: [],
+        velocity: 0,
+        remaining_days: 14,
+        start_date: null,
+        end_date: null,
+      },
+      sprint_issues: [],
+      backlog_issues: [],
+      backlog_total: 0,
+      backlog_offset: 0,
+      backlog_limit: 100,
+    }),
+  )
+  await page.route('**/api/v1/projects/*/sprints', (route) =>
+    routeJson(route, {
+      sprints: [
+        {
+          id: 'sprint-1',
+          name: 'Sprint 1',
+          goal: '',
+          state: 'active',
+          issue_ids: [],
+          velocity: 0,
+          remaining_days: 14,
+          start_date: null,
+          end_date: null,
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/projects/*/custom-fields', (route) =>
+    routeJson(route, { fields: [] }),
+  )
+  await page.route('**/api/v1/projects/*/labels', (route) => routeJson(route, { labels: [] }))
+  await page.route(`**/api/v1/issues/${mockUser.issueId}`, (route) =>
+    routeJson(route, {
+      id: mockUser.issueId,
+      key: `${mockUser.key}-1`,
+      summary: 'Smoke issue',
+      description: 'Issue detail smoke description',
+      issue_type: 'Task',
+      status: 'To Do',
+      status_id: 'todo',
+      priority: 'Medium',
+      labels: [],
+      assignee_id: null,
+      assignee_name: null,
+      reporter_id: '00000000-0000-0000-0000-000000000002',
+      reporter_name: 'Reporter User',
+      project_key: mockUser.key,
+      project_name: mockUser.name,
+      sprint_id: null,
+      original_estimate_seconds: null,
+      remaining_estimate_seconds: null,
+      time_spent_seconds: 0,
+    }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
+    routeJson(route, { comments: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
+    routeJson(route, { worklogs: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/attachments`, (route) =>
+    routeJson(route, { attachments: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/labels`, (route) =>
+    routeJson(route, { labels: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/links`, (route) =>
+    routeJson(route, { links: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
+    routeJson(route, { values: [] }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
+    routeJson(route, {
+      count: 1,
+      votes: [
+        {
+          user_id: '00000000-0000-0000-0000-000000000003',
+          username: 'voter',
+          display_name: 'Voter User',
+          voted_at: '2026-09-01T10:00:00Z',
+        },
+      ],
+    }),
+  )
+  await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
+    routeJson(route, {
+      watchers: [
+        {
+          user_id: mockUser.id,
+          username: 'demo',
+          display_name: 'Demo User',
+        },
+      ],
+    }),
+  )
+  await page.route('**/api/v1/notifications', (route) =>
+    routeJson(route, { notifications: [], unread_count: 0 }),
+  )
+  await page.route('**/api/v1/events**', (route) => routeJson(route, ''))
+  await page.route('**/api/v1/auth/refresh', (route) =>
+    routeJson(route, {
+      access_token: 'demo-token',
+      token_type: 'Bearer',
+      user_id: mockUser.id,
+      email: 'demo@example.com',
+    }),
+  )
+  await page.route('**/api/v1/notifications**', (route) =>
+    routeJson(route, { notifications: [], unread_count: 0 }),
+  )
+}
+
+test.describe('smoke', () => {
+  test('keeps notification page Base detail geometry and accessible controls across themes and breakpoints', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    const notifications = Array.from({ length: 21 }, (_, index) => ({
+      id: `notification-${index}`,
+      title: `Notification ${index}: ${'LongUnbrokenTitle'.repeat(8)}`,
+      body: `Details ${'LongUnbrokenBody'.repeat(10)}`,
+      is_read: false,
+      action_url: null,
+      created_at: '2026-10-01T10:00:00Z',
+    }))
+    await page.route('**/api/v1/notifications**', (route) =>
+      routeJson(route, { notifications, unread_count: 123456 }),
+    )
+    await page.route('**/api/v1/notification-settings', (route) =>
+      routeJson(route, {
+        email_frequency: 'daily',
+        disabled_event_types: ['custom_event'],
+        notify_own_changes: false,
+      }),
+    )
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    for (const theme of ['gray', 'dark', 'light']) {
+      await page.goto(`${app}/notifications?source=qa#context`)
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      await page.reload()
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: 1080 })
+        await expect(
+          page.getByRole('heading', { level: 1, name: 'Уведомления', exact: true }),
+        ).toBeVisible()
+        await expect(page.locator('[data-page-layout]')).toHaveAttribute(
+          'data-page-layout',
+          'detail-with-aside',
+        )
+        await expect(page.locator('main li')).toHaveCount(20)
+        await expect(page.getByRole('combobox', { name: 'Частота email' })).toHaveValue('daily')
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        const geometry = await page.locator('.page-split').evaluate((element) => ({
+          columns: getComputedStyle(element).gridTemplateColumns.split(' ').map(Number.parseFloat),
+          gap: Number.parseFloat(getComputedStyle(element).columnGap),
+          documentFits:
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+          localFits: element.scrollWidth <= element.clientWidth,
+        }))
+        expect(geometry.documentFits).toBe(true)
+        expect(geometry.localFits).toBe(true)
+        expect(geometry.columns).toHaveLength(width < 1024 ? 1 : 2)
+        if (width >= 1024) expect(geometry.columns[1]).toBe(320)
+        expect(geometry.gap).toBe(20)
+        const undersized = await page
+          .locator('main button, main select, main label:has(input[type="checkbox"])')
+          .evaluateAll(
+            (elements, minimum) =>
+              elements.flatMap((element) => {
+                const rect = element.getBoundingClientRect()
+                return rect.width > 0 && rect.height > 0 && rect.height + 0.5 < minimum
+                  ? [{ html: element.outerHTML, height: rect.height }]
+                  : []
+              }),
+            width < 768 ? 44 : 40,
+          )
+        expect(undersized).toEqual([])
+        if (width === 1920 || width === 375) {
+          const result = await new AxeBuilder({ page }).include('main').analyze()
+          expect(
+            result.violations.map(({ id, nodes }) => ({
+              id,
+              elements: nodes.map(({ html }) => html),
+            })),
+          ).toEqual([])
+        }
+        await page.screenshot({
+          path: testInfo.outputPath(`notification-page-${theme}-${width}.png`),
+          fullPage: true,
+        })
+      }
+    }
+    const all = page.getByRole('tab', { name: 'Все', exact: true })
+    await all.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(
+      page.getByRole('tab', { name: 'Непрочитанные (123456)', exact: true }),
+    ).toBeFocused()
+    await expect(page).toHaveURL(`${app}/notifications?source=qa&filter=unread#context`)
+    await page.reload()
+    await expect(
+      page.getByRole('tab', { name: 'Непрочитанные (123456)', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(failures).toEqual([])
+  })
+
+  test('protects notification preferences drafts and independent partial/terminal states', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    let listStatus = 200
+    let settingsStatus = 200
+    let writes = 0
+    let release!: () => void
+    await page.route('**/api/v1/notifications**', (route) =>
+      routeJson(
+        route,
+        listStatus === 200
+          ? {
+              notifications: [
+                {
+                  id: 'safe-notification',
+                  title: 'Safe notification',
+                  body: 'Safe fixture',
+                  is_read: false,
+                  action_url: null,
+                  created_at: '2026-10-01T10:00:00Z',
+                },
+              ],
+              unread_count: 1,
+            }
+          : { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+        listStatus,
+      ),
+    )
+    await page.route('**/api/v1/notification-settings', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        writes++
+        expect(route.request().postDataJSON()).toEqual({
+          email_frequency: 'hourly',
+          disabled_event_types: ['custom_event'],
+          notify_own_changes: false,
+        })
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return routeJson(
+          route,
+          { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+          503,
+        )
+      }
+      return routeJson(
+        route,
+        settingsStatus === 200
+          ? {
+              email_frequency: 'daily',
+              disabled_event_types: ['custom_event'],
+              notify_own_changes: false,
+            }
+          : { error: { code: 'QA_FAILURE', message: 'Private diagnostic' } },
+        settingsStatus,
+      )
+    })
+    await page.goto(`${app}/notifications?page=2&source=qa#context`)
+    const frequency = page.getByRole('combobox', { name: 'Частота email' })
+    await frequency.selectOption('hourly')
+    await page.evaluate(() => {
+      const pushes: string[] = []
+      const original = history.pushState.bind(history)
+      history.pushState = (data, unused, url) => {
+        pushes.push(String(url))
+        original(data, unused, url)
+      }
+      Object.assign(window, { notificationFilterPushes: pushes })
+    })
+    await page.getByRole('tab', { name: 'Непрочитанные (1)' }).click()
+    await expect(frequency).toHaveValue('hourly')
+    await expect(page).toHaveURL(`${app}/notifications?source=qa&filter=unread#context`)
+    expect(await page.evaluate(() => Reflect.get(window, 'notificationFilterPushes'))).toEqual([
+      '/notifications?source=qa&filter=unread#context',
+    ])
+    await page.goBack()
+    await expect(frequency).toHaveValue('hourly')
+    await expect(page).toHaveURL(`${app}/notifications?page=2&source=qa#context`)
+    await page
+      .getByRole('navigation', { name: 'Основная навигация' })
+      .getByRole('link', { name: 'Проекты', exact: true })
+      .click()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(frequency).toHaveValue('hourly')
+    const form = page.getByRole('form', { name: 'Настройки' })
+    await form.evaluate((element) => {
+      element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+      element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    await expect.poll(() => writes).toBe(1)
+    await expect(frequency).toBeDisabled()
+    await expect(form).toHaveAttribute('aria-busy', 'true')
+    release()
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Не удалось сохранить настройки.' }),
+    ).toBeVisible()
+    await expect(frequency).toHaveValue('hourly')
+    settingsStatus = 503
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    const preferences = page.getByRole('complementary', { name: 'Настройки' })
+    await expect(preferences.locator('[data-page-state="partial-error"]')).toBeVisible({
+      timeout: 45_000,
+    })
+    await expect(frequency).toBeDisabled()
+    await expect(page.getByText('Safe notification', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Прочитать все', exact: true })).toBeEnabled()
+    await page.screenshot({
+      path: testInfo.outputPath('notification-page-settings-partial-draft.png'),
+      fullPage: true,
+    })
+    settingsStatus = 200
+    await preferences.getByRole('button', { name: 'Повторить' }).click()
+    await expect(frequency).toBeEnabled()
+    await expect(frequency).toHaveValue('hourly')
+    listStatus = 503
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    const list = page.getByRole('region', { name: 'Уведомления', exact: true })
+    await expect(list.locator('[data-page-state="partial-error"]')).toBeVisible({ timeout: 45_000 })
+    await expect(
+      page.getByRole('button', { name: 'Отметить прочитанным: Safe notification' }),
+    ).toBeDisabled()
+    await expect(frequency).toBeEnabled()
+    await page.screenshot({
+      path: testInfo.outputPath('notification-page-list-partial.png'),
+      fullPage: true,
+    })
+    listStatus = 403
+    await list.getByRole('button', { name: 'Повторить' }).click()
+    await expect(list.locator('[data-page-state="permission-denied"]')).toBeVisible()
+    await expect(page.getByText('Safe notification', { exact: true })).toHaveCount(0)
+    await expect(list.getByRole('button', { name: 'Повторить' })).toHaveCount(0)
+    await expect(frequency).toHaveValue('hourly')
+    await page.screenshot({
+      path: testInfo.outputPath('notification-page-list-denied.png'),
+      fullPage: true,
+    })
+    const cancel = preferences.getByRole('button', { name: 'Отмена', exact: true })
+    await cancel.click()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(cancel).toBeFocused()
+    await cancel.click()
+    await page.getByRole('button', { name: 'Отменить изменения', exact: true }).click()
+    await expect(frequency).toHaveValue('daily')
+    settingsStatus = 404
+    listStatus = 200
+    await page.reload()
+    await expect(preferences.locator('[data-page-state="not-found"]')).toBeVisible()
+    await expect(frequency).toHaveCount(0)
+    await expect(page.getByText('Safe notification', { exact: true })).toBeVisible()
+    await expect(preferences.getByRole('button', { name: 'Повторить' })).toHaveCount(0)
+    await page.screenshot({
+      path: testInfo.outputPath('notification-page-settings-not-found.png'),
+      fullPage: true,
+    })
+  })
+
+  test('keeps notification menu geometry and keyboard navigation across themes and breakpoints', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    const notifications = Array.from({ length: 10 }, (_, index) => ({
+      id: `notification-${index}`,
+      event_type: 'issue_updated',
+      entity_type: 'issue',
+      entity_id: mockUser.issueId,
+      actor_id: null,
+      title: `Notification ${index}: ${'LongUnbrokenTitle'.repeat(14)}`,
+      body: `Details ${'LongUnbrokenBody'.repeat(18)}`,
+      is_read: false,
+      action_url: `/issues/${mockUser.issueId}`,
+      metadata: null,
+      created_at: '2026-10-01T10:00:00Z',
+    }))
+    await page.route('**/api/v1/notifications**', (route) =>
+      routeJson(route, { notifications, unread_count: 123456 }),
+    )
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    page.on('console', (message) => {
+      if (message.type() === 'error') failures.push(message.text())
+    })
+    page.on('response', (response) => {
+      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+    })
+    for (const theme of ['gray', 'dark', 'light']) {
+      await page.goto(`${app}/projects`)
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      await page.reload()
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
+        const trigger = page.getByTestId('notification-trigger')
+        await expect(trigger).toHaveText('99+')
+        await trigger.focus()
+        await page.keyboard.press('Enter')
+        const menu = page.getByRole('menu')
+        await expect(menu).toBeVisible()
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        await expect(menu).toBeInViewport({ ratio: 1 })
+        const geometry = await menu.evaluate(
+          (element, minimum) => {
+            const rect = element.getBoundingClientRect()
+            const targets = [...element.querySelectorAll('[role="menuitem"]')].map((item) =>
+              item.getBoundingClientRect(),
+            )
+            return {
+              documentFits:
+                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+              compact: rect.height <= 512,
+              within:
+                rect.left >= 0 &&
+                rect.right <= innerWidth &&
+                rect.top >= 0 &&
+                rect.bottom <= innerHeight,
+              targets: targets.every((target) => target.height + 0.5 >= minimum),
+              localFits: element.scrollWidth <= element.clientWidth,
+              footerVisible: (() => {
+                const footer = targets.at(-1)
+                return footer && footer.top >= rect.top && footer.bottom <= rect.bottom
+              })(),
+            }
+          },
+          width < 768 ? 44 : 40,
+        )
+        expect(geometry).toEqual({
+          documentFits: true,
+          compact: true,
+          within: true,
+          targets: true,
+          localFits: true,
+          footerVisible: true,
+        })
+        if (width === 1920) {
+          const accessibility = await new AxeBuilder({ page }).include('[role="menu"]').analyze()
+          expect(
+            accessibility.violations.map(({ id, nodes }) => ({
+              id,
+              elements: nodes.map(({ html }) => html),
+            })),
+          ).toEqual([])
+        }
+        await page.keyboard.press('End')
+        await expect(
+          menu.getByRole('menuitem', { name: 'Все уведомления', exact: true }),
+        ).toBeFocused()
+        await page.keyboard.press('ArrowUp')
+        const lastRead = menu.getByRole('menuitem', {
+          name: `Отметить прочитанным: ${notifications[9].title}`,
+          exact: true,
+        })
+        await expect(lastRead).toBeFocused()
+        await expect(lastRead).toBeInViewport({ ratio: 1 })
+        await page.keyboard.press('End')
+        await page.screenshot({
+          path: testInfo.outputPath(`notifications-menu-${theme}-${width}.png`),
+          fullPage: true,
+        })
+        await page.keyboard.press('Escape')
+        await expect(trigger).toBeFocused()
+        await expect(menu).toBeHidden()
+      }
+    }
+    expect(failures).toEqual([])
+  })
+
+  test('handles notification menu pending, failed read, focus removal and independent read failures', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    const notification = {
+      id: 'notification-1',
+      title: 'Safe notification',
+      body: 'Safe fixture',
+      is_read: false,
+      action_url: null,
+      created_at: '2026-10-01T10:00:00Z',
+    }
+    let status = 200
+    let notifications = [notification]
+    let reads = 0
+    let release!: () => void
+    let failRead = true
+    await page.route('**/api/v1/notifications**', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        reads++
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        if (failRead)
+          return routeJson(
+            route,
+            { error: { code: 'QA_REJECTED', message: 'Diagnostic detail' } },
+            503,
+          )
+        notifications = []
+        return route.fulfill({ status: 204, body: '' })
+      }
+      return routeJson(
+        route,
+        status === 200
+          ? { notifications, unread_count: notifications.length }
+          : { error: { code: 'QA_READ_FAILURE', message: 'Diagnostic detail' } },
+        status,
+      )
+    })
+    await page.goto(`${app}/projects`)
+    const trigger = page.getByTestId('notification-trigger')
+    await trigger.click()
+    const menu = page.getByRole('menu')
+    const read = menu.getByRole('menuitem', {
+      name: 'Отметить прочитанным: Safe notification',
+      exact: true,
+    })
+    await read.focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => reads).toBe(1)
+    await expect(read).toBeDisabled()
+    await page.keyboard.press('Enter')
+    expect(reads).toBe(1)
+    await expect(menu.getByRole('menuitem', { name: 'Прочитать все' })).toBeDisabled()
+    release()
+    await expect(menu.getByRole('alert')).toHaveText('Не удалось отметить уведомление прочитанным.')
+    const retry = menu.getByRole('menuitem', { name: 'Повторить' })
+    await retry.focus()
+    failRead = false
+    await page.keyboard.press('Enter')
+    await expect.poll(() => reads).toBe(2)
+    release()
+    await expect(read).toHaveCount(0)
+    await expect(menu.getByRole('menuitem', { name: 'Все уведомления', exact: true })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    notifications = [notification]
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(trigger).toHaveText('1')
+    await trigger.click()
+    status = 503
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(menu.locator('[data-page-state="partial-error"]')).toBeVisible({ timeout: 45_000 })
+    await expect(read).toBeDisabled()
+    await page.screenshot({
+      path: testInfo.outputPath('notifications-menu-cached-partial.png'),
+      fullPage: true,
+    })
+    status = 403
+    await menu.getByRole('menuitem', { name: 'Повторить' }).click()
+    await expect(menu.locator('[data-page-state="permission-denied"]')).toBeVisible({
+      timeout: 45_000,
+    })
+    await expect(read).toHaveCount(0)
+    await expect(menu.getByRole('menuitem', { name: 'Повторить' })).toHaveCount(0)
+    await expect(trigger).toHaveText('')
+    await expect(page.locator('main').getByText(mockUser.name)).toBeVisible()
+    await page.screenshot({
+      path: testInfo.outputPath('notifications-menu-cached-denied.png'),
+      fullPage: true,
+    })
+    status = 404
+    await page.reload()
+    await trigger.click()
+    await expect(menu.locator('[data-page-state="not-found"]')).toBeVisible({ timeout: 45_000 })
+    await expect(menu.getByRole('menuitem', { name: 'Повторить' })).toHaveCount(0)
+    await page.screenshot({
+      path: testInfo.outputPath('notifications-menu-cold-not-found.png'),
+      fullPage: true,
+    })
+  })
+
+  test('distinguishes cached catalog refresh failures from revoked access without losing a retained draft', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(120_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.goto(`${app}/projects`)
+    const trigger = page.getByRole('button', { name: `Действия с проектом ${mockUser.name}` })
+    await trigger.click()
+    await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const name = dialog.locator('#project-form-name')
+    await name.fill('Retained draft during refresh')
+    let status = 503
+    await page.route('**/api/v1/projects', (route) =>
+      routeJson(
+        route,
+        { error: { code: 'QA_CATALOG_FAILURE', message: 'Controlled catalog failure' } },
+        status,
+      ),
+    )
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.locator('[data-page-state="partial-error"]')).toBeVisible({ timeout: 45_000 })
+    await expect(name).toHaveValue('Retained draft during refresh')
+    await expect(name).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Сохранить', exact: true })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeEnabled()
+    await page.screenshot({
+      path: testInfo.outputPath('project-refresh-partial-draft.png'),
+      fullPage: true,
+    })
+    await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Подтвердить', exact: true })
+      .click()
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeDisabled()
+    await expect(
+      page.locator('main').getByRole('link', { name: new RegExp(mockUser.name) }),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
+    status = 403
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.locator('[data-page-state="permission-denied"]')).toBeVisible()
+    await expect(
+      page.locator('main').getByRole('link', { name: new RegExp(mockUser.name) }),
+    ).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(0)
+    await page.screenshot({
+      path: testInfo.outputPath('project-cached-access-revoked.png'),
+      fullPage: true,
+    })
+    status = 404
+    await page.reload()
+    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Создать проект', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(0)
+    await page.screenshot({
+      path: testInfo.outputPath('project-cold-not-found.png'),
+      fullPage: true,
+    })
+  })
+
+  test('preserves project URL history, dirty drafts, pending focus and successful creation', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(120_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.goto(`${app}/projects?q=DEMO&page=4&view=compact#context`)
+    const search = page.getByRole('textbox', { name: 'Поиск проектов...' })
+    await expect(search).toHaveValue('DEMO')
+    await search.fill('No matching project')
+    await page.getByRole('button', { name: 'Поиск проектов...' }).click()
+    await expect(page.getByText('По вашему запросу проекты не найдены.')).toBeVisible()
+    expect(new URL(page.url()).searchParams.has('page')).toBe(false)
+    expect(new URL(page.url()).searchParams.get('view')).toBe('compact')
+    expect(new URL(page.url()).hash).toBe('#context')
+    await page.reload()
+    await expect(search).toHaveValue('No matching project')
+    await page.goBack()
+    await expect(search).toHaveValue('DEMO')
+    const trigger = page.getByRole('button', { name: 'Создать проект', exact: true })
+    await trigger.click()
+    const dialog = page.getByRole('dialog')
+    const key = dialog.locator('#project-form-key')
+    const name = dialog.locator('#project-form-name')
+    await key.fill('qa-2026')
+    await name.fill('Safe isolated project draft')
+    await name.focus()
+    await page.keyboard.press('Escape')
+    const discard = page.getByRole('alertdialog')
+    await expect(discard).toBeVisible()
+    await discard.getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(name).toHaveValue('Safe isolated project draft')
+    await expect(name).toBeFocused()
+    let submissions = 0
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/api/v1/projects', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      submissions++
+      await pending
+      return routeJson(
+        route,
+        { error: { code: 'UNAVAILABLE', message: 'Controlled create failure' } },
+        503,
+      )
+    })
+    await dialog.getByRole('button', { name: 'Создать проект', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Отмена', exact: true })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Закрыть', exact: true })).toBeDisabled()
+    await name.evaluate((element) => element.closest('form')!.requestSubmit())
+    await page.keyboard.press('Escape')
+    expect(submissions).toBe(1)
+    await expect(dialog).toBeVisible()
+    release()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+    await expect(name).toHaveValue('Safe isolated project draft')
+    await expect(key).toHaveValue('QA-2026')
+    await page.screenshot({
+      path: testInfo.outputPath('project-create-failure.png'),
+      fullPage: true,
+    })
+    await page.route('**/api/v1/projects', (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      submissions++
+      return routeJson(
+        route,
+        {
+          id: 'created-project',
+          key: 'DEMO',
+          name: 'Safe isolated project draft',
+          owner_id: mockUser.id,
+          todo_count: 0,
+          in_progress_count: 0,
+          done_count: 0,
+        },
+        201,
+      )
+    })
+    await dialog.getByRole('button', { name: 'Создать проект', exact: true }).click()
+    await expect(page).toHaveURL(`${app}/projects/DEMO/board`)
+    await expect(discard).toBeHidden()
+    expect(submissions).toBe(2)
+    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+  })
+
+  test('keeps the project edit draft and modal controls usable across themes and breakpoints', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(180_000)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.goto(`${app}/projects`)
+    const trigger = page.getByRole('button', { name: `Действия с проектом ${mockUser.name}` })
+    for (const theme of ['gray', 'dark', 'light']) {
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      await page.reload()
+      await page.setViewportSize({ width: 1920, height: 1080 })
+      await trigger.click()
+      await page.getByRole('menuitem', { name: 'Изменить', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      const name = dialog.locator('#project-form-name')
+      const draft = `Draft ${'LongProjectName'.repeat(15)}`
+      await name.fill(draft)
+      for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+        await page.setViewportSize({ width, height: 1080 })
+        await expect(name).toHaveValue(draft)
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        const geometry = await dialog.evaluate(
+          (element, minimum) => {
+            const rect = element.getBoundingClientRect()
+            const targets = [...element.querySelectorAll('button,input,textarea')]
+              .map((control) => control.getBoundingClientRect())
+              .filter((control) => control.width > 0 && control.height > 0)
+            return {
+              fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+              within: rect.left >= 0 && rect.right <= innerWidth,
+              targets: targets.every((control) => control.height + 0.5 >= minimum),
+            }
+          },
+          width < 768 ? 44 : 40,
+        )
+        expect(geometry).toEqual({ fits: true, within: true, targets: true })
+        await page.screenshot({
+          path: testInfo.outputPath(`project-edit-${theme}-${width}.png`),
+          fullPage: true,
+        })
+      }
+      await page.setViewportSize({ width: 1920, height: 1080 })
+      await dialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: 'Подтвердить', exact: true })
+        .click()
+      await expect(dialog).toBeHidden()
+      await expect(trigger).toBeFocused()
+    }
+  })
+
+  test('preserves an unknown address through SSO and reload and restores mobile drawer focus', async ({
+    page,
+    baseURL,
+  }) => {
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto(`${appBaseURL}/missing-page?keep=context`)
+    await expect(page).toHaveURL(`${appBaseURL}/missing-page?keep=context`)
+    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
+    await expect(page.locator('[data-page-layout]')).toHaveAttribute('data-page-layout', 'wide')
+    await page.reload()
+    await expect(page.locator('[data-page-state="not-found"]')).toBeVisible()
+    const trigger = page.getByRole('button', { name: 'Открыть навигацию' })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    const drawer = page.getByRole('dialog')
+    await expect(drawer).toBeVisible()
+    await expect(drawer.getByRole('link', { name: 'Проекты', exact: true })).toHaveCount(1)
+    await page.keyboard.press('Tab')
+    expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
+  test('keeps a dirty issue draft across tabs and breakpoints and restores delete-menu focus', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(90_000)
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
+    const actions = page.getByRole('button', { name: 'Действия', exact: true })
+    await actions.click()
+    await page.getByRole('menuitem', { name: 'Удалить', exact: true }).click()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(page.getByRole('alertdialog')).toBeHidden()
+    await expect(actions).toBeFocused()
+    await page.getByRole('button', { name: 'Изменить', exact: true }).click()
+    const summary = page.getByRole('textbox', { name: 'Заголовок', exact: true })
+    const draft = `Draft ${'long-value-'.repeat(30)}`
+    await summary.fill(draft)
+    for (const width of [375, 1023, 1024, 1279, 1280, 1920, 2560]) {
+      await page.setViewportSize({ width, height: 1080 })
+      await expect(summary).toHaveValue(draft)
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      ).toBe(true)
+    }
+    await page.getByRole('tab', { name: 'Комментарии', exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/issues/${mockUser.issueId}\\?tab=comments$`))
+    await expect(summary).toHaveValue(draft)
+    await page.goBack()
+    await expect(page.getByRole('tab', { name: 'Активность', exact: true })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    await expect(summary).toHaveValue(draft)
+    await page
+      .getByRole('navigation', { name: 'Основная навигация' })
+      .getByRole('link', { name: 'Проекты', exact: true })
+      .click()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    await page.getByRole('button', { name: 'Отмена', exact: true }).click()
+    await expect(summary).toHaveValue(draft)
+    let submissions = 0
+    await page.route(`**/api/v1/issues/${mockUser.issueId}`, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback()
+      submissions++
+      return routeJson(route, { error: { code: 'UNAVAILABLE', message: 'Save unavailable' } }, 503)
+    })
+    await page.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Failed to update issue' }),
+    ).toBeVisible()
+    await expect(summary).toHaveValue(draft)
+    expect(submissions).toBe(1)
+    await page.screenshot({ path: testInfo.outputPath('draft-save-failure.png'), fullPage: true })
+  })
+
+  test('login then navigate through dashboard, projects, board and create issue', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(360_000)
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installTrackerMocks(page)
+
+    await page.goto(`${appBaseURL}/`)
+    await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
+    await expect(
+      page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
+    ).toBeVisible()
+
+    await page.goto(`${appBaseURL}/projects`)
+    await expect(page.getByText(mockUser.name)).toBeVisible()
+
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
+    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
+    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+    const createLinks = page.locator('main a[href^="/issues/create"]')
+    await expect(createLinks).toHaveCount(2)
+    await createLinks.last().click()
+    await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
+    await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
+
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
+    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+    await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
+    await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+    await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeVisible()
+    await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
+
+    for (const theme of ['gray', 'dark', 'light']) {
+      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+      for (const viewport of [
+        { width: 375, height: 812 },
+        { width: 767, height: 1080 },
+        { width: 768, height: 1080 },
+        { width: 1023, height: 1080 },
+        { width: 1024, height: 1080 },
+        { width: 1279, height: 1080 },
+        { width: 1280, height: 1080 },
+        { width: 1440, height: 900 },
+        { width: 1920, height: 1080 },
+        { width: 2560, height: 1440 },
+      ]) {
+        await page.setViewportSize(viewport)
+
+        for (const [path, mode] of [
+          ['/', 'wide'],
+          ['/projects', 'wide'],
+          [`/issues/create?project_key=${mockUser.key}`, 'reading'],
+          [`/issues/${mockUser.issueId}`, 'detail-with-aside'],
+        ] as const) {
+          await page.goto(`${appBaseURL}${path}`)
+          if (mode === 'wide' && path !== '/')
+            await expect(page.getByText(mockUser.name).first()).toBeVisible()
+          if (path === '/') await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+          await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+          if (mode === 'reading') {
+            await expect(
+              page.getByRole('heading', { name: /create issue|создать задачу/i }),
+            ).toBeVisible()
+          }
+          if (mode === 'detail-with-aside') {
+            await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+          }
+
+          const layout = page.locator('[data-page-layout]')
+          await expect(layout).toHaveAttribute('data-page-layout', mode)
+          const geometry = await layout.evaluate((element) => {
+            const frame = element.parentElement
+            const frameStyle = frame ? getComputedStyle(frame) : null
+            return {
+              documentFits:
+                document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+              layoutWidth: element.getBoundingClientRect().width,
+              availableWidth:
+                (frame?.getBoundingClientRect().width ?? 0) -
+                Number.parseFloat(frameStyle?.paddingLeft ?? '0') -
+                Number.parseFloat(frameStyle?.paddingRight ?? '0'),
+            }
+          })
+
+          expect(geometry.documentFits).toBe(true)
+          const smallControls = await page
+            .locator(
+              'main button, main select, main textarea, main input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"])',
+            )
+            .evaluateAll(
+              (elements, minimum) =>
+                elements.flatMap((element) => {
+                  const rect = element.getBoundingClientRect()
+                  if (rect.width <= 0 || rect.height <= 0) return []
+                  return rect.height + 0.5 < minimum
+                    ? [
+                        {
+                          tag: element.tagName,
+                          name:
+                            element.getAttribute('aria-label') ?? element.id ?? element.textContent,
+                          height: rect.height,
+                        },
+                      ]
+                    : []
+                }),
+              viewport.width < 768 ? 44 : 40,
+            )
+          expect(smallControls).toEqual([])
+          await expect(page.locator('[data-base-shell]')).toHaveCount(1)
+          await expect(page.locator('[data-platform-header]')).toHaveCount(1)
+          const header = page.locator('[data-platform-header]')
+          expect((await header.boundingBox())?.height).toBe(60)
+          const sidebar = page.locator('.base-shell-sidebar')
+          if (viewport.width >= 768) {
+            await expect(sidebar).toBeVisible()
+            expect((await sidebar.boundingBox())?.width).toBe(viewport.width >= 1280 ? 264 : 72)
+          } else await expect(sidebar).toBeHidden()
+          const slots = await header
+            .locator('[data-platform-header-slot]')
+            .evaluateAll((elements) =>
+              elements
+                .map((element) => {
+                  const rect = element.getBoundingClientRect()
+                  return { left: rect.left, right: rect.right, width: rect.width }
+                })
+                .filter((rect) => rect.width > 0),
+            )
+          for (let index = 1; index < slots.length; index++)
+            expect(slots[index].left).toBeGreaterThanOrEqual(slots[index - 1].right)
+          if (mode === 'reading') {
+            expect(geometry.layoutWidth).toBeLessThanOrEqual(761)
+          } else {
+            expect(Math.abs(geometry.layoutWidth - geometry.availableWidth)).toBeLessThanOrEqual(1)
+          }
+          if (mode === 'detail-with-aside') {
+            const split = page.locator('.page-split')
+            const columns = await split.evaluate((element) =>
+              getComputedStyle(element).gridTemplateColumns.split(' ').map(Number.parseFloat),
+            )
+            expect(columns).toHaveLength(viewport.width < 1024 ? 1 : 2)
+            if (viewport.width >= 1024) expect(columns[1]).toBe(320)
+          }
+          const testOutputPath = testInfo.outputPath(
+            `shell-${theme}-${viewport.width}-${mode}-${path === '/' ? 'dashboard' : 'page'}.png`,
+          )
+          await page.screenshot({
+            path: testOutputPath,
+            fullPage: true,
+          })
+        }
+      }
+    }
+  })
+})

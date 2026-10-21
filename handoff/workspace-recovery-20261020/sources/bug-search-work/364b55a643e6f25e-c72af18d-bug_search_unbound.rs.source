@@ -1,0 +1,161 @@
+//! Unknown native acceptance can end custody, but cannot fabricate a runtime outcome.
+use crate::{
+    bug_search::*, bug_search_cancel::*, bug_search_control::validate_key, sdlc::MAX_SAFE_VERSION,
+};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugUnknownNativeAcceptance {
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugUnboundNativeSubmission {
+    /// Original native producer namespace/key, never the abort command key.
+    pub operation_key: String,
+    pub body_sha256: String,
+    pub submitted_at: DateTime<Utc>,
+    pub acceptance: BugUnknownNativeAcceptance,
+    /// Required JSON null: any learned native run must use actual terminal reconciliation.
+    #[schema(value_type = Option<String>)]
+    pub actual_run_ref: (),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugUnboundHandoffDisposition {
+    BindAndHandoffNeverSubmitted,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugUnboundWorkflowHandoff {
+    pub disposition: BugUnboundHandoffDisposition,
+    pub bind_journal_ref: String,
+    pub handoff_journal_ref: String,
+    pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugUnboundObservation {
+    pub contract_version: u8,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub snapshot_sha256: String,
+    pub journal_ref: String,
+    pub observed_at: DateTime<Utc>,
+    pub native_submission: BugUnboundNativeSubmission,
+    pub workflow_handoff: BugUnboundWorkflowHandoff,
+    pub runtime_custody: BugPreRunRuntimeCustody,
+}
+impl BugUnboundObservation {
+    pub fn validate(&self) -> Result<(), AppError> {
+        let valid_ref = |s: &str| bounded_text(s, 512) && !s.chars().any(char::is_control);
+        let upper = self
+            .observed_at
+            .checked_add_signed(chrono::Duration::seconds(5))
+            .ok_or_else(|| AppError::validation("unbound observation time out of range"))?;
+        let lower = self
+            .native_submission
+            .submitted_at
+            .checked_sub_signed(chrono::Duration::seconds(5))
+            .ok_or_else(|| AppError::validation("unbound submission time out of range"))?;
+        if self.contract_version != 1
+            || self.execution_id.is_nil()
+            || self.agent_id.is_nil()
+            || !sha256(&self.snapshot_sha256)
+            || !sha256(&self.native_submission.body_sha256)
+            || !valid_ref(&self.journal_ref)
+            || !valid_ref(&self.workflow_handoff.bind_journal_ref)
+            || !valid_ref(&self.workflow_handoff.handoff_journal_ref)
+            || self.native_submission.submitted_at > upper
+            || self.workflow_handoff.observed_at > upper
+            || self.workflow_handoff.observed_at < lower
+            || self.runtime_custody.disposition != BugPreRunCustodyDisposition::NamespaceExited
+        {
+            return Err(AppError::validation(
+                "invalid stopped unbound submission evidence",
+            ));
+        }
+        validate_key(&self.native_submission.operation_key)?;
+        self.runtime_custody.validate(self.agent_id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AbortUnboundBugSearch {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub unbound_observation: BugUnboundObservation,
+}
+impl AbortUnboundBugSearch {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.unbound_observation.validate()?;
+        if !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence)
+            || self.idempotency_key == self.unbound_observation.native_submission.operation_key
+        {
+            return Err(AppError::validation(
+                "invalid original unbound command identity",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugUnboundEndKind {
+    CancelledWithoutBoundRun,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugUnboundCancellationReceipt {
+    pub contract_version: u8,
+    pub kind: BugUnboundEndKind,
+    pub operation_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub execution_id: Uuid,
+    pub fence: i64,
+    pub unbound_observation: BugUnboundObservation,
+    pub custody_released: bool,
+    pub accepted_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn unbound_submission_requires_explicit_null_and_both_handoff_fences() {
+        let value = json!({"operation_key":"native:original", "body_sha256":"a".repeat(64),
+            "submitted_at":Utc::now(),"acceptance":"unknown","actual_run_ref":null});
+        serde_json::from_value::<BugUnboundNativeSubmission>(value.clone()).unwrap();
+        for wrong in [json!("learned-run"), json!(false), json!(12)] {
+            let mut v = value.clone();
+            v["actual_run_ref"] = wrong;
+            assert!(serde_json::from_value::<BugUnboundNativeSubmission>(v).is_err());
+        }
+        let mut missing = value;
+        missing.as_object_mut().unwrap().remove("actual_run_ref");
+        assert!(serde_json::from_value::<BugUnboundNativeSubmission>(missing).is_err());
+        for ambiguous in [
+            "bind_or_handoff_never_submitted",
+            "never_bound",
+            "not_observed",
+        ] {
+            assert!(
+                serde_json::from_value::<BugUnboundHandoffDisposition>(json!(ambiguous)).is_err()
+            );
+        }
+    }
+}

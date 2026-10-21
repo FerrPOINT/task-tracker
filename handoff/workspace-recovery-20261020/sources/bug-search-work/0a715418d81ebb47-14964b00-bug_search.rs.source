@@ -1,0 +1,670 @@
+//! Tracker-owned finding registration. No runtime dispatch or admission is inferred.
+use async_trait::async_trait;
+use domain::{bug_search::*, sdlc::Principal};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    QueryResult, Statement, TransactionTrait, Value,
+};
+use serde_json::json;
+use shared::AppError;
+use uuid::Uuid;
+
+pub struct PostgresBugSearchRepository {
+    pub(super) db: DatabaseConnection,
+    pub(super) config: BugSearchConfig,
+    pub(super) intake_fleet_instance: Option<Uuid>,
+    pub(super) bug_work_ci_reader_subject: Option<String>,
+}
+pub(super) fn stmt(sql: &str, args: Vec<Value>) -> Statement {
+    Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, args)
+}
+pub(super) fn db_error(e: sea_orm::DbErr) -> AppError {
+    crate::sdlc::map_db(e)
+}
+pub(super) fn field<T: sea_orm::TryGetable>(r: &QueryResult, n: &str) -> Result<T, AppError> {
+    r.try_get("", n).map_err(db_error)
+}
+pub(super) fn decode<T: serde::de::DeserializeOwned>(
+    r: &QueryResult,
+    n: &str,
+) -> Result<T, AppError> {
+    serde_json::from_value(field::<serde_json::Value>(r, n)?)
+        .map_err(|_| AppError::conflict("bug search retained source is incompatible"))
+}
+pub(super) async fn exec(
+    tx: &DatabaseTransaction,
+    sql: &str,
+    args: Vec<Value>,
+) -> Result<(), AppError> {
+    tx.execute(stmt(sql, args)).await.map_err(db_error)?;
+    Ok(())
+}
+
+impl PostgresBugSearchRepository {
+    pub async fn connect(url: &str, config: BugSearchConfig) -> Result<Self, AppError> {
+        Self::from_connection(Database::connect(url).await.map_err(db_error)?, config).await
+    }
+    /// Server/test composition with an independently owned pool; authorization
+    /// still resolves active owner and exact retained delegation on every call.
+    pub async fn from_connection(
+        db: DatabaseConnection,
+        config: BugSearchConfig,
+    ) -> Result<Self, AppError> {
+        if !bounded_text(&config.tracker_instance_id, 128)
+            || config.tracker_instance_uuid.is_nil()
+            || !bounded_text(&config.fleet_subject, 256)
+            || !bounded_text(&config.workflow_reader_subject, 256)
+            || config.fleet_subject == config.workflow_reader_subject
+        {
+            return Err(AppError::Unavailable(
+                "bug search owner identities are not configured".into(),
+            ));
+        }
+        let row = db
+            .query_one(stmt(
+                "SELECT instance_id FROM sdlc_instance WHERE singleton",
+                vec![],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| AppError::Unavailable("stable Tracker instance unavailable".into()))?;
+        if field::<String>(&row, "instance_id")? != config.tracker_instance_id {
+            return Err(AppError::conflict(
+                "bug search Tracker instance mapping differs",
+            ));
+        }
+        Ok(Self {
+            db,
+            config,
+            intake_fleet_instance: None,
+            bug_work_ci_reader_subject: None,
+        })
+    }
+    pub fn with_bug_work_ci_reader_subject(mut self, subject: String) -> Result<Self, AppError> {
+        if !bounded_text(&subject, 256)
+            || subject.chars().any(|c| c.is_control() || c.is_whitespace())
+            || subject == self.config.fleet_subject
+            || subject == self.config.workflow_reader_subject
+        {
+            return Err(AppError::validation(
+                "invalid dedicated Bug work CI reader identity",
+            ));
+        }
+        self.bug_work_ci_reader_subject = Some(subject);
+        Ok(self)
+    }
+    pub(super) fn fleet(&self, a: &Principal, write: bool) -> Result<(), AppError> {
+        let scope = if write {
+            "task-tracker:write"
+        } else {
+            "task-tracker:read"
+        };
+        if a.human_session
+            || a.trusted_human
+            || a.subject != self.config.fleet_subject
+            || a.scopes
+                .iter()
+                .any(|s| !matches!(s.as_str(), "task-tracker:read" | "task-tracker:write"))
+            || !a.scopes.contains(scope)
+        {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
+    }
+    pub(super) async fn owner_access(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        subject: &str,
+        write: bool,
+    ) -> Result<(Uuid, String, bool), AppError> {
+        let u = tx
+            .query_one(stmt(
+                "SELECT id FROM users WHERE central_sub=$1 AND is_active FOR SHARE",
+                vec![subject.into()],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or(AppError::Forbidden)?;
+        let uid: Uuid = field(&u, "id")?;
+        let project = tx
+            .query_one(stmt(
+                "SELECT owner_id,key,namespace_managed FROM projects WHERE id=$1 FOR SHARE",
+                vec![p.into()],
+            ))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| AppError::not_found("project", p))?;
+        let owner = field::<Uuid>(&project, "owner_id")? == uid;
+        if !owner && tx.query_one(stmt("SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",vec![p.into(),uid.into()])).await.map_err(db_error)?.is_none() {return Err(AppError::Forbidden);}
+        let ns=tx.query_one(stmt("SELECT state,command FROM tracker_namespace_bindings WHERE resource_id=$1 FOR SHARE",vec![p.into()])).await.map_err(db_error)?;
+        if field::<bool>(&project, "namespace_managed")? && ns.is_none() {
+            return Err(AppError::Unavailable("namespace projection missing".into()));
+        }
+        if let Some(ns) = ns {
+            let command: serde_json::Value = field(&ns, "command")?;
+            if command
+                .pointer("/resource/instance_id")
+                .and_then(|v| v.as_str())
+                != Some(self.config.tracker_instance_uuid.to_string().as_str())
+            {
+                return Err(AppError::conflict(
+                    "canonical Tracker instance mapping differs",
+                ));
+            }
+            if write && field::<String>(&ns, "state")? != "active" {
+                return Err(AppError::conflict("namespace_resource_read_only"));
+            }
+        }
+        Ok((uid, field(&project, "key")?, owner))
+    }
+    pub(super) async fn execution(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        id: Uuid,
+        write: bool,
+    ) -> Result<QueryResult, AppError> {
+        // Authorize on immutable hints before locking the execution; policy writers
+        // use user/project -> execution too, so this never reverses that hierarchy.
+        let hint=tx.query_one(stmt("SELECT owner_subject FROM sdlc_bug_search_executions WHERE execution_id=$1 AND project_id=$2",vec![id.into(),p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_search_execution",id))?;
+        let (_, _, is_current_owner) = self
+            .owner_access(tx, p, &field::<String>(&hint, "owner_subject")?, write)
+            .await?;
+        if write && !is_current_owner {
+            return Err(AppError::Forbidden);
+        }
+        self.retained_execution(tx, p, id).await
+    }
+    pub(super) async fn retained_execution(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        id: Uuid,
+    ) -> Result<QueryResult, AppError> {
+        let row=tx.query_one(stmt("SELECT *,clock_timestamp() AS observed_at FROM sdlc_bug_search_executions WHERE execution_id=$1 AND project_id=$2 FOR SHARE",vec![id.into(),p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_search_execution",id))?;
+        let binding = self.binding(&row)?;
+        binding
+            .validate()
+            .map_err(|_| AppError::conflict("invalid retained bug search binding"))?;
+        let snapshot: serde_json::Value = field(&row, "snapshot")?;
+        let typed: domain::bug_search_control::BugSearchSnapshot =
+            serde_json::from_value(snapshot.clone())
+                .map_err(|_| AppError::conflict("retained search snapshot schema incompatible"))?;
+        typed
+            .validate()
+            .map_err(|_| AppError::conflict("invalid retained search snapshot"))?;
+        if app::bug_search::canonical_hash(&snapshot)? != binding.snapshot_sha256
+            || snapshot
+                .pointer("/project/tracker_instance_id")
+                .and_then(|v| v.as_str())
+                != Some(binding.tracker_instance_id.as_str())
+            || snapshot
+                .pointer("/project/project_id")
+                .and_then(|v| v.as_str())
+                != Some(binding.project_id.to_string().as_str())
+            || snapshot.get("owner_subject").and_then(|v| v.as_str())
+                != Some(binding.owner_subject.as_str())
+            || snapshot.get("agent_id").and_then(|v| v.as_str())
+                != Some(binding.agent_id.to_string().as_str())
+            || snapshot.get("policy_revision").and_then(|v| v.as_i64())
+                != Some(binding.policy_revision)
+            || snapshot.get("kind")
+                != Some(&serde_json::to_value(binding.purpose).map_err(AppError::internal)?)
+            || snapshot.get("bug_id")
+                != Some(&serde_json::to_value(binding.bug_id).map_err(AppError::internal)?)
+            || snapshot.get("expected_fixed_deployment_ref")
+                != Some(
+                    &serde_json::to_value(&binding.expected_delivery_ref)
+                        .map_err(AppError::internal)?,
+                )
+        {
+            return Err(AppError::conflict(
+                "retained bug search snapshot binding differs",
+            ));
+        }
+        Ok(row)
+    }
+    pub(super) fn binding(&self, r: &QueryResult) -> Result<BugSearchExecutionBinding, AppError> {
+        let purpose = match field::<String>(r, "purpose")?.as_str() {
+            "search" => BugSearchPurpose::Search,
+            "verification" => BugSearchPurpose::Verification,
+            _ => return Err(AppError::conflict("invalid retained search purpose")),
+        };
+        let b = BugSearchExecutionBinding {
+            contract_version: 1,
+            tracker_instance_id: field(r, "tracker_instance_id")?,
+            tracker_instance_uuid: field(r, "tracker_instance_uuid")?,
+            project_id: field(r, "project_id")?,
+            owner_subject: field(r, "owner_subject")?,
+            execution_id: field(r, "execution_id")?,
+            agent_id: field(r, "agent_id")?,
+            purpose,
+            snapshot_sha256: field(r, "snapshot_sha256")?,
+            policy_revision: field(r, "policy_revision")?,
+            fence: field(r, "fence")?,
+            machine_subject: field(r, "machine_subject")?,
+            grant_ref: field(r, "grant_ref")?,
+            bug_id: field(r, "bug_id")?,
+            expected_delivery_ref: field(r, "expected_delivery_ref")?,
+        };
+        if b.tracker_instance_id != self.config.tracker_instance_id
+            || b.tracker_instance_uuid != self.config.tracker_instance_uuid
+            || b.machine_subject != self.config.fleet_subject
+        {
+            return Err(AppError::conflict(
+                "retained bug search owner mapping differs",
+            ));
+        }
+        Ok(b)
+    }
+    pub(super) fn active(r: &QueryResult) -> Result<bool, AppError> {
+        Ok(
+            field::<Option<chrono::DateTime<chrono::Utc>>>(r, "revoked_at")?.is_none()
+                && field::<chrono::DateTime<chrono::Utc>>(r, "expires_at")?
+                    > field::<chrono::DateTime<chrono::Utc>>(r, "observed_at")?
+                && field::<String>(r, "admission_state")? != "rejected"
+                && field::<Option<serde_json::Value>>(r, "terminal_receipt")?.is_none(),
+        )
+    }
+    async fn save_operation(
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        a: &Principal,
+        c: &RegisterBugFinding,
+        hash: &str,
+        result: &BugFindingReceipt,
+    ) -> Result<(), AppError> {
+        exec(tx,"INSERT INTO sdlc_bug_registration_operations(actor_subject,idempotency_key,project_id,execution_id,finding_id,request_sha256,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)",vec![a.subject.clone().into(),c.idempotency_key.clone().into(),p.into(),c.execution_id.into(),c.finding_id.into(),hash.into(),serde_json::to_value(result).map_err(AppError::internal)?.into()]).await?;
+        exec(tx,"INSERT INTO sdlc_bug_search_commands(actor_subject,idempotency_key,project_id,owner_subject,kind,request_sha256,receipt) SELECT $1,$2,$3,owner_subject,'register',$4,$5 FROM sdlc_bug_search_executions WHERE execution_id=$6",vec![a.subject.clone().into(),c.idempotency_key.clone().into(),p.into(),hash.into(),json!({"kind":"register","result":result}).into(),c.execution_id.into()]).await
+    }
+}
+
+#[async_trait]
+impl BugSearchRepository for PostgresBugSearchRepository {
+    async fn verification_basis(
+        &self,
+        project: Uuid,
+        bug: Uuid,
+        actor: &Principal,
+        owner_subject: &str,
+    ) -> Result<domain::bug_search_verification::BugVerificationBasis, AppError> {
+        self.read_verification_basis(project, bug, actor, owner_subject)
+            .await
+    }
+    async fn due(
+        &self,
+        a: &Principal,
+    ) -> Result<domain::bug_search_due::BugSearchDueReadback, AppError> {
+        self.read_due(a).await
+    }
+    async fn defer_due(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: domain::bug_search_due::DeferBugSearchDue,
+    ) -> Result<(domain::bug_search_due::BugSearchDueDeferral, bool), AppError> {
+        self.defer_due_occurrence(p, a, c).await
+    }
+
+    async fn abort_unbound(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: domain::bug_search_unbound::AbortUnboundBugSearch,
+    ) -> Result<
+        (
+            domain::bug_search_unbound::BugUnboundCancellationReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        self.abort_unbound_execution(p, e, a, c).await
+    }
+
+    async fn cancel(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: domain::bug_search_cancel::CancelBugSearchBeforeStart,
+    ) -> Result<
+        (
+            domain::bug_search_cancel::BugSearchCancellationReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        self.cancel_before_start(p, e, a, c).await
+    }
+
+    async fn terminal(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: domain::bug_search_terminal::AcceptBugSearchTerminal,
+    ) -> Result<(domain::bug_search_terminal::BugSearchTerminalReceipt, bool), AppError> {
+        self.control_terminal(p, e, a, c).await
+    }
+    async fn apply_policy(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: domain::bug_search_control::ApplyBugSearchPolicy,
+    ) -> Result<(domain::bug_search_control::BugSearchPolicyState, bool), AppError> {
+        self.control_apply_policy(p, a, c).await
+    }
+    async fn policy(
+        &self,
+        p: Uuid,
+        a: &Principal,
+    ) -> Result<domain::bug_search_control::BugSearchPolicyState, AppError> {
+        self.control_policy(p, a).await
+    }
+    async fn reserve(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: domain::bug_search_control::ReserveBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError> {
+        self.control_reserve(p, a, c).await
+    }
+    async fn admit(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: domain::bug_search_control::AdmitBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError> {
+        self.control_admit(p, e, a, c).await
+    }
+    async fn command(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+    ) -> Result<domain::bug_search_control::BugSearchCommandReceipt, AppError> {
+        self.control_command(p, a, key).await
+    }
+    async fn capabilities(
+        &self,
+        p: Uuid,
+        a: &Principal,
+    ) -> Result<BugSearchProjectCapabilities, AppError> {
+        if !a.human_session || !a.trusted_human || app::sdlc::has_pm_grant(&a.scopes) {
+            return Err(AppError::Forbidden);
+        }
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let (_, _, owner) = self.owner_access(&tx, p, &a.subject, false).await?;
+        let writable=tx.query_one(stmt("SELECT NOT EXISTS(SELECT 1 FROM tracker_namespace_bindings WHERE resource_id=$1 AND state<>'active') AS writable",vec![p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::internal("namespace writability observation missing"))?;
+        let writable: bool = field(&writable, "writable")?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(BugSearchProjectCapabilities {
+            contract_version: 1,
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            project_id: p,
+            can_read: true,
+            can_manage_policy: owner && writable,
+            can_admit: false,
+            can_register: false,
+            can_set_own_intake: writable && self.intake_fleet_instance.is_some(),
+            intake_fleet_instance_id: self.intake_fleet_instance.filter(|_| writable),
+            blocked_reasons: {
+                let mut reasons = vec![
+                    "search_admission_not_available".into(),
+                    "bug_intake_assignment_not_available".into(),
+                ];
+                if !writable {
+                    reasons.push("namespace_resource_read_only".into());
+                }
+                reasons
+            },
+        })
+    }
+    async fn execution_grant(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+    ) -> Result<BugSearchGrantReadback, AppError> {
+        let workflow = !a.human_session
+            && !a.trusted_human
+            && a.subject == self.config.workflow_reader_subject
+            && a.scopes.len() == 1
+            && a.scopes.contains("task-tracker:read");
+        let fleet = self.fleet(a, false).is_ok();
+        if !workflow && !fleet {
+            return Err(AppError::Forbidden);
+        }
+        let tx = self.db.begin().await.map_err(db_error)?;
+        // A grant read is an effect-authority observation, so an archived
+        // namespace cannot yield dispatch permission even though history reads remain legal.
+        let r = self.execution(&tx, p, e, true).await?;
+        let binding = self.binding(&r)?;
+        let valid = Self::active(&r)?
+            && if binding.purpose == BugSearchPurpose::Verification {
+                let snapshot: domain::bug_search_control::BugSearchSnapshot =
+                    decode(&r, "snapshot")?;
+                crate::bug_search_verification::available(&tx, &snapshot).await?
+            } else {
+                true
+            };
+        let admission_state: String = field(&r, "admission_state")?;
+        let admitted = admission_state == "admitted"
+            && field::<Option<serde_json::Value>>(&r, "workflow_receipt")?.is_some();
+        let result = BugSearchGrantReadback {
+            contract_version: 1,
+            binding,
+            expires_at: field(&r, "expires_at")?,
+            revoked: field::<Option<chrono::DateTime<chrono::Utc>>>(&r, "revoked_at")?.is_some(),
+            admission_state,
+            authorization_valid: valid,
+            dispatch_allowed: valid && admitted,
+            blocked_reasons: if !valid {
+                vec!["execution_grant_inactive".into()]
+            } else if !admitted {
+                vec!["awaiting_admission".into()]
+            } else {
+                vec![]
+            },
+        };
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
+    async fn register(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: RegisterBugFinding,
+    ) -> Result<(BugFindingReceipt, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = app::bug_search::request_hash(p, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        exec(
+            &tx,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,96))",
+            vec![
+                json!(["bugs.command", a.subject, c.idempotency_key])
+                    .to_string()
+                    .into(),
+            ],
+        )
+        .await?;
+        let execution = self.execution(&tx, p, c.execution_id, true).await?;
+        self.reject_other_command_kind(&tx, p, a, &c.idempotency_key, "register", &hash)
+            .await?;
+        let b = self.binding(&execution)?;
+        b.require_machine(a)?;
+        if let Some(row)=tx.query_one(stmt("SELECT project_id,request_sha256,receipt FROM sdlc_bug_registration_operations WHERE actor_subject=$1 AND idempotency_key=$2",vec![a.subject.clone().into(),c.idempotency_key.clone().into()])).await.map_err(db_error)? {
+            if field::<Uuid>(&row,"project_id")?!=p || field::<String>(&row,"request_sha256")?!=hash {return Err(AppError::conflict("bug registration key payload changed"));}
+            let receipt=decode(&row,"receipt")?; tx.commit().await.map_err(db_error)?;return Ok((receipt,true));
+        }
+        // Expiry/revocation fence NEW effects only. Durable acceptance is replayed
+        // after fresh owner/project/namespace and exact machine authorization above.
+        let qa =
+            field::<serde_json::Value>(&execution, "snapshot")?.get("mode") == Some(&json!("qa"));
+        let snapshot: serde_json::Value = field(&execution, "snapshot")?;
+        c.source_identity
+            .require_snapshot_version(&snapshot, &c.report.checked_version)?;
+        if !qa
+            && !snapshot
+                .get("targets")
+                .and_then(|v| v.as_array())
+                .is_some_and(|targets| {
+                    targets.iter().any(|t| {
+                        t.get("commit_sha").and_then(|v| v.as_str())
+                            == Some(c.report.checked_version.as_str())
+                    })
+                })
+        {
+            return Err(AppError::validation(
+                "finding checked version differs from pinned source snapshot",
+            ));
+        }
+        let delivery_qualified = if qa || !Self::active(&execution)? {
+            self.retained_finding_authorized(&tx, p, &c).await?
+        } else {
+            true
+        };
+        if b.fence != c.expected_fence
+            || b.purpose != BugSearchPurpose::Search
+            || field::<String>(&execution, "admission_state")? != "admitted"
+            || !delivery_qualified
+        {
+            return Err(AppError::Forbidden);
+        }
+        let source_hash = app::bug_search::canonical_hash(&c.source_identity)?;
+        let report_hash = app::bug_search::canonical_hash(
+            &json!({"source_identity":c.source_identity,"report":c.report}),
+        )?;
+        if let Some(row)=tx.query_one(stmt("SELECT source_sha256,report_sha256,receipt FROM sdlc_bug_occurrences WHERE execution_id=$1 AND finding_id=$2",vec![c.execution_id.into(),c.finding_id.into()])).await.map_err(db_error)? {
+            if field::<String>(&row,"source_sha256")?!=source_hash || field::<String>(&row,"report_sha256")?!=report_hash {return Err(AppError::conflict("finding identity payload changed"));}
+            let result=decode(&row,"receipt")?;
+            Self::save_operation(&tx,p,a,&c,&hash,&result).await?;tx.commit().await.map_err(db_error)?;return Ok((result,true));
+        }
+        exec(
+            &tx,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,96))",
+            vec![json!(["bugs.source", p, source_hash]).to_string().into()],
+        )
+        .await?;
+        let basis = app::bug_search::basis_hash(&c.report)?;
+        let existing=tx.query_one(stmt("SELECT s.basis_sha256,s.source_identity,i.id,i.key,i.deleted_at,st.is_closed FROM sdlc_bug_sources s JOIN issues i ON i.id=s.issue_id JOIN statuses st ON st.id=i.status_id WHERE s.project_id=$1 AND s.source_sha256=$2 FOR SHARE OF i",vec![p.into(),source_hash.clone().into()])).await.map_err(db_error)?;
+        let (issue, key, outcome, reason) = if let Some(row) = existing {
+            if field::<String>(&row, "basis_sha256")? != basis
+                || decode::<BugSourceIdentity>(&row, "source_identity")? != c.source_identity
+            {
+                return Err(AppError::conflict("source_identity_basis_conflict"));
+            }
+            let deleted =
+                field::<Option<chrono::DateTime<chrono::Utc>>>(&row, "deleted_at")?.is_some();
+            let closed: bool = field(&row, "is_closed")?;
+            (
+                field::<Uuid>(&row, "id")?,
+                field::<String>(&row, "key")?,
+                if deleted {
+                    BugFindingOutcome::Suppressed
+                } else if closed {
+                    BugFindingOutcome::NeedsReopen
+                } else {
+                    BugFindingOutcome::Linked
+                },
+                if deleted {
+                    Some("canonical_bug_deleted".into())
+                } else if closed {
+                    Some("workflow_reopen_required".into())
+                } else {
+                    None
+                },
+            )
+        } else {
+            let (owner, key, _) = self.owner_access(&tx, p, &b.owner_subject, true).await?;
+            if tx
+                .query_one(stmt(
+                    "SELECT id FROM custom_fields WHERE project_id=$1 AND is_required LIMIT 1",
+                    vec![p.into()],
+                ))
+                .await
+                .map_err(db_error)?
+                .is_some()
+            {
+                return Err(AppError::validation(
+                    "bug creation requires configured custom field values",
+                ));
+            }
+            let status=tx.query_one(stmt("SELECT id FROM statuses WHERE is_default AND NOT is_closed ORDER BY position,id LIMIT 1",vec![])).await.map_err(db_error)?.ok_or_else(||AppError::Unavailable("bug initial status unavailable".into()))?;
+            let status: Uuid = field(&status, "id")?;
+            let issue = Uuid::now_v7();
+            let operation = Uuid::now_v7();
+            let ticket=tx.query_one(stmt("INSERT INTO issue_creation_receipts(operation_id,project_id,actor_id,payload,issue_id,number) VALUES($1,$2,$3,$4,$5,allocate_project_issue_number($2)) RETURNING number",vec![operation.into(),p.into(),owner.into(),json!({"kind":"bug_search","source_identity":c.source_identity,"report":c.report}).into(),issue.into()])).await.map_err(db_error)?.ok_or_else(||AppError::internal("bug creation receipt missing"))?;
+            let project_key = key;
+            let mut number: i64 = field(&ticket, "number")?;
+            let mut key = String::new();
+            let description =
+                serde_json::to_string_pretty(&c.report).map_err(AppError::internal)?;
+            for _ in 0..5 {
+                let candidate = format!("{project_key}-{number}");
+                let inserted=tx.execute(stmt("INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds) VALUES($1,$2,$3,'bug',$4,$5,$6,$7,'medium','[]',0,0) ON CONFLICT(key) DO NOTHING",vec![issue.into(),p.into(),candidate.clone().into(),status.into(),c.report.title.clone().into(),description.clone().into(),owner.into()])).await.map_err(db_error)?;
+                if inserted.rows_affected() == 1 {
+                    key = candidate;
+                    break;
+                }
+                let next=tx.query_one(stmt("UPDATE issue_creation_receipts SET number=allocate_project_issue_number($2) WHERE operation_id=$1 RETURNING number",vec![operation.into(),p.into()])).await.map_err(db_error)?.ok_or_else(||AppError::internal("bug creation counter receipt missing"))?;
+                number = field(&next, "number")?;
+            }
+            if key.is_empty() {
+                return Err(AppError::conflict("issue_counter_retry_exhausted"));
+            }
+            exec(&tx,"INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id) VALUES($1,$2,NULL,$3,$4)",vec![Uuid::now_v7().into(),issue.into(),status.into(),owner.into()]).await?;
+            exec(
+                &tx,
+                "UPDATE issue_creation_receipts SET completed=true WHERE operation_id=$1",
+                vec![operation.into()],
+            )
+            .await?;
+            exec(&tx,"INSERT INTO sdlc_bug_sources(project_id,source_sha256,source_identity,basis_sha256,issue_id,creation_operation_id) VALUES($1,$2,$3,$4,$5,$6)",vec![p.into(),source_hash.clone().into(),serde_json::to_value(&c.source_identity).map_err(AppError::internal)?.into(),basis.into(),issue.into(),operation.into()]).await?;
+            (issue, key, BugFindingOutcome::Created, None)
+        };
+        let result = BugFindingReceipt {
+            contract_version: 1,
+            operation_id: Uuid::now_v7(),
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            project_id: p,
+            execution_id: c.execution_id,
+            finding_id: c.finding_id,
+            source_identity: c.source_identity.clone(),
+            outcome,
+            issue_id: issue,
+            issue_key: key,
+            reason,
+            accepted_at: field(&execution, "observed_at")?,
+        };
+        let receipt = serde_json::to_value(&result).map_err(AppError::internal)?;
+        exec(&tx,"INSERT INTO sdlc_bug_occurrences(project_id,execution_id,finding_id,source_sha256,report_sha256,report,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)",vec![p.into(),c.execution_id.into(),c.finding_id.into(),source_hash.into(),report_hash.into(),serde_json::to_value(&c.report).map_err(AppError::internal)?.into(),receipt.clone().into()]).await?;
+        Self::save_operation(&tx, p, a, &c, &hash, &result).await?;
+        exec(&tx,"INSERT INTO sdlc_bug_search_outbox(event_id,project_id,execution_id,event_type,payload) VALUES($1,$2,$3,'bug.finding_registered',$4)",vec![result.operation_id.into(),p.into(),c.execution_id.into(),receipt.into()]).await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, false))
+    }
+    async fn registration_operation(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        key: &str,
+    ) -> Result<BugFindingReceipt, AppError> {
+        app::sdlc::validate_key(key)?;
+        self.fleet(a, false)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let row=tx.query_one(stmt("SELECT execution_id,receipt FROM sdlc_bug_registration_operations WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",vec![p.into(),a.subject.clone().into(),key.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_registration_operation",key))?;
+        let execution = self
+            .execution(&tx, p, field(&row, "execution_id")?, false)
+            .await?;
+        self.binding(&execution)?; // exact Fleet reader was freshly checked above
+        let result = decode(&row, "receipt")?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
+}

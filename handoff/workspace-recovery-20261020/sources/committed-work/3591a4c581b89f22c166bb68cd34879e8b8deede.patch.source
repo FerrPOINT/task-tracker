@@ -1,0 +1,137 @@
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index 4dc0623..f776229 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -1,5 +1,69 @@
+ # Task Tracker UI Acceptance Evidence
+ 
++## Latest Source Checkpoint
++
++Project catalog and guarded forms supersede the earlier shell/detail snapshot
++below. Earlier logs remain historical evidence, not proof for current runtime.
++
++- Task source: `5e6168151bc5dd950d41bbd2adbc0cc82f194ef1`.
++- Base source: `6bcde92c3901de395abe2f87d3b97b8a91731c59`.
++- Base installed/source fingerprint:
++  `a95d0d22a61cefba04eeaafa9d92341f65d319953514a6febeed74320f103e28`.
++- Product fingerprint:
++  `83a80929f9ab2c83df57a519f2599e92aeab32f0e26e3f0d2ae952fc73ea17d3`.
++- Branch/baseline/worktree remain unchanged. Lockfile and generated API schema
++  did not change during frozen offline installation.
++
++| Command | Exit | Current Evidence |
++|---|---|---|
++| `pnpm install --offline --frozen-lockfile` | 0 | `task-projects-release-source-install.log` |
++| `pnpm test --maxWorkers=2` | 0 | `task-projects-release-source-units.log`; 287 tests, 46 files |
++| `pnpm lint` | 0 | `task-projects-release-source-lint.log`; ESLint and semantic check |
++| `pnpm build` | 0 | `task-projects-release-source-build.log`; typecheck and Vite |
++| `pnpm ui:check` and `--fingerprint` | 0 | 16 patterns, installed/source Base bytes match |
++| Chromium smoke, one worker | 0 | `task-projects-verified-browser.log`; 6 tests, 4.3 minutes |
++| Focused Chromium catalog/history | 0 | `task-projects-final-focused-browser.log`; 2 tests |
++| `python -B scripts/verify_readme.py` | 0 | README validator, not gallery provenance acceptance |
++| `python -B -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks` | 0 | 4 script tests |
++| Scoped Prettier and `git diff --check` | 0 | final source review |
++
++Base frontend gate: `base-sso-history-units.log`, 18 script tests, semantic
++contrast check and 94 Vitest tests (21 files), plus lint/typecheck and README/hub
++validators. Rust/backend release gates were not rerun for this frontend checkpoint.
++
++Current browser run uses built source with mocked HTTP/OIDC, not deployed images:
++
++- 120 page captures across four routes, three themes and ten widths; shell,
++  reading/detail geometry and main control targets remain checked.
++- 30 project edit modal captures across gray/dark/light and
++  375/767/768/1023/1024/1279/1280/1440/1920/2560 px. Dialog fits the viewport,
++  draft survives resizing, visible targets meet 40/44 px and discard returns focus.
++- Five additional controlled captures: issue save failure, project create failure,
++  partial catalog refresh with retained readonly draft, cached access revocation
++  and cold not-found. Total: 155 PNG files.
++- Cached 503 retains rows/draft but blocks writes; cancellation remains usable.
++  Cached 403 hides rows/CRUD, and cold 404 has neither CRUD nor retry.
++- Search retains extra query/hash, resets page, survives direct SSO/reload/Back.
++  Dirty close cancellation returns focus to the field. Async POST allows one
++  submission, blocks Escape/close, retains failure values; confirmed success
++  closes the form and reaches board without a false dirty-navigation prompt.
++- Unit fixtures additionally verify dirty navigation/beforeunload, same-ID refetch,
++  new-session initialization and cancellation of unavailable delete confirmation.
++
++Final modal mobile and partial/denied desktop captures were inspected visually.
++Artifacts: [current captures](../../../../audit-artifacts/base-standard-2026-10-01/task-projects-verified-browser/),
++[current browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-projects-verified-browser.log).
++Earlier `task-projects-browser` and `task-projects-final-browser` runs contain
++superseded failures; they are not green acceptance evidence. Local worker/color
++warnings remain in logs; unit parallelism was bounded after a host-load timeout.
++
++Generic project API error messages still expose English technical text. Full
++route/role/state/console/network matrix, actual images, live SSO, backend gates,
++real README provenance, consumer snapshot synchronization, default integration
++and mirror remain required. All original findings remain open until release proof.
++Playwright-owned preview stopped after terminal completion; port 18865 had no listener.
++No GitHub/fetch/push, protected runtime changes or foreign checkout edits.
++
+ ## Source
+ 
+ - Source commit: `7b4320718687825ec229c01853242f0c81050ad7`.
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index 2a1db07..0a55f63 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -31,6 +31,19 @@ Route patterns, роли, fixtures и обязательные acceptance states
+   внутри защищённого shell вместо redirect на dashboard.
+ - Подтверждение удаления возвращает фокус кнопке actions. Удаление остаётся
+   существующим soft-delete с восстановлением из корзины.
++- Каталог projects использует ListPage и общий resource state policy. Cached
++  403/404 скрывают строки и CRUD; retryable refresh сохраняет readonly строки.
++  Search submit хранит `q` в URL, сбрасывает page и сохраняет прочий query/hash.
++  Back/Forward и reload восстанавливают submitted search.
++- Project form использует Base FormDialog/FormField/PendingForm/UnsavedChangesGuard.
++  Refetch той же сущности не затирает draft; key bounds соответствуют API.
++  Pending блокирует двойной submit и close, ошибка сохраняет ввод. При partial
++  refresh draft остаётся readonly, отмена доступна. ConfirmDialog отдельно
++  отключает недоступное delete confirmation, не блокируя отмену.
++- Mutation hooks не владеют navigation. Создание закрывает saved form перед
++  переходом на board; удаление сохраняет URL-фильтр каталога. Login передаёт
++  полный pathname/query/hash в Base SSO; повторная авторизация заменяет временную
++  запись истории и не добавляет дубликат текущего фильтра после reload.
+ 
+ ## Exceptions
+ 
+@@ -39,6 +52,8 @@ Route patterns, роли, fixtures и обязательные acceptance states
+ 
+ ## Source QA
+ 
++### Shell And Detail Checkpoint
++
+ Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, отдельная ветка
+ `feat/base-ui-standard`. Base: `2a8de7ed2e4e7475bfcfb80e87222af4cc1fbc93`.
+ 
+@@ -54,13 +69,27 @@ Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, отдельная вет
+   `UPDATE_README_SCREENSHOTS`; gallery обновляется только реальными захватами.
+ - Evidence и точные результаты: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
+ 
++### Project Catalog Checkpoint
++
++Source: `5e6168151bc5dd950d41bbd2adbc0cc82f194ef1`.
++Base: `6bcde92c3901de395abe2f87d3b97b8a91731c59`.
++Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
++16-pattern installed UI gate и документационные проверки прошли. Chromium:
++6 tests, 155 captures, включая 30 modal captures (3 themes x 10 widths), cached
++503/403 и cold 404, create failure/success, draft/focus и URL/SSO/reload/history.
++Это source QA с mocked HTTP/OIDC, не actual-image acceptance. Остаточные
++англоязычные технические API errors отмечены ниже; остальные потребители ещё
++требуют синхронизации на этом Base snapshot перед выпускной приёмкой.
++
+ ## Remaining Acceptance
+ 
+-1. Мигрировать остальные list/form/audit/log compositions: projects, board,
++1. Мигрировать остальные list/form/audit/log compositions: board,
+    backlog, trash, settings, search, notifications, reports, admin и create.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+-   pending, validation и focus сценарии всех форм/диалогов.
++   pending, validation и focus сценарии всех форм/диалогов. Локализовать generic
++   технические API errors каталога/форм projects; не считать source QA доказательством
++   всех effective-role и server validation сценариев.
+ 3. Проверить URL filters/sort/pagination и Back/Forward во всех списках. Проверить
+    все manifest patterns с long/big fixtures и loading/empty/403/404/5xx/partial.
+ 4. Выполнить полный backend gate и no-mock QA immutable images через штатный

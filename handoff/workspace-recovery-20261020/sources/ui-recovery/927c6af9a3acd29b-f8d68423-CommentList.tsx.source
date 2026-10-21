@@ -1,0 +1,466 @@
+import { memo, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Button, ConfirmDialog, ErrorState, UnsavedChangesGuard } from '@sdlc/ui/ui'
+import { Textarea } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
+import {
+  useComments,
+  useCreateComment,
+  useUpdateComment,
+  useDeleteComment,
+} from '../model/use-comments'
+import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
+
+interface CommentFormProps {
+  onSubmit: (input: CreateCommentInput | UpdateCommentInput) => void | Promise<unknown>
+  onCancel?: () => void
+  initialBody?: string
+  submitLabel?: string
+  isPending?: boolean
+  autoFocus?: boolean
+  onDirtyChange?: (dirty: boolean) => void
+  onBusyChange?: (busy: boolean) => void
+  inputRef?: RefObject<HTMLTextAreaElement | null>
+}
+
+export function CommentForm({
+  onSubmit,
+  onCancel,
+  initialBody = '',
+  submitLabel,
+  isPending = false,
+  autoFocus = false,
+  onDirtyChange,
+  onBusyChange,
+  inputRef,
+}: CommentFormProps) {
+  const { t } = useTranslation()
+  const inputId = useId()
+  const submitting = useRef(false)
+  const focusAfterSave = useRef(false)
+  const schema = z.object({
+    body: z
+      .string()
+      .trim()
+      .min(1, t('comments.validation.required'))
+      .refine((value) => [...value].length <= 100000, {
+        message: t('comments.validation.tooLong'),
+      }),
+  })
+
+  const form = useForm<{ body: string }>({
+    resolver: zodResolver(schema),
+    defaultValues: { body: initialBody },
+  })
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const busy = isPending || form.formState.isSubmitting
+  const dirty = form.formState.isDirty
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => {
+    onBusyChange?.(busy)
+  }, [busy, onBusyChange])
+  useEffect(() => {
+    if (!busy && (autoFocus || focusAfterSave.current)) {
+      focusAfterSave.current = false
+      form.setFocus('body')
+    }
+  }, [autoFocus, busy, form])
+  const bodyField = form.register('body')
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (isPending || submitting.current) return
+    submitting.current = true
+    onBusyChange?.(true)
+    setSubmitError(null)
+    try {
+      await form.handleSubmit(async (values) => {
+        await onSubmit({ body: values.body })
+        if (!onCancel) {
+          form.reset({ body: '' })
+          focusAfterSave.current = true
+        }
+      })(event)
+    } catch {
+      setSubmitError(t('comments.saveError'))
+    } finally {
+      submitting.current = false
+      onBusyChange?.(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3" aria-busy={busy} data-testid="comment-form">
+      <fieldset disabled={busy} className="min-w-0 space-y-1">
+        <Label htmlFor={inputId}>{t('comments.body')}</Label>
+        <Textarea
+          id={inputId}
+          {...bodyField}
+          ref={(node) => {
+            bodyField.ref(node)
+            if (inputRef) inputRef.current = node
+          }}
+          placeholder={t('comments.placeholder')}
+          rows={4}
+          aria-invalid={Boolean(form.formState.errors.body)}
+          aria-describedby={form.formState.errors.body ? `${inputId}-error` : undefined}
+        />
+        {form.formState.errors.body && (
+          <p id={`${inputId}-error`} role="alert" className="text-xs text-danger">
+            {form.formState.errors.body.message}
+          </p>
+        )}
+        {submitError && (
+          <p role="alert" className="text-xs text-danger">
+            {submitError}
+          </p>
+        )}
+      </fieldset>
+      <div className="flex flex-wrap justify-end gap-2">
+        {onCancel && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            className="min-h-11 sm:min-h-10"
+            onClick={() => {
+              if (!busy && !submitting.current) onCancel()
+            }}
+          >
+            {t('common.cancel')}
+          </Button>
+        )}
+        <Button type="submit" disabled={busy} className="min-h-11 sm:min-h-10">
+          {busy ? t('common.saving') : (submitLabel ?? t('common.save'))}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+interface CommentItemProps {
+  comment: Comment
+  currentUserId?: string
+  onEdit: (comment: Comment) => void
+  onDelete: (commentId: string) => void
+  disabled?: boolean
+}
+
+export const CommentItem = memo(function CommentItem({
+  comment,
+  currentUserId,
+  onEdit,
+  onDelete,
+  disabled = false,
+}: CommentItemProps) {
+  const { t, i18n } = useTranslation()
+  const isAuthor = currentUserId ? comment.authorId === currentUserId : false
+  const date = new Date(comment.createdAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4" data-comment-id={comment.id}>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            aria-hidden
+            className="h-8 w-8 shrink-0 rounded-full bg-accent/20 text-center text-sm leading-8 text-accent"
+          >
+            {(comment.authorName ?? '?').charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0 break-words">
+            <p className="text-sm font-medium text-text-primary">
+              {comment.authorName ?? t('comments.unknown')}
+            </p>
+            <time dateTime={comment.createdAt} className="text-xs text-text-muted">
+              {date}
+            </time>
+          </div>
+        </div>
+        {isAuthor && (
+          <div className="flex shrink-0 gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+              onClick={() => onEdit(comment)}
+              aria-label={t('comments.edit')}
+              title={t('comments.edit')}
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              className="min-h-11 min-w-11 text-danger sm:min-h-10 sm:min-w-10"
+              onClick={() => onDelete(comment.id)}
+              aria-label={t('comments.delete')}
+              title={t('comments.delete')}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="whitespace-pre-wrap break-words text-sm text-text-secondary">
+        {comment.body}
+      </div>
+    </div>
+  )
+})
+
+interface CommentListProps {
+  comments: Comment[]
+  currentUserId?: string
+  onEdit: (comment: Comment) => void
+  onDelete: (commentId: string) => void
+  disabled?: boolean
+}
+
+export function CommentList({
+  comments,
+  currentUserId,
+  onEdit,
+  onDelete,
+  disabled,
+}: CommentListProps) {
+  const { t } = useTranslation()
+  if (comments.length === 0) {
+    return <p className="text-sm text-text-muted">{t('comments.empty')}</p>
+  }
+  return (
+    <div className="space-y-4">
+      {comments.map((comment) => (
+        <CommentItem
+          key={comment.id}
+          comment={comment}
+          currentUserId={currentUserId}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          disabled={disabled}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface CommentsPanelProps {
+  issueId: string
+  currentUserId?: string
+  onProtectionChange?: (state: { dirty: boolean; pending: boolean }) => void
+  inputRef?: RefObject<HTMLTextAreaElement | null>
+}
+
+export function CommentsPanel({
+  issueId,
+  currentUserId,
+  onProtectionChange,
+  inputRef,
+}: CommentsPanelProps) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState<Comment | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [formDirty, setFormDirty] = useState(false)
+  const [formPending, setFormPending] = useState(false)
+  const [composerFocus, setComposerFocus] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<{ comment: Comment | null } | null>(null)
+  const deleting = useRef(false)
+  const fallbackFocusRef = useRef<HTMLDivElement>(null)
+  const localComposerRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = inputRef ?? localComposerRef
+  const commentsQuery = useComments(issueId)
+  const { data: comments, isLoading } = commentsQuery
+  const create = useCreateComment(issueId)
+  const update = useUpdateComment(issueId)
+  const remove = useDeleteComment(issueId)
+  const mutationPending = create.isPending || update.isPending || remove.isPending
+  const busy = mutationPending || formPending || deletePending
+  useEffect(() => {
+    onProtectionChange?.({ dirty: formDirty, pending: busy })
+  }, [formDirty, busy, onProtectionChange])
+  useEffect(
+    () => () => onProtectionChange?.({ dirty: false, pending: false }),
+    [onProtectionChange],
+  )
+
+  if (isLoading) {
+    return <p className="text-sm text-text-muted">{t('common.loading')}</p>
+  }
+
+  if (commentsQuery.error && !comments) {
+    return (
+      <ErrorState message={t('comments.loadError')} onRetry={() => void commentsQuery.refetch()} />
+    )
+  }
+
+  const handleCreate = async (input: CreateCommentInput) => {
+    setFeedback(null)
+    await create.mutateAsync(input)
+    setFeedback(t('comments.created'))
+  }
+
+  const handleUpdate = async (input: UpdateCommentInput) => {
+    if (!editing) return
+    setFeedback(null)
+    await update.mutateAsync({ id: editing.id, input })
+    setEditing(null)
+    setFormDirty(false)
+    setComposerFocus(true)
+    setFeedback(t('comments.updated'))
+  }
+
+  const changeEditor = (comment: Comment | null) => {
+    setFeedback(null)
+    setFormDirty(false)
+    setPendingAction(null)
+    setComposerFocus(true)
+    setEditing(comment)
+  }
+
+  const requestEditor = (comment: Comment | null) => {
+    if (busy || editing?.id === comment?.id) return
+    if (formDirty) setPendingAction({ comment })
+    else changeEditor(comment)
+  }
+
+  const handleDelete = (commentId: string) => {
+    if (busy) return
+    setPendingDeleteId(commentId)
+    setDeleteError(null)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId || deleting.current || formPending || create.isPending || update.isPending)
+      return
+    deleting.current = true
+    setDeletePending(true)
+    setDeleteError(null)
+    setFeedback(null)
+    try {
+      await remove.mutateAsync(pendingDeleteId)
+      setDeleteConfirmOpen(false)
+      setPendingDeleteId(null)
+      if (editing?.id === pendingDeleteId) {
+        setEditing(null)
+        setFormDirty(false)
+        setComposerFocus(true)
+      }
+      setFeedback(t('comments.deleted'))
+    } catch {
+      setDeleteError(t('comments.deleteError'))
+    } finally {
+      deleting.current = false
+      setDeletePending(false)
+    }
+  }
+
+  return (
+    <div
+      className="space-y-6"
+      data-testid="comments-panel"
+      ref={fallbackFocusRef}
+      tabIndex={-1}
+      role="region"
+      aria-label={t('comments.title')}
+    >
+      {!onProtectionChange && (
+        <UnsavedChangesGuard
+          when={formDirty}
+          isPending={busy}
+          returnFocusRef={composerRef}
+          title={t('comments.discardTitle')}
+          description={t('comments.discardDescription')}
+        />
+      )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {feedback && (
+            <p role="status" className="text-sm text-text-secondary">
+              {feedback}
+            </p>
+          )}
+        </div>
+        {!commentsQuery.error && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+            aria-label={t('comments.refresh')}
+            title={t('comments.refresh')}
+            disabled={busy || commentsQuery.isFetching}
+            onClick={() => void commentsQuery.refetch()}
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden />
+          </Button>
+        )}
+      </div>
+      {commentsQuery.error && (
+        <ErrorState
+          message={t('comments.loadError')}
+          onRetry={() => void commentsQuery.refetch()}
+        />
+      )}
+      <CommentForm
+        key={editing?.id ?? 'create'}
+        initialBody={editing?.body}
+        onSubmit={editing ? handleUpdate : handleCreate}
+        onCancel={editing ? () => requestEditor(null) : undefined}
+        submitLabel={editing ? t('common.save') : t('comments.add')}
+        isPending={mutationPending || deletePending}
+        autoFocus={composerFocus}
+        onDirtyChange={setFormDirty}
+        onBusyChange={setFormPending}
+        inputRef={composerRef}
+      />
+      <CommentList
+        comments={comments ?? []}
+        currentUserId={currentUserId}
+        onEdit={requestEditor}
+        onDelete={handleDelete}
+        disabled={busy}
+      />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (open || deleting.current) return
+          setDeleteConfirmOpen(false)
+          setPendingDeleteId(null)
+          setDeleteError(null)
+        }}
+        title={t('comments.delete')}
+        description={t('comments.deleteConfirm')}
+        isPending={remove.isPending || deletePending}
+        error={deleteError}
+        fallbackFocusRef={fallbackFocusRef}
+        onConfirm={() => void confirmDelete()}
+      />
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPendingAction(null)
+        }}
+        title={t('comments.discardTitle')}
+        description={t('comments.discardDescription')}
+        isPending={busy}
+        returnFocusRef={composerRef}
+        fallbackFocusRef={fallbackFocusRef}
+        onConfirm={() => {
+          if (!busy && pendingAction) changeEditor(pendingAction.comment)
+        }}
+      />
+    </div>
+  )
+}

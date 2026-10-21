@@ -1,0 +1,257 @@
+//! HTTP is bracketed by fresh repository observations; no locks span owner I/O.
+use async_trait::async_trait;
+use domain::{
+    bug_work::BugWorkState, bug_work_business::*, bug_work_delivery::*,
+    bug_work_origin::BugWorkSourceContext, sdlc::Principal,
+};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+
+pub enum BusinessBegin {
+    Replay(Box<BugBusinessReceipt>),
+    Observe(Box<BugBusinessContext>),
+}
+pub struct BugBusinessContext {
+    pub state: BugWorkState,
+    pub source: BugWorkSourceContext,
+    pub candidate: Option<BugWorkCandidate>,
+    pub candidate_sha256: Option<String>,
+}
+impl BugBusinessContext {
+    pub fn configuration(&self) -> Result<Uuid, AppError> {
+        let repo = self.state.assignment.source_identity.repository_id;
+        let matches: Vec<_> = self
+            .source
+            .targets
+            .iter()
+            .filter(|t| t.commit_sha == self.state.assignment.verification_basis.checked_version)
+            .filter(|t| {
+                t.source
+                    .as_ref()
+                    .is_some_and(|s| Some(s.repository_id) == repo)
+            })
+            .collect();
+        let first = matches
+            .first()
+            .ok_or_else(|| AppError::conflict("original Bug source is unavailable or ambiguous"))?;
+        // Several QA targets may share one exact immutable repository source.
+        // Target/delivery refs do not change that identity; branch/config/ref do.
+        if matches.iter().any(|target| {
+            target.repository_ref != first.repository_ref || target.source != first.source
+        }) {
+            return Err(AppError::conflict(
+                "original Bug source is unavailable or ambiguous",
+            ));
+        }
+        Ok(first
+            .source
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("original Bug source missing"))?
+            .configuration_id)
+    }
+
+    pub fn require_proof(
+        &self,
+        proof: &BugWorkDeliveryProof,
+        locator: &BugWorkDeliveryLocator,
+        target: &str,
+    ) -> Result<(), AppError> {
+        let binding = self
+            .state
+            .binding
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("actual Bug runtime binding unavailable"))?;
+        proof.require_candidate(
+            locator,
+            &self.state,
+            &crate::bug_search::canonical_hash(binding)?,
+            &self.source,
+            chrono::Utc::now(),
+        )?;
+        if proof.target_ref != target
+            || proof.configuration_id != self.configuration()?
+            || proof.bug_work.base_commit_sha
+                != self.state.assignment.verification_basis.checked_version
+        {
+            return Err(AppError::conflict("Bug candidate owner target changed"));
+        }
+        let allowed: Vec<_> = self
+            .source
+            .targets
+            .iter()
+            .filter(|t| {
+                t.source
+                    .as_ref()
+                    .is_some_and(|s| s.repository_id == proof.repository_id)
+            })
+            .filter_map(|t| t.target_ref.as_deref())
+            .collect();
+        if !allowed.is_empty() && !allowed.contains(&target) {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
+    }
+}
+#[async_trait]
+pub trait BugWorkBusinessRepository: Send + Sync {
+    async fn begin_pin(
+        &self,
+        p: Uuid,
+        a: Uuid,
+        actor: &Principal,
+        c: &PinBugWorkCandidate,
+    ) -> Result<BusinessBegin, AppError>;
+    async fn commit_pin(
+        &self,
+        p: Uuid,
+        a: Uuid,
+        actor: &Principal,
+        c: PinBugWorkCandidate,
+        proof: BugWorkDeliveryProof,
+    ) -> Result<(BugBusinessReceipt, bool), AppError>;
+    async fn begin_verification(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        actor: &Principal,
+        c: &ApplyBugWorkVerification,
+    ) -> Result<BusinessBegin, AppError>;
+    async fn commit_verification(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        actor: &Principal,
+        c: ApplyBugWorkVerification,
+        proof: BugWorkDeliveryProof,
+    ) -> Result<(BugBusinessReceipt, bool), AppError>;
+    async fn current_candidate(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        actor: &Principal,
+    ) -> Result<Option<BugWorkCandidate>, AppError>;
+    async fn business_operation(
+        &self,
+        p: Uuid,
+        key: &str,
+        actor: &Principal,
+    ) -> Result<BugBusinessReceipt, AppError>;
+}
+#[derive(Clone)]
+pub struct BugWorkBusinessService {
+    pub repository: Arc<dyn BugWorkBusinessRepository>,
+    pub reader: Option<Arc<dyn BugWorkDeliveryReader>>,
+}
+impl BugWorkBusinessService {
+    pub async fn pin(
+        &self,
+        p: Uuid,
+        a: Uuid,
+        actor: &Principal,
+        c: PinBugWorkCandidate,
+    ) -> Result<(BugBusinessReceipt, bool), AppError> {
+        c.validate(a)?;
+        match self.repository.begin_pin(p, a, actor, &c).await? {
+            BusinessBegin::Replay(r) => Ok((*r, true)),
+            BusinessBegin::Observe(ctx) => {
+                let proof = self
+                    .reader
+                    .as_ref()
+                    .ok_or_else(|| {
+                        AppError::Unavailable("Bug delivery owner reader unavailable".into())
+                    })?
+                    .read(ctx.configuration()?, &c.target_ref, &c.locator)
+                    .await?;
+                ctx.require_proof(&proof, &c.locator, &c.target_ref)?;
+                self.repository.commit_pin(p, a, actor, c, proof).await
+            }
+        }
+    }
+    pub async fn apply(
+        &self,
+        p: Uuid,
+        b: Uuid,
+        actor: &Principal,
+        c: ApplyBugWorkVerification,
+    ) -> Result<(BugBusinessReceipt, bool), AppError> {
+        c.validate()?;
+        match self.repository.begin_verification(p, b, actor, &c).await? {
+            BusinessBegin::Replay(r) => Ok((*r, true)),
+            BusinessBegin::Observe(ctx) => {
+                let candidate = ctx
+                    .candidate
+                    .as_ref()
+                    .ok_or_else(|| AppError::conflict("Bug candidate missing"))?;
+                let proof = self
+                    .reader
+                    .as_ref()
+                    .ok_or_else(|| {
+                        AppError::Unavailable("Bug delivery owner reader unavailable".into())
+                    })?
+                    .read(
+                        ctx.configuration()?,
+                        &candidate.target_ref,
+                        &candidate.locator,
+                    )
+                    .await?;
+                ctx.require_proof(&proof, &candidate.locator, &candidate.target_ref)?;
+                proof.require_delivered(chrono::Utc::now())?;
+                self.repository
+                    .commit_verification(p, b, actor, c, proof)
+                    .await
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod source_identity_tests {
+    use super::*;
+    #[test]
+    fn repeated_exact_source_for_distinct_qa_targets_is_one_configuration_but_foreign_sources_stay_held()
+     {
+        let v: serde_json::Value = serde_json::from_str(include_str!(
+            "../../domain/tests/fixtures/bug-work-delivery-v1.json"
+        ))
+        .unwrap();
+        let mut context = BugBusinessContext {
+            state: serde_json::from_value(v["state"].clone()).unwrap(),
+            source: serde_json::from_value(v["source"].clone()).unwrap(),
+            candidate: None,
+            candidate_sha256: None,
+        };
+        let expected = context.configuration().unwrap();
+        context.source.mode = domain::bug_search_control::BugSearchMode::Qa;
+        context.source.targets[0].target_ref = Some("qa:first".into());
+        context.source.targets[0].deployment_ref = Some("delivery:first".into());
+        let mut second = context.source.targets[0].clone();
+        second.target_ref = Some("qa:second".into());
+        second.deployment_ref = Some("delivery:second".into());
+        context.source.targets.push(second);
+        context.source.validate().unwrap();
+        assert_eq!(context.configuration().unwrap(), expected);
+        for mutation in 0..5 {
+            let mut other = BugBusinessContext {
+                state: context.state.clone(),
+                source: context.source.clone(),
+                candidate: None,
+                candidate_sha256: None,
+            };
+            let target = &mut other.source.targets[1];
+            match mutation {
+                0 => target.repository_ref = "catalog:foreign-ref".into(),
+                1 => target.source.as_mut().unwrap().branch_ref = "refs/heads/foreign".into(),
+                2 => target.source.as_mut().unwrap().configuration_id = Uuid::new_v4(),
+                3 => target.source.as_mut().unwrap().clone_url_sha256 = "f".repeat(64),
+                _ => {
+                    other.source.targets.clear();
+                    let mut foreign = context.source.targets[0].clone();
+                    foreign.source.as_mut().unwrap().repository_id = Uuid::new_v4();
+                    other.source.targets.push(foreign);
+                }
+            }
+            assert!(other.configuration().is_err(), "mutation {mutation}");
+        }
+    }
+}

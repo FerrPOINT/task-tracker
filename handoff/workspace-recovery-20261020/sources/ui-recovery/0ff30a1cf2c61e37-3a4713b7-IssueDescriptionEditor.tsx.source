@@ -1,0 +1,295 @@
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Pencil, Check, X } from 'lucide-react'
+import type { Issue } from '@/api/issue'
+import { Button, ConfirmDialog, Label } from '@sdlc/ui/ui'
+import { Textarea } from '@sdlc/ui/ui'
+
+type FormData = { summary: string; description: string }
+
+interface IssueDescriptionEditorProps {
+  issue: Issue
+  onSubmit: (patch: { summary: string; description: string | null }) => Promise<unknown>
+  disabled?: boolean
+  onProtectionChange: (state: { dirty: boolean; pending: boolean }) => void
+  inputRef?: RefObject<HTMLInputElement | null>
+}
+
+export function IssueDescriptionEditor({
+  issue,
+  onSubmit,
+  disabled = false,
+  onProtectionChange,
+  inputRef,
+}: IssueDescriptionEditorProps) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const localInputRef = useRef<HTMLInputElement>(null)
+  const summaryRef = inputRef ?? localInputRef
+  const restoreFocus = useRef(false)
+  const descriptionId = useId()
+  const summaryId = useId()
+  const schema = z.object({
+    summary: z
+      .string()
+      .refine((value) => value.trim().length > 0, t('issue.summaryRequired'))
+      .refine((value) => [...value].length <= 500, t('issue.summaryTooLong')),
+    description: z
+      .string()
+      .refine((value) => [...value].length <= 100000, t('issue.descriptionTooLong')),
+  })
+  const descriptionLines = issue.description?.split('\n') ?? []
+  const compactDescription = descriptionLines.slice(0, 4).join('\n').slice(0, 240).trimEnd()
+  const hasLongDescription =
+    issue.description != null &&
+    (issue.description.length > 280 || descriptionLines.length > 5) &&
+    compactDescription.length < issue.description.length
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setFocus,
+    formState: { errors, isDirty },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      summary: issue.summary,
+      description: issue.description ?? '',
+    },
+  })
+  const busy = disabled || submitting
+  const dirty = editing && isDirty
+
+  useEffect(() => {
+    onProtectionChange({ dirty, pending: editing && busy })
+  }, [dirty, editing, busy, onProtectionChange])
+  useEffect(() => () => onProtectionChange({ dirty: false, pending: false }), [onProtectionChange])
+  useEffect(() => {
+    if (editing) setFocus('summary')
+    else if (restoreFocus.current) {
+      restoreFocus.current = false
+      if (!editButtonRef.current?.disabled) editButtonRef.current?.focus()
+      else regionRef.current?.focus()
+    }
+  }, [editing, setFocus])
+
+  const startEdit = () => {
+    if (busy || submittingRef.current) return
+    reset({ summary: issue.summary, description: issue.description ?? '' })
+    setSaveError(null)
+    setEditing(true)
+  }
+
+  const discard = () => {
+    if (busy || submittingRef.current) return
+    restoreFocus.current = true
+    setDiscardOpen(false)
+    setSaveError(null)
+    setEditing(false)
+    reset({ summary: issue.summary, description: issue.description ?? '' })
+  }
+
+  const cancel = () => {
+    if (busy || submittingRef.current) return
+    if (dirty) setDiscardOpen(true)
+    else discard()
+  }
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (busy || submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+    setSaveError(null)
+    try {
+      await handleSubmit(async (data) => {
+        const description = data.description.trim() || null
+        await onSubmit({ summary: data.summary, description })
+        reset({ summary: data.summary, description: description ?? '' })
+        restoreFocus.current = true
+        setEditing(false)
+      })(event)
+    } catch {
+      setSaveError(t('issue.descriptionSaveError'))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+  const summaryField = register('summary')
+
+  return (
+    <div ref={regionRef} role="region" tabIndex={-1} aria-label={t('issue.description')}>
+      {!editing ? (
+        <div className="group min-w-0" onClick={startEdit}>
+          <div className="mb-2 flex items-start justify-between">
+            <h1 className="min-w-0 break-words text-2xl font-semibold text-text-primary">
+              {issue.summary}
+            </h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              ref={editButtonRef}
+              className="min-h-11 min-w-11 shrink-0 sm:min-h-10 sm:min-w-10"
+              onClick={(e) => {
+                e.stopPropagation()
+                startEdit()
+              }}
+              disabled={disabled}
+              aria-label={t('common.edit')}
+              title={t('common.edit')}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </div>
+          {issue.description ? (
+            hasLongDescription ? (
+              <>
+                <div id={descriptionId} className="lg:hidden">
+                  {renderDescription(
+                    descriptionExpanded ? issue.description : `${compactDescription}…`,
+                  )}
+                </div>
+                <div className="hidden lg:block">{renderDescription(issue.description)}</div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 min-h-11 px-0 lg:hidden"
+                  aria-controls={descriptionId}
+                  aria-expanded={descriptionExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setDescriptionExpanded((value) => !value)
+                  }}
+                >
+                  {t(
+                    descriptionExpanded ? 'issue.showLessDescription' : 'issue.showMoreDescription',
+                  )}
+                </Button>
+              </>
+            ) : (
+              renderDescription(issue.description)
+            )
+          ) : (
+            <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-3" aria-busy={busy}>
+          <h1 className="sr-only">{issue.summary}</h1>
+          <fieldset disabled={busy} className="min-w-0 space-y-3">
+            <div>
+              <Label htmlFor={summaryId}>{t('issueCreate.summary')}</Label>
+              <input
+                {...summaryField}
+                id={summaryId}
+                ref={(node) => {
+                  summaryField.ref(node)
+                  summaryRef.current = node
+                }}
+                aria-required="true"
+                aria-invalid={Boolean(errors.summary)}
+                aria-describedby={errors.summary ? `${summaryId}-error` : undefined}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-2xl font-semibold text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              {errors.summary && (
+                <p id={`${summaryId}-error`} role="alert" className="mt-1 text-xs text-danger">
+                  {errors.summary.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor={descriptionId}>{t('issue.description')}</Label>
+              <Textarea
+                {...register('description')}
+                id={descriptionId}
+                aria-invalid={Boolean(errors.description)}
+                aria-describedby={errors.description ? `${descriptionId}-error` : undefined}
+                rows={8}
+                placeholder={t('issue.descriptionPlaceholder')}
+              />
+              {errors.description && (
+                <p id={`${descriptionId}-error`} role="alert" className="text-xs text-danger">
+                  {errors.description.message}
+                </p>
+              )}
+            </div>
+          </fieldset>
+          {saveError && (
+            <p role="alert" className="text-sm text-danger">
+              {saveError}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" className="min-h-11 sm:min-h-10" disabled={busy}>
+              <Check className="mr-1 h-4 w-4" />
+              {submitting ? t('common.saving') : t('common.save')}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-h-11 sm:min-h-10"
+              onClick={cancel}
+              disabled={busy}
+            >
+              <X className="mr-1 h-4 w-4" />
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </form>
+      )}
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={(open) => {
+          if (!busy && !submittingRef.current) setDiscardOpen(open)
+        }}
+        title={t('issue.descriptionDiscardTitle')}
+        description={t('issue.descriptionDiscardDescription')}
+        isPending={busy}
+        returnFocusRef={summaryRef}
+        fallbackFocusRef={editButtonRef}
+        onConfirm={discard}
+      />
+    </div>
+  )
+}
+
+function renderDescription(text: string) {
+  const lines = text.split('\n')
+  return (
+    <div className="space-y-3 break-words text-sm text-text-secondary">
+      {lines.map((line, idx) => {
+        if (line.startsWith('· ')) {
+          return (
+            <ul key={idx} className="ml-5 list-disc">
+              <li>{line.slice(2)}</li>
+            </ul>
+          )
+        }
+        if (line.startsWith('# ')) {
+          return (
+            <h3 key={idx} className="text-base font-semibold text-text-primary">
+              {line.slice(2)}
+            </h3>
+          )
+        }
+        if (line.trim() === '') {
+          return <div key={idx} className="h-2" />
+        }
+        return <p key={idx}>{line}</p>
+      })}
+    </div>
+  )
+}

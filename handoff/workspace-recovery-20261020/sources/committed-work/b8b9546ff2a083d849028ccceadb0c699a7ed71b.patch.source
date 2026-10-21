@@ -1,0 +1,678 @@
+diff --git a/backend/app/examples/single_task_contract.rs b/backend/app/examples/single_task_contract.rs
+index 63b65fe..52ed7cd 100644
+--- a/backend/app/examples/single_task_contract.rs
++++ b/backend/app/examples/single_task_contract.rs
+@@ -115,6 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+         let mut assignment = DeliveryAssignment {
+             assignment_id: Uuid::from_u128(200 + index as u128),
+             execution_id: Uuid::from_u128(300 + index as u128),
++            execution: None, // Historical wire fixture, not a dispatchable runtime reservation.
+             task_id: task,
+             owner_subject: owner_subject.clone(),
+             role,
+diff --git a/backend/app/src/sdlc_lifecycle.rs b/backend/app/src/sdlc_lifecycle.rs
+index e37222c..833c346 100644
+--- a/backend/app/src/sdlc_lifecycle.rs
++++ b/backend/app/src/sdlc_lifecycle.rs
+@@ -350,6 +350,9 @@ pub fn scheduler_read(
+ }
+ 
+ pub fn assignment_hash(assignment: &DeliveryAssignment) -> Result<String, AppError> {
++    if let Some(execution) = &assignment.execution {
++        execution.validate()?;
++    }
+     let mut value = serde_json::to_value(assignment).map_err(AppError::internal)?;
+     value
+         .as_object_mut()
+diff --git a/backend/app/src/sdlc_lifecycle_tests.rs b/backend/app/src/sdlc_lifecycle_tests.rs
+index d15958f..4205a87 100644
+--- a/backend/app/src/sdlc_lifecycle_tests.rs
++++ b/backend/app/src/sdlc_lifecycle_tests.rs
+@@ -12,6 +12,83 @@ fn artifact(name: &str) -> ArtifactReceipt {
+     }
+ }
+ 
++#[test]
++fn delivery_execution_reference_is_canonical_and_closed() {
++    for ordinal in [1, 9_007_199_254_740_992, i64::MAX] {
++        let execution = DeliveryExecution::from_ordinal(ordinal).unwrap();
++        let raw = serde_json::to_value(&execution).unwrap();
++        assert_eq!(
++            raw,
++            serde_json::json!({"ordinal":ordinal.to_string(),"key":format!("SDLC-{ordinal}")})
++        );
++        assert_eq!(
++            serde_json::from_value::<DeliveryExecution>(raw).unwrap(),
++            execution
++        );
++    }
++    for ordinal in [
++        "0",
++        "-1",
++        "01",
++        "+1",
++        " 1",
++        "1.0",
++        "9223372036854775808",
++        "",
++    ] {
++        assert!(
++            serde_json::from_value::<DeliveryExecution>(
++                serde_json::json!({"ordinal":ordinal,"key":format!("SDLC-{ordinal}")})
++            )
++            .is_err()
++        );
++    }
++    for raw in [
++        serde_json::json!({"ordinal":"1","key":"TASK-1"}),
++        serde_json::json!({"ordinal":"1","key":"SDLC-2"}),
++        serde_json::json!({"ordinal":1,"key":"SDLC-1"}),
++        serde_json::json!({"ordinal":"1"}),
++        serde_json::json!({"ordinal":"1","key":"SDLC-1","ready":true}),
++    ] {
++        assert!(serde_json::from_value::<DeliveryExecution>(raw).is_err());
++    }
++    assert!(DeliveryExecution::from_ordinal(0).is_err());
++    assert!(DeliveryExecution::from_ordinal(-1).is_err());
++}
++
++#[test]
++fn optional_delivery_execution_preserves_legacy_wire_and_binds_new_hash() {
++    let task = task();
++    let raw = serde_json::json!({"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
++        "task_id":task.task_id,"owner_subject":task.owner_subject,"role":"analyst","stage":"Analysis","cycle":0,"attempt":1,
++        "agent_id":task.routing.policy.routes.analyst.agent_id,"routing":task.routing,"previous_result_id":null,
++        "fencing_token":1,"lease_id":Uuid::new_v4(),"assignment_hash":""});
++    let mut assignment: DeliveryAssignment = serde_json::from_value(raw.clone()).unwrap();
++    assert_eq!(assignment.execution, None);
++    assert_eq!(serde_json::to_value(&assignment).unwrap(), raw);
++    let legacy_hash = assignment_hash(&assignment).unwrap();
++    let mut original = raw;
++    original.as_object_mut().unwrap().remove("assignment_hash");
++    assert_eq!(legacy_hash, crate::sdlc::canonical_hash(&original).unwrap());
++    assignment.execution = Some(DeliveryExecution::from_ordinal(123).unwrap());
++    let hash = assignment_hash(&assignment).unwrap();
++    assert_ne!(hash, legacy_hash);
++    assignment.assignment_hash = hash.clone();
++    let wire = serde_json::to_value(&assignment).unwrap();
++    assert_eq!(
++        wire["execution"],
++        serde_json::json!({"ordinal":"123","key":"SDLC-123"})
++    );
++    let decoded: DeliveryAssignment = serde_json::from_value(wire.clone()).unwrap();
++    assert_eq!(assignment_hash(&decoded).unwrap(), hash);
++    assert_eq!(decoded, assignment);
++    let mut bad = wire;
++    bad["execution"]["key"] = serde_json::json!("SDLC-999");
++    assert!(serde_json::from_value::<DeliveryAssignment>(bad).is_err());
++    assignment.execution.as_mut().unwrap().key = "SDLC-999".into();
++    assert!(assignment_hash(&assignment).is_err());
++}
++
+ fn task() -> LifecycleTask {
+     let route = RoleRoute {
+         agent_id: Uuid::new_v4(),
+diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
+index 5733aeb..4999142 100644
+--- a/backend/domain/src/sdlc_lifecycle.rs
++++ b/backend/domain/src/sdlc_lifecycle.rs
+@@ -249,6 +249,8 @@ pub struct RuntimeTerminalObservation {
+ pub struct DeliveryAssignment {
+     pub assignment_id: Uuid,
+     pub execution_id: Uuid,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub execution: Option<DeliveryExecution>,
+     pub task_id: Uuid,
+     pub owner_subject: String,
+     pub role: DeliveryRole,
+@@ -263,6 +265,57 @@ pub struct DeliveryAssignment {
+     pub assignment_hash: String,
+ }
+ 
++#[derive(Clone, Debug, Serialize, PartialEq, Eq, utoipa::ToSchema)]
++#[serde(deny_unknown_fields)]
++pub struct DeliveryExecution {
++    #[schema(pattern = "^[1-9][0-9]{0,18}$")]
++    pub ordinal: String,
++    #[schema(pattern = "^SDLC-[1-9][0-9]{0,18}$")]
++    pub key: String,
++}
++
++impl DeliveryExecution {
++    pub fn from_ordinal(ordinal: i64) -> Result<Self, AppError> {
++        let execution = Self {
++            ordinal: ordinal.to_string(),
++            key: format!("SDLC-{ordinal}"),
++        };
++        execution.validate()?;
++        Ok(execution)
++    }
++
++    pub fn validate(&self) -> Result<(), AppError> {
++        if !self
++            .ordinal
++            .parse::<i64>()
++            .is_ok_and(|n| n > 0 && n.to_string() == self.ordinal)
++            || self.key != format!("SDLC-{}", self.ordinal)
++        {
++            return Err(AppError::validation(
++                "invalid Tracker delivery execution reference",
++            ));
++        }
++        Ok(())
++    }
++}
++
++impl<'de> Deserialize<'de> for DeliveryExecution {
++    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
++        #[derive(Deserialize)]
++        #[serde(deny_unknown_fields)]
++        struct Wire {
++            ordinal: String,
++            key: String,
++        }
++        let Wire { ordinal, key } = Wire::deserialize(d)?;
++        let execution = Self { ordinal, key };
++        execution
++            .validate()
++            .map_err(<D::Error as serde::de::Error>::custom)?;
++        Ok(execution)
++    }
++}
++
+ impl DeliveryAssignment {
+     pub fn scope(&self) -> String {
+         format!(
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+index 610b9b3..1f4ad49 100644
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -448,10 +448,22 @@ impl PostgresSdlcRepository {
+             .ok_or_else(corrupt)?
+             .try_get::<i64>("", "n")
+             .map_err(map_db)?;
++        let ordinal = tx
++            .query_one(statement(
++                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
++                vec![],
++            ))
++            .await
++            .map_err(map_db)?
++            .ok_or_else(corrupt)?
++            .try_get::<i64>("", "ordinal")
++            .map_err(map_db)?;
++        let execution = DeliveryExecution::from_ordinal(ordinal)?;
+         let observed_at = now(tx).await?;
+         let mut assignment = DeliveryAssignment {
+             assignment_id: Uuid::now_v7(),
+             execution_id: Uuid::now_v7(),
++            execution: Some(execution),
+             task_id: receipt.task.task_id,
+             owner_subject: receipt.task.owner_subject.clone(),
+             role,
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+index ab32f43..83f90d1 100644
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -87,6 +87,44 @@ async fn count(db: &DatabaseConnection, table: &str) -> i64 {
+     .unwrap()
+ }
+ 
++async fn pm_ordinal_head(db: &DatabaseConnection) -> i64 {
++    let name: String = db
++        .query_one(statement(
++            "SELECT pg_get_serial_sequence('sdlc_pm_executions','ordinal') AS name",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "name")
++        .unwrap();
++    // PostgreSQL returns a qualified/quoted identifier, never request-supplied SQL.
++    db.query_one(statement(
++        &format!("SELECT last_value AS n FROM {name}"),
++        vec![],
++    ))
++    .await
++    .unwrap()
++    .unwrap()
++    .try_get("", "n")
++    .unwrap()
++}
++
++async fn legacy_analysis_ordinal_head(db: &DatabaseConnection) -> (i64, bool) {
++    let row = db
++        .query_one(statement(
++            "SELECT last_value,is_called FROM sdlc_analysis_workflow_task_ordinal",
++            vec![],
++        ))
++        .await
++        .unwrap()
++        .unwrap();
++    (
++        row.try_get("", "last_value").unwrap(),
++        row.try_get("", "is_called").unwrap(),
++    )
++}
++
+ #[tokio::test]
+ #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay() {
+@@ -346,10 +384,162 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         expected_task_version: queued.task.version,
+         idempotency_key: "reserve-0".into(),
+     };
+-    let (reserved, _) = repo
+-        .lifecycle_command(task, &scheduler, reserve.clone())
++    let legacy_ordinal = legacy_analysis_ordinal_head(&db).await;
++    let pm_ordinal = pm_ordinal_head(&db).await;
++    assert_eq!(reservation.execution.ordinal, pm_ordinal.to_string());
++    let invalid = LifecycleCommand::Reserve {
++        expected_task_version: queued.task.version + 1,
++        idempotency_key: "invalid-cas".into(),
++    };
++    assert!(
++        repo.lifecycle_command(task, &scheduler, invalid)
++            .await
++            .is_err()
++    );
++    assert!(matches!(
++        repo.lifecycle_command(task, &owner, reserve.clone()).await,
++        Err(AppError::Forbidden)
++    ));
++    assert_eq!(pm_ordinal_head(&db).await, pm_ordinal);
++    let operations = count(&db, "sdlc_delivery_operations").await;
++    let outbox = count(&db, "sdlc_outbox").await;
++    db.execute_unprepared("CREATE FUNCTION fixture_fail_reserve_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
++        IF NEW.event_type='delivery.assignment_reserved' THEN RAISE EXCEPTION 'fixture reserve outbox failure'; END IF; RETURN NEW; END $$;
++        CREATE TRIGGER fixture_fail_reserve_outbox BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
++    assert!(
++        repo.lifecycle_command(task, &scheduler, reserve.clone())
++            .await
++            .is_err()
++    );
++    let gap = pm_ordinal_head(&db).await;
++    assert_eq!(gap, pm_ordinal + 1);
++    assert_eq!(count(&db, "sdlc_delivery_assignments").await, 0);
++    assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
++    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations);
++    assert_eq!(count(&db, "sdlc_outbox").await, outbox);
++    assert!(
++        repo.lifecycle_read(task, &reader)
++            .await
++            .unwrap()
++            .receipt
++            .assignment
++            .is_none()
++    );
++    db.execute_unprepared("DROP TRIGGER fixture_fail_reserve_outbox ON sdlc_outbox; DROP FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
++    let (other_draft, _) = repo
++        .create_draft(
++            project,
++            &owner,
++            CreateDraftCommand {
++                title: "Concurrent PM allocator fixture".into(),
++                description: "Synthetic owner input".into(),
++                idempotency_key: "other-pm-draft".into(),
++                flow: Some(DraftFlow::SingleTaskV1),
++            },
++        )
++        .await
++        .unwrap();
++    let pm_request: domain::sdlc_pm_draft::ReservePmDraft = parse(json!({
++        "requested_agent_id":routes.project_manager.agent_id,"expected_owner_version":0,
++        "expected_assignment_version":null,"idempotency_key":"other-pm-reserve"}));
++    assert_eq!(pm_ordinal_head(&db).await, gap);
++    let (left, right, other_pm) = tokio::join!(
++        repo.lifecycle_command(task, &scheduler, reserve.clone()),
++        repo.lifecycle_command(task, &scheduler, reserve.clone()),
++        repo.reserve_pm_draft(other_draft.task_id, &owner, pm_request.clone())
++    );
++    let left = left.unwrap();
++    let right = right.unwrap();
++    assert_ne!(left.1, right.1);
++    assert_eq!(left.0, right.0);
++    let reserved = left.0;
++    let (other_pm, replayed) = other_pm.unwrap();
++    assert!(!replayed);
++    let allocated = reserved
++        .assignment
++        .as_ref()
++        .unwrap()
++        .execution
++        .as_ref()
++        .unwrap();
++    assert_eq!(allocated.key, format!("SDLC-{}", allocated.ordinal));
++    let allocated_ordinals: std::collections::HashSet<i64> = [
++        allocated.ordinal.parse().unwrap(),
++        other_pm.execution.ordinal.parse().unwrap(),
++    ]
++    .into_iter()
++    .collect();
++    let expected_ordinals: std::collections::HashSet<_> = [gap + 1, gap + 2].into_iter().collect();
++    assert_eq!(allocated_ordinals, expected_ordinals);
++    assert_ne!(allocated.key, other_pm.execution.key);
++    let allocation_head = gap + 2;
++    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
++    let changed = LifecycleCommand::Reserve {
++        expected_task_version: queued.task.version + 1,
++        idempotency_key: "reserve-0".into(),
++    };
++    assert!(matches!(
++        repo.lifecycle_command(task, &scheduler, changed).await,
++        Err(AppError::Conflict(_))
++    ));
++    exec(
++        &db,
++        "UPDATE users SET is_active=false WHERE central_sub='scheduler'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert!(matches!(
++        repo.lifecycle_command(task, &scheduler, reserve.clone())
++            .await,
++        Err(AppError::Forbidden)
++    ));
++    assert!(matches!(
++        repo.lifecycle_operation(task, &reader, "reserve-0").await,
++        Err(AppError::Forbidden)
++    ));
++    exec(
++        &db,
++        "UPDATE users SET is_active=true WHERE central_sub='scheduler'",
++        vec![],
++    )
++    .await
++    .unwrap();
++    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
++    assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
++    let saved: Json = db
++        .query_one(statement(
++            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1",
++            vec![reserved.assignment.as_ref().unwrap().assignment_id.into()],
++        ))
+         .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "payload")
+         .unwrap();
++    assert_eq!(
++        saved,
++        serde_json::to_value(reserved.assignment.as_ref().unwrap()).unwrap()
++    );
++    assert_eq!(
++        repo.lifecycle_operation(task, &reader, "reserve-0")
++            .await
++            .unwrap(),
++        reserved
++    );
++    assert!(
++        repo.lifecycle_command(task, &scheduler, reserve.clone())
++            .await
++            .unwrap()
++            .1
++    );
++    assert!(
++        repo.reserve_pm_draft(other_draft.task_id, &owner, pm_request)
++            .await
++            .unwrap()
++            .1
++    );
++    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
+     let stale = delivery_fence(&reserved);
+     let binding = RunBinding {
+         chat_id: Uuid::new_v4(),
+@@ -644,6 +834,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         .await
+         .unwrap();
+     assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
++    assert_ne!(
++        retry.assignment.as_ref().unwrap().execution,
++        reserved.assignment.as_ref().unwrap().execution
++    );
++    assert_ne!(
++        retry.assignment.as_ref().unwrap().execution_id,
++        reserved.assignment.as_ref().unwrap().execution_id
++    );
+     assert!(
+         retry.assignment.as_ref().unwrap().fencing_token
+             > reserved.assignment.as_ref().unwrap().fencing_token
+@@ -667,6 +865,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         .is_err()
+     );
+     repo.config.single_task_project_ids.clear();
++    let before_replay = pm_ordinal_head(&db).await;
+     assert!(
+         repo.lifecycle_command(task, &scheduler, ensure)
+             .await
+@@ -683,6 +882,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         .unwrap(),
+         serde_json::to_value(reserved).unwrap()
+     );
++    assert_eq!(pm_ordinal_head(&db).await, before_replay);
+     assert!(matches!(
+         repo.lifecycle_command(
+             task,
+@@ -707,6 +907,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+     .unwrap();
+     let mut cursor = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+     let mut ready_ids = Vec::new();
++    let mut execution_keys = std::collections::HashSet::new();
+     let outputs = [
+         DeliveryResult::Analyst {
+             analysis: artifact("retry-analysis"),
+@@ -752,6 +953,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+                 .unwrap()
+                 .0;
+         }
++        let assignment = cursor.assignment.as_ref().unwrap();
++        let execution = assignment.execution.as_ref().unwrap();
++        execution.validate().unwrap();
++        assert!(execution_keys.insert(execution.key.clone()));
++        assert!(execution.ordinal.parse::<i64>().unwrap() > pm_ordinal);
+         let fence = delivery_fence(&cursor);
+         let role_binding = RunBinding {
+             chat_id: cursor.task.resume_chat_id.unwrap_or_else(Uuid::new_v4),
+@@ -830,6 +1036,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
+         }
+     }
+     assert_eq!(ready_ids.len(), 2);
++    assert_eq!(execution_keys.len(), 6);
++    assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
+     assert_ne!(ready_ids[0].0, ready_ids[1].0);
+     assert_eq!(ready_ids[0].1, ready_ids[1].1);
+     assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+diff --git a/backend/migration/src/single_task_lifecycle.sql b/backend/migration/src/single_task_lifecycle.sql
+index 994962d..04797c3 100644
+--- a/backend/migration/src/single_task_lifecycle.sql
++++ b/backend/migration/src/single_task_lifecycle.sql
+@@ -136,12 +136,25 @@ CREATE TABLE sdlc_delivery_assignments (
+         AND (payload->>'fencing_token')::bigint BETWEEN 1 AND 9007199254740991
+         AND payload->'fencing_token'=to_jsonb((payload->>'fencing_token')::bigint)
+         AND (payload->>'cycle')::integer BETWEEN 0 AND 3
+-        AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE)
++        AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE),
++    CHECK (NOT payload ? 'execution' OR (
++        jsonb_typeof(payload->'execution')='object'
++        AND payload->'execution'-ARRAY['ordinal','key']='{}'::jsonb
++        AND jsonb_typeof(payload->'execution'->'ordinal')='string'
++        AND jsonb_typeof(payload->'execution'->'key')='string'
++        AND payload->'execution'->>'ordinal' ~ '^[1-9][0-9]{0,18}$'
++        AND (payload->'execution'->>'ordinal')::numeric BETWEEN 1 AND 9223372036854775807
++        AND payload->'execution'->>'key'='SDLC-'||(payload->'execution'->>'ordinal')) IS TRUE)
+ );
+ CREATE INDEX sdlc_delivery_assignment_task ON sdlc_delivery_assignments(task_id);
++CREATE UNIQUE INDEX sdlc_delivery_execution_ordinal ON sdlc_delivery_assignments((payload->'execution'->>'ordinal'))
++WHERE payload ? 'execution';
+ 
+ CREATE FUNCTION sdlc_delivery_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN
++    IF NOT NEW.payload ? 'execution' THEN
++        RAISE EXCEPTION 'SDLC authoritative delivery execution reference required' USING ERRCODE='23514';
++    END IF;
+     IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
+         AND t.state->'flow'='"single-task-v1"'::jsonb) THEN
+         RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';
+diff --git a/docs/API.md b/docs/API.md
+index e7e44c1..739aaec 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -1,5 +1,37 @@
+ # API v1 Specification — Task Tracker
+ 
++## Authoritative Delivery Execution Reference
++
++Fresh scheduler-only lifecycle Reserve returns
++`assignment.execution:{ordinal:"123",key:"SDLC-123"}` in the existing receipt.
++The same value is returned by GET lifecycle (`receipt.assignment.execution`) and
++GET lifecycle operations (`assignment.execution`). Ordinal is a canonical positive
++decimal PostgreSQL bigint string, never a JSON number; key must match exactly.
++Unknown fields, noncanonical/overflow ordinal or mismatched key in a present value
++are rejected by the producer DTO. Caller Reserve fields/auth are unchanged:
++the consumer cannot submit/select an ordinal, taskkey or chat-derived key.
++
++Tracker allocates from the SAME existing identity sequence as PM executions:
++`nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'))`, after fresh ACL,
++original-operation replay and normal Reserve capacity/CAS checks. Execution ref,
++UUID, assignment hash, immutable assignment, hold, canonical projection, operation
++and outbox persist in the same transaction. Rollback may leave a sequence gap,
++never an accepted partial assignment; replay returns the original execution/key.
++New retry assignment/execution receives a new ordinal, retained PM resume does not.
++
++The optional field is omitted for old assignments; omission preserves old wire and
++hash. Old receipts are not backfilled. A technical Workflow dispatch requires a
++present authoritative reference and must fail closed when absent. Historical
++compatibility fixtures intentionally remain non-dispatchable without a fresh Reserve.
++
++Uniqueness is within the new single-task profile flow (PM plus general Delivery,
++including Analyst). Legacy Analysis keeps its separate
++`sdlc_analysis_workflow_task_ordinal` and original receipts/Workflow namespace.
++Display `SDLC-N` may coincide across legacy families; canonical identity is
++Tracker instance + execution UUID, and Workflow refs are namespace/profile scoped.
++No stopped writers, setval/high-water repair, new sequence or legacy allocator
++change is required or included. Parent owns Fleet DTO/generated registrations.
++
+ ## Explicit New Draft Flow
+ 
+ The existing Draft creation request adds optional `flow:"single-task-v1"`.
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 1d82b6e..8804998 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -1,5 +1,16 @@
+ # Архитектура Task Tracker
+ 
++General Delivery Reserve owns execution display-key allocation using PM's existing
++identity sequence. All new-profile roles, including Analyst, receive immutable
++`execution:{ordinal,key}` in assignment/hash and lifecycle readback. Allocation is
++after replay/CAS/capacity checks and before the one transactional persistence/outbox
++boundary; failed transactions may consume unused ordinals. Fleet never synthesizes
++an execution key from task/chat identity. Missing execution on a historical receipt
++is a technical dispatch blocker, not authority to invent one. Legacy Analysis's
++separate sequence and Workflow namespace remain unchanged; no global historical
++display-key uniqueness, stopped-writer cutover or high-water repair is attempted.
++Stable canonical execution identity is Tracker instance plus execution UUID.
++
+ New single-task enrollment is explicit at Draft creation, not inferred from a
+ project flag or an existing PM reservation. The immutable `flow:"single-task-v1"`
+ marker stays in canonical TaskState's retained JSON; Context/CreatedDraft do not
+diff --git a/docs/DATA_MODEL.md b/docs/DATA_MODEL.md
+index 7038732..764c933 100644
+--- a/docs/DATA_MODEL.md
++++ b/docs/DATA_MODEL.md
+@@ -1,5 +1,17 @@
+ # Дата-модель Task Tracker
+ 
++New immutable delivery assignment JSON includes `execution:{ordinal,key}`;
++the canonical positive bigint ordinal is encoded as a decimal string and paired
++exactly with `SDLC-<ordinal>`. It is part of assignment hash and original receipts.
++The existing SQL fragment adds optional-history shape checks, delivery ordinal
++uniqueness and a present-reference requirement for fresh inserts. Existing missing
++fields remain missing, with no backfill/hash rewrite. No separate counter/table or
++ordinal column is added: fresh Delivery (including Analyst) consumes the existing
++PM identity sequence. Legacy Analysis retains its own ordinal sequence/namespace.
++Display keys are not globally unique historical identities: Tracker instance plus
++execution UUID is canonical. Rollback gaps are intentional; sequence state is never
++rewound or rebased, and historical Analysis allocation is not changed.
++
+ Canonical `sdlc_tasks.state.flow` is absent for legacy tasks and exactly the string
+ `single-task-v1` for explicitly opted-in new Drafts. It is retained through legacy
+ serde round trips, not duplicated in another mutable table. The existing additive
+diff --git a/docs/TRACKER_SINGLE_TASK_HANDOFF.md b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+index ff60409..dad4c07 100644
+--- a/docs/TRACKER_SINGLE_TASK_HANDOFF.md
++++ b/docs/TRACKER_SINGLE_TASK_HANDOFF.md
+@@ -392,8 +392,52 @@ without marker; existing historical terminal/readback paths stay available.
+ Parent integrates the creation DTO schema and Fleet mutation/readiness gate. No API
+ registration/OpenAPI generated output/CLI changes are included here. Missing policy
+ returns NotFound, incompatible policy Conflict, disabled new creation Unavailable.
+-Separate delivery `SDLC-<ordinal>` allocator remains the next package: no consumer
+-may invent an execution key from task/chat UUID while that source gap is open.
++The following execution-reference package closes the fresh Delivery allocator gap;
++historical missing references still block technical dispatch and are never invented.
++
++### Delivery execution reference
++
++`DeliveryAssignment.execution:Option<DeliveryExecution>` has exactly
++`{ordinal:String,key:String}`. Fresh Reserve always fills it from
++`nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'))`: the same existing
++sequence PM already uses. It is allocated after fresh ACL/original command replay
++and existing task CAS/capacity guards, then included in immutable assignment JSON
++and assignment hash. Existing lifecycle GET and operation readbacks return it without
++a new endpoint or wrapper. Ordinal is positive canonical bigint decimal, key exactly
++`SDLC-<ordinal>`; malformed present values fail strict decode/hash validation.
++
++Omission preserves old assignment wire/hash/materialization, including existing
++compatibility examples. No historical row/operation is backfilled. New inserts
++require a reference, with a JSON shape/range constraint and unique delivery ordinal
++index in the same SQL fragment. Caller cannot select a display key. Assignment,
++hold, canonical state/issue projection, operation and outbox commit or roll back
++together; PostgreSQL sequence gaps on rollback are expected. Original replay does
++not allocate again. A new retry execution/fence gets a new key; same PM execution
++resume keeps its previous PM key.
++
++Uniqueness is scoped to new-profile PM + general Delivery, including Analyst.
++Legacy Analysis still consumes `sdlc_analysis_workflow_task_ordinal` in its old
++Workflow namespace; that allocator and old receipts are untouched. Historical
++display strings may coincide across families without an execution identity
++collision: canonical identity is Tracker instance + execution UUID, and Workflow
++key use is namespace/profile scoped. No stopped writers/high-water/setval/cutover
++or new sequence is added. Parent owns Fleet DTO/generated registration. Its
++technical Workflow builder requires Some execution; absent means blocked, never
++taskkey/chatUUID-derived fallback.
++
++Requested execution-reference checks (source tests only, not run here):
++
++```text
++cargo test --locked -p app delivery_execution_reference_is_canonical_and_closed
++cargo test --locked -p app optional_delivery_execution_preserves_legacy_wire_and_binds_new_hash
++cargo test --locked -p infra canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay -- --ignored --nocapture
++```
++
++The existing fresh `_lifecycle_test` PG fixture now checks shared PM/Delivery ordinal
++allocation, rejected CAS/auth and replay ACL revocation before allocation, rollback gaps without partial
++assignment/hold/operation/outbox, concurrent PM plus same-key Delivery Reserve and original replay,
++persisted receipt/readback, new retry key, six role-key uniqueness and unchanged
++legacy Analysis sequence. All runtime observations remain synthetic fixtures.
+ 
+ Focused checks requested after integration (Cargo/PG not run by this worker):
+ 
+diff --git a/docs/TZ.md b/docs/TZ.md
+index c44b293..435fc2a 100644
+--- a/docs/TZ.md
++++ b/docs/TZ.md
+@@ -6,8 +6,10 @@ new marked creation and automatically freezes current seven-role routing during
+ exact owner confirmation, even when UI omits routing version. Optional provided
+ version remains CAS; legacy omission hashes and replay histories are preserved.
+ Fleet's existing SDK saga supplies actual PM readiness before mutation, without
+-force-config or fabricated proof. Delivery execution-key allocation is a separate
+-bounded package and is not implemented by this Draft marker change.
++force-config or fabricated proof. The subsequent bounded producer package now
++allocates authoritative Delivery execution refs from PM's existing sequence;
++legacy Analysis allocation/namespaces and historical missing refs stay unchanged.
++No consumer may invent a Workflow taskkey when authoritative execution is absent.
+ 
+ Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
+ карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;

@@ -1,0 +1,53 @@
+# Known-run SDK namespace cessation
+
+The existing Bug-search terminal endpoint accepts optional
+`runtime_observation.observation_source`. Omission preserves the historical
+native observation wire and canonical identity. The only new source is the
+closed `sdk_namespace_exit` carrier (`KnownRunNamespaceExit`).
+
+It retains an already accepted real session/run/Hermes tuple. Its terminal
+status may be `stopped` or `cancelled` only: the source says the original
+namespace ceased, and does not claim a Hermes terminal GET or business success.
+The source includes the original context/generation, initial and stop operation
+IDs, raw command hash, exact protective journal reference, registration hash,
+original Base4 Running receipt and actual Base4 namespace-exit proof. Source
+size is at most 16 KiB, proof size at most 8 KiB. Closed receipt/snapshot/engine
+shapes reject arbitrary environment/process fields; Debug omits raw proofs.
+
+SDK snapshot/proof digests use Base sorted compact ASCII JSON, including DEL
+and surrogate escaping. Workflow snapshot/result identities continue to use
+their existing UTF-8 canonical contract. The same synthetic Unicode-engine
+fixture is copied into both independent packages. It is schema/hash evidence,
+not evidence that any container was started or stopped.
+
+The exact configured Fleet machine, immutable binding/fence and actual admitted
+Workflow prepared receipt remain mandatory. No fresh human authorization is
+required for protective closure after revocation. Unknown terminal POST reads
+the original operation; original-key replay retains the same source and proof.
+A later owner result attaches to the same observation and leaves the original
+terminal receipt unchanged. No100/101 cancellation is used after a known run.
+
+Fleet checks cancellation/revocation/deadline before native HTTP and records
+`protective-context-stop` in the existing command journal. After its durable
+claim, original SDK stop/reconciliation is independent of Hermes availability.
+Workflow fencing is independently journaled and bounded best effort. Positive
+SDK exit initially writes only a held command receipt. Capacity is released
+only in the existing transaction accepting an actual Tracker terminal ACK.
+
+Normal native completion and protective SDK cessation arbitrate the same
+immutable `tracker-terminal` command under the original custody locks.
+New private request candidates are addressed by the raw body hash; publication
+and readback verify that hash. The first retained request wins; a racing loser
+delivers the original winner instead of posting another body/key. Historical
+fixed request files remain readable. Losing candidate files can occur only
+during a genuine concurrent race, not on every retry.
+
+An already retained native Completed/Failed/Cancelled observation is preserved
+when an SDK-source release wins. A nonterminal run may become Cancelled after
+the accepted cessation. Runtime cessation, actual native observation, coverage,
+owner verdict and finding delivery stay separate.
+
+New domain/app/owner-PG/Fleet storage tests are source only until the immutable
+integration gate. No schema migration, endpoint, queue, deployment or runtime
+capability is enabled by this slice.
+

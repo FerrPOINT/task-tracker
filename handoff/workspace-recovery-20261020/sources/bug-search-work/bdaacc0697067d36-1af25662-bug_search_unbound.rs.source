@@ -1,0 +1,126 @@
+//! Protective exact-producer recovery, without declaring native acceptance or success.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, exec, field, stmt};
+use crate::bug_search_control::{command_hash, locks, save, saved};
+use domain::{bug_search_control::BugSearchCommandReceipt, bug_search_unbound::*, sdlc::Principal};
+use sea_orm::{ConnectionTrait, TransactionTrait};
+use serde_json::{Value, json};
+use shared::AppError;
+use uuid::Uuid;
+
+impl PostgresBugSearchRepository {
+    pub(super) async fn abort_unbound_execution(
+        &self,
+        p: Uuid,
+        e: Uuid,
+        a: &Principal,
+        c: AbortUnboundBugSearch,
+    ) -> Result<(BugUnboundCancellationReceipt, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = command_hash(
+            "abort_unbound",
+            p,
+            &json!({"execution_id":e,"expected_fence":c.expected_fence,"unbound_observation":c.unbound_observation}),
+        )?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        // Excludes concurrent accepted findings and result/terminal custody changes.
+        exec(&tx,"SELECT execution_id FROM sdlc_bug_search_executions WHERE execution_id=$1 AND project_id=$2 FOR UPDATE",vec![e.into(),p.into()]).await?;
+        let row = self.retained_execution(&tx, p, e).await?;
+        let b = self.binding(&row)?;
+        b.require_machine(a)?;
+        let observation = &c.unbound_observation;
+        if b.fence != c.expected_fence
+            || observation.execution_id != e
+            || observation.agent_id != b.agent_id
+            || observation.snapshot_sha256 != b.snapshot_sha256
+        {
+            return Err(AppError::conflict(
+                "unbound immutable execution binding differs",
+            ));
+        }
+        if let Some(BugSearchCommandReceipt::AbortUnbound(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "abort_unbound", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        let now: chrono::DateTime<chrono::Utc> = field(&row, "observed_at")?;
+        if observation.observed_at > now + chrono::Duration::seconds(5)
+            || observation.native_submission.submitted_at
+                < field::<chrono::DateTime<chrono::Utc>>(&row, "created_at")?
+        {
+            return Err(AppError::validation("unbound observation time differs"));
+        }
+        let proof = observation
+            .runtime_custody
+            .stop_proof
+            .as_ref()
+            .ok_or_else(|| AppError::validation("namespace exit required"))?;
+        if Some(app::bug_search::canonical_hash(proof)?).as_deref()
+            != observation.runtime_custody.stop_proof_sha256.as_deref()
+        {
+            return Err(AppError::validation(
+                "original namespace exit digest differs",
+            ));
+        }
+        let prepared: Option<Value> = field(&row, "workflow_receipt")?;
+        let valid_prepared = prepared.as_ref().is_some_and(|v| {
+            v.get("state") == Some(&json!("prepared"))
+                && ["session_id", "session_run_id", "hermes_run_ref", "result"]
+                    .iter()
+                    .all(|k| v.get(k).is_some_and(Value::is_null))
+                && v.get("runtime_terminal_confirmed") == Some(&json!(false))
+        });
+        if field::<String>(&row, "admission_state")? != "admitted" || !valid_prepared {
+            return Err(AppError::conflict(
+                "unbound abort requires retained unbound Workflow preparation",
+            ));
+        }
+        if tx.query_one(stmt("SELECT execution_id FROM sdlc_bug_occurrences WHERE execution_id=$1 AND project_id=$2 UNION ALL SELECT execution_id FROM sdlc_bug_search_results WHERE execution_id=$1 AND project_id=$2 LIMIT 1",vec![e.into(),p.into()])).await.map_err(db_error)?.is_some() {
+            return Err(AppError::conflict("accepted execution result contradicts unbound recovery"));
+        }
+        let old: Option<Value> = field(&row, "terminal_receipt")?;
+        let (result, replayed) = if let Some(old) = old {
+            let r: BugUnboundCancellationReceipt = serde_json::from_value(old)
+                .map_err(|_| AppError::conflict("different execution end already retained"))?;
+            if r.unbound_observation != c.unbound_observation {
+                return Err(AppError::conflict("unbound producer evidence changed"));
+            }
+            (r, true)
+        } else {
+            let r = BugUnboundCancellationReceipt {
+                contract_version: 1,
+                kind: BugUnboundEndKind::CancelledWithoutBoundRun,
+                operation_id: Uuid::now_v7(),
+                tracker_instance_id: b.tracker_instance_id.clone(),
+                project_id: p,
+                execution_id: e,
+                fence: b.fence,
+                unbound_observation: c.unbound_observation,
+                custody_released: true,
+                accepted_at: now,
+            };
+            exec(&tx,"UPDATE sdlc_bug_search_executions SET terminal_receipt=$2,capacity_held=false WHERE execution_id=$1",vec![e.into(),serde_json::to_value(&r).map_err(AppError::internal)?.into()]).await?;
+            (r, false)
+        };
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &b.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::AbortUnbound(result.clone()),
+        )
+        .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, replayed))
+    }
+}

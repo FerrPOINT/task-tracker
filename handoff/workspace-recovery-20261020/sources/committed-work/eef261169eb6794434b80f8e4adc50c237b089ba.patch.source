@@ -1,0 +1,242 @@
+diff --git a/docs/TESTING.md b/docs/TESTING.md
+index a23a9a2..2d6831c 100644
+--- a/docs/TESTING.md
++++ b/docs/TESTING.md
+@@ -79,6 +79,7 @@ pnpm test
+ Playwright specs в `frontend/e2e/`:
+ - `integration.spec.ts` — smoke против Docker backend
+ - `screenshots.spec.ts` — мульти-вьюпортные скриншоты
++- `task-pages-live.spec.ts` — проверка реальных экранов, включая комментарии и активность с длинными SHA, digest и URL. Проверяется ширина документа и текста, сохранность переносов строк на 375/768/1024/1280/1920/2560 px. Требует `SDLC_LIVE_QA=1` и QA-сессию; создаёт временный проект, не изменяет `PULSE`.
+ 
+ Запуск:
+ ```bash
+diff --git a/frontend/e2e/task-pages-live.spec.ts b/frontend/e2e/task-pages-live.spec.ts
+index 7d97447..e34dc83 100644
+--- a/frontend/e2e/task-pages-live.spec.ts
++++ b/frontend/e2e/task-pages-live.spec.ts
+@@ -30,8 +30,12 @@ const viewports = [
+   [768, 1024],
+   [1280, 800],
+   [1920, 1080],
++  [2560, 1440],
+ ] as const
+ 
++const releaseEvidence = `${'a'.repeat(40)}\nsha256:${'b'.repeat(64)}`
++const worklogEvidence = `https://forge.example.test/artifacts/${'c'.repeat(128)}`
++
+ test('Task Tracker routes remain usable across themes and viewports', async ({ page, request }) => {
+   test.setTimeout(900_000)
+   mkdirSync(screenshotDir, { recursive: true })
+@@ -59,6 +63,20 @@ test('Task Tracker routes remain usable across themes and viewports', async ({ p
+     })
+     expect(issue.ok(), await issue.text()).toBeTruthy()
+     const issueId = ((await issue.json()) as { id: string }).id
++    const comment = await request.post(`${apiUrl}/issues/${issueId}/comments`, {
++      headers,
++      data: { body: releaseEvidence },
++    })
++    expect(comment.ok(), await comment.text()).toBeTruthy()
++    const worklog = await request.post(`${apiUrl}/issues/${issueId}/worklogs`, {
++      headers,
++      data: {
++        description: worklogEvidence,
++        started_at: new Date().toISOString(),
++        duration_seconds: 60,
++      },
++    })
++    expect(worklog.ok(), await worklog.text()).toBeTruthy()
+     const sprint = await request.post(`${apiUrl}/projects/${key}/sprints`, {
+       headers,
+       data: { name: `${name} sprint`, goal: 'Route matrix' },
+@@ -125,6 +143,34 @@ test('Task Tracker routes remain usable across themes and viewports', async ({ p
+           route.key === 'issue-detail' ? [...viewports, [1024, 900] as const] : viewports
+         for (const [width, height] of routeViewports) {
+           await page.setViewportSize({ width, height })
++          if (route.key === 'issue-detail') {
++            for (const [tab, evidence] of [
++              ['Активность', [releaseEvidence, worklogEvidence]],
++              ['Комментарии', [releaseEvidence]],
++            ] as const) {
++              await page.getByRole('tab', { name: tab, exact: true }).click()
++              for (const text of evidence) {
++                const content = page.getByText(text, { exact: true })
++                await expect(content).toBeVisible()
++                const geometry = await content.evaluate((element) => ({
++                  width: element.clientWidth,
++                  scrollWidth: element.scrollWidth,
++                  overflowWrap: getComputedStyle(element).overflowWrap,
++                  whiteSpace: getComputedStyle(element).whiteSpace,
++                  text: element.textContent,
++                  pageOverflow:
++                    document.documentElement.scrollWidth - document.documentElement.clientWidth,
++                }))
++                expect(geometry.width).toBeGreaterThan(0)
++                expect(geometry.scrollWidth - geometry.width).toBeLessThanOrEqual(1)
++                expect(geometry.pageOverflow, `${tab} ${theme} ${width}px`).toBeLessThanOrEqual(1)
++                expect(geometry.overflowWrap).toBe('anywhere')
++                expect(geometry.whiteSpace).toBe('pre-wrap')
++                expect(geometry.text).toBe(text)
++              }
++            }
++            await page.getByRole('tab', { name: 'Активность', exact: true }).click()
++          }
+           const overflow = await page.evaluate(
+             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+           )
+diff --git a/frontend/src/features/comments/ui/CommentList.test.tsx b/frontend/src/features/comments/ui/CommentList.test.tsx
+index 254713c..ff9ac6f 100644
+--- a/frontend/src/features/comments/ui/CommentList.test.tsx
++++ b/frontend/src/features/comments/ui/CommentList.test.tsx
+@@ -47,6 +47,31 @@ describe('CommentList', () => {
+ })
+ 
+ describe('CommentItem', () => {
++  it('wraps long evidence and author names while keeping author actions available', () => {
++    const body = `${'a'.repeat(40)}\nsha256:${'b'.repeat(64)}`
++    const authorName = 'ReleaseReviewer'.repeat(12)
++    const onEdit = vi.fn()
++    const onDelete = vi.fn()
++    render(
++      <Wrapper>
++        <CommentItem
++          comment={{ ...sampleComment, body, authorName }}
++          currentUserId="u1"
++          onEdit={onEdit}
++          onDelete={onDelete}
++        />
++      </Wrapper>,
++    )
++    const content = screen.getByText(body, { exact: true, normalizer: (value) => value })
++    expect(content.textContent).toBe(body)
++    expect(content).toHaveClass('whitespace-pre-wrap', '[overflow-wrap:anywhere]')
++    expect(screen.getByText(authorName)).toHaveClass('[overflow-wrap:anywhere]')
++    fireEvent.click(screen.getByRole('button', { name: /изменить/i }))
++    expect(onEdit).toHaveBeenCalledWith({ ...sampleComment, body, authorName })
++    fireEvent.click(screen.getByRole('button', { name: /удалить/i }))
++    expect(onDelete).toHaveBeenCalledWith(sampleComment.id)
++  })
++
+   it('does not show actions for non-author', () => {
+     render(
+       <Wrapper>
+diff --git a/frontend/src/features/comments/ui/CommentList.tsx b/frontend/src/features/comments/ui/CommentList.tsx
+index 338af12..002d7e0 100644
+--- a/frontend/src/features/comments/ui/CommentList.tsx
++++ b/frontend/src/features/comments/ui/CommentList.tsx
+@@ -110,20 +110,20 @@ export const CommentItem = memo(function CommentItem({
+ 
+   return (
+     <div className="rounded-lg border border-border bg-surface p-4">
+-      <div className="mb-2 flex items-center justify-between">
+-        <div className="flex items-center gap-2">
+-          <span className="h-8 w-8 rounded-full bg-accent/20 text-center text-sm leading-8 text-accent">
++      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
++        <div className="flex min-w-0 flex-1 basis-48 items-center gap-2">
++          <span className="h-8 w-8 shrink-0 rounded-full bg-accent/20 text-center text-sm leading-8 text-accent">
+             {(comment.authorName ?? '?').charAt(0).toUpperCase()}
+           </span>
+-          <div>
+-            <p className="text-sm font-medium text-text-primary">
++          <div className="min-w-0">
++            <p className="text-sm font-medium text-text-primary [overflow-wrap:anywhere]">
+               {comment.authorName ?? t('comments.unknown')}
+             </p>
+             <p className="text-xs text-text-muted">{date}</p>
+           </div>
+         </div>
+         {isAuthor && (
+-          <div className="flex gap-2">
++          <div className="flex shrink-0 flex-wrap gap-2">
+             <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
+               {t('common.edit')}
+             </Button>
+@@ -138,7 +138,9 @@ export const CommentItem = memo(function CommentItem({
+           </div>
+         )}
+       </div>
+-      <div className="whitespace-pre-wrap text-sm text-text-secondary">{comment.body}</div>
++      <div className="whitespace-pre-wrap text-sm text-text-secondary [overflow-wrap:anywhere]">
++        {comment.body}
++      </div>
+     </div>
+   )
+ })
+diff --git a/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx b/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
+index e0fd35e..5c68738 100644
+--- a/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
++++ b/frontend/src/features/issue-detail/ui/ActivityFeed.test.tsx
+@@ -54,4 +54,28 @@ describe('ActivityFeed', () => {
+     render(wrapper(<ActivityFeed comments={[]} worklogs={[]} />))
+     expect(screen.getByText(/no activity yet/i)).toBeInTheDocument()
+   })
++
++  it('wraps release evidence and author names without losing text or newlines', () => {
++    const digest = `sha256:${'a'.repeat(64)}`
++    const body = `${'b'.repeat(40)}\n${digest}`
++    const authorName = 'ReleaseReviewer'.repeat(12)
++    const description = `https://forge.example.test/artifacts/${'c'.repeat(128)}`
++    render(
++      wrapper(
++        <ActivityFeed
++          comments={[{ ...comment, body, authorName }]}
++          worklogs={[{ ...worklog, comment: description, userDisplayName: authorName + '2' }]}
++        />,
++      ),
++    )
++
++    for (const text of [body, description]) {
++      const element = screen.getByText(text, { exact: true, normalizer: (value) => value })
++      expect(element.textContent).toBe(text)
++      expect(element).toHaveClass('whitespace-pre-wrap', '[overflow-wrap:anywhere]')
++    }
++    for (const text of [authorName, authorName + '2']) {
++      expect(screen.getByText(text)).toHaveClass('min-w-0', '[overflow-wrap:anywhere]')
++    }
++  })
+ })
+diff --git a/frontend/src/features/issue-detail/ui/ActivityFeed.tsx b/frontend/src/features/issue-detail/ui/ActivityFeed.tsx
+index 548e3b2..b4a9ba2 100644
+--- a/frontend/src/features/issue-detail/ui/ActivityFeed.tsx
++++ b/frontend/src/features/issue-detail/ui/ActivityFeed.tsx
+@@ -46,7 +46,7 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
+               </div>
+               <div className="min-w-0 flex-1">
+                 <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
+-                  <span className="font-medium text-text-primary">
++                  <span className="min-w-0 font-medium text-text-primary [overflow-wrap:anywhere]">
+                     {c.authorName ?? t('comments.unknown')}
+                   </span>
+                   <span className="text-text-muted">{t('issue.commented')}</span>
+@@ -54,7 +54,9 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
+                     {format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}
+                   </span>
+                 </div>
+-                <div className="whitespace-pre-wrap text-sm text-text-secondary">{c.body}</div>
++                <div className="whitespace-pre-wrap text-sm text-text-secondary [overflow-wrap:anywhere]">
++                  {c.body}
++                </div>
+               </div>
+             </div>
+           )
+@@ -68,7 +70,9 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
+             </div>
+             <div className="min-w-0 flex-1">
+               <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
+-                <span className="font-medium text-text-primary">{w.userDisplayName}</span>
++                <span className="min-w-0 font-medium text-text-primary [overflow-wrap:anywhere]">
++                  {w.userDisplayName}
++                </span>
+                 <span className="text-text-muted">
+                   {t('issue.loggedTime', { duration: formatDuration(w.timeSpentSeconds) })}
+                 </span>
+@@ -77,7 +81,9 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
+                 </span>
+               </div>
+               {w.comment && (
+-                <div className="whitespace-pre-wrap text-sm text-text-secondary">{w.comment}</div>
++                <div className="whitespace-pre-wrap text-sm text-text-secondary [overflow-wrap:anywhere]">
++                  {w.comment}
++                </div>
+               )}
+             </div>
+           </div>

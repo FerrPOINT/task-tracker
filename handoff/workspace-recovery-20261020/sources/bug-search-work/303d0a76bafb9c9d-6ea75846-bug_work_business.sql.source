@@ -1,0 +1,46 @@
+CREATE TABLE sdlc_bug_candidates (
+ bug_id uuid NOT NULL REFERENCES issues(id) ON DELETE RESTRICT,
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ revision bigint NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ assignment_id uuid NOT NULL REFERENCES sdlc_bug_work_assignments(assignment_id) ON DELETE RESTRICT,
+ payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object' AND octet_length(payload::text)<=98304),
+ payload_sha256 text NOT NULL CHECK(payload_sha256 ~ '^[0-9a-f]{64}$'),
+ PRIMARY KEY(bug_id,revision), UNIQUE(bug_id,project_id,revision),
+ CHECK((payload->>'bug_id'=bug_id::text AND payload->>'project_id'=project_id::text
+  AND payload->>'assignment_id'=assignment_id::text AND payload->'revision'=to_jsonb(revision)
+  AND payload->>'contract_version'='1') IS TRUE)
+);
+CREATE TABLE sdlc_bug_candidate_heads (
+ bug_id uuid PRIMARY KEY,project_id uuid NOT NULL,revision bigint NOT NULL,
+ FOREIGN KEY(bug_id,project_id,revision) REFERENCES sdlc_bug_candidates(bug_id,project_id,revision) ON DELETE RESTRICT
+);
+CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_bug_candidates
+ FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
+CREATE TRIGGER namespace_write_guard BEFORE INSERT ON sdlc_bug_candidates
+ FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+CREATE TRIGGER namespace_write_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_bug_candidate_heads
+ FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+CREATE FUNCTION sdlc_bug_candidate_head_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' OR (TG_OP='INSERT' AND NEW.revision<>1)
+  OR (TG_OP='UPDATE' AND (NEW.bug_id<>OLD.bug_id OR NEW.project_id<>OLD.project_id OR NEW.revision<>OLD.revision+1))
+ THEN RAISE EXCEPTION 'Bug candidate head requires exact next revision'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_candidate_head_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_bug_candidate_heads
+ FOR EACH ROW EXECUTE FUNCTION sdlc_bug_candidate_head_guard();
+ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check
+ CHECK(kind IN('policy','reserve','admit','register','terminal','intake','cancel','abort_unbound','defer_due','bug_work','bug_business'));
+
+CREATE FUNCTION sdlc_bug_candidate_identity_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ PERFORM assignment_id FROM sdlc_bug_work_assignments WHERE assignment_id=NEW.assignment_id
+  AND project_id=NEW.project_id AND bug_id=NEW.bug_id
+  AND payload_sha256=NEW.payload->'locator'->>'assignment_sha256'
+  AND fence::text=NEW.payload->'locator'->>'expected_fence' FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Exact retained Bug work candidate identity required'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_candidate_identity_guard BEFORE INSERT ON sdlc_bug_candidates
+ FOR EACH ROW EXECUTE FUNCTION sdlc_bug_candidate_identity_guard();

@@ -1,0 +1,145 @@
+import { api } from './client'
+import { apiBaseUrl, refreshAccessToken } from './client'
+import type { components } from './generated'
+import { useAuthStore } from '@/shared/auth/store'
+
+export type Attachment = components['schemas']['AttachmentResponse']
+const ATTACHMENT_REQUEST_TIMEOUT_MS = 120_000
+
+export async function listAttachments(issueId: string): Promise<Attachment[]> {
+  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/attachments', {
+    params: { path: { issue_id: issueId } },
+  })
+  if (error || !data) throw new Error('Failed to load attachments')
+  return data.attachments
+}
+
+function authHeader(): Record<string, string> {
+  const token = useAuthStore.getState().token ?? ''
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export class AttachmentUploadError extends Error {
+  readonly outcome: 'rejected' | 'unknown'
+
+  constructor(readonly status?: number) {
+    super('Attachment upload could not be confirmed')
+    this.name = 'AttachmentUploadError'
+    // These responses reject the request before the attachment is stored.
+    this.outcome =
+      status !== undefined && [400, 401, 403, 404, 413, 415, 422, 429].includes(status)
+        ? 'rejected'
+        : 'unknown'
+  }
+}
+
+function parseUploadedAttachment(text: string, issueId: string): Attachment {
+  const value: unknown = JSON.parse(text)
+  if (!value || typeof value !== 'object') throw new AttachmentUploadError()
+  const item = value as Record<string, unknown>
+  for (const key of ['id', 'issue_id', 'author_id', 'file_name', 'content_type', 'created_at']) {
+    if (typeof item[key] !== 'string' || !item[key]) throw new AttachmentUploadError()
+  }
+  if (
+    item.issue_id !== issueId ||
+    typeof item.size_bytes !== 'number' ||
+    !Number.isFinite(item.size_bytes) ||
+    item.size_bytes < 0
+  ) {
+    throw new AttachmentUploadError()
+  }
+  return value as Attachment
+}
+
+export async function uploadAttachment(
+  issueId: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Attachment> {
+  try {
+    return await uploadAttachmentOnce(issueId, file, onProgress)
+  } catch (error) {
+    if (
+      error instanceof AttachmentUploadError &&
+      error.status === 401 &&
+      (await refreshAccessToken())
+    ) {
+      return uploadAttachmentOnce(issueId, file, onProgress)
+    }
+    throw error
+  }
+}
+
+function uploadAttachmentOnce(
+  issueId: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${apiBaseUrl}/api/v1/issues/${issueId}/attachments`)
+    xhr.timeout = ATTACHMENT_REQUEST_TIMEOUT_MS
+    const headers = authHeader()
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value)
+    }
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total)
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(parseUploadedAttachment(xhr.responseText, issueId))
+        } catch {
+          reject(new AttachmentUploadError())
+        }
+      } else {
+        reject(new AttachmentUploadError(xhr.status))
+      }
+    }
+    xhr.onerror = () => reject(new AttachmentUploadError())
+    xhr.onabort = () => reject(new AttachmentUploadError())
+    xhr.ontimeout = () => reject(new AttachmentUploadError())
+    xhr.send(form)
+  })
+}
+
+export async function deleteAttachment(id: string): Promise<void> {
+  const { error } = await api.DELETE('/api/v1/attachments/{id}', {
+    params: { path: { id } },
+  })
+  if (error) throw new Error('Failed to delete attachment')
+}
+
+/** Fetches the file with auth and triggers a browser download. */
+export async function downloadAttachment(a: Attachment): Promise<void> {
+  const signal = AbortSignal.timeout(ATTACHMENT_REQUEST_TIMEOUT_MS)
+  let res = await fetch(`${apiBaseUrl}/api/v1/attachments/${a.id}/download`, {
+    headers: authHeader(),
+    signal,
+  })
+  if (res.status === 401 && (await refreshAccessToken())) {
+    res = await fetch(`${apiBaseUrl}/api/v1/attachments/${a.id}/download`, {
+      headers: authHeader(),
+      signal,
+    })
+  }
+  if (!res.ok) throw new Error('download failed')
+  await saveDownload(a, res)
+}
+
+async function saveDownload(a: Attachment, res: Response): Promise<void> {
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = a.file_name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}

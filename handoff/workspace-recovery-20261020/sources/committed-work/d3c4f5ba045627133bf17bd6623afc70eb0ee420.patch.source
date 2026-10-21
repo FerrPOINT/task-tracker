@@ -1,0 +1,91 @@
+diff --git a/docs/SDLC_UI_V1.md b/docs/SDLC_UI_V1.md
+index c252de9..d90995e 100644
+--- a/docs/SDLC_UI_V1.md
++++ b/docs/SDLC_UI_V1.md
+@@ -1,5 +1,68 @@
+ # Owner SDLC UI v1
+ 
++## Draft Owner Confirmation: 15 October 2026
++
++Source `36f7ce98a28a89e4471663ce51cf5c524e0ff225`, baseline `ddde019`, fixes
++the legacy-only stage checks in policy query, refresh, confirmation rendering and
++submit. All use one frontend review-context helper and the actual generated
++snake_case `draft_submode`; no backend rights, DTOs or API contracts change.
++
++Tracker `TaskState::ready()` accepts Draft `awaiting_confirmation` AND
++`clarification` only when its requirements/questions/evidence checks pass.
++`permissions.can_confirm` already includes the real server-side human owner check.
++The UI does not infer readiness from status, reason or submode alone, and does not
++compare a local Tracker user ID with the independent Central owner subject.
++Required-open-question/read-only contexts remain non-confirmable; brainstorming
++and other stages cannot confirm even with an inconsistent permission flag.
++Legacy Clarification remains supported. Tracker also projects legacy Clarification
++as Draft with absent/null submode: that path requires actual `can_confirm:true`,
++never an assumed default submode. Stale/fetching/error data cannot submit.
++
++**156 focused tests PASS** in API adapter, owner panel and the new context helper,
++including actual Draft awaiting/clarification responses, v2 policy fetch/selection,
++exact consent/CAS submit, refresh/stale behavior and negative modes/permissions.
++Full frontend typecheck, focused strict ESLint/Prettier and generated-client
++OpenAPI check PASS. No Cargo/Docker or backend qualification rerun.
++
++The separate current-stage full-page browser fixture is recorded below; old
++Clarification images remain legacy evidence, not proof of the Draft flow.
++
++### Current Draft Full-Page Fixture
++
++At the exact source above, **9/9 Playwright cases PASS**:
++Chromium/Firefox/WebKit at 375x812, 1920x1080 and 2560x1440. This fixture supplies
++the actual typed Draft `awaiting_confirmation` context, full requirements revision2,
++concrete PM assignment and declared v2 policy through intercepted reads. Each case
++asserts Draft, absence of legacy Clarification, actual v2 references and both
++unchecked consent/publication boxes. Only references are expanded; confirmation
++stays disabled and business writes, JS errors and unmocked origins are zero.
++
++The [generated relative-path manifest](assets/screens/sdlc-draft-awaiting-confirmation-v2-20261015-36f7ce9/manifest.json)
++records source/fixture hashes, `stage:Draft`, `draft_submode:awaiting_confirmation`,
++each viewport separately from actual PNG dimensions, and verified cleanup.
++All captures are full-page CSS scale, without pixel edits or resizing.
++
++| Browser | Actual PNG at viewport375 / 1920 / 2560 |
++| --- | --- |
++| Chromium | 375x6243 / 1920x4019 / 2560x4019 |
++| Firefox | 375x6228 / 1920x4024 / 2560x4024 |
++| WebKit | 375x6223 / 1920x4019 / 2560x4019 |
++
++Visually inspected [Chromium mobile](assets/screens/sdlc-draft-awaiting-confirmation-v2-20261015-36f7ce9/chromium-375x812-fullpage.png)
++and [Firefox desktop](assets/screens/sdlc-draft-awaiting-confirmation-v2-20261015-36f7ce9/firefox-1920x1080-fullpage.png):
++scoped references/consent controls have no clipping or overlap. All nine cases
++check 378 heading/reference bounds with no horizontal overflow. Prior 18 viewport,
++9 event full-page and 9 legacy Clarification reference images are preserved and
++hash-verified, not relabeled. The actual Draft clarification question/ready and
++non-ready states are covered by focused API/helper/component tests, not this
++awaiting-confirmation screenshot matrix.
++
++**Fixture-only, not production SSO, actual publication or live SDLC acceptance.**
++The source phase ran the 156 tests/typecheck; browser capture did not rerun them.
++Only transient API generation and Vite asset bundling prepared the preview; no
++full build, Cargo/Docker, dependency installation or backend/API edits. Own preview,
++junctions and scratch were removed; shared dependency lock remained unchanged.
++
+ ## Routing Output v1/v2: 15 October 2026
+ 
+ The current frontend consumer explicitly validates both existing output families.
+@@ -24,14 +87,15 @@ typecheck, focused ESLint/Prettier and generated-client OpenAPI check. That veri
+ frontend closure is reused here, not rerun or represented as new test execution.
+ OpenAPI/SDK structural compatibility is separate; no blanket exception is added.
+ 
+-### Full-Page Owner Publication Fixture
++### Legacy Clarification Publication Fixture (Retained)
+ 
+ Source `2235c5d76c092b7d7da29f71aaa1245eec7862c3`, Base UI
+ `8e944aa83c951008c227e28d9df15ed40719abb1`: **9/9 Playwright cases PASS**,
+ Chromium/Firefox/WebKit at 375x812, 1920x1080 and 2560x1440. This uses the actual
+ issue-detail SDLC tab with synthetic signed SSO and intercepted API reads,
+ Clarification `can_confirm:true`, all ten requirements fields and a declared v2
+-policy. Only the references disclosure is opened. Both consent/publication
++policy. This retained legacy-stage packet does not qualify the current Draft
++confirmation flow. Only the references disclosure is opened. Both consent/publication
+ checkboxes remain unchecked and confirmation stays disabled; no confirmation or
+ other business write occurs. No task routing snapshot is fabricated before
+ publication; that Analysis-only read is not exercised by this Clarification case.

@@ -1,0 +1,55 @@
+//! Opaque legacy locators retain their original JSON bytes and owner hashes.
+use domain::{bug_work::BugWorkAssignment, bug_work_origin::BugWorkSourceContext};
+use serde_json::Value;
+
+#[test]
+fn legacy_locator_roundtrips_source_and_assignment_without_normalizing_owner_hashes() {
+    let mut vector: Value = serde_json::from_str(include_str!(
+        "../../domain/tests/fixtures/bug-work-delivery-v1.json"
+    ))
+    .unwrap();
+    let alias = "tracker-integration-Ж🚀\"\\\r\n";
+    vector["source"]["project"]["tracker_instance_id"] = alias.into();
+    vector["state"]["assignment"]["tracker_instance_id"] = alias.into();
+    let context: BugWorkSourceContext = serde_json::from_value(vector["source"].clone()).unwrap();
+    context.validate().unwrap();
+    let context_hash = app::bug_search::canonical_hash(&context).unwrap();
+    // Independent Python sorted-key, compact UTF-8 vector; no alias sanitization.
+    assert_eq!(
+        context_hash,
+        "6dc47e86a13d59fa28d80e5ee074e5e37ded0a817ce3649aa19a996075dd936c"
+    );
+    vector["state"]["assignment"]["origin"]["source_context_sha256"] = context_hash.into();
+    let assignment: BugWorkAssignment =
+        serde_json::from_value(vector["state"]["assignment"].clone()).unwrap();
+    assignment.validate().unwrap();
+    assert_eq!(
+        app::bug_search::canonical_hash(&assignment).unwrap(),
+        "86b75eb78aaa48919ad0cad0a17f83a2fe27d031dbba5478fbfe8f9016c5421b"
+    );
+    let saved_context = serde_json::to_vec(&context).unwrap();
+    let saved_assignment = serde_json::to_vec(&assignment).unwrap();
+    let restored_context: BugWorkSourceContext = serde_json::from_slice(&saved_context).unwrap();
+    let restored_assignment: BugWorkAssignment = serde_json::from_slice(&saved_assignment).unwrap();
+    restored_context.validate().unwrap();
+    restored_assignment.validate().unwrap();
+    assert_eq!(restored_context.project.tracker_instance_id, alias);
+    assert_eq!(restored_assignment.tracker_instance_id, alias);
+    assert_eq!(
+        serde_json::to_vec(&restored_context).unwrap(),
+        saved_context
+    );
+    assert_eq!(
+        serde_json::to_vec(&restored_assignment).unwrap(),
+        saved_assignment
+    );
+    let mut invalid_context = context;
+    invalid_context.project.tracker_instance_id = "tracker\0locator".into();
+    assert!(invalid_context.validate().is_err());
+    let mut invalid_assignment = assignment.clone();
+    invalid_assignment.tracker_instance_id = "tracker\0locator".into();
+    assert!(invalid_assignment.validate().is_err());
+    invalid_assignment = assignment;
+    invalid_assignment.machine_subject = "service\r\nsubject".into();
+    assert!(invalid_assignment.validate().is_err());
+}

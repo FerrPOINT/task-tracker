@@ -1,0 +1,205 @@
+//! Due metadata lives in existing policy heads and immutable reservation outbox rows.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, exec, field, stmt};
+use crate::bug_search_control::{command_hash, locks, policy, save, saved};
+use chrono::{DateTime, Utc};
+use domain::{bug_search_control::*, bug_search_due::*, sdlc::Principal};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, TransactionTrait};
+use serde_json::{Value, json};
+use shared::AppError;
+use uuid::Uuid;
+
+async fn clock(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
+    let r = tx
+        .query_one(stmt("SELECT clock_timestamp() AS now", vec![]))
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| AppError::internal("database clock unavailable"))?;
+    field(&r, "now")
+}
+impl PostgresBugSearchRepository {
+    fn due_key(&self, p: Uuid, revision: i64, at: DateTime<Utc>) -> Result<String, AppError> {
+        app::bug_search::canonical_hash(
+            &json!({"schema_version":1,"project":{"tracker_instance_id":self.config.tracker_instance_id,"project_id":p},"policy_revision":revision,"due_at_epoch_microseconds":at.timestamp_micros()}),
+        )
+    }
+    fn require_due(
+        &self,
+        p: Uuid,
+        s: &BugSearchPolicyState,
+        expected: &BugSearchExpectedDue,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError> {
+        expected.validate()?;
+        if !s.policy.enabled
+            || s.next_due_at != Some(expected.at)
+            || expected.at > now
+            || expected.key != self.due_key(p, s.revision, expected.at)?
+        {
+            return Err(AppError::conflict("periodic due occurrence changed"));
+        }
+        Ok(())
+    }
+    pub(super) async fn reserve_due(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        s: &BugSearchPolicyState,
+        c: &ReserveBugSearch,
+    ) -> Result<Option<BugSearchExpectedDue>, AppError> {
+        match (c.snapshot.trigger, &c.expected_due) {
+            (BugSearchTrigger::Manual, None) => Ok(None),
+            (BugSearchTrigger::Periodic, Some(expected)) => {
+                self.require_due(p, s, expected, clock(tx).await?)?;
+                Ok(Some(expected.clone()))
+            }
+            _ => Err(AppError::validation(
+                "periodic reservation requires exact due occurrence",
+            )),
+        }
+    }
+    pub(super) async fn advance_admitted_due(
+        &self,
+        tx: &DatabaseTransaction,
+        p: Uuid,
+        e: Uuid,
+        snapshot: &Value,
+    ) -> Result<(), AppError> {
+        if snapshot.get("trigger") != Some(&json!("periodic")) {
+            return Ok(());
+        }
+        let rows=tx.query_all(stmt("SELECT payload FROM sdlc_bug_search_outbox WHERE execution_id=$1 AND project_id=$2 AND event_type='bug.search_reserved' ORDER BY sequence LIMIT 2",vec![e.into(),p.into()])).await.map_err(db_error)?;
+        if rows.len() != 1 {
+            return Err(AppError::conflict(
+                "original periodic occurrence unavailable",
+            ));
+        }
+        let payload: Value = field(&rows[0], "payload")?;
+        let expected: BugSearchExpectedDue =
+            serde_json::from_value(payload.get("expected_due").cloned().unwrap_or(Value::Null))
+                .map_err(|_| AppError::conflict("original periodic occurrence incompatible"))?;
+        let s = policy(tx, p).await?;
+        if snapshot.get("policy_revision") != Some(&json!(s.revision)) {
+            return Err(AppError::conflict("periodic policy revision changed"));
+        }
+        let now = clock(tx).await?;
+        self.require_due(p, &s, &expected, now)?;
+        let next = now + chrono::Duration::minutes(i64::from(s.policy.interval_minutes));
+        let updated=tx.execute(stmt("UPDATE sdlc_bug_search_policy_heads SET next_due_at=$3 WHERE project_id=$1 AND revision=$2 AND next_due_at=$4",vec![p.into(),s.revision.into(),next.into(),expected.at.into()])).await.map_err(db_error)?;
+        if updated.rows_affected() != 1 {
+            return Err(AppError::conflict("periodic due head changed"));
+        }
+        Ok(())
+    }
+    pub(super) async fn read_due(&self, a: &Principal) -> Result<BugSearchDueReadback, AppError> {
+        self.fleet(a, true)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let now = clock(&tx).await?;
+        let busy = tx
+            .query_one(stmt(
+                "SELECT execution_id FROM sdlc_bug_search_executions WHERE capacity_held LIMIT 1",
+                vec![],
+            ))
+            .await
+            .map_err(db_error)?
+            .is_some();
+        let mut result = BugSearchDueReadback {
+            contract_version: 1,
+            observed_at: now,
+            due: None,
+            blocked_reasons: if busy {
+                vec!["capacity_busy".into()]
+            } else {
+                vec![]
+            },
+        };
+        if !busy {
+            // Range/index traversal over current heads, never a retained-history scan.
+            let candidate=tx.query_one(stmt("SELECT h.project_id,r.owner_subject FROM sdlc_bug_search_policy_heads h JOIN sdlc_bug_search_policy_revisions r USING(project_id,revision) JOIN projects p ON p.id=h.project_id JOIN users u ON u.central_sub=r.owner_subject AND u.id=p.owner_id AND u.is_active LEFT JOIN tracker_namespace_bindings n ON n.resource_id=p.id WHERE h.next_due_at IS NOT NULL AND h.next_due_at<=$1 AND r.payload#>>'{policy,enabled}'='true' AND (NOT p.namespace_managed OR n.resource_id IS NOT NULL) AND (n.resource_id IS NULL OR (n.state='active' AND n.command#>>'{resource,instance_id}'=$2)) ORDER BY h.next_due_at,h.project_id LIMIT 1",vec![now.into(),self.config.tracker_instance_uuid.to_string().into()])).await.map_err(db_error)?;
+            if let Some(row) = candidate {
+                let p: Uuid = field(&row, "project_id")?;
+                let owner: String = field(&row, "owner_subject")?;
+                self.manage(&tx, p, &owner).await?;
+                let s = policy(&tx, p).await?;
+                if s.policy.enabled
+                    && s.owner_subject == owner
+                    && s.next_due_at.is_some_and(|at| at <= now)
+                {
+                    let at = s
+                        .next_due_at
+                        .ok_or_else(|| AppError::conflict("due head unavailable"))?;
+                    result.due = Some(BugSearchDue {
+                        project_id: p,
+                        owner_subject: owner,
+                        due_key: self.due_key(p, s.revision, at)?,
+                        expected_due_at: at,
+                        policy: s,
+                    });
+                }
+            }
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
+    pub(super) async fn defer_due_occurrence(
+        &self,
+        p: Uuid,
+        a: &Principal,
+        c: DeferBugSearchDue,
+    ) -> Result<(BugSearchDueDeferral, bool), AppError> {
+        self.fleet(a, true)?;
+        c.validate()?;
+        let hash = command_hash("defer_due", p, &c)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, a, &c.idempotency_key, p).await?;
+        self.manage(&tx, p, &c.owner_subject).await?;
+        if let Some(BugSearchCommandReceipt::DeferDue(r)) =
+            saved(&tx, p, a, &c.idempotency_key, "defer_due", &hash).await?
+        {
+            tx.commit().await.map_err(db_error)?;
+            return Ok((r, true));
+        }
+        exec(
+            &tx,
+            "SELECT singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE",
+            vec![],
+        )
+        .await?;
+        let s = policy(&tx, p).await?;
+        let now = clock(&tx).await?;
+        if s.revision != c.expected_policy_revision || s.owner_subject != c.owner_subject {
+            return Err(AppError::conflict("periodic policy revision changed"));
+        }
+        self.require_due(p, &s, &c.expected_due, now)?;
+        if tx.query_one(stmt("SELECT e.execution_id FROM sdlc_bug_search_executions e JOIN sdlc_bug_search_outbox o USING(execution_id,project_id) WHERE e.capacity_held AND e.project_id=$1 AND o.event_type='bug.search_reserved' AND o.payload->'expected_due'=$2 LIMIT 1",vec![p.into(),serde_json::to_value(&c.expected_due).map_err(AppError::internal)?.into()])).await.map_err(db_error)?.is_some(){return Err(AppError::conflict("reserved periodic custody must reconcile first"));}
+        let result = BugSearchDueDeferral {
+            contract_version: 1,
+            operation_id: Uuid::now_v7(),
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            project_id: p,
+            owner_subject: c.owner_subject,
+            policy_revision: s.revision,
+            previous_due: c.expected_due,
+            next_due_at: now + chrono::Duration::minutes(5),
+            reason: c.reason,
+            accepted_at: now,
+        };
+        exec(
+            &tx,
+            "UPDATE sdlc_bug_search_policy_heads SET next_due_at=$2 WHERE project_id=$1",
+            vec![p.into(), result.next_due_at.into()],
+        )
+        .await?;
+        save(
+            &tx,
+            p,
+            a,
+            &c.idempotency_key,
+            &result.owner_subject,
+            &hash,
+            &BugSearchCommandReceipt::DeferDue(result.clone()),
+        )
+        .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((result, false))
+    }
+}

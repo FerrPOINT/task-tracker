@@ -1,0 +1,276 @@
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { ApiError, InvalidResponseError, ThemeProvider } from '@sdlc/ui/lib'
+import i18n from '@/shared/i18n/config'
+import { SprintFormDialog } from './SprintFormDialog'
+import type { Sprint } from '@/api/sprint'
+
+beforeEach(async () => {
+  await i18n.changeLanguage('en')
+})
+const content = createContext<ReactNode>(null)
+let testRouter: ReturnType<typeof createMemoryRouter>
+function RouteContent() {
+  return useContext(content)
+}
+function Wrapper({ children }: { children: ReactNode }) {
+  const [router] = useState(() =>
+    createMemoryRouter([
+      { path: '/', element: <RouteContent /> },
+      { path: '/next', element: <h1>Next page destination</h1> },
+    ]),
+  )
+  testRouter = router
+  return (
+    <ThemeProvider>
+      <content.Provider value={children}>
+        <RouterProvider router={router} />
+      </content.Provider>
+    </ThemeProvider>
+  )
+}
+
+const sprint: Sprint = {
+  id: 'sp1',
+  name: 'Sprint 1',
+  goal: 'Ship it',
+  issue_ids: [],
+  state: 'future',
+  velocity: 0,
+  start_date: '2026-08-01T00:00:00Z',
+  end_date: '2026-08-14T00:00:00Z',
+}
+type Props = React.ComponentProps<typeof SprintFormDialog>
+function renderForm(props: Partial<Props> = {}) {
+  const base: Props = {
+    open: true,
+    onOpenChange: vi.fn(),
+    onSubmit: vi.fn(),
+    isPending: false,
+    ...props,
+  }
+  const view = render(<SprintFormDialog {...base} />, { wrapper: Wrapper })
+  return {
+    ...view,
+    props: base,
+    update: (next: Partial<Props>) => view.rerender(<SprintFormDialog {...base} {...next} />),
+  }
+}
+function nameField() {
+  return screen.getByPlaceholderText('Sprint 1')
+}
+function changeName(value: string) {
+  fireEvent.change(nameField(), { target: { value } })
+}
+
+describe('SprintFormDialog', () => {
+  it('uses Base fields and controls with linked labels, without invented API length bounds', () => {
+    renderForm()
+    expect(nameField()).toHaveAccessibleName('Name')
+    expect(nameField()).toBeRequired()
+    expect(nameField()).toHaveClass('base-control')
+    expect(nameField()).not.toHaveAttribute('maxlength')
+    expect(screen.getByLabelText('Goal')).toHaveClass('base-control')
+    expect(screen.getByLabelText('Start date')).toHaveAttribute('type', 'date')
+    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+    changeName('   ')
+    expect(screen.getByRole('button', { name: 'Create sprint' })).toBeDisabled()
+  })
+
+  it('submits the create contract and keeps date-only input in UTC', async () => {
+    const { props } = renderForm()
+    changeName('Sprint 2')
+    fireEvent.change(screen.getByLabelText('Goal'), { target: { value: 'Ship it' } })
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create sprint' }))
+    await waitFor(() =>
+      expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith({
+        name: 'Sprint 2',
+        goal: 'Ship it',
+        start_date: '2026-10-01T00:00:00+00:00',
+        end_date: undefined,
+      }),
+    )
+  })
+
+  it('preserves nullable update semantics and permits leaving the existing name unchanged', async () => {
+    const { props } = renderForm({ sprint })
+    expect(screen.getByRole('heading', { name: 'Edit sprint' })).toBeInTheDocument()
+    changeName('')
+    for (const label of ['Goal', 'Start date', 'End date'])
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith({
+        name: undefined,
+        goal: null,
+        start_date: null,
+        end_date: null,
+      }),
+    )
+  })
+
+  it('retains a draft when the same sprint is refetched', () => {
+    const view = renderForm({ sprint })
+    changeName('Unsaved name')
+    view.update({ sprint: { ...sprint, name: 'Server name', goal: 'Server goal' } })
+    expect(nameField()).toHaveValue('Unsaved name')
+    expect(screen.getByLabelText('Goal')).toHaveValue('Ship it')
+  })
+
+  it('starts a fresh session only after closing or selecting another sprint', () => {
+    const view = renderForm({ sprint })
+    changeName('Draft')
+    view.update({ open: false })
+    view.update({ sprint: { ...sprint, name: 'New server value' } })
+    expect(nameField()).toHaveValue('New server value')
+    view.update({ sprint: { ...sprint, id: 'sp2', name: 'Sprint 2' } })
+    expect(nameField()).toHaveValue('Sprint 2')
+  })
+
+  it('links an inverted date error to the end field and focuses it before any write', async () => {
+    const { props } = renderForm({ sprint })
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-07-31' } })
+    fireEvent.submit(nameField().closest('form')!)
+    expect(props.onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'End date cannot be earlier than start date',
+    )
+    expect(screen.getByLabelText('End date')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('End date')).toHaveAttribute(
+      'aria-describedby',
+      'sprint-form-enddate-error',
+    )
+    expect(screen.getByLabelText('End date')).toHaveFocus()
+    expect(nameField()).not.toBeDisabled()
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-08-14' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await act(async () => {})
+    fireEvent.submit(nameField().closest('form')!)
+    expect(props.onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it('confirms discard and retains the draft when confirmation is cancelled', async () => {
+    const { props } = renderForm({ sprint })
+    changeName('Draft')
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    const confirmation = await screen.findByRole('alertdialog')
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(nameField()).toHaveValue('Draft')
+    expect(props.onOpenChange).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
+    )
+    expect(props.onOpenChange).toHaveBeenCalledExactlyOnceWith(false)
+  })
+
+  it('locks same-tick and async submissions, edits and closing until settlement', async () => {
+    let reject!: (error: Error) => void
+    const pending = new Promise<void>((_, fail) => {
+      reject = fail
+    })
+    const onSubmit = vi.fn(() => pending)
+    const view = renderForm({ sprint, onSubmit })
+    changeName('Draft')
+    const form = nameField().closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(nameField()).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(view.props.onOpenChange).not.toHaveBeenCalled()
+    await act(async () => reject(new ApiError(422, 'Private failure')))
+    expect(nameField()).toHaveValue('Draft')
+    expect(nameField()).not.toBeDisabled()
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Private failure')
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
+  })
+
+  it.each([
+    new TypeError('Private network error'),
+    new ApiError(503, 'Private server error'),
+    new InvalidResponseError(200),
+  ])(
+    'retains the draft but blocks resending an unknown write even after external errors clear',
+    async (failure) => {
+      const onSubmit = vi.fn().mockRejectedValue(failure)
+      const view = renderForm({ sprint, onSubmit })
+      changeName('Draft')
+      fireEvent.submit(nameField().closest('form')!)
+      await screen.findByText('The save result is unconfirmed. Resubmission is blocked.')
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      view.update({ error: null })
+      expect(nameField()).toHaveValue('Draft')
+      fireEvent.submit(nameField().closest('form')!)
+      expect(onSubmit).toHaveBeenCalledOnce()
+      expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled()
+    },
+  )
+
+  it.each([403, 404])(
+    'keeps a terminal %s rejection read-only without exposing diagnostics',
+    async (status) => {
+      const onSubmit = vi.fn().mockRejectedValue(new ApiError(status, 'Private diagnostic'))
+      renderForm({ sprint, onSubmit })
+      changeName('Draft')
+      fireEvent.submit(nameField().closest('form')!)
+      await screen.findByRole('alert')
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Private diagnostic')
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      expect(nameField()).toHaveValue('Draft')
+      expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled()
+    },
+  )
+
+  it('guards reload while dirty and removes the guard after closing', () => {
+    const view = renderForm({ sprint })
+    changeName('Draft')
+    const reload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(reload)
+    expect(reload.defaultPrevented).toBe(true)
+    view.update({ open: false })
+    const closedReload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(closedReload)
+    expect(closedReload.defaultPrevented).toBe(false)
+  })
+
+  it('guards route navigation and retains a cancelled draft', async () => {
+    renderForm({ sprint })
+    changeName('Draft')
+    act(() => {
+      void testRouter.navigate('/next')
+    })
+    const confirmation = await screen.findByRole('alertdialog')
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(nameField()).toHaveValue('Draft')
+    act(() => {
+      void testRouter.navigate('/next')
+    })
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Confirm' }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Next page destination' }),
+    ).toBeInTheDocument()
+  })
+
+  it('retains read-only drafts without disabling cancellation or resetting on catalog recovery', () => {
+    const view = renderForm({ sprint })
+    changeName('Draft')
+    view.update({ readOnly: true })
+    expect(nameField()).toHaveValue('Draft')
+    expect(nameField()).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    view.update({ readOnly: false, sprint: { ...sprint, name: 'Server name' } })
+    expect(nameField()).toHaveValue('Draft')
+    expect(nameField()).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+})

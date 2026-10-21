@@ -1,0 +1,441 @@
+diff --git a/.base-revision b/.base-revision
+index e560de2..9fcf157 100644
+--- a/.base-revision
++++ b/.base-revision
+@@ -1 +1 @@
+-0ffb99e209bb62031488cbae1b61c9a2e40faec9
++7e27713077f68c84cb5d5a02f720a594abc643df
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d75eac8..cedacc4 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,16 @@
+ 
+ ## [Unreleased]
+ 
++- Browser QA records event-stream cancellation only during explicit navigation
++  and keeps all other transport failures; regression tests cover the distinction.
++  Toast geometry checks retain strict CSS targets with 0.001 px rendering tolerance.
++  Notification captures use the normal hover pause before keyboard dismissal.
++
++- Sprint and issue metadata captions use Base labels; sprint goal uses Base Textarea.
++  Mutation lifecycle and draft safety remain a separate audited follow-up.
++- Base 7e27713 унифицирует подписи полей (12 px) и SSR-значения (14 px).
++  Геометрия shell, API и принятый runtime не меняются.
++
+ - HTML pattern ключа проекта компилируется в Unicode-set режиме браузера;
+   дефис экранирован, допустимые API-значения и границы 1–10 не меняются.
+ 
+diff --git a/frontend/e2e/navigation-observations.ts b/frontend/e2e/navigation-observations.ts
+new file mode 100644
+index 0000000..d92801c
+--- /dev/null
++++ b/frontend/e2e/navigation-observations.ts
+@@ -0,0 +1,49 @@
++import type { Page } from '@playwright/test'
++
++export interface FailedRequestObservation {
++  method: string
++  url: string
++  errorText: string | undefined
++  duringNavigation: boolean
++}
++
++export function isNavigationStreamAbort(observation: FailedRequestObservation, origin: string) {
++  const url = new URL(observation.url)
++  return (
++    observation.duringNavigation &&
++    observation.method === 'GET' &&
++    url.origin === origin &&
++    url.pathname === '/api/v1/events' &&
++    observation.errorText === 'net::ERR_ABORTED'
++  )
++}
++
++export function observeNavigationRequests(page: Page, app: string, failures: string[]) {
++  let navigating = false
++  const streamAborts: FailedRequestObservation[] = []
++  page.on('requestfailed', (request) => {
++    const observation = {
++      method: request.method(),
++      url: request.url(),
++      errorText: request.failure()?.errorText,
++      duringNavigation: navigating,
++    }
++    if (isNavigationStreamAbort(observation, new URL(app).origin)) streamAborts.push(observation)
++    else
++      failures.push(
++        `${observation.method} ${observation.url}: ${observation.errorText ?? 'unknown failure'}`,
++      )
++  })
++  return {
++    streamAborts,
++    async navigate(url?: string) {
++      navigating = true
++      try {
++        if (url) await page.goto(url)
++        else await page.reload()
++      } finally {
++        navigating = false
++      }
++    },
++  }
++}
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 5bb5903..440d9db 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -1,6 +1,7 @@
+ import { generateKeyPairSync, sign } from 'node:crypto'
+ import { test, expect, type Page, type Route } from '@playwright/test'
+ import AxeBuilder from '@axe-core/playwright'
++import { observeNavigationRequests } from './navigation-observations'
+ 
+ async function installBoardFixtures(page: Page, count = 20, projectKey = 'DEMO') {
+   await installTrackerMocks(page)
+@@ -164,11 +165,23 @@ test.describe('Base notifications', () => {
+           'bottom',
+         )
+         const close = host.getByRole('button', { name: 'Закрыть уведомление', exact: true })
++        // Keep the transient toast open through the slower accessibility capture.
++        await close.hover()
+         const bounds = await close.boundingBox()
+         expect(bounds).not.toBeNull()
+         const minimum = width < 768 ? 44 : 40
+-        expect(bounds!.width).toBeGreaterThanOrEqual(minimum)
+-        expect(bounds!.height).toBeGreaterThanOrEqual(minimum)
++        const css = await close.evaluate((element) => {
++          const style = getComputedStyle(element)
++          return {
++            width: Number.parseFloat(style.minWidth),
++            height: Number.parseFloat(style.minHeight),
++          }
++        })
++        expect(css.width).toBeGreaterThanOrEqual(minimum)
++        expect(css.height).toBeGreaterThanOrEqual(minimum)
++        // A transformed toast can round its rendered box below the exact CSS minimum.
++        expect(bounds!.width + 0.001).toBeGreaterThanOrEqual(minimum)
++        expect(bounds!.height + 0.001).toBeGreaterThanOrEqual(minimum)
+         expect(
+           await page.evaluate(
+             () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+@@ -232,16 +245,16 @@ test.describe('Base project board', () => {
+     const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+     const failures: string[] = []
+     const observations: Array<Record<string, unknown>> = []
++    const network = observeNavigationRequests(page, app, failures)
+     page.on('pageerror', (error) => failures.push(error.message))
+     page.on('console', (message) => {
+       if (message.type() === 'error') failures.push(message.text())
+     })
+-    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+     page.on('response', (response) => {
+       if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+     })
+     for (const theme of ['dark', 'gray', 'light']) {
+-      await page.goto(`${app}/projects/DEMO/board`)
++      await network.navigate(`${app}/projects/DEMO/board`)
+       await expect(page.locator('main article')).toHaveCount(20)
+       await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+       for (const density of ['comfortable', 'compact']) {
+@@ -249,10 +262,10 @@ test.describe('Base project board', () => {
+           await page.setViewportSize({ width, height: 1080 })
+           for (const entry of ['direct', 'reload']) {
+             if (entry === 'direct')
+-              await page.goto(
++              await network.navigate(
+                 `${app}/projects/DEMO/board?source=qa${density === 'compact' ? '&density=compact' : ''}#context`,
+               )
+-            else await page.reload()
++            else await network.navigate()
+             await expect(page.locator('main article')).toHaveCount(20)
+             await expect(
+               page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
+@@ -362,7 +375,12 @@ test.describe('Base project board', () => {
+     }
+     expect(failures).toEqual([])
+     await testInfo.attach('board-geometry', {
+-      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
++      body: JSON.stringify({
++        mockedApi: true,
++        actualImage: false,
++        observations,
++        streamAborts: network.streamAborts,
++      }),
+       contentType: 'application/json',
+     })
+   })
+@@ -905,27 +923,27 @@ test.describe('Base search page', () => {
+     await installSearchFixtures(page)
+     const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+     const failures: string[] = []
++    const network = observeNavigationRequests(page, app, failures)
+     page.on('pageerror', (error) => failures.push(error.message))
+     page.on('console', (message) => {
+       if (message.type() === 'error') failures.push(message.text())
+     })
+-    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+     page.on('response', (response) => {
+       if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+     })
+     for (const theme of ['dark', 'gray', 'light']) {
+-      await page.goto(`${app}/search?project_key=DEMO`)
++      await network.navigate(`${app}/search?project_key=DEMO`)
+       await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+       for (const mode of ['simple', 'jql'])
+         for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+           await page.setViewportSize({ width, height: 1080 })
+-          await page.goto(
++          await network.navigate(
+             `${app}/search?${mode === 'simple' ? `project_key=DEMO&assignee_id=${mockUser.id}` : 'mode=jql&jql=project%20%3D%20DEMO'}&view=compact#results`,
+           )
+           await expect(page.locator('main h1')).toHaveText('Поиск задач')
+           await expect(page.locator('main h1')).toHaveCount(1)
+           await expect(page.locator('main li')).toHaveCount(25)
+-          await page.reload()
++          await network.navigate()
+           await expect(page.locator('main li')).toHaveCount(25)
+           await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+           if (mode === 'simple' && width < 640)
+@@ -998,6 +1016,10 @@ test.describe('Base search page', () => {
+           })
+         }
+     }
++    await testInfo.attach('search-navigation-stream-aborts', {
++      body: JSON.stringify(network.streamAborts),
++      contentType: 'application/json',
++    })
+     expect(failures).toEqual([])
+   })
+ 
+@@ -1189,23 +1211,24 @@ test.describe('Base project trash', () => {
+     const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+     const failures: string[] = []
+     const observations: unknown[] = []
++    const network = observeNavigationRequests(page, app, failures)
+     page.on('pageerror', (error) => failures.push(error.message))
+     page.on('console', (message) => {
+       if (message.type() === 'error') failures.push(message.text())
+     })
+-    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
+     page.on('response', (response) => {
+       if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
+     })
+     for (const theme of ['dark', 'gray', 'light']) {
+-      await page.goto(`${app}/projects/DEMO/trash`)
++      await network.navigate(`${app}/projects/DEMO/trash`)
+       await expect(page.locator('main article')).toHaveCount(50)
+       await page.evaluate((value) => localStorage.setItem('theme', value), theme)
+       for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
+         await page.setViewportSize({ width, height: 1080 })
+         for (const entry of ['direct', 'reload']) {
+-          if (entry === 'direct') await page.goto(`${app}/projects/DEMO/trash?source=qa#context`)
+-          else await page.reload()
++          if (entry === 'direct')
++            await network.navigate(`${app}/projects/DEMO/trash?source=qa#context`)
++          else await network.navigate()
+           await expect(page.locator('main article')).toHaveCount(50)
+           await expect(page.locator('main h1')).toHaveText('Корзина · DEMO')
+           await expect(page.locator('main h1')).toHaveCount(1)
+@@ -1300,7 +1323,12 @@ test.describe('Base project trash', () => {
+     }
+     expect(failures).toEqual([])
+     await testInfo.attach('trash-geometry', {
+-      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
++      body: JSON.stringify({
++        mockedApi: true,
++        actualImage: false,
++        observations,
++        streamAborts: network.streamAborts,
++      }),
+       contentType: 'application/json',
+     })
+   })
+diff --git a/frontend/src/features/issue-detail/ui/IssueMetaEditor.test.tsx b/frontend/src/features/issue-detail/ui/IssueMetaEditor.test.tsx
+index 5cd5774..b080b9c 100644
+--- a/frontend/src/features/issue-detail/ui/IssueMetaEditor.test.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueMetaEditor.test.tsx
+@@ -82,6 +82,10 @@ describe('IssueMetaEditor', () => {
+     expect(screen.getByText(/status/i)).toBeInTheDocument()
+     expect(screen.getByText(/priority/i)).toBeInTheDocument()
+     expect(screen.getByText(/assignee/i)).toBeInTheDocument()
++    for (const label of document.querySelectorAll('label')) {
++      expect(label).toHaveClass('base-label')
++      expect(screen.getByLabelText(label.textContent!.trim())).toHaveAttribute('id', label.htmlFor)
++    }
+     const options = Array.from(
+       (screen.getByLabelText(/priority/i) as HTMLSelectElement).options,
+       (option) => option.value,
+diff --git a/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx b/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
+index 231ee45..1df7b57 100644
+--- a/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
++++ b/frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx
+@@ -1,6 +1,6 @@
+ import { useTranslation } from 'react-i18next'
+ import { useMemo } from 'react'
+-import { Button, Select } from '@sdlc/ui/ui'
++import { Button, Label, Select } from '@sdlc/ui/ui'
+ import type { Issue } from '@/api/issue'
+ import type { Sprint } from '@/api/sprint'
+ import type { Board } from '@/api/board'
+@@ -76,9 +76,9 @@ export function IssueMetaEditor({
+   return (
+     <div className="space-y-4 text-sm">
+       <div className="space-y-1.5">
+-        <label htmlFor="issue-status" className="block text-text-muted">
++        <Label htmlFor="issue-status" className="block">
+           {t('issue.status')}
+-        </label>
++        </Label>
+         <Select
+           id="issue-status"
+           value={issue.status_id}
+@@ -94,9 +94,9 @@ export function IssueMetaEditor({
+       </div>
+ 
+       <div className="space-y-1.5">
+-        <label htmlFor="issue-priority" className="block text-text-muted">
++        <Label htmlFor="issue-priority" className="block">
+           {t('issue.priority')}
+-        </label>
++        </Label>
+         <Select
+           id="issue-priority"
+           value={issue.priority}
+@@ -112,9 +112,9 @@ export function IssueMetaEditor({
+       </div>
+ 
+       <div className="space-y-1.5">
+-        <label htmlFor="issue-assignee" className="block text-text-muted">
++        <Label htmlFor="issue-assignee" className="block">
+           {t('issue.assignee')}
+-        </label>
++        </Label>
+         <Select
+           id="issue-assignee"
+           value={issue.assignee_id ?? ''}
+@@ -152,9 +152,9 @@ export function IssueMetaEditor({
+ 
+       {sprints && (
+         <div className="space-y-1.5">
+-          <label htmlFor="issue-sprint" className="block text-text-muted">
++          <Label htmlFor="issue-sprint" className="block">
+             {t('issue.sprint')}
+-          </label>
++          </Label>
+           <Select
+             id="issue-sprint"
+             value={issue.sprint_id ?? ''}
+diff --git a/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx b/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
+index 7191a3c..822587c 100644
+--- a/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
++++ b/frontend/src/features/sprints/ui/SprintFormDialog.test.tsx
+@@ -31,6 +31,11 @@ describe('SprintFormDialog', () => {
+       ),
+     )
+     expect(screen.getByPlaceholderText(/Sprint 1/i)).toBeInTheDocument()
++    for (const label of document.querySelectorAll('label')) {
++      expect(label).toHaveClass('base-label')
++      expect(label).not.toHaveClass('text-sm')
++      expect(screen.getByLabelText(label.textContent!.trim())).toHaveAttribute('id', label.htmlFor)
++    }
+     expect(
+       screen.getByPlaceholderText(/what should be done by the end of the sprint/i),
+     ).toBeInTheDocument()
+diff --git a/frontend/src/features/sprints/ui/SprintFormDialog.tsx b/frontend/src/features/sprints/ui/SprintFormDialog.tsx
+index 1bd807e..c31d0e7 100644
+--- a/frontend/src/features/sprints/ui/SprintFormDialog.tsx
++++ b/frontend/src/features/sprints/ui/SprintFormDialog.tsx
+@@ -1,7 +1,7 @@
+ import { useState, useEffect } from 'react'
+ import { useTranslation } from 'react-i18next'
+ import { Button } from '@sdlc/ui/ui'
+-import { Input } from '@sdlc/ui/ui'
++import { Input, Label, Textarea } from '@sdlc/ui/ui'
+ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
+ import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
+ 
+@@ -72,9 +72,7 @@ export function SprintFormDialog({
+         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+           {error && <div className="text-sm text-rose-500">{error.message}</div>}
+           <div className="space-y-2">
+-            <label htmlFor="sprint-form-name" className="text-sm font-medium">
+-              {t('sprints.name')} *
+-            </label>
++            <Label htmlFor="sprint-form-name">{t('sprints.name')} *</Label>
+             <Input
+               id="sprint-form-name"
+               value={name}
+@@ -84,12 +82,10 @@ export function SprintFormDialog({
+             />
+           </div>
+           <div className="space-y-2">
+-            <label htmlFor="sprint-form-goal" className="text-sm font-medium">
+-              {t('sprints.goal')}
+-            </label>
+-            <textarea
++            <Label htmlFor="sprint-form-goal">{t('sprints.goal')}</Label>
++            <Textarea
+               id="sprint-form-goal"
+-              className="min-h-[80px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
++              rows={3}
+               value={goal}
+               onChange={(e) => setGoal(e.target.value)}
+               placeholder={t('sprints.goalPlaceholder')}
+@@ -97,9 +93,7 @@ export function SprintFormDialog({
+           </div>
+           <div className="grid gap-3 sm:grid-cols-2">
+             <div className="space-y-2">
+-              <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
+-                {t('sprints.startDate')}
+-              </label>
++              <Label htmlFor="sprint-form-startdate">{t('sprints.startDate')}</Label>
+               <Input
+                 id="sprint-form-startdate"
+                 type="date"
+@@ -108,9 +102,7 @@ export function SprintFormDialog({
+               />
+             </div>
+             <div className="space-y-2">
+-              <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
+-                {t('sprints.endDate')}
+-              </label>
++              <Label htmlFor="sprint-form-enddate">{t('sprints.endDate')}</Label>
+               <Input
+                 id="sprint-form-enddate"
+                 type="date"
+diff --git a/frontend/src/test/navigation-observations.test.ts b/frontend/src/test/navigation-observations.test.ts
+new file mode 100644
+index 0000000..f2d730c
+--- /dev/null
++++ b/frontend/src/test/navigation-observations.test.ts
+@@ -0,0 +1,29 @@
++import { describe, expect, it } from 'vitest'
++import { isNavigationStreamAbort } from '../../e2e/navigation-observations'
++
++const origin = 'http://localhost:4173'
++const expected = {
++  method: 'GET',
++  url: `${origin}/api/v1/events`,
++  errorText: 'net::ERR_ABORTED',
++  duringNavigation: true,
++}
++
++describe('navigation network evidence', () => {
++  it('recognizes only an intentionally interrupted same-origin event stream', () => {
++    expect(isNavigationStreamAbort(expected, origin)).toBe(true)
++  })
++
++  it.each([
++    { duringNavigation: false },
++    { method: 'POST' },
++    { errorText: 'net::ERR_CONNECTION_RESET' },
++    { errorText: undefined },
++    { url: `${origin}/api/v1/events-unexpected` },
++    { url: `${origin}/assets/index.js` },
++    { url: `${origin}/api/v1/search` },
++    { url: 'http://other-host:4173/api/v1/events' },
++  ])('retains a real or unclassified failure: %j', (override) => {
++    expect(isNavigationStreamAbort({ ...expected, ...override }, origin)).toBe(false)
++  })
++})

@@ -1,0 +1,53 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 17ef1b5..f0170e9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,10 @@
+ 
+ ## [Unreleased]
+ 
++- Архитектурная документация согласована с действующими Rust toolchain/MSRV
++  и frontend manifests. Объявленные версии отделены от locked resolutions;
++  код, зависимости и runtime не меняются.
++
+ - Общий Base snapshot обновлён до 44e48f3: SSR drawer учитывает summary
+   и фактическую видимость controls при Tab/Shift+Tab. React shell, API,
+   данные и принятый runtime не меняются.
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index b8180fa..5e7ee91 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -11,11 +11,17 @@ Self-hosted таск-трекер (Jira-like). MVP покрывает проек
+ 
+ ## 2. Технологический стек
+ 
++Таблицы библиотек показывают объявленные базовые версии, не точные установленные
++resolutions. Диапазоны заданы в `backend/Cargo.toml` и `frontend/package.json`,
++точные версии фиксируют `backend/Cargo.lock` и `frontend/pnpm-lock.yaml`.
++Rust build toolchain задаётся отдельно в `rust-toolchain.toml`; MSRV указан
++в `backend/Cargo.toml`.
++
+ ### Backend
+ 
+ | Компонент | Библиотека | Версия |
+ |---|---|---|
+-| Язык | Rust | 1.97.1 |
++| Язык | Rust | build 1.88.0 / MSRV 1.88 |
+ | Web framework | axum | 0.8.3 |
+ | Async runtime | tokio | 1.44 |
+ | DB ORM | sea-orm | 1.1 |
+@@ -40,12 +46,12 @@ Self-hosted таск-трекер (Jira-like). MVP покрывает проек
+ | Build | vite | 6.2.0 |
+ | Styling | tailwindcss + @tailwindcss/vite | 4.1.0 |
+ | Components | `@sdlc/ui` (Base) | pinned `.base-revision` |
+-| Router | react-router | 8.1.0 |
++| Router | react-router | 8.4.0 |
+ | Server state | @tanstack/react-query | 5.74.4 |
+ | Client state | zustand | 5.0.3 |
+ | Forms | react-hook-form + zod | 7.55.0 / 3.25.60 |
+ | i18n | i18next + react-i18next | 25.1.0 / 15.5.0 |
+-| Unit tests | vitest + @testing-library/react | 4.1.10 / 16.x |
++| Unit tests | vitest + @testing-library/react | 4.1.11 / 16.3.0 |
+ | E2E tests | @playwright/test | 1.61.1 |
+ | Types | typescript | 5.9.3 |
+ 

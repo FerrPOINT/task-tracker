@@ -1,0 +1,122 @@
+-- Project-only executions do not invent a task or inherit PM authority.
+CREATE TABLE sdlc_bug_search_executions (
+ execution_id uuid PRIMARY KEY CHECK(execution_id<>'00000000-0000-0000-0000-000000000000'),
+ tracker_instance_id text NOT NULL CHECK(octet_length(tracker_instance_id) BETWEEN 1 AND 128),
+ tracker_instance_uuid uuid NOT NULL CHECK(tracker_instance_uuid<>'00000000-0000-0000-0000-000000000000'),
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ owner_subject text NOT NULL CHECK(octet_length(owner_subject) BETWEEN 1 AND 256),
+ agent_id uuid NOT NULL CHECK(agent_id<>'00000000-0000-0000-0000-000000000000'),
+ purpose text NOT NULL CHECK(purpose IN ('search','verification')),
+ snapshot_sha256 text NOT NULL CHECK(snapshot_sha256 ~ '^[0-9a-f]{64}$'),
+ snapshot jsonb NOT NULL CHECK(jsonb_typeof(snapshot)='object' AND octet_length(snapshot::text)<=65536),
+ policy_revision bigint NOT NULL CHECK(policy_revision BETWEEN 1 AND 9007199254740991),
+ fence bigint NOT NULL UNIQUE CHECK(fence BETWEEN 1 AND 9007199254740991),
+ machine_subject text NOT NULL CHECK(octet_length(machine_subject) BETWEEN 1 AND 256 AND machine_subject<>owner_subject),
+ grant_ref uuid NOT NULL UNIQUE CHECK(grant_ref<>'00000000-0000-0000-0000-000000000000'),
+ bug_id uuid REFERENCES issues(id) ON DELETE RESTRICT, expected_delivery_ref text,
+ admission_state text NOT NULL DEFAULT 'reserved' CHECK(admission_state IN ('reserved','admitted','rejected')),
+ workflow_receipt jsonb CHECK(jsonb_typeof(workflow_receipt)='object' AND octet_length(workflow_receipt::text)<=65536),
+ expires_at timestamptz NOT NULL, revoked_at timestamptz,
+ terminal_receipt jsonb CHECK(jsonb_typeof(terminal_receipt)='object' AND octet_length(terminal_receipt::text)<=65536),
+ capacity_held boolean NOT NULL DEFAULT false,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(execution_id,project_id),
+ CHECK((purpose='search' AND bug_id IS NULL AND expected_delivery_ref IS NULL) OR
+       (purpose='verification' AND bug_id IS NOT NULL AND expected_delivery_ref IS NOT NULL AND octet_length(expected_delivery_ref) BETWEEN 1 AND 512)),
+ CHECK(admission_state<>'admitted' OR workflow_receipt IS NOT NULL)
+);
+CREATE SEQUENCE sdlc_bug_search_fence MAXVALUE 9007199254740991;
+CREATE INDEX sdlc_bug_search_execution_owner ON sdlc_bug_search_executions(project_id,owner_subject,created_at,execution_id);
+CREATE UNIQUE INDEX sdlc_bug_search_one_capacity ON sdlc_bug_search_executions((true)) WHERE capacity_held;
+CREATE FUNCTION sdlc_bug_search_execution_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Bug Search execution history is retained' USING ERRCODE='23514'; END IF;
+ IF TG_OP='UPDATE' AND (
+   (to_jsonb(NEW)-ARRAY['admission_state','workflow_receipt','expires_at','revoked_at','terminal_receipt','capacity_held'])
+      IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['admission_state','workflow_receipt','expires_at','revoked_at','terminal_receipt','capacity_held'])
+   OR (OLD.admission_state<>'reserved' AND NEW.admission_state<>OLD.admission_state)
+   OR (OLD.workflow_receipt IS NOT NULL AND NEW.workflow_receipt IS DISTINCT FROM OLD.workflow_receipt)
+   OR (OLD.terminal_receipt IS NOT NULL AND NEW.terminal_receipt IS DISTINCT FROM OLD.terminal_receipt)
+   OR (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS DISTINCT FROM OLD.revoked_at)
+   OR (OLD.capacity_held AND NOT NEW.capacity_held AND NEW.terminal_receipt IS NULL)) THEN
+   RAISE EXCEPTION 'Bug Search immutable binding or custody changed' USING ERRCODE='23514';
+ END IF;
+ IF NEW.capacity_held THEN
+   PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+   IF EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE agent_id=NEW.agent_id)
+      OR EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id)
+          WHERE a.payload->>'agent_id'=NEW.agent_id::text
+          AND (t.pm_execution_id IS NULL OR (t.pm_execution_id=(a.payload->>'execution_id')::uuid
+          AND t.pm_admission_state IS DISTINCT FROM 'completed'))) THEN
+     RAISE EXCEPTION 'Bug Search agent capacity belongs to feature work' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_search_execution_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_bug_search_executions
+FOR EACH ROW EXECUTE FUNCTION sdlc_bug_search_execution_guard();
+
+-- Reciprocal guard: every technical reservation shares the existing capacity lock.
+CREATE FUNCTION sdlc_bug_search_feature_capacity_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE agent uuid;
+BEGIN
+ PERFORM task_id FROM sdlc_tasks WHERE task_id=COALESCE((to_jsonb(NEW)->>'root_task_id')::uuid,(to_jsonb(NEW)->>'task_id')::uuid) FOR UPDATE;
+ PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+ agent := CASE WHEN TG_TABLE_NAME='sdlc_analysis_capacity_holds' THEN (to_jsonb(NEW)->>'agent_id')::uuid
+               ELSE (to_jsonb(NEW)->'payload'->>'agent_id')::uuid END;
+ IF EXISTS(SELECT 1 FROM sdlc_bug_search_executions WHERE agent_id=agent AND capacity_held) THEN
+   RAISE EXCEPTION 'Feature agent capacity belongs to Bug Search' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_search_feature_capacity BEFORE INSERT ON sdlc_analysis_capacity_holds
+FOR EACH ROW EXECUTE FUNCTION sdlc_bug_search_feature_capacity_guard();
+CREATE TRIGGER sdlc_bug_search_feature_capacity BEFORE INSERT ON sdlc_assignments
+FOR EACH ROW EXECUTE FUNCTION sdlc_bug_search_feature_capacity_guard();
+
+CREATE TABLE sdlc_bug_sources (
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ source_sha256 text NOT NULL CHECK(source_sha256 ~ '^[0-9a-f]{64}$'),
+ source_identity jsonb NOT NULL CHECK(jsonb_typeof(source_identity)='object' AND octet_length(source_identity::text)<=4096),
+ basis_sha256 text NOT NULL CHECK(basis_sha256 ~ '^[0-9a-f]{64}$'),
+ issue_id uuid NOT NULL UNIQUE REFERENCES issues(id) ON DELETE RESTRICT,
+ creation_operation_id uuid NOT NULL UNIQUE REFERENCES issue_creation_receipts(operation_id) ON DELETE RESTRICT,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(project_id,source_sha256), UNIQUE(project_id,source_sha256,issue_id)
+);
+CREATE TABLE sdlc_bug_occurrences (
+ project_id uuid NOT NULL, execution_id uuid NOT NULL, finding_id uuid NOT NULL CHECK(finding_id<>'00000000-0000-0000-0000-000000000000'),
+ source_sha256 text NOT NULL, report_sha256 text NOT NULL CHECK(report_sha256 ~ '^[0-9a-f]{64}$'),
+ report jsonb NOT NULL CHECK(jsonb_typeof(report)='object' AND octet_length(report::text)<=65536),
+ receipt jsonb NOT NULL CHECK(jsonb_typeof(receipt)='object' AND octet_length(receipt::text)<=8192),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(execution_id,finding_id),
+ FOREIGN KEY(execution_id,project_id) REFERENCES sdlc_bug_search_executions(execution_id,project_id) ON DELETE RESTRICT,
+ FOREIGN KEY(project_id,source_sha256) REFERENCES sdlc_bug_sources(project_id,source_sha256) ON DELETE RESTRICT
+);
+CREATE TABLE sdlc_bug_registration_operations (
+ actor_subject text NOT NULL CHECK(octet_length(actor_subject) BETWEEN 1 AND 256),
+ idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
+ project_id uuid NOT NULL, execution_id uuid NOT NULL, finding_id uuid NOT NULL,
+ request_sha256 text NOT NULL CHECK(request_sha256 ~ '^[0-9a-f]{64}$'),
+ receipt jsonb NOT NULL CHECK(jsonb_typeof(receipt)='object' AND octet_length(receipt::text)<=8192),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(actor_subject,idempotency_key),
+ FOREIGN KEY(execution_id,finding_id) REFERENCES sdlc_bug_occurrences(execution_id,finding_id) ON DELETE RESTRICT,
+ FOREIGN KEY(execution_id,project_id) REFERENCES sdlc_bug_search_executions(execution_id,project_id) ON DELETE RESTRICT
+);
+CREATE TABLE sdlc_bug_search_outbox (
+ sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ event_id uuid NOT NULL UNIQUE, project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ execution_id uuid NOT NULL REFERENCES sdlc_bug_search_executions(execution_id) ON DELETE RESTRICT,
+ event_type text NOT NULL, payload jsonb NOT NULL CHECK(octet_length(payload::text)<=8192),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['sdlc_bug_sources','sdlc_bug_occurrences','sdlc_bug_registration_operations','sdlc_bug_search_outbox'] LOOP
+  EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()',t);
+ END LOOP;
+ FOREACH t IN ARRAY ARRAY['sdlc_bug_search_executions','sdlc_bug_sources','sdlc_bug_occurrences','sdlc_bug_registration_operations','sdlc_bug_search_outbox'] LOOP
+  EXECUTE format('CREATE TRIGGER namespace_write_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard()',t);
+ END LOOP;
+END $$;

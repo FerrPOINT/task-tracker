@@ -1,0 +1,157 @@
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+new file mode 100644
+index 0000000..4dc0623
+--- /dev/null
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -0,0 +1,74 @@
++# Task Tracker UI Acceptance Evidence
++
++## Source
++
++- Source commit: `7b4320718687825ec229c01853242f0c81050ad7`.
++- Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, branch
++  `feat/base-ui-standard`, isolated worktree `.local/uiux-standard-workspace/task-tracker`.
++- Base commit: `2a8de7ed2e4e7475bfcfb80e87222af4cc1fbc93`.
++- Installed/source Base fingerprint:
++  `44f46615a419570df8e12a7968a3aebd4124c3157c5da095b61e55dcbfa8a744`.
++- Product fingerprint:
++  `72a8069d5120d813a86f6c319005ca66cfcf19dc9e0de132a49d4da71866d4e9`.
++- Image digest, launcher acceptance, live SSO, full backend gate: `not-run`.
++  This is source QA, not release acceptance. Route manifest remains `pending`.
++
++## Gates
++
++Evidence root: `audit-artifacts/base-standard-2026-10-01/` in the SDLC workspace.
++
++| Command | Exit | Evidence |
++|---|---|---|
++| `pnpm install --offline --frozen-lockfile` | 0 | `task-base-final-install.log`; lockfile unchanged |
++| `pnpm test` | 0 | `task-base-final-units.log`; 46 files, 274 tests |
++| `pnpm lint` | 0 | `task-base-final-lint.log`; ESLint and semantic check |
++| `pnpm build` | 0 | `task-base-final-build.log`; typecheck and Vite build |
++| `pnpm ui:check` | 0 | 16 patterns, installed/source bytes match; runtime still required |
++| Base gate `--fingerprint` | 0 | fingerprints above |
++| Chromium `e2e/smoke.spec.ts`, one worker | 0 | `task-base-final-browser.log`; 3 tests, 3.5 minutes |
++| `git diff --check` | 0 | reviewed source delta before commit |
++
++## Browser Matrix
++
++Final build, mocked API/OIDC, `localhost:18865`. Playwright-owned preview was
++stopped after the terminal result; the port had no listener afterward.
++
++- 120 full-page captures: dashboard/projects/create/detail x gray/dark/light x
++  375/767/768/1023/1024/1279/1280/1440/1920/2560 px.
++- Checked layout modes, frame widths, 760 px reading limit, header height 60 px,
++  sidebar 264/72 px or hidden, one Base shell/header and nonoverlapping header
++  slots, no document overflow, detail aside 320 px above 1024.
++- Visible main buttons/selects/inputs/textareas measured at minimum 40 desktop /
++  44 mobile. Hidden fields, file inputs and checkbox/radio graphics excluded.
++- Unknown URL preserves query through mocked SSO and reload; not-found remains
++  inside protected wide shell. Drawer opens by keyboard, retains focus inside,
++  Escape closes and returns focus; destination links are not duplicated.
++- Dirty summary survives query tabs, Back, seven resize widths and cancelled
++  navigation. Failed PATCH preserves draft and shows an error; one submission
++  observed. Delete cancellation returns focus to its actions button.
++- Separate unit fixtures cover cached 403/404 hiding and dependent read disabling,
++  cached 503 partial/retry, independent dashboard errors and custom field refetch.
++- Final desktop dashboard/detail and mobile detail captures inspected visually.
++  An extra `draft-save-failure.png` records the controlled save failure.
++
++Artifacts: [final browser captures](../../../../audit-artifacts/base-standard-2026-10-01/task-base-final-browser/),
++[final browser log](../../../../audit-artifacts/base-standard-2026-10-01/task-base-final-browser.log).
++The earlier `task-base-source-browser` run predates the final Base Select migration
++and is not evidence for the final controls.
++
++This matrix does not cover every manifest pattern, normal reload per pattern,
++all roles, complete loading/empty/error/403/404/partial fixtures, or all console
++and network assertions. Those remain required release work, not inferred passes.
++Local FORCE_COLOR/NO_COLOR warnings are retained in the log.
++
++## Gallery
++
++README gallery was not regenerated from mocks. Current gallery provenance and
++real desktop captures remain release backlog. Mocked smoke cannot write README
++images via the former `UPDATE_README_SCREENSHOTS` switch.
++
++## Release
++
++No GitHub/fetch/Actions, push, default integration, mirror sync or runtime pin
++changes in this checkpoint. The original dirty checkout was not edited.
++See [Remaining Acceptance](UI_UX_MAP.md#remaining-acceptance).
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+new file mode 100644
+index 0000000..2a1db07
+--- /dev/null
++++ b/docs/UI_UX_MAP.md
+@@ -0,0 +1,71 @@
++# Task Tracker UI/UX Map
++
++Нормативный контракт: [Base UI/UX Standard](../../services-base/docs/platform/UI_UX_STANDARD.md).
++Route patterns, роли, fixtures и обязательные acceptance states:
++[ui-routes.json](ui-routes.json). Это целевая матрица приёмки, а не доказательство
++реализации всех состояний. Release acceptance остаётся `pending`.
++
++## Ownership
++
++- Base владеет AppShell, header, sidebar/drawer, аккаунтом, темами, PageFrame,
++  controls, композициями страниц, resource states, pending и draft guard.
++- Task задаёт navigation entries, project context, уведомления, URL-контекст,
++  API-запросы и доменные операции. Единственный SSE subscriber остаётся в shell.
++- Создание задачи принадлежит странице, не глобальному header. Board/backlog
++  передают project key в URL; legacy router state остаётся совместимым.
++- Dashboard использует DashboardLayout, независимые состояния assigned/projects,
++  full-source project count и bounded preview по пять элементов. При недоступном
++  каталоге не предлагается создание задачи на основе stale parent.
++- Issue detail использует DetailPage: описание/активность в main, метаданные,
++  время и участие в aside. Колонки и breakpoint задаются Base CSS; локальная
++  media-query подписка и повторное монтирование aside удалены. PageHeader владеет
++  единственным h1 и actions. Разделы не оформляются вложенными UI cards.
++- Summary/description editor использует FormField/Input/Textarea/PendingForm и
++  UnsavedChangesGuard. Query-вкладки не теряют draft; уход со страницы блокируется.
++  Ошибка сохранения сохраняет ввод. Custom field draft не затирается refetch.
++- HTTP status сохраняется в Base ApiError для dashboard/projects/issue reads.
++  Root 403/404 не показывают cached issue и отключают comments/worklogs reads;
++  retryable refresh failure сохраняет issue с partial-error. Existing issue 404
++  по-прежнему возвращает `null`, без изменения публичного API.
++- Unknown URL остаётся на исходном адресе через SSO/reload и показывает not-found
++  внутри защищённого shell вместо redirect на dashboard.
++- Подтверждение удаления возвращает фокус кнопке actions. Удаление остаётся
++  существующим soft-delete с восстановлением из корзины.
++
++## Exceptions
++
++Нет согласованных исключений из Base стандарта. Остаточная legacy-реализация ниже
++является backlog миграции, не разрешённым обходом контракта.
++
++## Source QA
++
++Baseline: `569c1b9249aed1d552a5d3444c92f73dde94691d`, отдельная ветка
++`feat/base-ui-standard`. Base: `2a8de7ed2e4e7475bfcfb80e87222af4cc1fbc93`.
++
++- Frozen offline install, installed UI gate (16 patterns), 274 unit tests,
++  lint/semantic, typecheck в build и Vite build прошли.
++- Browser source smoke проверяет dashboard/projects/create/detail, три темы,
++  десять ширин, shell geometry, отсутствие overflow/пересечения header slots,
++  колонки detail и видимые targets. Отдельно: unknown URL, drawer Escape/focus,
++  draft при tabs/history/resize, navigation cancel, save failure и delete focus.
++- Browser API и OIDC изолированно mocked. Эти проверки не подтверждают actual
++  images, live SSO, все роли/route states или актуальность README-галереи.
++- Mocked smoke больше не записывает README screenshots даже при прежнем
++  `UPDATE_README_SCREENSHOTS`; gallery обновляется только реальными захватами.
++- Evidence и точные результаты: [UI Acceptance Evidence](UI_ACCEPTANCE_EVIDENCE.md).
++
++## Remaining Acceptance
++
++1. Мигрировать остальные list/form/audit/log compositions: projects, board,
++   backlog, trash, settings, search, notifications, reports, admin и create.
++2. Довести независимые states вспомогательных issue sources; не считать ошибки
++   custom fields/labels/links/notifications пустым результатом. Завершить draft,
++   pending, validation и focus сценарии всех форм/диалогов.
++3. Проверить URL filters/sort/pagination и Back/Forward во всех списках. Проверить
++   все manifest patterns с long/big fixtures и loading/empty/403/404/5xx/partial.
++4. Выполнить полный backend gate и no-mock QA immutable images через штатный
++   launcher; проверить health и одинаковые product/Base fingerprints.
++5. Обновить реальную desktop-only README gallery и provenance, локально
++   интегрировать принятые источники и выполнить штатный mirror sync.
++
++Все исходные findings остаются открытыми до требуемых выпускных доказательств.

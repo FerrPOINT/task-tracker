@@ -1,0 +1,532 @@
+//! Project-scoped Bug Search contracts. A reservation is not execution admission.
+use crate::sdlc::{MAX_SAFE_VERSION, Principal};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+pub const MAX_REPORT_BYTES: usize = 65_536;
+
+#[derive(Debug, Clone)]
+pub struct BugSearchConfig {
+    pub tracker_instance_id: String,
+    /// Explicit Tracker resource instance UUID used by cross-product project refs.
+    pub tracker_instance_uuid: Uuid,
+    pub fleet_subject: String,
+    pub workflow_reader_subject: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugSearchPurpose {
+    Search,
+    Verification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSourceIdentity {
+    pub schema_version: u16,
+    pub producer: String,
+    pub rule_key: String,
+    pub stable_defect_key: String,
+    /// Canonical repository from the original owner snapshot, never inferred
+    /// from a rule, URL or opaque repository_ref. Omission preserves legacy hashes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository_id: Option<Uuid>,
+}
+impl BugSourceIdentity {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.schema_version != 1
+            || self.repository_id.is_some_and(|id| id.is_nil())
+            || !bounded_text(&self.producer, 128)
+            || !bounded_text(&self.rule_key, 256)
+            || !bounded_text(&self.stable_defect_key, 512)
+            || [&self.producer, &self.rule_key, &self.stable_defect_key]
+                .iter()
+                .any(|v| v.chars().any(char::is_control))
+        {
+            return Err(AppError::validation(
+                "invalid versioned bug source identity",
+            ));
+        }
+        Ok(())
+    }
+
+    /// New owner source pins require an explicit repository in each report.
+    /// Historical source-less snapshots retain their original version behavior.
+    pub fn require_snapshot_version(
+        &self,
+        snapshot: &serde_json::Value,
+        checked_version: &str,
+    ) -> Result<(), AppError> {
+        self.validate()?;
+        let targets: Vec<crate::bug_search_control::BugResolvedTarget> = serde_json::from_value(
+            snapshot
+                .get("targets")
+                .cloned()
+                .ok_or_else(|| AppError::validation("finding snapshot targets missing"))?,
+        )
+        .map_err(|_| AppError::validation("finding snapshot targets invalid"))?;
+        if targets.is_empty() || targets.len() > 16 {
+            return Err(AppError::validation("finding snapshot targets invalid"));
+        }
+        let pinned = targets.iter().any(|t| t.source.is_some());
+        let matched = match self.repository_id {
+            Some(repository) => targets.iter().any(|t| {
+                t.commit_sha == checked_version
+                    && t.source
+                        .as_ref()
+                        .is_some_and(|source| source.repository_id == repository)
+            }),
+            None => {
+                !pinned
+                    && targets.iter().any(|t| {
+                        t.commit_sha == checked_version
+                            || t.deployment_ref.as_deref() == Some(checked_version)
+                    })
+            }
+        };
+        if !matched {
+            return Err(AppError::validation(
+                "finding repository/version differs from original snapshot",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugFindingReport {
+    pub title: String,
+    pub basis: String,
+    pub expected: String,
+    pub actual: String,
+    pub reproducer: String,
+    pub checked_version: String,
+    pub evidence_refs: Vec<String>,
+}
+impl BugFindingReport {
+    pub fn validate(&self) -> Result<(), AppError> {
+        let fields = [
+            (&self.title, 500),
+            (&self.basis, 8192),
+            (&self.expected, 8192),
+            (&self.actual, 8192),
+            (&self.reproducer, 16384),
+            (&self.checked_version, 512),
+        ];
+        if fields.iter().any(|(text, max)| !bounded_text(text, *max))
+            || self.evidence_refs.len() > 32
+            || self
+                .evidence_refs
+                .iter()
+                .any(|value| !bounded_text(value, 1024))
+            || serde_json::to_vec_pretty(self)
+                .map_err(AppError::internal)?
+                .len()
+                > MAX_REPORT_BYTES
+        {
+            return Err(AppError::validation("invalid bounded bug finding report"));
+        }
+        Ok(())
+    }
+}
+pub fn bounded_text(value: &str, max: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= max && !value.contains('\0')
+}
+pub fn sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Immutable owner binding shared with Workflow. Tracker creates its UUID/fence;
+/// callers cannot turn this response into authority without an exact credential.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchExecutionBinding {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub tracker_instance_uuid: Uuid,
+    pub project_id: Uuid,
+    pub owner_subject: String,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub purpose: BugSearchPurpose,
+    pub snapshot_sha256: String,
+    pub policy_revision: i64,
+    pub fence: i64,
+    pub machine_subject: String,
+    pub grant_ref: Uuid,
+    pub bug_id: Option<Uuid>,
+    pub expected_delivery_ref: Option<String>,
+}
+impl BugSearchExecutionBinding {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || !bounded_text(&self.tracker_instance_id, 128)
+            || !bounded_text(&self.owner_subject, 256)
+            || !bounded_text(&self.machine_subject, 256)
+            || self.owner_subject == self.machine_subject
+            || [
+                self.project_id,
+                self.tracker_instance_uuid,
+                self.execution_id,
+                self.agent_id,
+                self.grant_ref,
+            ]
+            .iter()
+            .any(Uuid::is_nil)
+            || !sha256(&self.snapshot_sha256)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.policy_revision)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.fence)
+            || match self.purpose {
+                BugSearchPurpose::Search => {
+                    self.bug_id.is_some() || self.expected_delivery_ref.is_some()
+                }
+                BugSearchPurpose::Verification => {
+                    self.bug_id.is_none_or(|id| id.is_nil())
+                        || self
+                            .expected_delivery_ref
+                            .as_deref()
+                            .is_none_or(|v| !bounded_text(v, 512))
+                }
+            }
+        {
+            return Err(AppError::validation("invalid bug search execution binding"));
+        }
+        Ok(())
+    }
+    pub fn require_machine(&self, actor: &Principal) -> Result<(), AppError> {
+        self.validate()?;
+        if actor.human_session
+            || actor.trusted_human
+            || actor.subject != self.machine_subject
+            || actor
+                .scopes
+                .iter()
+                .any(|s| !matches!(s.as_str(), "task-tracker:read" | "task-tracker:write"))
+            || !actor.scopes.contains("task-tracker:write")
+        {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchGrantReadback {
+    pub contract_version: u8,
+    pub binding: BugSearchExecutionBinding,
+    pub expires_at: DateTime<Utc>,
+    pub revoked: bool,
+    pub admission_state: String,
+    pub authorization_valid: bool,
+    pub dispatch_allowed: bool,
+    pub blocked_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterBugFinding {
+    pub idempotency_key: String,
+    pub execution_id: Uuid,
+    pub finding_id: Uuid,
+    pub expected_fence: i64,
+    pub source_identity: BugSourceIdentity,
+    pub report: BugFindingReport,
+}
+impl RegisterBugFinding {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.execution_id.is_nil()
+            || self.finding_id.is_nil()
+            || !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence)
+            || !bounded_text(&self.idempotency_key, 128)
+            || self
+                .idempotency_key
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control())
+        {
+            return Err(AppError::validation("invalid bug registration command"));
+        }
+        self.source_identity.validate()?;
+        self.report.validate()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugFindingOutcome {
+    Created,
+    Linked,
+    Suppressed,
+    NeedsReopen,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugFindingReceipt {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub execution_id: Uuid,
+    pub finding_id: Uuid,
+    pub source_identity: BugSourceIdentity,
+    pub outcome: BugFindingOutcome,
+    pub issue_id: Uuid,
+    pub issue_key: String,
+    pub reason: Option<String>,
+    pub accepted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchProjectCapabilities {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub can_read: bool,
+    pub can_manage_policy: bool,
+    pub can_admit: bool,
+    pub can_register: bool,
+    pub can_set_own_intake: bool,
+    #[serde(default)]
+    pub intake_fleet_instance_id: Option<Uuid>,
+    pub blocked_reasons: Vec<String>,
+}
+
+#[async_trait]
+pub trait BugSearchRepository: Send + Sync {
+    async fn verification_basis(
+        &self,
+        project: Uuid,
+        bug: Uuid,
+        actor: &Principal,
+        owner_subject: &str,
+    ) -> Result<crate::bug_search_verification::BugVerificationBasis, AppError>;
+    async fn due(
+        &self,
+        actor: &Principal,
+    ) -> Result<crate::bug_search_due::BugSearchDueReadback, AppError>;
+    async fn defer_due(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_due::DeferBugSearchDue,
+    ) -> Result<(crate::bug_search_due::BugSearchDueDeferral, bool), AppError>;
+
+    async fn abort_unbound(
+        &self,
+        project: Uuid,
+        execution: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_unbound::AbortUnboundBugSearch,
+    ) -> Result<
+        (
+            crate::bug_search_unbound::BugUnboundCancellationReceipt,
+            bool,
+        ),
+        AppError,
+    >;
+
+    async fn cancel(
+        &self,
+        project: Uuid,
+        execution: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_cancel::CancelBugSearchBeforeStart,
+    ) -> Result<(crate::bug_search_cancel::BugSearchCancellationReceipt, bool), AppError>;
+
+    async fn terminal(
+        &self,
+        project: Uuid,
+        execution: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_terminal::AcceptBugSearchTerminal,
+    ) -> Result<(crate::bug_search_terminal::BugSearchTerminalReceipt, bool), AppError>;
+
+    async fn apply_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_control::ApplyBugSearchPolicy,
+    ) -> Result<(crate::bug_search_control::BugSearchPolicyState, bool), AppError>;
+    async fn policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+    ) -> Result<crate::bug_search_control::BugSearchPolicyState, AppError>;
+    async fn reserve(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_control::ReserveBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError>;
+    async fn admit(
+        &self,
+        project: Uuid,
+        execution: Uuid,
+        actor: &Principal,
+        command: crate::bug_search_control::AdmitBugSearch,
+    ) -> Result<(BugSearchGrantReadback, bool), AppError>;
+    async fn command(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::bug_search_control::BugSearchCommandReceipt, AppError>;
+    async fn execution_grant(
+        &self,
+        project: Uuid,
+        execution: Uuid,
+        actor: &Principal,
+    ) -> Result<BugSearchGrantReadback, AppError>;
+    async fn capabilities(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+    ) -> Result<BugSearchProjectCapabilities, AppError>;
+    async fn register(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: RegisterBugFinding,
+    ) -> Result<(BugFindingReceipt, bool), AppError>;
+    async fn registration_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<BugFindingReceipt, AppError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn binding() -> BugSearchExecutionBinding {
+        BugSearchExecutionBinding {
+            contract_version: 1,
+            tracker_instance_id: "tracker-locator".into(),
+            tracker_instance_uuid: Uuid::new_v4(),
+            project_id: Uuid::new_v4(),
+            owner_subject: "human-owner".into(),
+            execution_id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            purpose: BugSearchPurpose::Search,
+            snapshot_sha256: "a".repeat(64),
+            policy_revision: 1,
+            fence: 1,
+            machine_subject: "fleet-registrar".into(),
+            grant_ref: Uuid::new_v4(),
+            bug_id: None,
+            expected_delivery_ref: None,
+        }
+    }
+    #[test]
+    fn search_binding_is_taskless_verification_requires_exact_bug_and_target() {
+        let mut b = binding();
+        b.validate().unwrap();
+        b.purpose = BugSearchPurpose::Verification;
+        assert!(b.validate().is_err());
+        b.bug_id = Some(Uuid::new_v4());
+        assert!(b.validate().is_err());
+        b.expected_delivery_ref = Some("forge:delivered:qualified".into());
+        b.validate().unwrap();
+        b.expected_delivery_ref = Some(" ".into());
+        assert!(b.validate().is_err());
+        b = binding();
+        b.tracker_instance_uuid = Uuid::nil();
+        assert!(b.validate().is_err());
+    }
+    #[test]
+    fn static_service_credential_is_not_an_execution_or_pm_grant() {
+        let b = binding();
+        let mut actor = Principal {
+            subject: b.machine_subject.clone(),
+            human_session: false,
+            trusted_human: false,
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+        };
+        b.require_machine(&actor).unwrap();
+        actor.subject = "different-machine".into();
+        assert!(b.require_machine(&actor).is_err());
+        actor.subject = b.machine_subject.clone();
+        actor.trusted_human = true;
+        assert!(b.require_machine(&actor).is_err());
+        actor.trusted_human = false;
+        actor.scopes.insert("task-tracker:sdlc:assign".into());
+        assert!(b.require_machine(&actor).is_err());
+        actor.scopes = ["task-tracker:read".into()].into();
+        assert!(b.require_machine(&actor).is_err());
+    }
+    #[test]
+    fn source_identity_and_report_are_closed_bounded_producer_data() {
+        let source = serde_json::json!({"schema_version":1,"producer":"BUG_SEARCHER","rule_key":"null-access","stable_defect_key":"handler:session-read"});
+        serde_json::from_value::<BugSourceIdentity>(source.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        let mut wrong = source.clone();
+        wrong["schema_version"] = serde_json::json!(2);
+        assert!(
+            serde_json::from_value::<BugSourceIdentity>(wrong)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+        let mut wrong = source;
+        wrong["authorized"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<BugSourceIdentity>(wrong).is_err());
+        let mut report = BugFindingReport {
+            title: "Reproducible defect".into(),
+            basis: "Contract".into(),
+            expected: "Allowed result".into(),
+            actual: "Failure".into(),
+            reproducer: "Run this scenario".into(),
+            checked_version: "a".repeat(40),
+            evidence_refs: vec![],
+        };
+        report.validate().unwrap();
+        report.reproducer = "x".repeat(16385);
+        assert!(report.validate().is_err());
+    }
+
+    #[test]
+    fn repository_identity_is_required_for_new_pins_but_legacy_source_hash_wire_is_unchanged() {
+        let legacy = serde_json::json!({"schema_version":1,"producer":"BUG_SEARCHER","rule_key":"same-rule","stable_defect_key":"same-key"});
+        let mut identity: BugSourceIdentity = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&identity).unwrap(), legacy);
+        let commit = "a".repeat(40);
+        let old = serde_json::json!({"targets":[{"repository_ref":"opaque:first","commit_sha":commit,"target_ref":null,"deployment_ref":null}]});
+        identity.require_snapshot_version(&old, &commit).unwrap();
+        let repository = Uuid::new_v4();
+        let source = serde_json::json!({"contract_version":1,"schema":"forge/source-snapshot/v1","producer_version":"fixture",
+            "project":{"tracker_instance_id":Uuid::new_v4(),"project_id":Uuid::new_v4()},"configuration_id":Uuid::new_v4(),"repository_id":repository,
+            "branch_ref":"refs/heads/main","observed_head_sha":commit,"clone_url_sha256":"d".repeat(64)});
+        let mut pinned = old.clone();
+        pinned["targets"][0]["source"] = source;
+        assert!(identity.require_snapshot_version(&pinned, &commit).is_err());
+        identity.repository_id = Some(repository);
+        identity.require_snapshot_version(&pinned, &commit).unwrap();
+        assert_ne!(serde_json::to_value(&identity).unwrap(), legacy);
+        assert!(
+            identity
+                .require_snapshot_version(&pinned, &"b".repeat(40))
+                .is_err()
+        );
+        assert!(
+            identity.require_snapshot_version(&old, &commit).is_err(),
+            "a repository cannot be guessed for a legacy target"
+        );
+        identity.repository_id = Some(Uuid::new_v4());
+        assert!(identity.require_snapshot_version(&pinned, &commit).is_err());
+        identity.repository_id = Some(Uuid::nil());
+        assert!(identity.validate().is_err());
+    }
+}

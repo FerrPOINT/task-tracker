@@ -1,0 +1,310 @@
+diff --git a/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs b/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
+index a09aec6..c221b58 100644
+--- a/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
++++ b/backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs
+@@ -26,6 +26,9 @@ struct InitialPm {
+     task: Uuid,
+     pm: Principal,
+     reservation: PmDraftReservation,
++    claim: ExecutionLeaseReceipt,
++    claim_hash: String,
++    heartbeat_hash: String,
+     lease: ExecutionLeaseReceipt,
+     command: RecoverUnsubmittedPmExecutionLease,
+     witness: UnsubmittedPmWitness,
+@@ -50,19 +53,43 @@ async fn initial(f: &Fixture, key: &str) -> InitialPm {
+         agent_id: r.assignment.agent_id,
+         assignment_version: r.assignment.version,
+     };
+-    let (lease, _) = f
++    let claim_command = ClaimExecutionLease {
++        expected_owner_version: r.owner_cas.version,
++        fence: fence.clone(),
++        idempotency_key: "original-claim".into(),
++    };
++    let claim_hash = app::sdlc::canonical_hash(
++        &json!({"operation":"claim_pm_execution_lease","payload":claim_command}),
++    )
++    .unwrap();
++    let (claim, replayed) = f
+         .repo
+-        .claim_execution_lease(
+-            task,
+-            &pm,
+-            ClaimExecutionLease {
+-                expected_owner_version: r.owner_cas.version,
+-                fence: fence.clone(),
+-                idempotency_key: "original-claim".into(),
+-            },
+-        )
++        .claim_execution_lease(task, &pm, claim_command)
+         .await
+         .unwrap();
++    assert!(!replayed);
++    assert_eq!(claim.lease.version, 1);
++    let heartbeat_command = HeartbeatExecutionLease {
++        expected_owner_version: r.owner_cas.version,
++        fence: fence.clone(),
++        lease_id: claim.lease.lease_id,
++        expected_lease_version: claim.lease.version,
++        idempotency_key: "original-heartbeat".into(),
++    };
++    let heartbeat_hash = app::sdlc::canonical_hash(
++        &json!({"operation":"heartbeat_pm_execution_lease","payload":heartbeat_command}),
++    )
++    .unwrap();
++    let (lease, replayed) = f
++        .repo
++        .heartbeat_execution_lease(task, &pm, heartbeat_command)
++        .await
++        .unwrap();
++    assert!(!replayed);
++    assert_eq!(lease.lease.version, 2);
++    assert_eq!(lease.lease.lease_id, claim.lease.lease_id);
++    assert_eq!(lease.lease.holder_subject, claim.lease.holder_subject);
++    assert_eq!(lease.lease.claimed_at, claim.lease.claimed_at);
+     let c = RecoverUnsubmittedPmExecutionLease {
+         expected_owner_version: r.owner_cas.version,
+         fence,
+@@ -96,12 +123,63 @@ async fn initial(f: &Fixture, key: &str) -> InitialPm {
+         task,
+         pm,
+         reservation: r,
++        claim,
++        claim_hash,
++        heartbeat_hash,
+         lease,
+         command: c,
+         witness,
+     }
+ }
+ 
++async fn original_operations(f: &Fixture, p: &InitialPm) -> Json {
++    let mut operations = Vec::new();
++    for (key, hash, expected) in [
++        ("original-claim", &p.claim_hash, &p.claim),
++        ("original-heartbeat", &p.heartbeat_hash, &p.lease),
++    ] {
++        let operation = f
++            .repo
++            .execution_lease(p.task, &p.pm, Some(key))
++            .await
++            .unwrap()
++            .operation
++            .unwrap();
++        assert_eq!(operation.idempotency_key, key);
++        assert_eq!(&operation.request_sha256, hash);
++        assert_eq!(
++            serde_json::to_value(&operation.result).unwrap(),
++            serde_json::to_value(expected).unwrap()
++        );
++        operations.push(serde_json::to_value(operation).unwrap());
++    }
++    json!(operations)
++}
++
++async fn upgrade_snapshot(f: &Fixture, p: &InitialPm) -> Json {
++    // Only the additive nullable column is normalized; every original row field is retained.
++    f.db.query_one(statement("SELECT jsonb_build_object('task',to_jsonb(t),
++        'issue',(SELECT to_jsonb(i) FROM issues i WHERE i.id=t.task_id),
++        'reservation',(SELECT to_jsonb(e) FROM sdlc_pm_executions e WHERE execution_id=$2),
++        'assignments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY version) FROM sdlc_assignments a WHERE task_id=$1),
++        'lease',(SELECT to_jsonb(l) FROM sdlc_pm_execution_leases l WHERE execution_id=$2),
++        'operations',(SELECT jsonb_agg(to_jsonb(o)-'recovery' ORDER BY lease_version) FROM sdlc_pm_lease_operations o WHERE execution_id=$2),
++        'outbox',(SELECT jsonb_agg(to_jsonb(o) ORDER BY sequence) FROM sdlc_outbox o WHERE task_id=$1)) AS v FROM sdlc_tasks t WHERE task_id=$1",
++        vec![p.task.into(),p.command.fence.execution_id.into()])).await.unwrap().unwrap().try_get("","v").unwrap()
++}
++
++async fn migration_versions(f: &Fixture) -> Vec<String> {
++    f.db.query_all(statement(
++        "SELECT version FROM seaql_migrations ORDER BY version",
++        vec![],
++    ))
++    .await
++    .unwrap()
++    .iter()
++    .map(|row| row.try_get("", "version").unwrap())
++    .collect()
++}
++
+ async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
+     f.db.query_one(statement("SELECT jsonb_build_object('state',state,
+         'lease',(SELECT result FROM sdlc_pm_execution_leases WHERE execution_id=$2),
+@@ -111,11 +189,73 @@ async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
+ }
+ 
+ #[tokio::test]
+-#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; waits one real lease TTL"]
++#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; populated 0097->0098 upgrade and one real lease TTL"]
+ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
+-    let f = Box::pin(Fixture::new()).await;
++    let migrations = migration::Migrator::migrations();
++    let recovery_index = migrations
++        .iter()
++        .position(|m| m.name() == "m20261018_0000098_pm_unsubmitted_recovery")
++        .unwrap();
++    assert_eq!(recovery_index, 28);
++    assert_eq!(
++        migrations[recovery_index - 1].name(),
++        "m20261017_0000097_task_source_binding"
++    );
++    let f = Box::pin(Fixture::new_with_migration_steps(Some(
++        recovery_index.try_into().unwrap(),
++    )))
++    .await;
++    let prior_versions = migration_versions(&f).await;
++    assert_eq!(prior_versions.len(), recovery_index);
++    assert_eq!(
++        prior_versions.last().unwrap(),
++        "m20261017_0000097_task_source_binding"
++    );
++    let column = f.db.query_one(statement("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='sdlc_pm_lease_operations' AND column_name='recovery') AS present",vec![])).await.unwrap().unwrap();
++    assert!(!column.try_get::<bool>("", "present").unwrap());
+     let p = initial(&f, "unsubmitted-recovery").await;
+     let q = initial(&f, "different-key-race").await;
++    let mut preserved = Vec::new();
++    for pm in [&p, &q] {
++        let saved = upgrade_snapshot(&f, pm).await;
++        assert_eq!(saved["lease"]["version"], json!(2));
++        assert_eq!(saved["operations"].as_array().unwrap().len(), 2);
++        assert_eq!(saved["operations"][0]["lease_version"], json!(1));
++        assert_eq!(saved["operations"][1]["lease_version"], json!(2));
++        preserved.push((saved, original_operations(&f, pm).await));
++    }
++    migration::Migrator::up(&f.db, Some(1)).await.unwrap();
++    let upgraded_versions = migration_versions(&f).await;
++    assert_eq!(
++        &upgraded_versions[..recovery_index],
++        prior_versions.as_slice()
++    );
++    assert_eq!(upgraded_versions.len(), recovery_index + 1);
++    assert_eq!(
++        upgraded_versions.last().unwrap(),
++        "m20261018_0000098_pm_unsubmitted_recovery"
++    );
++    for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
++        assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
++        assert_eq!(&original_operations(&f, pm).await, operations);
++    }
++    let counts = f.db.query_one(statement("SELECT (SELECT count(*) FROM sdlc_pm_execution_leases) AS leases,
++        count(*) AS operations,count(*) FILTER (WHERE recovery IS NOT NULL) AS recovery_operations FROM sdlc_pm_lease_operations",vec![])).await.unwrap().unwrap();
++    assert_eq!(counts.try_get::<i64>("", "leases").unwrap(), 2);
++    assert_eq!(counts.try_get::<i64>("", "operations").unwrap(), 4);
++    assert_eq!(counts.try_get::<i64>("", "recovery_operations").unwrap(), 0);
++    let error = migration::Migrator::down(&f.db, Some(1)).await.unwrap_err();
++    assert!(
++        error
++            .to_string()
++            .contains("PM recovery history is immutable; destructive rollback is disabled")
++    );
++    migration::Migrator::up(&f.db, None).await.unwrap();
++    assert_eq!(migration_versions(&f).await, upgraded_versions);
++    for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
++        assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
++        assert_eq!(&original_operations(&f, pm).await, operations);
++    }
+     let before = snapshot(&f, &p).await;
+     assert!(
+         f.repo
+@@ -253,17 +393,7 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
+         serde_json::to_value(&a.0).unwrap()
+     );
+     assert_eq!(snapshot(&f, &p).await, after);
+-    let claim = f
+-        .repo
+-        .execution_lease(p.task, &p.pm, Some("original-claim"))
+-        .await
+-        .unwrap()
+-        .operation
+-        .unwrap();
+-    assert_eq!(
+-        serde_json::to_value(claim.result).unwrap(),
+-        serde_json::to_value(&p.lease).unwrap()
+-    );
++    assert_eq!(original_operations(&f, &p).await, preserved[0].1);
+     let mut changed = p.command.clone();
+     changed.barrier_id = Uuid::new_v4();
+     assert!(
+@@ -285,6 +415,7 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
+             .recover_unsubmitted_pm_execution_lease(q.task, &f.writer, other, q.witness.clone())
+     );
+     assert_ne!(a.is_ok(), b.is_ok()); // exactly one CAS, different keys cannot create another lease
++    assert_eq!(original_operations(&f, &q).await, preserved[1].1);
+     assert_eq!(
+         p.reservation.assignment.execution_id,
+         p.command.fence.execution_id
+diff --git a/handoff/PR169_POPULATED_PM_20261018.md b/handoff/PR169_POPULATED_PM_20261018.md
+new file mode 100644
+index 0000000..316efcd
+--- /dev/null
++++ b/handoff/PR169_POPULATED_PM_20261018.md
+@@ -0,0 +1,48 @@
++# Populated PM Lease Upgrade: Authored Test Packet
++
++## Frozen Source And Scope
++
++- Tracker PR169 baseline: `ecc11ae5aeaaf7b4ccf7b057c25c444b00c6f598` plus accepted preflight `20167c7b687ef4345b21143000a133421539cd50` (direct parent of this packet).
++- Branch: `test/pm-lease-populated-upgrade-20261018`.
++- Isolated checkout: `C:/git/azhukov/sdlc/.local/single-task-sdlc-20261013/tracker169-populated-pm-20261018`.
++- Only the existing owned `backend/infra/src/sdlc_pm_unsubmitted_pg_tests.rs` is edited as Rust source. Shared fixture edits are proposed in `PR169_POPULATED_PM_MAIN_HOOK.patch`, NOT applied. No production, schema, migration, DTO, Cargo/lock/pin, live/runtime or shared dirty-root changes.
++- No new test registration, selector, runner, container, service or fixture framework. Root/nearest AGENTS and actual lease/fixture/migration source were read.
++
++## Existing Fixture Hook
++
++Main must integrate the supplied fixture hook BEFORE any Cargo list/compile/run of this child: the child now calls `Fixture::new_with_migration_steps(Some(28))`. Without that hook the method intentionally does not exist in the shared parent; this packet is not a standalone compile-qualified candidate.
++
++The hook adds only an optional migration-step argument around the existing `Fixture::new` body in `sdlc_candidates_pg_tests.rs`. Ordinary `new()` still delegates with `None`, preserving its old full-upgrade path. Fresh DB suffix/ledger checks, real auth/project/source/routing setup and all fixture ownership stay unchanged. The owned test finds 0098's index and verifies that the preceding migration is 0097, rather than replacing migration history or invoking down to prepare an older schema.
++
++```sh
++git apply --check --unidiff-zero handoff/PR169_POPULATED_PM_MAIN_HOOK.patch
++# Main alone may integrate this exact checked patch, then format/review the parent.
++git apply --unidiff-zero handoff/PR169_POPULATED_PM_MAIN_HOOK.patch
++```
++
++The earlier `PR169_MAIN_HOOK.patch` repairs the separate general legacy populated selector. It is not required for this selected recovery test and does not replace this fixture hook.
++
++## Authored Predicates
++
++1. Require exactly migrations through 0097 and absence of the new recovery column before creating PM state.
++2. Through the existing fixture and repository auth paths, create two single-task Drafts, reserve their PM assignments, perform ordinary claim v1 and ordinary heartbeat v2 with the original keys. No raw lease INSERT/expiry rewrite/trigger bypass.
++3. Require two nonempty operation rows per execution (versions 1 and 2). Independently compute the ordinary claim/heartbeat request hashes from the actual commands; verify original-key readback against those hashes and exact returned receipts before upgrade.
++4. Snapshot full task/issue/reservation/assignment rows, the full current lease row, every old operation field and full task outbox. Only the additive `recovery` column is removed from the old-operation JSON comparison; its NULL state is asserted separately after upgrade.
++5. Apply the real next migration with `Migrator::up(Some(1))`, require 0098 last, retain the previous migration list, and require exact before/after snapshots and both original-key readbacks for both PMs. Explicit totals: **2 current leases, 4 operation rows, 0 recovery evidence rows**. IDs/fence, holder, claimed_at, heartbeat/expiry, current version, raw result JSON, hashes and keys therefore remain unchanged.
++6. Require the real 0098 down attempt to return its immutable-history refusal. Do not bypass it. An idempotent full up must leave migration versions, snapshots and original operations unchanged.
++7. Continue the existing active-denial/real-expiry/bad-witness/authority/stale-fence/raw-update/race/lost-ACK recovery assertions. Expected recovery is now **v2 -> v3**, same lease ID/holder/claimed_at. Reconcile original claim AND heartbeat receipts/hashes after each task's recovery; neither historical operation is overwritten.
++
++## Sole-Owner Execution Contract
++
++Unchanged selector/count: **one ignored test**. From `backend`, after Main integrates the fixture hook:
++
++```sh
++cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --list --ignored
++cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --exact --ignored --test-threads=1 --nocapture
++```
++
++Set only the existing `TT_CANDIDATES_TEST_DATABASE_URL` to an owned FRESH database ending `_candidates_test`, with no `public.seaql_migrations`; do NOT pre-migrate. The fixture handles 0097 setup and the test handles 0098. Keep qualified PostgreSQL 17/Base/toolchain/locked dependencies and the sole-owner resource/cleanup policy from the accepted execution manifest. This test still waits one real TTL with `pg_sleep(31)` and uses synthetic witness data, not Fleet/Hermes. Preparation, upgrade and ordinary active-lease checks must finish inside the unchanged TTL; a slow/expired fixture is a failed test, not permission to fabricate timestamps or renew as scheduler.
++
++## Verification Boundary
++
++Executed: owned-child rustfmt/parser check, source-only sequence/count/ordinary-API inspection, `git apply --check --unidiff-zero` for the fixture hook and diff whitespace checks. No Cargo invocation, compilation, PostgreSQL, migration up/down, Docker, network smoke or live/model call. This closes the missing populated claim/heartbeat scenario in AUTHORED coverage only; qualification remains unaccepted until the sole owner applies the hook and executes the exact test. No push/merge/install performed.
+diff --git a/handoff/PR169_POPULATED_PM_MAIN_HOOK.patch b/handoff/PR169_POPULATED_PM_MAIN_HOOK.patch
+new file mode 100644
+index 0000000..a6dac2c
+--- /dev/null
++++ b/handoff/PR169_POPULATED_PM_MAIN_HOOK.patch
+@@ -0,0 +1,15 @@
++diff --git a/backend/infra/src/sdlc_candidates_pg_tests.rs b/backend/infra/src/sdlc_candidates_pg_tests.rs
++--- a/backend/infra/src/sdlc_candidates_pg_tests.rs
+++++ b/backend/infra/src/sdlc_candidates_pg_tests.rs
++@@ -65,2 +65,6 @@
++-    async fn new() -> Self {
++-        let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
+++    async fn new() -> Self {
+++        Self::new_with_migration_steps(None).await
+++    }
+++
+++    async fn new_with_migration_steps(steps: Option<u32>) -> Self {
+++        let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
++@@ -80,1 +84,1 @@
++-        migration::Migrator::up(&db, None).await.unwrap();
+++        migration::Migrator::up(&db, steps).await.unwrap();

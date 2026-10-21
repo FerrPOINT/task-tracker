@@ -1,0 +1,427 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
+import {
+  useCreateIssueLink,
+  useDeleteIssueLink,
+  useDeleteProject,
+  useStartSprint,
+  useUpdateIssue,
+  useUpdateNotificationSettings,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+  useNotificationWritesPending,
+  useVoteIssue,
+  useWatchIssue,
+} from './hooks'
+import { deleteProject } from '@/api/project'
+import { createIssueLink, deleteIssueLink } from '@/api/link'
+import { updateIssue } from '@/api/issue'
+import { startSprint } from '@/api/sprint'
+import { voteIssue, watchIssue } from '@/api/engagement'
+import {
+  updateNotificationSettings,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from '@/api/notifications'
+
+const navigate = vi.hoisted(() => vi.fn())
+
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router')
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+  }
+})
+
+vi.mock('@/api/project', () => ({
+  listProjects: vi.fn(),
+  createProject: vi.fn(),
+  updateProject: vi.fn(),
+  deleteProject: vi.fn(),
+}))
+
+vi.mock('@/api/link', () => ({
+  listIssueLinks: vi.fn(),
+  createIssueLink: vi.fn(),
+  deleteIssueLink: vi.fn(),
+}))
+
+vi.mock('@/api/issue', () => ({
+  updateIssue: vi.fn(),
+  deleteIssue: vi.fn(),
+  restoreIssue: vi.fn(),
+  purgeIssue: vi.fn(),
+  listTrash: vi.fn(),
+  getIssue: vi.fn(),
+}))
+
+vi.mock('@/api/sprint', () => ({
+  listSprints: vi.fn(),
+  createSprint: vi.fn(),
+  updateSprint: vi.fn(),
+  startSprint: vi.fn(),
+  closeSprint: vi.fn(),
+  moveIssueToSprint: vi.fn(),
+  removeIssueFromSprint: vi.fn(),
+}))
+
+vi.mock('@/api/engagement', () => ({
+  listIssueVotes: vi.fn(),
+  listIssueWatchers: vi.fn(),
+  voteIssue: vi.fn(),
+  unvoteIssue: vi.fn(),
+  watchIssue: vi.fn(),
+  unwatchIssue: vi.fn(),
+}))
+
+vi.mock('@/api/notifications', () => ({
+  listNotifications: vi.fn(),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+  getNotificationSettings: vi.fn(),
+  updateNotificationSettings: vi.fn(),
+}))
+
+function wrapper(client: QueryClient) {
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  )
+}
+
+describe('shared api hooks', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('rejects competing notification writes from different hook instances without HTTP or replay', async () => {
+    let finish!: () => void
+    vi.mocked(markNotificationRead)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve
+          }),
+      )
+      .mockResolvedValue(undefined)
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: 2 } } })
+    const { result } = renderHook(
+      () => ({
+        first: useMarkNotificationRead(),
+        second: useMarkNotificationRead(),
+        all: useMarkAllNotificationsRead(),
+        settings: useUpdateNotificationSettings(),
+        pending: useNotificationWritesPending(),
+      }),
+      { wrapper: wrapper(client) },
+    )
+    let first!: Promise<void>
+    await act(async () => {
+      first = result.current.first.mutateAsync('one')
+    })
+    await waitFor(() => expect(markNotificationRead).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(result.current.pending).toBe(true))
+    await act(async () => {
+      await expect(result.current.second.mutateAsync('two')).rejects.toThrow()
+      await expect(result.current.all.mutateAsync()).rejects.toThrow()
+      await expect(
+        result.current.settings.mutateAsync({
+          email_frequency: 'daily',
+          disabled_event_types: [],
+          notify_own_changes: true,
+        }),
+      ).rejects.toThrow()
+    })
+    expect(markNotificationRead).toHaveBeenCalledTimes(1)
+    expect(markAllNotificationsRead).not.toHaveBeenCalled()
+    expect(updateNotificationSettings).not.toHaveBeenCalled()
+    await act(async () => {
+      finish()
+      await first
+    })
+    await waitFor(() => expect(result.current.pending).toBe(false))
+    vi.mocked(markNotificationRead).mockResolvedValue(undefined)
+    await act(async () => {
+      await result.current.second.mutateAsync('two')
+    })
+    expect(markNotificationRead).toHaveBeenCalledTimes(2)
+    client.clear()
+  })
+
+  it('retains the shared notification owner until cache refresh settles and releases after failure', async () => {
+    const client = new QueryClient()
+    let finish!: () => void
+    vi.spyOn(client, 'invalidateQueries').mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    vi.mocked(markAllNotificationsRead).mockResolvedValue(undefined)
+    const { result } = renderHook(
+      () => ({ all: useMarkAllNotificationsRead(), read: useMarkNotificationRead() }),
+      { wrapper: wrapper(client) },
+    )
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = result.current.all.mutateAsync()
+    })
+    await waitFor(() => expect(finish).toBeTypeOf('function'))
+    await act(async () => {
+      await expect(result.current.read.mutateAsync('one')).rejects.toThrow()
+    })
+    expect(markNotificationRead).not.toHaveBeenCalled()
+    await act(async () => {
+      finish()
+      await pending
+    })
+    vi.mocked(markNotificationRead).mockRejectedValueOnce(new Error('HTTP failure'))
+    await act(async () => {
+      await expect(result.current.read.mutateAsync('one')).rejects.toThrow('HTTP failure')
+    })
+    await act(async () => {
+      await result.current.all.mutateAsync()
+    })
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(2)
+    client.clear()
+  })
+
+  it('does not share notification write locks between query clients', async () => {
+    let finish!: () => void
+    vi.mocked(markNotificationRead)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve
+          }),
+      )
+      .mockResolvedValue(undefined)
+    const one = new QueryClient()
+    const two = new QueryClient()
+    const first = renderHook(() => useMarkNotificationRead(), { wrapper: wrapper(one) })
+    const second = renderHook(() => useMarkNotificationRead(), { wrapper: wrapper(two) })
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = first.result.current.mutateAsync('one')
+    })
+    await act(async () => {
+      await second.result.current.mutateAsync('two')
+    })
+    expect(markNotificationRead).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      finish()
+      await pending
+    })
+    one.clear()
+    two.clear()
+  })
+
+  it('updates cached notification settings immediately after saving', async () => {
+    const saved = {
+      email_frequency: 'hourly',
+      disabled_event_types: ['issue_assigned'],
+      notify_own_changes: true,
+    }
+    vi.mocked(updateNotificationSettings).mockResolvedValue(saved)
+    const client = new QueryClient()
+    client.setQueryData(['notification-settings'], {
+      email_frequency: 'daily',
+      disabled_event_types: [],
+      notify_own_changes: false,
+    })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateNotificationSettings(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(saved)
+    })
+
+    expect(client.getQueryData(['notification-settings'])).toEqual(saved)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notification-settings'] })
+  })
+
+  it('invalidates both source and target issue link lists after creating a link', async () => {
+    vi.mocked(createIssueLink).mockResolvedValue({
+      id: 'link-1',
+      source_id: 'issue-source',
+      source_key: 'TT-1',
+      target_id: 'issue-target',
+      target_key: 'TT-2',
+      link_type: 'relates',
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useCreateIssueLink('issue-source'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ targetKey: 'TT-2', linkType: 'relates' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-source'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-target'] })
+  })
+
+  it('invalidates all issue link lists after deleting a link', async () => {
+    vi.mocked(deleteIssueLink).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteIssueLink(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('link-1')
+    })
+
+    expect(deleteIssueLink).toHaveBeenCalledWith('link-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links'] })
+  })
+
+  it('invalidates reports when an issue mutation changes issue-derived data', async () => {
+    vi.mocked(updateIssue).mockResolvedValue({
+      id: 'issue-1',
+      key: 'TT-1',
+      summary: 'Issue',
+      description: '',
+      issue_type: 'task',
+      project_key: 'TT',
+      status: 'Done',
+      status_id: 'status-1',
+      priority: 'Medium',
+      labels: [],
+      assignee_id: null,
+      assignee_name: null,
+      reporter_id: 'user-1',
+      reporter_name: 'Demo User',
+      project_name: 'Task Tracker',
+      sprint_id: null,
+      original_estimate_seconds: null,
+      remaining_estimate_seconds: null,
+      time_spent_seconds: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateIssue('issue-1'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ status_id: 'status-1' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+  })
+
+  it('invalidates reports when a sprint lifecycle mutation changes report scope', async () => {
+    vi.mocked(startSprint).mockResolvedValue({
+      id: 'sprint-1',
+      name: 'Sprint 1',
+      goal: '',
+      state: 'active',
+      velocity: 0,
+      remaining_days: null,
+      issue_ids: [],
+      start_date: '2026-09-01T10:00:00Z',
+      end_date: null,
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useStartSprint('TT'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('sprint-1')
+    })
+
+    expect(startSprint).toHaveBeenCalledWith('TT', 'sprint-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+  })
+
+  it('invalidates issue-derived caches after voting for an issue', async () => {
+    vi.mocked(voteIssue).mockResolvedValue({
+      user_id: 'user-1',
+      username: 'demo',
+      display_name: 'Demo User',
+      voted_at: '2026-09-01T10:00:00Z',
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useVoteIssue('issue-1', 'TT'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(voteIssue).toHaveBeenCalledWith('issue-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-votes', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
+
+  it('invalidates issue-derived caches after watching an issue', async () => {
+    vi.mocked(watchIssue).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useWatchIssue('issue-1', 'TT'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(watchIssue).toHaveBeenCalledWith('issue-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-watchers', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
+
+  it('invalidates project-derived caches after deleting a project', async () => {
+    vi.mocked(deleteProject).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteProject(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('TT')
+    })
+
+    expect(vi.mocked(deleteProject).mock.calls[0]?.[0]).toBe('TT')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-members', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labels', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['custom-fields', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['trash', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(navigate).toHaveBeenCalledWith('/projects')
+  })
+})

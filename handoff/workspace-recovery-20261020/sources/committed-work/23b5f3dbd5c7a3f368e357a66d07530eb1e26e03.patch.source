@@ -1,0 +1,46 @@
+diff --git a/backend/infra/src/sdlc_candidates_pg_tests.rs b/backend/infra/src/sdlc_candidates_pg_tests.rs
+index cb105d2..ac1bb3a 100644
+--- a/backend/infra/src/sdlc_candidates_pg_tests.rs
++++ b/backend/infra/src/sdlc_candidates_pg_tests.rs
+@@ -254,8 +254,8 @@ impl Fixture {
+                     CompletePmDraft {
+                         contract_version: 1,
+                         fence,
+-                        lease_id: lease.current.lease_id,
+-                        lease_version: lease.current.version,
++                        lease_id: lease.lease.lease_id,
++                        lease_version: lease.lease.version,
+                         requirement_revision: 1,
+                         content_hash: hash,
+                         terminal_receipt_ref: "fixture://synthetic-native-terminal".into(),
+@@ -288,7 +288,7 @@ impl Fixture {
+ #[tokio::test]
+ #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
+ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
+-    let f = Fixture::new().await;
++    let mut f = Fixture::new().await;
+     let mut expected = vec![];
+     for key in ["first", "second", "third"] {
+         expected.push(f.confirmed(key, true).await);
+@@ -364,18 +364,14 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
+             Err(AppError::Forbidden)
+         ));
+     }
+-    let mut disabled_config = f.repo.config.clone();
+-    disabled_config.single_task_project_ids.clear();
+-    let disabled = PostgresSdlcRepository {
+-        db: f.db.clone(),
+-        config: disabled_config,
+-    };
++    let enabled_projects = std::mem::take(&mut f.repo.config.single_task_project_ids);
+     assert!(matches!(
+-        disabled
++        f.repo
+             .read_delivery_candidates(&f.reader, f.query(None, 50))
+             .await,
+         Err(AppError::Unavailable(_))
+     ));
++    f.repo.config.single_task_project_ids = enabled_projects;
+     let task = actual[0];
+     let (queued, _) = f
+         .repo

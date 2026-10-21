@@ -1,0 +1,419 @@
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+index ba80fce..c728b2e 100644
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -98,9 +98,7 @@ impl PostgresSdlcRepository {
+             .await
+             .map_err(map_db)?
+             .ok_or_else(|| AppError::not_found("project", project))?;
+-        if (!actor.trusted_human || !actor.human_session)
+-            && row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id
+-        {
++        if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
+             // Current Tracker project policy grants write to explicit members.
+             // Central/global-admin hints never substitute for this row.
+             tx.query_one(statement(
+@@ -964,13 +962,13 @@ impl SdlcRepository for PostgresSdlcRepository {
+             "WITH active AS MATERIALIZED (
+                 SELECT id FROM users WHERE central_sub=$1 AND is_active=true
+              ), allowed AS (
+-                SELECT p.id FROM active u JOIN projects p ON ($2::boolean OR p.owner_id=u.id)
++                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                 UNION
+                 SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
+              )
+              SELECT EXISTS(SELECT 1 FROM active) AS authorized,
+                 COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM allowed),'[]'::jsonb) AS project_ids",
+-            vec![actor.subject.clone().into(),actor.trusted_human.into()],
++            vec![actor.subject.clone().into()],
+         )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project access result missing"))?;
+         if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
+             return Err(AppError::Forbidden);
+@@ -999,7 +997,7 @@ impl SdlcRepository for PostgresSdlcRepository {
+             "WITH active AS MATERIALIZED (
+                 SELECT id FROM users WHERE central_sub=$1 AND is_active=true
+              ), allowed AS (
+-                SELECT p.id FROM active u JOIN projects p ON ($4::boolean OR p.owner_id=u.id)
++                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                 UNION
+                 SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
+              ), page AS (
+@@ -1010,7 +1008,7 @@ impl SdlcRepository for PostgresSdlcRepository {
+              SELECT EXISTS(SELECT 1 FROM active) AS authorized,
+                 COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'key',key,'name',name) ORDER BY id)
+                     FROM page),'[]'::jsonb) AS projects",
+-            vec![actor.subject.clone().into(), after.into(), (i64::from(limit) + 1).into(),actor.trusted_human.into()],
++            vec![actor.subject.clone().into(), after.into(), (i64::from(limit) + 1).into()],
+         )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project directory result missing"))?;
+         if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
+             return Err(AppError::Forbidden);
+diff --git a/backend/server/tests/drafts.rs b/backend/server/tests/drafts.rs
+index 14cb04b..48f3b05 100644
+--- a/backend/server/tests/drafts.rs
++++ b/backend/server/tests/drafts.rs
+@@ -325,7 +325,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
+     );
+     assert_eq!(
+         get_json(&client, &access_url, &foreign, 200).await,
+-        expected_scope
++        json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":[]})
+     );
+     for (token, status) in [
+         ("local-token".to_string(), 401),
+@@ -410,6 +410,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
+         (bearer(&secret, &issuer, &owner_sub, false), 403),
+         ("sdlc_pat_owner".into(), 403),
+         ("sdlc_pat_read".into(), 403),
++        (foreign.clone(), 403),
+     ] {
+         expect(&client, &url, &token, &command("denied"), status).await;
+     }
+@@ -888,8 +889,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
+         [project.into()])).await.unwrap().unwrap().try_get::<i64>("","n").unwrap();
+     let after_delete = expect(&client, &url, &owner, &command("after-deleted-number"), 201).await;
+     assert_eq!(after_delete["task_key"], format!("DRAFT-{}", max + 1));
+-    // Team membership is not a project ACL. Removing it preserves author reads
+-    // and replay; foreign exact-owner confirmation still fails below.
++    // Task ownership cannot replace project membership for fresh access or replay.
+     sql(
+         &db,
+         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+@@ -898,11 +898,24 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
+     .await;
+     assert_eq!(
+         get_json(&client, &access_url, &owner, 200).await,
+-        expected_scope
++        json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":[other_project]})
++    );
++    let denied_counts = [
++        count(&db, "issues").await,
++        count(&db, "sdlc_draft_creations").await,
++        count(&db, "sdlc_outbox").await,
++    ];
++    expect(&client, &url, &owner, &command("creation"), 403).await;
++    get_json(&client, &input_url, &owner, 403).await;
++    get_json(&client, &context_url, &foreign, 403).await;
++    assert_eq!(
++        [
++            count(&db, "issues").await,
++            count(&db, "sdlc_draft_creations").await,
++            count(&db, "sdlc_outbox").await,
++        ],
++        denied_counts
+     );
+-    expect(&client, &url, &owner, &command("creation"), 200).await;
+-    get_json(&client, &input_url, &owner, 200).await;
+-    get_json(&client, &context_url, &foreign, 200).await;
+     expect(
+         &client,
+         &format!(
+@@ -1063,14 +1076,12 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
+     assert_eq!(count(&db, "sdlc_draft_creations").await, ledger_before);
+     assert_eq!(count(&db, "issues").await, issues_before);
+     assert_eq!(count(&db, "sdlc_outbox").await, events_before);
+-    // Shared trusted humans may create in the same Project. Creation receipts
+-    // and exact-owner confirmations remain tied to the original actor.
++    // Verified humans without project membership cannot create, including after restart.
+     let foreign_command = command("shared-human-neighbor");
+-    let foreign_draft = expect(&client, &url, &foreign, &foreign_command, 201).await;
+-    assert_eq!(
+-        expect(&client, &url, &foreign, &foreign_command, 200).await,
+-        foreign_draft
+-    );
++    expect(&client, &url, &foreign, &foreign_command, 403).await;
++    assert_eq!(count(&db, "sdlc_draft_creations").await, ledger_before);
++    assert_eq!(count(&db, "issues").await, issues_before);
++    assert_eq!(count(&db, "sdlc_outbox").await, events_before);
+     unavailable.store(true, Ordering::SeqCst);
+     get_json(
+         &client,
+diff --git a/backend/server/tests/sdlc.rs b/backend/server/tests/sdlc.rs
+index 917221a..4b9c564 100644
+--- a/backend/server/tests/sdlc.rs
++++ b/backend/server/tests/sdlc.rs
+@@ -40,6 +40,8 @@ mod namespace_catalog;
+ mod pm_credential_boundary;
+ #[path = "support/routing_policy.rs"]
+ mod routing_policy;
++#[path = "support/sdlc_project_access.rs"]
++mod sdlc_project_access;
+ 
+ #[derive(Clone)]
+ struct AuthStub {
+@@ -456,6 +458,19 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+     let foreign = human_token(&secret, &issuer, "foreign", "sdlc", chrono_now() + 3600);
+     let client = Client::new();
+     let (base, stop, handle) = start_tracker(config.clone()).await;
++    sdlc_project_access::verify(
++        &db,
++        &client,
++        &base,
++        project,
++        task,
++        &routing_policy::Actors {
++            owner: &owner,
++            operator: &operator,
++            foreign: &foreign,
++        },
++    )
++    .await;
+     namespace_catalog::verify(&client, &base, &db, project, &owner).await;
+     let url = format!("{base}/api/v1/issues/{task}/sdlc");
+     let profiles_before = count(&db, "users").await;
+@@ -547,7 +562,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+                 .await
+                 .unwrap()
+                 .status(),
+-            200
++            403
+         );
+     }
+     assert_eq!(
+@@ -853,7 +868,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+         analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
+     let routing_snapshot = routing_policy::snapshot(&client, &base, task, &owner).await;
+     assert_eq!(routing_snapshot["policy"], routing);
+-    analysis_intent::read(&client, &url, &foreign, 200).await;
++    analysis_intent::read(&client, &url, &foreign, 403).await;
+     assert_eq!(confirmation["stage"], "Backlog");
+     assert_eq!(confirmation["revision"], 2);
+     let events = client
+@@ -924,7 +939,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+         422,
+     )
+     .await;
+-    metadata::get(&client, &metadata_url, &foreign, 200).await;
++    metadata::get(&client, &metadata_url, &foreign, 403).await;
+     metadata::get(&client, &metadata_url, "local-token", 401).await;
+     metadata::get(&client, &metadata_url, "sdlc_pat_pm", 200).await;
+     metadata::get(&client, &metadata_url, "sdlc_pat_fleet", 403).await;
+@@ -999,7 +1014,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+             .is_err()
+     );
+     sql(&db, "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='operator')", vec![project.into()]).await;
+-    metadata::get(&client, &metadata_url, &operator, 200).await;
++    metadata::get(&client, &metadata_url, &operator, 403).await;
++    sdlc_project_access::directories(&client, &base, &operator, vec![]).await;
+     sql(
+         &db,
+         "UPDATE users SET is_active=false WHERE central_sub='pm'",
+@@ -1021,7 +1037,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
+             .await
+             .unwrap()
+             .status(),
+-        200
++        403
+     );
+     let mismatch = infra::sdlc::PostgresSdlcRepository::connect(
+         &database_url,
+diff --git a/backend/server/tests/support/project_directory.rs b/backend/server/tests/support/project_directory.rs
+index 3b30d9d..70809f8 100644
+--- a/backend/server/tests/support/project_directory.rs
++++ b/backend/server/tests/support/project_directory.rs
+@@ -96,7 +96,7 @@ pub async fn verify(f: Fixture<'_>) {
+         initial
+     );
+     let empty = get_json(f.client, &url, f.foreign, 200).await;
+-    assert_eq!(assert_page(&empty, 50), expected);
++    assert!(assert_page(&empty, 50).is_empty());
+     assert_eq!(empty["next_cursor"], Value::Null);
+ 
+     let mut own = Vec::new();
+@@ -194,12 +194,9 @@ pub async fn verify(f: Fixture<'_>) {
+                 .contains("directory-private-marker")
+         );
+     }
+-    assert_eq!(
+-        assert_page(&get_json(f.client, &url, f.foreign, 200).await, 50),
+-        expected[..50]
+-    );
++    assert!(assert_page(&get_json(f.client, &url, f.foreign, 200).await, 50).is_empty());
+ 
+-    // Membership is team metadata in the trusted shared catalog; account revocation is still enforced.
++    // Explicit membership grants access; revocation removes the project immediately.
+     let target = own[1];
+     sql(
+         f.db,
+@@ -237,12 +234,12 @@ pub async fn verify(f: Fixture<'_>) {
+     .await;
+     let revoked = get_json(f.client, &replay_url, f.owner, 200).await;
+     assert!(
+-        assert_page(&revoked, 100)
++        !assert_page(&revoked, 100)
+             .iter()
+             .any(|p| p["id"] == target.to_string())
+     );
+     assert!(
+-        assert_page(
++        !assert_page(
+             &get_json(f.client, &replay_url, "sdlc_pat_read", 200).await,
+             100
+         )
+diff --git a/backend/server/tests/support/routing_policy.rs b/backend/server/tests/support/routing_policy.rs
+index b190787..f7b9a80 100644
+--- a/backend/server/tests/support/routing_policy.rs
++++ b/backend/server/tests/support/routing_policy.rs
+@@ -148,7 +148,7 @@ pub(super) async fn before(
+         404,
+     )
+     .await;
+-    read(client, &url, foreign, 200).await;
++    read(client, &url, foreign, 403).await;
+     read(client, &url, "sdlc_pat_pm", 403).await;
+     sql(
+         db,
+diff --git a/backend/server/tests/support/sdlc_project_access.rs b/backend/server/tests/support/sdlc_project_access.rs
+new file mode 100644
+index 0000000..32942c2
+--- /dev/null
++++ b/backend/server/tests/support/sdlc_project_access.rs
+@@ -0,0 +1,149 @@
++use super::*;
++
++async fn read(client: &Client, base: &str, path: &str, token: &str, expected: u16) -> Value {
++    let response = client
++        .get(format!("{base}/api/v1/{path}"))
++        .bearer_auth(token)
++        .send()
++        .await
++        .unwrap();
++    let status = response.status().as_u16();
++    let body = response.text().await.unwrap();
++    assert_eq!(status, expected, "{path}: {body}");
++    serde_json::from_str(&body).unwrap_or(Value::Null)
++}
++
++pub(super) async fn directories(client: &Client, base: &str, token: &str, mut expected: Vec<Uuid>) {
++    expected.sort();
++    let access = read(client, base, "sdlc/project-access", token, 200).await;
++    assert_eq!(access["project_ids"], json!(expected));
++    let mut collected = Vec::<Uuid>::new();
++    let mut after = None;
++    // A denied project's UUID must not leak into a cursor or an empty page.
++    for _ in 0..=expected.len() {
++        let path = match after {
++            Some(id) => format!("sdlc/project-directory?limit=1&after={id}"),
++            None => "sdlc/project-directory?limit=1".into(),
++        };
++        let page = read(client, base, &path, token, 200).await;
++        let entries = page["projects"].as_array().unwrap();
++        assert!(entries.len() <= 1);
++        collected.extend(entries.iter().map(|entry| {
++            let id: Uuid = serde_json::from_value(entry["id"].clone()).unwrap();
++            assert!(expected.contains(&id));
++            assert!(!entry["key"].as_str().unwrap().is_empty());
++            id
++        }));
++        after = serde_json::from_value::<Option<Uuid>>(page["next_cursor"].clone()).unwrap();
++        if after.is_none() {
++            assert_eq!(collected, expected);
++            return;
++        }
++        assert_eq!(after, collected.last().copied());
++    }
++    panic!("project directory failed to terminate");
++}
++
++pub(super) async fn verify(
++    db: &DatabaseConnection,
++    client: &Client,
++    base: &str,
++    project: Uuid,
++    task: Uuid,
++    actors: &routing_policy::Actors<'_>,
++) {
++    let other: Uuid = db
++        .query_one(Statement::from_string(
++            DatabaseBackend::Postgres,
++            "SELECT id FROM projects WHERE key='OTHER'",
++        ))
++        .await
++        .unwrap()
++        .unwrap()
++        .try_get("", "id")
++        .unwrap();
++    directories(client, base, actors.owner, vec![project, other]).await;
++    directories(client, base, actors.operator, vec![project]).await;
++    directories(client, base, actors.foreign, vec![]).await;
++    directories(client, base, "sdlc_pat_reservation_reader", vec![project]).await;
++    directories(client, base, "sdlc_pat_reservation_foreign", vec![]).await;
++
++    let tables = [
++        "users",
++        "issues",
++        "sdlc_tasks",
++        "sdlc_draft_creations",
++        "sdlc_idempotency",
++        "sdlc_outbox",
++        "issue_status_history",
++    ];
++    let mut before = Vec::new();
++    for table in tables {
++        before.push(count(db, table).await);
++    }
++    for token in [actors.foreign, "sdlc_pat_reservation_foreign"] {
++        read(
++            client,
++            base,
++            &format!("issues/{task}/sdlc/context"),
++            token,
++            403,
++        )
++        .await;
++    }
++    post(
++        client,
++        &format!("{base}/api/v1/issues/{task}/sdlc/binding"),
++        actors.foreign,
++        &json!({"root_task_id":task,"idempotency_key":"foreign-human-binding"}),
++        403,
++    )
++    .await;
++    post(
++        client,
++        &format!("{base}/api/v1/projects/{project}/sdlc/drafts"),
++        actors.foreign,
++        &json!({"title":"Forbidden draft","description":"Denied request","idempotency_key":"foreign-human-draft"}),
++        403,
++    )
++    .await;
++    read(
++        client,
++        base,
++        &format!("projects/{project}/sdlc/drafts/operations/foreign-human-draft"),
++        actors.foreign,
++        403,
++    )
++    .await;
++    // The fixture gives this verified human a global admin hint, but no membership.
++    // Keep the legacy public Tracker route's existing policy outside this fix.
++    read(client, base, &format!("issues/{task}"), actors.foreign, 200).await;
++    for (table, expected) in tables.into_iter().zip(before) {
++        assert_eq!(count(db, table).await, expected, "denial mutated {table}");
++    }
++    for token in [actors.owner, actors.operator] {
++        read(
++            client,
++            base,
++            &format!("issues/{task}/sdlc/context"),
++            token,
++            404,
++        )
++        .await;
++    }
++    sql(
++        db,
++        "UPDATE users SET is_active=false WHERE central_sub='operator'",
++        vec![],
++    )
++    .await;
++    for path in ["sdlc/project-access", "sdlc/project-directory"] {
++        read(client, base, path, actors.operator, 403).await;
++    }
++    sql(
++        db,
++        "UPDATE users SET is_active=true WHERE central_sub='operator'",
++        vec![],
++    )
++    .await;
++}

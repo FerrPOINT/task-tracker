@@ -1,0 +1,98 @@
+//! Actual delegated preference HTTP; no assignment consumer is simulated.
+use super::*;
+pub(super) async fn verify(client: &Client, base: &str, project: Uuid, owner_token: &str) {
+    let fleet: Uuid = std::env::var("TASKTRACKER_BUG_INTAKE__FLEET_INSTANCE_ID")
+        .expect("owned synthetic Fleet identity must be configured for intake acceptance")
+        .parse()
+        .unwrap();
+    let worker = Uuid::new_v4();
+    let endpoint = format!(
+        "{base}/api/v1/projects/{project}/sdlc/bug-intake/workers/{worker}/preferences/owner"
+    );
+    let command = json!({"contract_version":1,"idempotency_key":"http-intake-first","expected_revision":0,"desired_revision":3,"enabled":true,
+        "worker_runtime":{"fleet_instance_id":fleet,"agent_id":worker,"agent_config_revision":2}});
+    for credential in [owner_token, "sdlc_pat_bugs_workflow"] {
+        let denied = client
+            .put(&endpoint)
+            .bearer_auth(credential)
+            .json(&command)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            denied.status(),
+            403,
+            "only exact delegated Fleet service accepts preferences"
+        );
+    }
+    let response = client
+        .put(&endpoint)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .json(&command)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let receipt: Value = response.json().await.unwrap();
+    assert_eq!(receipt["enabled"], true);
+    assert_eq!(receipt["revision"], 3);
+    assert_eq!(receipt["can_take_bugs"], false);
+    let latest = client
+        .get(&endpoint)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(latest.status(), 200);
+    assert_eq!(latest.json::<Value>().await.unwrap(), receipt);
+    let op =
+        format!("{base}/api/v1/projects/{project}/sdlc/bug-intake/operations/http-intake-first");
+    let original = client
+        .get(&op)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(original.status(), 200);
+    assert_eq!(original.json::<Value>().await.unwrap(), receipt);
+    let replay = client
+        .put(&endpoint)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .json(&command)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(replay.status(), 200);
+    assert_eq!(replay.json::<Value>().await.unwrap(), receipt);
+    let mut changed = command.clone();
+    changed["enabled"] = json!(false);
+    assert_eq!(
+        client
+            .put(&endpoint)
+            .bearer_auth("sdlc_pat_bugs_fleet")
+            .json(&changed)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        409
+    );
+    let mut wrong = command;
+    wrong["idempotency_key"] = json!("http-intake-wrong-worker");
+    wrong["worker_runtime"]["agent_id"] = json!(Uuid::new_v4());
+    assert_eq!(
+        client
+            .put(&endpoint)
+            .bearer_auth("sdlc_pat_bugs_fleet")
+            .json(&wrong)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        422
+    );
+    println!(
+        "BUG_INTAKE HTTP accepted preference/read/original-replay, scope denials and assignment=false passed"
+    );
+}

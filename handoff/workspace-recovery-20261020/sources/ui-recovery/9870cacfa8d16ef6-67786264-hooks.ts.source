@@ -1,0 +1,905 @@
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useIsMutating,
+  type QueryClient,
+} from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
+import { endSso } from '@sdlc/ui/sso'
+import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
+import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
+import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
+import { login, register, getCurrentUser, listUsers } from '@/api/auth'
+import { createIssue } from '@/api/issue-create'
+import {
+  updateIssue,
+  deleteIssue,
+  restoreIssue,
+  purgeIssue,
+  listTrash,
+  getIssue,
+} from '@/api/issue'
+import { getDashboard } from '@/api/dashboard'
+import { useAuthStore } from '@/shared/auth/store'
+import { ssoConfig } from '@/shared/auth/store'
+
+import {
+  closeSprint,
+  createSprint,
+  listSprints,
+  moveIssueToSprint,
+  removeIssueFromSprint,
+  startSprint,
+  updateSprint,
+  type CreateSprintRequest,
+  type UpdateSprintRequest,
+} from '@/api/sprint'
+import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
+import { listProjectMembers } from '@/api/members'
+import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
+import {
+  listProjectLabels,
+  createLabel,
+  listIssueLabels,
+  attachLabel,
+  detachLabel,
+  type Label,
+} from '@/api/label'
+import { listIssueLinks, createIssueLink, deleteIssueLink, type IssueLink } from '@/api/link'
+import {
+  createCustomField,
+  deleteCustomField,
+  listCustomFields,
+  listIssueCustomFieldValues,
+  setIssueCustomFieldValue,
+  type CustomFieldInput,
+  type CustomField,
+  type CustomFieldValue,
+} from '@/api/custom-fields'
+import {
+  getVelocityReport,
+  getBurndownReport,
+  getCumulativeFlowReport,
+  getControlChartReport,
+} from '@/api/reports'
+import {
+  listIssueVotes,
+  listIssueWatchers,
+  voteIssue,
+  unvoteIssue,
+  watchIssue,
+  unwatchIssue,
+} from '@/api/engagement'
+import {
+  getNotificationSettings,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  updateNotificationSettings,
+  type NotificationListOptions,
+  type UpdateNotificationSettingsInput,
+} from '@/api/notifications'
+import {
+  listAdminAuditLog,
+  listAdminSettings,
+  updateAdminSetting,
+  type UpdateSystemSettingInput,
+} from '@/api/admin'
+
+const adminKeys = {
+  all: ['admin'] as const,
+  settings: ['admin', 'settings'] as const,
+  auditLogs: ['admin', 'audit-log'] as const,
+  auditLog: (limit?: number) => ['admin', 'audit-log', limit ?? 100] as const,
+}
+
+export function useAdminSettings() {
+  return useQuery({ queryKey: adminKeys.settings, queryFn: listAdminSettings })
+}
+
+export function useUpdateAdminSetting() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateSystemSettingInput) => updateAdminSetting(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.settings })
+      qc.invalidateQueries({ queryKey: adminKeys.auditLogs })
+    },
+  })
+}
+
+export function useAdminAuditLog(limit = 100) {
+  return useQuery({
+    queryKey: adminKeys.auditLog(limit),
+    queryFn: () => listAdminAuditLog(limit),
+    placeholderData: (previous) => previous,
+  })
+}
+
+const notificationKeys = {
+  all: ['notifications'] as const,
+  list: (includeRead = false, limit = 10, offset = 0) =>
+    ['notifications', includeRead, limit, offset] as const,
+  settings: ['notification-settings'] as const,
+  mutations: ['notification-writes'] as const,
+}
+
+const notificationWriteOwners = new WeakSet<QueryClient>()
+
+// Shared by the bell and page; competing writes are rejected, never queued.
+async function runNotificationWrite<T>(client: QueryClient, write: () => Promise<T>) {
+  if (notificationWriteOwners.has(client)) throw new Error('Notification write already pending')
+  notificationWriteOwners.add(client)
+  try {
+    return await write()
+  } finally {
+    notificationWriteOwners.delete(client)
+  }
+}
+
+export function useNotificationWritesPending() {
+  return useIsMutating({ mutationKey: notificationKeys.mutations }) > 0
+}
+
+export function useNotifications(options: NotificationListOptions = {}) {
+  const includeRead = options.includeRead ?? false
+  const limit = options.limit ?? 10
+  const offset = options.offset ?? 0
+  return useQuery({
+    queryKey: notificationKeys.list(includeRead, limit, offset),
+    queryFn: () => listNotifications({ includeRead, limit, offset }),
+  })
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationKey: notificationKeys.mutations,
+    retry: false,
+    mutationFn: (id: string) =>
+      runNotificationWrite(qc, async () => {
+        await markNotificationRead(id)
+        await qc.invalidateQueries({ queryKey: notificationKeys.all })
+      }),
+  })
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationKey: notificationKeys.mutations,
+    retry: false,
+    mutationFn: () =>
+      runNotificationWrite(qc, async () => {
+        await markAllNotificationsRead()
+        await qc.invalidateQueries({ queryKey: notificationKeys.all })
+      }),
+  })
+}
+
+export function useNotificationSettings() {
+  return useQuery({ queryKey: notificationKeys.settings, queryFn: getNotificationSettings })
+}
+
+export function useUpdateNotificationSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationKey: notificationKeys.mutations,
+    retry: false,
+    mutationFn: (input: UpdateNotificationSettingsInput) =>
+      runNotificationWrite(qc, async () => {
+        const settings = await updateNotificationSettings(input)
+        qc.setQueryData(notificationKeys.settings, settings)
+        await qc.invalidateQueries({ queryKey: notificationKeys.settings })
+        return settings
+      }),
+  })
+}
+
+const workflowKeys = {
+  statuses: ['statuses'] as const,
+  transitions: ['transitions'] as const,
+  issueTypes: ['issue-types'] as const,
+}
+
+export function useStatuses() {
+  return useQuery({
+    queryKey: workflowKeys.statuses,
+    queryFn: listStatuses,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useTransitions() {
+  return useQuery({
+    queryKey: workflowKeys.transitions,
+    queryFn: listTransitions,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useIssueTypes() {
+  return useQuery({
+    queryKey: workflowKeys.issueTypes,
+    queryFn: listIssueTypes,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+const attachmentKeys = {
+  list: (issueId: string) => ['attachments', issueId] as const,
+}
+
+export function useAttachments(issueId: string | undefined) {
+  return useQuery({
+    queryKey: attachmentKeys.list(issueId ?? ''),
+    queryFn: () => listAttachments(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useUploadAttachment(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      file,
+      onProgress,
+    }: {
+      file: File
+      onProgress?: (loaded: number, total: number) => void
+    }) => uploadAttachment(issueId, file, onProgress),
+    // AttachmentPanel refetches once after every file in the batch has settled.
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId), refetchType: 'none' }),
+  })
+}
+
+export function useDeleteAttachment(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteAttachment(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId) }),
+  })
+}
+
+const projectKeys = {
+  all: ['projects'] as const,
+  detail: (key: string) => ['project', key] as const,
+  sprints: (key: string) => ['sprints', key] as const,
+}
+
+export function invalidateIssueCaches(qc: QueryClient, projectKey?: string, issueId?: string) {
+  qc.invalidateQueries({ queryKey: projectKeys.all })
+  qc.invalidateQueries({ queryKey: ['dashboard'] })
+  qc.invalidateQueries({ queryKey: ['search'] })
+  qc.invalidateQueries({ queryKey: ['reports'] })
+  if (projectKey) {
+    qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+  } else {
+    qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['backlog'] })
+  }
+  if (issueId) qc.invalidateQueries({ queryKey: ['issue', issueId] })
+}
+
+export function useSprints(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.sprints(projectKey ?? ''),
+    queryFn: () => listSprints(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateSprintRequest) => createSprint(projectKey, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+}
+
+export function useUpdateSprint(projectKey: string, sprintId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateSprintRequest) => updateSprint(projectKey, sprintId, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+}
+
+export function useStartSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sprintId: string) => startSprint(projectKey, sprintId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      qc.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+}
+
+export function useCloseSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sprintId: string) => closeSprint(projectKey, sprintId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      qc.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+}
+
+export function useMoveIssueToSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
+      moveIssueToSprint(projectKey, sprintId, issueId),
+    onSuccess: (data, { issueId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      invalidateIssueCaches(qc, data.project_key || projectKey, issueId)
+    },
+  })
+}
+
+export function useRemoveIssueFromSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
+      removeIssueFromSprint(projectKey, sprintId, issueId),
+    onSuccess: (data, { issueId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      invalidateIssueCaches(qc, data.project_key || projectKey, issueId)
+    },
+  })
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: projectKeys.all,
+    queryFn: listProjects,
+  })
+}
+
+export function useBoard(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.detail(projectKey ?? ''),
+    queryFn: () => getBoard(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useBacklog(projectKey: string | undefined, offset = 0, limit = 100) {
+  return useQuery({
+    queryKey: ['backlog', projectKey ?? '', offset, limit],
+    queryFn: () => getBacklog(projectKey!, offset, limit),
+    enabled: !!projectKey,
+    placeholderData: (prev) => prev,
+  })
+}
+
+export function useIssues(filters: SearchFilters = {}) {
+  return useQuery({
+    queryKey: ['search', filters],
+    queryFn: () => searchIssues(filters),
+    retry: (failureCount, error) =>
+      !(error instanceof SearchRequestError && error.status >= 400 && error.status < 500) &&
+      failureCount < 2,
+  })
+}
+
+export function useIssue(id: string) {
+  return useQuery({
+    queryKey: ['issue', id],
+    queryFn: () => getIssue(id),
+    enabled: id.length > 0,
+    refetchOnWindowFocus: false,
+    staleTime: 0,
+  })
+}
+
+export function useSearch(q: string) {
+  return useIssues({ q })
+}
+
+export function useDashboard() {
+  return useQuery({
+    queryKey: ['dashboard'],
+    queryFn: getDashboard,
+  })
+}
+
+export function useLogin() {
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: login,
+    onSuccess: (data) => {
+      setAuth({
+        token: data.access_token,
+        userId: data.user_id,
+        email: data.email,
+      })
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useRegister() {
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: register,
+    onSuccess: (data) => {
+      setAuth({
+        token: data.access_token,
+        userId: data.user_id,
+        email: data.email,
+      })
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useCreateIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: createIssue,
+    onSuccess: (data) => {
+      qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
+    },
+  })
+}
+
+export function useMoveIssue(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: MoveIssueInput) => moveIssue(projectKey, input),
+    onSuccess: (data, input) => {
+      invalidateIssueCaches(qc, data.project_key || projectKey, input.issue_id)
+    },
+  })
+}
+
+export function useUsers() {
+  const token = useAuthStore((s) => s.token)
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: listUsers,
+    enabled: !!token,
+  })
+}
+
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: getCurrentUser,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useLogout() {
+  return useMutation({
+    mutationFn: async () => {
+      // Clearing auth here lets the route guard race the central logout redirect.
+      endSso(ssoConfig)
+    },
+  })
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: createProject,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      navigate(`/projects/${data.key}/board`)
+    },
+  })
+}
+
+export function useUpdateProject(key: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateProject>[1]) => updateProject(key, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
+    },
+  })
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: deleteProject,
+    onSuccess: (_data, key) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(key) })
+      qc.invalidateQueries({ queryKey: ['project-members', key] })
+      qc.invalidateQueries({ queryKey: ['labels', key] })
+      qc.invalidateQueries({ queryKey: ['custom-fields', key] })
+      qc.invalidateQueries({ queryKey: ['backlog', key] })
+      qc.invalidateQueries({ queryKey: ['trash', key] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['search'] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
+      navigate('/projects')
+    },
+  })
+}
+
+export function useUpdateIssue(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateIssue>[1]) => updateIssue(id, input),
+    onSuccess: (data) => {
+      qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
+    },
+  })
+}
+
+export function useDeleteIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationKey: ['delete-issue'],
+    mutationFn: deleteIssue,
+    onSuccess: () => {
+      // The page releases its navigation guard before removing the active issue.
+      invalidateIssueCaches(qc)
+      qc.invalidateQueries({ queryKey: ['trash'] })
+    },
+  })
+}
+
+export function useTrash(projectKey: string | undefined, offset = 0, limit = 50) {
+  return useQuery({
+    queryKey: ['trash', projectKey, offset, limit],
+    queryFn: () => listTrash(projectKey!, limit, offset),
+    enabled: !!projectKey,
+  })
+}
+
+export function useRestoreIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: restoreIssue,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['trash'] })
+      qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
+    },
+  })
+}
+
+export function usePurgeIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: purgeIssue,
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['trash'] })
+      invalidateIssueCaches(qc, undefined, id)
+      qc.removeQueries({ queryKey: ['issue', id] })
+    },
+  })
+}
+
+const labelKeys = {
+  project: (projectKey: string) => ['labels', projectKey] as const,
+  issue: (issueId: string) => ['issue-labels', issueId] as const,
+}
+
+export function useProjectLabels(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: labelKeys.project(projectKey ?? ''),
+    queryFn: () => listProjectLabels(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateLabel(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, color }: { name: string; color: string }) =>
+      createLabel(projectKey, name, color),
+    onSuccess: (data) => {
+      qc.setQueryData<Label[]>(labelKeys.project(projectKey), (current) =>
+        current ? [...current.filter((label) => label.id !== data.id), data] : current,
+      )
+      return qc.invalidateQueries({ queryKey: labelKeys.project(projectKey) })
+    },
+  })
+}
+
+export function useIssueLabels(issueId: string | undefined) {
+  return useQuery({
+    queryKey: labelKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueLabels(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useAttachLabel(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (labelId: string) => attachLabel(issueId, labelId),
+    onSuccess: (_, labelId) => {
+      const label = projectKey
+        ? qc
+            .getQueryData<Label[]>(labelKeys.project(projectKey))
+            ?.find((item) => item.id === labelId)
+        : undefined
+      if (label) {
+        qc.setQueryData<Label[]>(labelKeys.issue(issueId), (current) =>
+          current ? [...current.filter((item) => item.id !== label.id), label] : current,
+        )
+      }
+      invalidateIssueCaches(qc, projectKey, issueId)
+      return qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) })
+    },
+  })
+}
+
+export function useDetachLabel(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (labelId: string) => detachLabel(issueId, labelId),
+    onSuccess: (_, labelId) => {
+      qc.setQueryData<Label[]>(labelKeys.issue(issueId), (current) =>
+        current?.filter((label) => label.id !== labelId),
+      )
+      invalidateIssueCaches(qc, projectKey, issueId)
+      return qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) })
+    },
+  })
+}
+
+const linkKeys = {
+  issue: (issueId: string) => ['issue-links', issueId] as const,
+}
+
+export function useIssueLinks(issueId: string | undefined) {
+  return useQuery({
+    queryKey: linkKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueLinks(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useCreateIssueLink(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ targetKey, linkType }: { targetKey: string; linkType: string }) =>
+      createIssueLink(issueId, targetKey, linkType),
+    onSuccess: (data) => {
+      for (const id of new Set([issueId, data.source_id, data.target_id])) {
+        qc.setQueryData<IssueLink[]>(linkKeys.issue(id), (current) =>
+          current ? [...current.filter((link) => link.id !== data.id), data] : current,
+        )
+      }
+      qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) })
+      qc.invalidateQueries({ queryKey: linkKeys.issue(data.source_id) })
+      qc.invalidateQueries({ queryKey: linkKeys.issue(data.target_id) })
+    },
+  })
+}
+
+export function useDeleteIssueLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteIssueLink(id),
+    onSuccess: (_, id) => {
+      qc.setQueriesData<IssueLink[]>({ queryKey: ['issue-links'] }, (current) =>
+        current?.filter((link) => link.id !== id),
+      )
+      return qc.invalidateQueries({ queryKey: ['issue-links'] })
+    },
+  })
+}
+
+const engagementKeys = {
+  votes: (issueId: string) => ['issue-votes', issueId] as const,
+  watchers: (issueId: string) => ['issue-watchers', issueId] as const,
+}
+
+export function useIssueVotes(issueId: string | undefined) {
+  return useQuery({
+    queryKey: engagementKeys.votes(issueId ?? ''),
+    queryFn: () => listIssueVotes(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useIssueWatchers(issueId: string | undefined) {
+  return useQuery({
+    queryKey: engagementKeys.watchers(issueId ?? ''),
+    queryFn: () => listIssueWatchers(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useVoteIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => voteIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.votes(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useUnvoteIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unvoteIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.votes(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useWatchIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => watchIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.watchers(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useUnwatchIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwatchIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.watchers(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+const reportKeys = {
+  velocity: (projectId: string, count: number) =>
+    ['reports', 'velocity', projectId, count] as const,
+  burndown: (sprintId: string) => ['reports', 'burndown', sprintId] as const,
+  cumulativeFlow: (projectId: string) => ['reports', 'cumulative-flow', projectId] as const,
+  controlChart: (projectId: string) => ['reports', 'control-chart', projectId] as const,
+}
+
+export function useVelocityReport(projectId: string | undefined, count = 6) {
+  return useQuery({
+    queryKey: reportKeys.velocity(projectId ?? '', count),
+    queryFn: () => getVelocityReport(projectId!, count),
+    enabled: !!projectId,
+  })
+}
+
+export function useBurndownReport(sprintId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.burndown(sprintId ?? ''),
+    queryFn: () => getBurndownReport(sprintId!),
+    enabled: !!sprintId,
+  })
+}
+
+export function useCumulativeFlowReport(projectId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.cumulativeFlow(projectId ?? ''),
+    queryFn: () => getCumulativeFlowReport(projectId!),
+    enabled: !!projectId,
+  })
+}
+
+export function useControlChartReport(projectId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.controlChart(projectId ?? ''),
+    queryFn: () => getControlChartReport(projectId!),
+    enabled: !!projectId,
+  })
+}
+
+const projectMemberKeys = {
+  project: (projectKey: string) => ['project-members', projectKey] as const,
+}
+
+export function useProjectMembers(projectKey: string) {
+  return useQuery({
+    queryKey: projectMemberKeys.project(projectKey),
+    queryFn: () => listProjectMembers(projectKey),
+    enabled: Boolean(projectKey),
+  })
+}
+
+const customFieldKeys = {
+  project: (projectKey: string) => ['custom-fields', projectKey] as const,
+  issue: (issueId: string) => ['issue-custom-fields', issueId] as const,
+}
+
+export function useProjectCustomFields(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: customFieldKeys.project(projectKey ?? ''),
+    queryFn: () => listCustomFields(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateCustomField(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CustomFieldInput) => createCustomField(projectKey, input),
+    onSuccess: (field) => {
+      qc.setQueryData<CustomField[]>(customFieldKeys.project(projectKey), (old) =>
+        old ? [...old.filter((item) => item.id !== field.id), field] : undefined,
+      )
+      return qc.invalidateQueries({ queryKey: customFieldKeys.project(projectKey) })
+    },
+  })
+}
+
+export function useDeleteCustomField(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: deleteCustomField,
+    onSuccess: (_, fieldId) => {
+      qc.setQueryData<CustomField[]>(customFieldKeys.project(projectKey), (old) =>
+        old?.filter((field) => field.id !== fieldId),
+      )
+      for (const [key] of qc.getQueriesData({ queryKey: ['issue-custom-fields'] })) {
+        qc.setQueryData<CustomFieldValue[]>(key, (old) =>
+          old?.filter((value) => value.field_id !== fieldId),
+        )
+      }
+      void qc.invalidateQueries({ queryKey: ['issue-custom-fields'] })
+      return qc.invalidateQueries({ queryKey: customFieldKeys.project(projectKey) })
+    },
+  })
+}
+
+export function useIssueCustomFieldValues(issueId: string | undefined) {
+  return useQuery({
+    queryKey: customFieldKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueCustomFieldValues(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useSetIssueCustomFieldValue(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fieldId, value }: { fieldId: string; value: unknown }) =>
+      setIssueCustomFieldValue(issueId, fieldId, value),
+    onSuccess: (_, { fieldId, value }) => {
+      qc.setQueryData<CustomFieldValue[]>(customFieldKeys.issue(issueId), (old) => {
+        if (!old) return undefined
+        const retained = old.filter((item) => item.field_id !== fieldId)
+        const empty =
+          value == null ||
+          (typeof value === 'string' && value.trim() === '') ||
+          (Array.isArray(value) && value.length === 0)
+        return empty ? retained : [...retained, { field_id: fieldId, value }]
+      })
+      return qc.invalidateQueries({ queryKey: customFieldKeys.issue(issueId) })
+    },
+  })
+}

@@ -1,0 +1,14 @@
+diff --git a/backend/infra/src/sdlc_candidates.rs b/backend/infra/src/sdlc_candidates.rs
+index 26beb66..27f0436 100644
+--- a/backend/infra/src/sdlc_candidates.rs
++++ b/backend/infra/src/sdlc_candidates.rs
+@@ -89,7 +89,8 @@ impl PostgresSdlcRepository {
+                 &snapshot.policy,
+                 query.project_id,
+                 &self.config.instance_id,
+-            )?;
++            )
++            .map_err(|_| AppError::conflict("delivery candidate routing incompatible"))?;
+             super::lifecycle::exact_snapshot(&state, &snapshot)?;
+             if let Some(receipt) = &current {
+                 super::lifecycle::exact_revision(&state, receipt)?;
