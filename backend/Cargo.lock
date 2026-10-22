@@ -2579,6 +2579,7 @@ dependencies = [
  "argon2",
  "axum",
  "chrono",
+ "futures-util",
  "jsonwebtoken",
  "pdlc-shared",
  "reqwest",

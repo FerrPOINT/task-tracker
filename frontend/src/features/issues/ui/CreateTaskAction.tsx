@@ -3,6 +3,7 @@ import { Button, toast, usePlatformServices } from '@pdlc/ui/ui'
 import { getPlatformProduct, platformNavigate } from '@pdlc/ui/platform'
 import { LoaderCircle, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useApplicationAccess } from '@pdlc/ui/auth'
 import { getProject } from '@/api/project'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -35,14 +36,18 @@ export function CreateTaskAction({
   ...props
 }: Props) {
   const { t } = useTranslation()
+  const access = useApplicationAccess()
+  const canOpenFleet = access?.permits(['task-tracker', 'fleet-control']) === true
+  const allowed = useRef(canOpenFleet)
+  allowed.current = canOpenFleet
   const { services, source } = usePlatformServices()
   const [opening, setOpening] = useState(false)
   const inFlight = useRef(false)
   const request = useRef<AbortController | null>(null)
-  useEffect(() => () => request.current?.abort(), [projectKey, contextPending, contextError])
+  useEffect(() => () => request.current?.abort(), [projectKey, contextPending, contextError, canOpenFleet])
 
   async function open() {
-    if (inFlight.current || contextPending) return
+    if (!allowed.current || inFlight.current || contextPending) return
     if (contextError) {
       toast.error(contextError)
       return
@@ -71,7 +76,7 @@ export function CreateTaskAction({
         if (project.key !== projectKey || !project.id) throw new Error('Проект недоступен')
         projectId = project.id
       }
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted || !allowed.current) return
       const target = newPmChatUrl(base, projectId)
       // Base returns void, not a route-acceptance ACK. Do not close the current
       // drawer optimistically; host rejection must leave this screen intact.
@@ -85,6 +90,9 @@ export function CreateTaskAction({
     }
   }
 
+  if (!canOpenFleet) {
+    return <p role="status" className="text-sm text-text-muted">Для создания задачи через PM нужен доступ к Fleet. Обратитесь к администратору.</p>
+  }
   const pending = opening || contextPending
   return (
     <Button

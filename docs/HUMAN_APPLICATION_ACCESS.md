@@ -72,3 +72,20 @@ Native SQL target использует исходный production adapter/error
 свежий commit; это не полная ingress/Git/PAT/job приёмка. Старые serving images
 без fence не являются совместимым rollback после активации. Прямые typed owner
 ports и внешние эффекты требуют собственной проверки текущего proof.
+
+## Tracker и Fleet в одной операции
+
+Назначение Fleet и изменения execution lease требуют одновременно task-tracker
+и fleet-control у текущего человека. Strict SDLC ingress использует общий
+VerifiedCentralToken.require_applications: исходный Auth proof, срок и scopes
+PAT не заменяются локальным флагом или служебным credential. Технические
+principals остаются в отдельных PM/delivery протоколах; текущий допуск их
+владельца должен проверять отдельный on-behalf-of adapter; эта интеграция
+остаётся открытым этапом перед активацией.
+
+Обычные Tracker history, комментарии и подтверждение требований не требуют
+Fleet сами по себе. Подтверждение не считается автоматическим запуском Analysis.
+CreateTaskAction открывает новый PM-чат и потому требует Fleet; при отсутствии
+приложения показывает причину, а отзыв во время чтения проекта отменяет переход.
+Прямая рабочая форма Tracker /issues/create сохраняет собственный task-tracker
+и data admission. Полная цепочка реального задания остаётся отдельной приёмкой.
