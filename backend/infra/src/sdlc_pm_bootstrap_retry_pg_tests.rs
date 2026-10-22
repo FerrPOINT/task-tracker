@@ -71,10 +71,15 @@ fn retry(p: &InitialPm) -> (BootstrapRetryCommand, BootstrapFailureReadback) {
 #[tokio::test]
 async fn bootstrap_retry_0099_appends_after_0098_and_refuses_destructive_down() {
     let migrations = migration::Migrator::migrations();
-    let last = migrations.last().unwrap();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261021_0000099_pm_bootstrap_retry")
+        .unwrap();
+    assert_eq!(index, 30);
+    let last = &migrations[index];
     assert_eq!(last.name(), "m20261021_0000099_pm_bootstrap_retry");
     assert_eq!(
-        migrations[migrations.len() - 2].name(),
+        migrations[index - 1].name(),
         "m20261018_0000098_project_repository_catalog"
     );
     let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
@@ -111,7 +116,16 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack(
     assert_eq!(upgrade_snapshot(&f, &p).await, before_p);
     assert_eq!(upgrade_snapshot(&f, &q).await, before_q);
     let mut expected_ledger = old_ledger;
-    expected_ledger.push("m20261021_0000099_pm_bootstrap_retry".into());
+    expected_ledger.extend(
+        [
+            "m20261021_0000099_pm_bootstrap_retry",
+            "m20261019_0000099_unified_spaces",
+            "m20261021_0000100_human_sdlc_spaces",
+            "m20261021_0000101_native_sdlc_spaces",
+        ]
+        .into_iter()
+        .map(str::to_owned),
+    );
     assert_eq!(migration_versions(&f).await, expected_ledger);
     let (c, mut w) = retry(&p);
     let (mut unbound, mut unbound_witness) = retry(&u);
