@@ -1,9 +1,25 @@
 # Initial PM bootstrap technical retry
 
-Source candidate only. No Cargo, PG, HTTP, image or installed acceptance is claimed.
+Source contract; scoped callback qualification is recorded below. No installed
+or live business acceptance is claimed by the reader tests.
 The canonical Tracker task, owner, assignment/execution/revision, business input
 and Fleet chat remain unchanged. This is NOT a requirements answer, confirmation,
 critical review, Workflow completion/checkpoint, or replay of the original native POST.
+
+## Callback Qualification: 22 October 2026
+
+Source cf5a57e0 on SDK2ad passed local app fmt, all-targets check, strict Clippy,
+and all13 configuration-reader tests, zero ignored. The tests include the scoped
+180s request timeout and unchanged10s ordinary requests. Immutable Git exports,
+compiled ELF/listing and actual executed names were verified; own temporary
+Compose resources and inputs were cleaned. Result SHA256:
+`37fce1b852218fef298941f618e9a628236f3589e8c728c1bf83ba9932d4f70d`.
+
+This is not a new execution of the unchanged producer's PostgreSQL tests or a
+server image/install gate. Current main's SDK291/native space admission adds an
+independent60s original request clock; merged release must test expiry without
+effects and same-key recovery, not silently increase that clock. The13-test
+SDK2ad result does not qualify that changed dependency closure.
 
 ## Tracker wire
 
