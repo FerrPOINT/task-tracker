@@ -408,12 +408,12 @@ async fn ordinary_spaces_guard_sdlc_catalog_resources_roles_and_original_deadlin
         sql(&db,"INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state) VALUES($1,$2,$3,$1,$4,$5)",
             vec![tasks[index].into(),instance.to_string().into(),projects[index].into(),a.users[4].to_string().into(),serde_json::to_value(state).unwrap().into()]).await;
     }
-    for index in 0..2 {
+    for (index, project) in projects.iter().enumerate() {
         let command = json!({"schema_version":1,"namespace":{"registry_instance_id":a.registry,"namespace_id":a.spaces[index+1]},
-            "resource":{"kind":"tracker_project","instance_id":instance,"resource_id":projects[index]},
+            "resource":{"kind":"tracker_project","instance_id":instance,"resource_id":project},
             "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
         sql(&db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
-            vec![projects[index].into(),a.registry.into(),a.spaces[index+1].into(),command.into()]).await;
+            vec![(*project).into(),a.registry.into(),a.spaces[index+1].into(),command.into()]).await;
     }
     // Keep native memberships deliberately pointing at the wrong namespaces.
     for (user, project) in [
