@@ -64,14 +64,9 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         .extensions()
         .get::<OriginalUri>()
         .map_or_else(|| request.uri().path(), |uri| uri.0.path());
-    if (configured_machine || central.role.as_deref() == Some("service_account"))
-        && matches!(
-            path,
-            "/api/v1/sdlc/project-directory" | "/api/v1/sdlc/project-access"
-        )
-    {
-        return Err(AppError::Forbidden);
-    }
+    // V1 directory reads retain explicit native owner/member ACL. Generic
+    // machines remain native principals; assignment-scoped grants are rejected
+    // by their exact request policy below and never become user claims.
     if trusted_human && requires_fleet_application(request.method().as_str(), path) {
         verified
             .require_applications(
@@ -437,7 +432,17 @@ pub async fn space_guard(
     use axum::response::IntoResponse;
     let mut response = match space_guard_inner(ctx, request, next).await {
         Ok(response) => response,
-        Err(status) => status.into_response(),
+        Err(status) => match status {
+            axum::http::StatusCode::UNAUTHORIZED => AppError::Unauthorized.into_response(),
+            axum::http::StatusCode::FORBIDDEN => AppError::Forbidden.into_response(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE => {
+                AppError::Unavailable("authorization unavailable".into()).into_response()
+            }
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR => {
+                AppError::internal("authorization unavailable").into_response()
+            }
+            _ => status.into_response(),
+        },
     };
     response
         .headers_mut()
@@ -512,5 +517,14 @@ async fn space_guard_inner(
         .get::<OriginalUri>()
         .map_or_else(|| request.uri().path(), |uri| uri.0.path());
     let operation = super::auth::request_operation(request.method(), path);
-    super::auth::verified_request(ctx, request, next, verified, policy, operation).await
+    super::auth::verified_request(
+        ctx,
+        request,
+        next,
+        verified,
+        policy,
+        operation,
+        super::auth::CentralProfileMode::Existing,
+    )
+    .await
 }

@@ -11,6 +11,13 @@ pub(super) async fn request_scope(
     if !actor.trusted_human {
         return Ok(None);
     }
+    #[cfg(test)]
+    if crate::legacy_schema_fixture::pre_admission_schema(db)
+        .await
+        .map_err(map_db)?
+    {
+        return Ok(None);
+    }
     let row = db
         .query_one(statement(
             "SELECT active FROM tracker_space_admission_state WHERE singleton",
@@ -191,6 +198,13 @@ pub(super) async fn bind_task(
     state: &TaskState,
     actor: &Principal,
 ) -> Result<(), AppError> {
+    #[cfg(test)]
+    if crate::legacy_schema_fixture::pre_admission_schema(tx)
+        .await
+        .map_err(map_db)?
+    {
+        return Ok(());
+    }
     let row = tx.query_one(statement(
         "SELECT active OR EXISTS(SELECT 1 FROM tracker_space_catalog WHERE metadata IS NOT NULL) AS enforced FROM tracker_space_admission_state WHERE singleton",
         vec![],
@@ -248,4 +262,32 @@ pub(super) async fn bind_task(
         return Err(AppError::Forbidden);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod historical_seed_tests {
+    use super::*;
+    use sea_orm::{DbBackend, MockDatabase};
+    use std::collections::BTreeMap;
+
+    #[tokio::test]
+    async fn current_policy_requires_real_proof_even_inside_legacy_seed_scope() {
+        let db = MockDatabase::new(DbBackend::Postgres)
+            .append_query_results([
+                vec![BTreeMap::from([
+                    ("database_name", Value::from("owned_candidates_test")),
+                    ("pre_admission", false.into()),
+                ])],
+                vec![BTreeMap::from([("active", true.into())])],
+            ])
+            .into_connection();
+        let actor = Principal {
+            subject: "member".into(),
+            human_session: true,
+            trusted_human: true,
+            scopes: Default::default(),
+        };
+        let result = crate::legacy_schema_fixture::scope(request_scope(&db, &actor)).await;
+        assert!(matches!(result, Err(AppError::Forbidden)));
+    }
 }

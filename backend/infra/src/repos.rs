@@ -522,9 +522,7 @@ impl ProjectRepository for ProjectRepo {
         crate::project_lifecycle::change(self.db.raw(), project, change, permit).await
     }
     async fn require_writable(&self, project: ProjectId) -> Result<(), AppError> {
-        if self.project_lifecycle(project).await?.archived {
-            return Err(AppError::conflict("project_archived_read_only"));
-        }
+        crate::project_lifecycle::require_writable(self.db.as_ref(), project).await?;
         // Legacy 1:1 binding cannot make an A+B project read-only after A is
         // archived. Active-mode Authz uses this actor's admitted active Space.
         if !self.space_admission_enabled().await?

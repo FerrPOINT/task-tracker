@@ -484,8 +484,7 @@ async fn canonical_space_replacement_enforces_owner_deadline_and_archive_barrier
     let db = Arc::new(Database::connect(target).await.unwrap());
     verify(&db).await;
     Arc::try_unwrap(db)
-        .ok()
-        .expect("only owned test connection")
+        .unwrap_or_else(|_| panic!("only owned test connection"))
         .close()
         .await
         .unwrap();

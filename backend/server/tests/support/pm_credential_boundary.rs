@@ -201,14 +201,17 @@ pub async fn initial(
         )
         .await;
     }
-    for token in ["sdlc_pat_pm_generic", owner] {
+    // A fresh service-account role cannot become human claims on the ordinary
+    // API, even when the same subject has a historical local project profile.
+    // The owner retains the neighboring human read path.
+    for (token, expected) in [("sdlc_pat_pm_generic", 403), (owner, 200)] {
         status(
             client,
             base,
             reqwest::Method::GET,
             &format!("issues/{foreign}"),
             token,
-            200,
+            expected,
         )
         .await;
     }

@@ -25,6 +25,7 @@ const PM_MIXED: &str = "sdlc_pat_attachment-pm-mixed-fixture";
 const SCHEDULER: &str = "sdlc_pat_attachment-scheduler-fixture";
 const REVOKED: &str = "sdlc_pat_attachment-revoked-fixture";
 const UNAVAILABLE: &str = "sdlc_pat_attachment-unavailable-fixture";
+const MISSING_LIFETIME: &str = "sdlc_pat_attachment-missing-lifetime-fixture";
 
 struct Environment(Vec<(&'static str, Option<OsString>)>);
 
@@ -290,7 +291,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                 count.fetch_add(1,Ordering::SeqCst);
                 let token=headers["authorization"].to_str().unwrap().strip_prefix("Bearer ").unwrap();
                 let (status,subject,scopes)=match token {
-                    DELIVERY => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),grant.clone()]),
+                    DELIVERY | MISSING_LIFETIME => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),grant.clone()]),
                     READ_ONLY => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),grant.clone()]),
                     PM => (StatusCode::OK,"pm-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),pm_grant.clone()]),
                     PM_NO_READ => (StatusCode::OK,"pm-fixture",vec!["task-tracker:write".into(),pm_grant.clone()]),
@@ -299,7 +300,16 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                     UNAVAILABLE => (StatusCode::SERVICE_UNAVAILABLE,"",vec![]),
                     _ => (StatusCode::UNAUTHORIZED,"",vec![]),
                 };
-                async move {(status,Json(json!({"sub":subject,"email":"central-fixture@example.test","scopes":scopes})))}
+                let include_lifetime=token != MISSING_LIFETIME;
+                async move {
+                    let mut identity=json!({"sub":subject,"email":"central-fixture@example.test","scopes":scopes});
+                    if include_lifetime {
+                        let observed=chrono::Utc::now();
+                        identity["observed_at"]=json!(observed);
+                        identity["expires_at"]=json!(observed+chrono::Duration::seconds(60));
+                    }
+                    (status,Json(identity))
+                }
             }));
         let listener=tokio::net::TcpListener::from_std(listener).unwrap();
         let server=tokio::spawn(async move {axum::serve(listener,central).await.unwrap()});
@@ -336,6 +346,8 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
         for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER),("GET",download.as_str(),PM)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::SERVICE_UNAVAILABLE);
         }
+        // Unbounded legacy introspection must never authorize a generic human route.
+        assert_eq!(request(app.clone(),"GET","/api/v1/dashboard",Some(MISSING_LIFETIME)).await,StatusCode::SERVICE_UNAVAILABLE);
         for token in [DELIVERY,PM] {
             assert_eq!(request(app.clone(),"GET","/api/v1/dashboard",Some(token)).await,StatusCode::FORBIDDEN);
         }

@@ -16,6 +16,28 @@ fn project_ref(project: ProjectId) -> Result<ProjectRef, AppError> {
         project_id: project.as_uuid(),
     })
 }
+/// Native write guards need the local archive state, not an external owner
+/// reference. Legacy installs may not configure a catalog instance at all.
+pub async fn require_writable<C: ConnectionTrait>(
+    db: &C,
+    project: ProjectId,
+) -> Result<(), AppError> {
+    let row = db
+        .query_one(sql(
+            "SELECT (archived_at IS NOT NULL) AS archived FROM projects WHERE id=$1",
+            [project.as_uuid().into()],
+        ))
+        .await
+        .map_err(crate::db_error::map)?
+        .ok_or_else(|| AppError::not_found("project", project))?;
+    if row
+        .try_get::<bool>("", "archived")
+        .map_err(crate::db_error::map)?
+    {
+        return Err(AppError::conflict("project_archived_read_only"));
+    }
+    Ok(())
+}
 pub async fn get<C: ConnectionTrait>(
     db: &C,
     project: ProjectId,

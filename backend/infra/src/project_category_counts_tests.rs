@@ -82,10 +82,13 @@ async fn batch_counts_sum_both_in_progress_spellings_and_keep_other_projects_sep
         assert_eq!(counts[&second], [0, 1, 0]);
 
         // Mock execution checks the actual query/bindings, not PostgreSQL filtering.
-        let db = Arc::try_unwrap(repository.db)
-            .unwrap_or_else(|_| panic!("fixture retains a database reference"));
+        let sea_orm::DatabaseConnection::MockDatabaseConnection(mock) = repository.db.raw() else {
+            panic!("category count fixture must use a mock database");
+        };
+        let transaction_log = sea_orm::DatabaseConnection::MockDatabaseConnection(Arc::clone(mock))
+            .into_transaction_log();
         assert_eq!(
-            db.into_transaction_log(),
+            transaction_log,
             vec![Transaction::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT i.project_id,s.category,count(*)::bigint AS count FROM issues i JOIN statuses s ON s.id=i.status_id WHERE i.project_id=ANY($1) AND i.deleted_at IS NULL GROUP BY i.project_id,s.category",

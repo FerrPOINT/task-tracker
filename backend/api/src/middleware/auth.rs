@@ -2,7 +2,7 @@ use axum::{
     extract::{OriginalUri, Request, State},
     http::StatusCode,
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use std::sync::Arc;
 
@@ -40,7 +40,16 @@ pub async fn bearer_auth(
     // not be silently converted into a human administrator during JIT.
     match super::central_auth::BRIDGE.try_verified_token(&token).await {
         Ok(verified) => {
-            return verified_request(ctx, req, next, verified, policy_active, operation).await;
+            return verified_request(
+                ctx,
+                req,
+                next,
+                verified,
+                policy_active,
+                operation,
+                CentralProfileMode::Provision,
+            )
+            .await;
         }
         Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured) => {
             if policy_active {
@@ -283,6 +292,14 @@ mod request_operation_tests {
     }
 }
 
+/// Ordinary login may link a profile; strict SDLC requires the existing native
+/// identity and must never enroll a user or update metadata while reading ACL.
+#[derive(Clone, Copy)]
+pub(crate) enum CentralProfileMode {
+    Provision,
+    Existing,
+}
+
 /// Reuse the original verified actor across ordinary and SDLC HTTP adapters.
 pub(crate) async fn verified_request(
     ctx: Arc<app::AppContext>,
@@ -291,6 +308,7 @@ pub(crate) async fn verified_request(
     mut verified: pdlc_auth_core::service_bridge::VerifiedCentralToken,
     policy_active: bool,
     operation: app::space_access::RequestOperation,
+    profile_mode: CentralProfileMode,
 ) -> Result<Response, StatusCode> {
     if verified.context.role.is_none() {
         verified.context.role = verified.subject_role.clone();
@@ -310,11 +328,30 @@ pub(crate) async fn verified_request(
     if !central.allows_service("task-tracker", scope_method) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let user = find_or_link_central_user(&ctx, central, verified.display_name.as_deref())
-        .await
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let (user, denied) = match profile_mode {
+        CentralProfileMode::Provision => (
+            find_or_link_central_user(&ctx, central, verified.display_name.as_deref())
+                .await
+                .map_err(|_| StatusCode::UNAUTHORIZED)?,
+            StatusCode::UNAUTHORIZED,
+        ),
+        CentralProfileMode::Existing => {
+            let mut profiles = ctx
+                .repos
+                .users
+                .central_profiles(&[central.user_id.clone()])
+                .await
+                .map_err(|error| error.into_response().status())?;
+            (
+                profiles
+                    .remove(&central.user_id)
+                    .ok_or(StatusCode::FORBIDDEN)?,
+                StatusCode::FORBIDDEN,
+            )
+        }
+    };
     if !user.is_active {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(denied);
     }
     let space_actor = if policy_active {
         let refs = ctx
@@ -385,8 +422,8 @@ pub(crate) async fn verified_request(
         );
     }
     let (parts, body) = response.into_parts();
-    return Ok(Response::from_parts(
+    Ok(Response::from_parts(
         parts,
         guard_admission_body(body, deadline, move || frame.is_current()),
-    ));
+    ))
 }

@@ -219,7 +219,11 @@ router before Central context becomes UserClaims. Strict SDLC requests with that
 grant require one canonical task capability, allowed method/path and current
 assignment subject/scope plus matching persisted assignment ledger on reads.
 Owner answers/confirmation, verifier evidence and assignment/binding writes are
-not PM operations. Generic human/service PAT behavior is unchanged. These checks
+not PM operations. A freshly verified service-account role is never converted
+to UserClaims on the ordinary user API, even when a historical local user row
+exists. Generic service principals retain the strict V1 project directory/access
+contract with explicit native ACL; assignment grants remain confined to their
+exact task operations. Human PATs retain their scope and native ACL checks. These checks
 passed actual TCP/PostgreSQL regressions, including latest-ledger validation on
 lease reads/claim/heartbeat. The synthetic Central fixture is not real Base
 delegation or runtime handoff; that acceptance remains required before admission.

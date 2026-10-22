@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useState } from 'react'
-import { Button, ErrorState, Input, LoadingState } from '@pdlc/ui/ui'
+import { Button, Checkbox, ErrorState, Input, LoadingState } from '@pdlc/ui/ui'
 import { spaceKey, type SpaceRef } from '@/api/space-catalog'
 import { useVisibleSpaces } from '@/shared/api/useVisibleSpaces'
 
@@ -81,16 +81,15 @@ export function SpaceSetField({
                 key={spaceKey(entry.space)}
                 className="flex items-start gap-3 rounded-md border border-border p-3"
               >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4"
+                <Checkbox
+                  className="mt-1 shrink-0"
                   checked={checked}
                   disabled={
                     disabled ||
                     (!checked && entry.state !== 'active') ||
                     (checked && keepNonEmpty && value.length === 1)
                   }
-                  onChange={() => toggle(entry.space)}
+                  onCheckedChange={() => toggle(entry.space)}
                 />
                 <span className="min-w-0">
                   <span className="block break-words text-sm font-medium">
