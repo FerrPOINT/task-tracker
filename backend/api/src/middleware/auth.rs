@@ -373,8 +373,8 @@ pub(crate) async fn verified_request(
         );
     }
     let (parts, body) = response.into_parts();
-    return Ok(Response::from_parts(
+    Ok(Response::from_parts(
         parts,
         guard_admission_body(body, deadline, move || frame.is_current()),
-    ));
+    ))
 }

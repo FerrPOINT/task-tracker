@@ -1,6 +1,10 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
-import { ProjectCardActionItems, ProjectCardLink, ProjectCardState } from '@/widgets/project-actions'
+import {
+  ProjectCardActionItems,
+  ProjectCardLink,
+  ProjectCardState,
+} from '@/widgets/project-actions'
 import {
   ProjectAvatar,
   ResourceList,

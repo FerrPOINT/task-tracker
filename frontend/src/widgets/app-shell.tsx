@@ -232,12 +232,14 @@ export function AppShell() {
   const namespace = useNamespaceContext(namespaceEnabled)
   const allProjects = !namespace.malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog(namespaceEnabled)
-  const projectKey = namespaceEnabled && namespace.ref
-    ? namespace.query.isError
-      ? undefined
-      : namespace.query.data?.resource_key
-    : routeProject.key
-  const createContextPending = namespaceEnabled && namespace.ref ? namespace.query.isPending : routeProject.pending
+  const projectKey =
+    namespaceEnabled && namespace.ref
+      ? namespace.query.isError
+        ? undefined
+        : namespace.query.data?.resource_key
+      : routeProject.key
+  const createContextPending =
+    namespaceEnabled && namespace.ref ? namespace.query.isPending : routeProject.pending
   const createContextError =
     (namespaceEnabled && namespace.malformed) ||
     (namespaceEnabled && namespace.ref

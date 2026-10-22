@@ -433,6 +433,28 @@ pub fn current_request_for(user: UserId) -> Result<Option<Arc<CentralRequestCont
     Ok(value)
 }
 
+/// Background delivery addresses only the recipient's active stored central
+/// binding. It never materializes a user, guesses an ID or grants product roles.
+pub async fn recipient_read(
+    user: UserId,
+    users: &dyn domain::UserRepository,
+    projects: &dyn domain::ProjectRepository,
+    reader: &pdlc_auth_core::service_bridge::RegisteredSpaceReader,
+) -> Result<pdlc_auth_core::service_bridge::RecipientSpaceRead, AppError> {
+    let subject = users
+        .central_subject(user)
+        .await?
+        .and_then(|s| s.parse::<uuid::Uuid>().ok())
+        .filter(|id| !id.is_nil())
+        .ok_or(AppError::Forbidden)?;
+    let refs = projects.space_catalog_refs().await?;
+    admission_client()
+        .await?
+        .confirm_recipient_many(&CENTRAL_BRIDGE, reader, subject, &refs)
+        .await
+        .map_err(|_| AppError::Unavailable("notification_recipient_not_confirmed".into()))
+}
+
 #[cfg(test)]
 pub(crate) mod request_context_tests {
     use super::*;
@@ -742,26 +764,4 @@ pub(crate) mod request_context_tests {
         actor.admission.policy = SpaceAccessPolicy::Selected { spaces: vec![] };
         assert!(actor.require_read(&links).is_err());
     }
-}
-
-/// Background delivery addresses only the recipient's active stored central
-/// binding. It never materializes a user, guesses an ID or grants product roles.
-pub async fn recipient_read(
-    user: UserId,
-    users: &dyn domain::UserRepository,
-    projects: &dyn domain::ProjectRepository,
-    reader: &pdlc_auth_core::service_bridge::RegisteredSpaceReader,
-) -> Result<pdlc_auth_core::service_bridge::RecipientSpaceRead, AppError> {
-    let subject = users
-        .central_subject(user)
-        .await?
-        .and_then(|s| s.parse::<uuid::Uuid>().ok())
-        .filter(|id| !id.is_nil())
-        .ok_or(AppError::Forbidden)?;
-    let refs = projects.space_catalog_refs().await?;
-    admission_client()
-        .await?
-        .confirm_recipient_many(&CENTRAL_BRIDGE, reader, subject, &refs)
-        .await
-        .map_err(|_| AppError::Unavailable("notification_recipient_not_confirmed".into()))
 }

@@ -20,7 +20,6 @@ import {
   Label,
 } from '@pdlc/ui/ui'
 
-
 import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
 import { useScopedMutation } from '@/shared/api/useScopedMutation'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
