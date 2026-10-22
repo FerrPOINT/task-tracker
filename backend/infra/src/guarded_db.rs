@@ -59,6 +59,17 @@ impl BoundRequest {
     }
     async fn bind(&self, tx: &DatabaseTransaction) -> Result<(), DbErr> {
         self.current()?;
+        let valid_until = match (&self.frame, &self.native) {
+            (Some(frame), _) => frame.valid_until(),
+            (_, Some(native)) => {
+                native
+                    .validity()
+                    .map_err(|_| DbErr::Custom(EXPIRED.into()))?
+                    .valid_until
+            }
+            _ => return Err(DbErr::Custom(EXPIRED.into())),
+        };
+        bind_commit_clock(tx, valid_until).await?;
         if tx
             .query_one(Statement::from_string(
                 DbBackend::Postgres,
@@ -92,6 +103,25 @@ impl BoundRequest {
         }
         self.current()
     }
+}
+/// The DB checks after row waits, including time spent inside COMMIT itself.
+pub(crate) async fn bind_commit_clock(
+    tx: &DatabaseTransaction,
+    valid_until: i64,
+) -> Result<(), DbErr> {
+    let fence = uuid::Uuid::new_v4();
+    tx.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO tracker_request_commit_fences(fence_id,valid_until) VALUES($1,to_timestamp(($2::bigint)::double precision))",
+        [fence.into(), valid_until.into()],
+    )).await?;
+    tx.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "DELETE FROM tracker_request_commit_fences WHERE fence_id=$1",
+        [fence.into()],
+    ))
+    .await?;
+    Ok(())
 }
 pub struct GuardedDb {
     inner: DatabaseConnection,
@@ -264,6 +294,9 @@ pub(crate) async fn bind_creation_context(
     permit: &domain::project_spaces::SpaceWritePermit,
 ) -> Result<(), shared::AppError> {
     permit.require_set(spaces)?;
+    bind_commit_clock(tx, permit.valid_until())
+        .await
+        .map_err(crate::db_error::map)?;
     if tx
         .query_one(Statement::from_string(
             DbBackend::Postgres,
@@ -287,4 +320,79 @@ pub(crate) async fn bind_creation_context(
     .map_err(shared::AppError::database)?;
     permit.require_set(spaces)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod request_clock_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires disposable TT_CLOCK_TEST_DATABASE_URL"]
+    async fn original_request_clock_is_checked_inside_commit() {
+        let url =
+            std::env::var("TT_CLOCK_TEST_DATABASE_URL").expect("owned clock QA database required");
+        let db = sea_orm::Database::connect(url).await.unwrap();
+        let name = db
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT current_database() AS name",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            name.try_get::<String>("", "name").unwrap(),
+            "tracker_clock_test",
+            "refuse working database"
+        );
+        db.execute_unprepared(include_str!("../../migration/src/request_commit_clock.sql"))
+            .await
+            .unwrap();
+        db.execute_unprepared("CREATE TABLE qa_request_clock_effects(id integer PRIMARY KEY); CREATE SEQUENCE qa_request_clock_seen; CREATE FUNCTION qa_request_clock_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM nextval('qa_request_clock_seen'); PERFORM pg_sleep(2.1); RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER a_qa_request_clock_delay AFTER INSERT ON tracker_request_commit_fences DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION qa_request_clock_delay();").await.unwrap();
+        let tx = db.begin().await.unwrap();
+        let until = chrono::Utc::now().timestamp() + 2;
+        bind_commit_clock(&tx, until).await.unwrap();
+        tx.execute_unprepared("INSERT INTO qa_request_clock_effects VALUES(1)")
+            .await
+            .unwrap();
+        assert!(
+            chrono::Utc::now().timestamp() < until,
+            "the client check must still be current before COMMIT"
+        );
+        let error = tx
+            .commit()
+            .await
+            .expect_err("expiry inside COMMIT must reject the effect");
+        assert!(matches!(
+            crate::db_error::map(error),
+            shared::AppError::Forbidden
+        ));
+        let row=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT CASE WHEN is_called THEN last_value ELSE 0 END AS seen FROM qa_request_clock_seen")).await.unwrap().unwrap();
+        assert_eq!(
+            row.try_get::<i64>("", "seen").unwrap(),
+            1,
+            "the real adapter must enter the deferred COMMIT event"
+        );
+        db.execute_unprepared("DROP TRIGGER a_qa_request_clock_delay ON tracker_request_commit_fences; DROP FUNCTION qa_request_clock_delay(); DROP SEQUENCE qa_request_clock_seen;").await.unwrap();
+        let tx = db.begin().await.unwrap();
+        bind_commit_clock(&tx, chrono::Utc::now().timestamp() + 30)
+            .await
+            .unwrap();
+        tx.execute_unprepared("INSERT INTO qa_request_clock_effects VALUES(2)")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let row=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM tracker_request_commit_fences) AS fences, (SELECT array_agg(id ORDER BY id) FROM qa_request_clock_effects) AS effects")).await.unwrap().unwrap();
+        assert_eq!(
+            row.try_get::<i64>("", "fences").unwrap(),
+            0,
+            "no durable fence rows"
+        );
+        assert_eq!(
+            row.try_get::<Vec<i32>>("", "effects").unwrap(),
+            vec![2],
+            "only the fresh operation is durable"
+        );
+        db.close().await.unwrap();
+    }
 }

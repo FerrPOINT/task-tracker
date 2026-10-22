@@ -1,3 +1,4 @@
+import { useApplicationAccess } from '@pdlc/ui/auth'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@pdlc/ui/ui'
@@ -10,6 +11,8 @@ export function CreateProjectAction({ onCreated }: { onCreated?: (project: Proje
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const create = useCreateProject({ navigateOnSuccess: !onCreated })
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
+  if (!canAdmin) return null
   return (
     <>
       <Button

@@ -1,3 +1,4 @@
+import { RequireAdministrator } from '@pdlc/ui/auth'
 import { LoadingState } from '@pdlc/ui/ui'
 import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
@@ -78,7 +79,11 @@ export const router = createProductRouter(
             { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
             {
               path: '/projects/:projectKey/settings',
-              element: withSuspense(<ProjectSettingsPage />),
+              element: withSuspense(
+                <RequireAdministrator>
+                  <ProjectSettingsPage />
+                </RequireAdministrator>,
+              ),
               children: [
                 { index: true, element: withSuspense(<ProjectGeneralSettingsPage />) },
                 { path: 'custom-fields', element: withSuspense(<ProjectCustomFieldsPage />) },
@@ -90,7 +95,11 @@ export const router = createProductRouter(
             {
               path: '/admin',
               handle: { spaceAdmission: 'independent' },
-              element: withSuspense(<AdminPage />),
+              element: withSuspense(
+                <RequireAdministrator>
+                  <AdminPage />
+                </RequireAdministrator>,
+              ),
             },
             { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
             { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },

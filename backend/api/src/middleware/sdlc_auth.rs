@@ -30,10 +30,13 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
                 | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured => {
                     AppError::Unavailable("Central Auth unavailable".into())
                 }
+                pdlc_auth_core::service_bridge::VerifiedBridgeError::Forbidden => {
+                    AppError::Forbidden
+                }
                 _ => AppError::Unauthorized,
             })?,
     };
-    let central = verified.context;
+    let central = verified.context.clone();
     if !central.allows_service("task-tracker", request.method().as_str()) {
         return Err(AppError::Forbidden);
     }
@@ -64,10 +67,71 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     // V1 directory reads retain explicit native owner/member ACL. Generic
     // machines remain native principals; assignment-scoped grants are rejected
     // by their exact request policy below and never become user claims.
+    if trusted_human && requires_fleet_application(request.method().as_str(), path) {
+        verified
+            .require_applications(
+                &["task-tracker", "fleet-control"],
+                request.method().as_str(),
+            )
+            .map_err(|_| AppError::Forbidden)?;
+    }
     pm_request_policy(&actor, request.method().as_str(), path)?;
     app::sdlc_lifecycle::delivery_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
+}
+
+/// Only mutations that assign or advance Fleet execution need the second app.
+/// Ordinary Tracker history, questions and requirements review remain Tracker work.
+fn requires_fleet_application(method: &str, path: &str) -> bool {
+    if matches!(method, "GET" | "HEAD" | "OPTIONS") {
+        return false;
+    }
+    let Some((_, action)) = path.split_once("/sdlc/") else {
+        return false;
+    };
+    matches!(
+        action,
+        "assignment" | "pm-draft-assignment" | "pm-draft-execution-lease"
+    ) || action.starts_with("pm-draft-execution-lease/")
+}
+
+#[cfg(test)]
+mod chained_application_routes {
+    use super::requires_fleet_application;
+    #[test]
+    fn dispatch_and_resume_need_fleet_but_neighboring_tracker_work_does_not() {
+        for id in [
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        ] {
+            for action in [
+                "assignment",
+                "pm-draft-assignment",
+                "pm-draft-execution-lease",
+                "pm-draft-execution-lease/resume",
+                "pm-draft-execution-lease/retry-bootstrap",
+                "pm-draft-execution-lease/recover-unsubmitted",
+            ] {
+                let path = format!("/api/v1/issues/{id}/sdlc/{action}");
+                assert!(requires_fleet_application("POST", &path));
+                assert!(!requires_fleet_application("GET", &path));
+            }
+            for action in [
+                "context",
+                "binding",
+                "clarifications",
+                "requirements/2/confirm",
+                "metadata",
+                "assignment-note",
+            ] {
+                assert!(!requires_fleet_application(
+                    "POST",
+                    &format!("/api/v1/issues/{id}/sdlc/{action}")
+                ));
+            }
+        }
+    }
 }
 
 fn is_human_session(central: &pdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
@@ -409,6 +473,7 @@ async fn space_guard_inner(
             | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured => {
                 StatusCode::SERVICE_UNAVAILABLE
             }
+            pdlc_auth_core::service_bridge::VerifiedBridgeError::Forbidden => StatusCode::FORBIDDEN,
             _ => StatusCode::UNAUTHORIZED,
         })?;
     let native = registered_sdlc_subject(&verified.context.user_id)
@@ -419,7 +484,7 @@ async fn space_guard_inner(
         let mutation = !matches!(request.method().as_str(), "GET" | "HEAD" | "OPTIONS");
         let scope = app::native_space_access::NativeRequest::verified(&verified, native, mutation)
             .map_err(|_| StatusCode::FORBIDDEN)?;
-        let validity = scope.validity().map_err(|_| StatusCode::FORBIDDEN)?;
+        let response_scope = scope.clone();
         let deadline = scope.deadline();
         request.extensions_mut().insert(verified.clone());
         let mut response = tokio::time::timeout_at(
@@ -431,7 +496,14 @@ async fn space_guard_inner(
         if !verified.lifetime.is_current() {
             return Err(StatusCode::UNAUTHORIZED);
         }
-        super::auth::restrict_response(&mut response, validity.valid_until, deadline);
+        let validity = response_scope
+            .validity()
+            .map_err(|_| StatusCode::FORBIDDEN)?;
+        super::auth::restrict_response(
+            &mut response,
+            validity.valid_until,
+            response_scope.deadline(),
+        );
         return Ok(response);
     }
     let policy = ctx

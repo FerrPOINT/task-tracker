@@ -605,6 +605,11 @@ Fleet владеет атомарным submission barrier и защищённы
 проверенным продлением и неизменяемой историей. Новых планировщика, сервиса, задачи,
 native terminal или подтверждения владельца нет.
 
+## Глобальные роли и приложения
+
+Исходная интеграция и открытые gates описаны в
+[контракте ролей и приложений](HUMAN_APPLICATION_ACCESS.md).
+Публикация исходников не означает активацию новой политики.
 Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).
 
 ## Общий допуск на human SDLC API (21 октября 2026)
@@ -617,8 +622,9 @@ Human SDLC routes используют тот же verified request frame, чт�
 остаются отдельным ограниченным протоколом с собственными ownership/lease guards;
 машинный principal не становится human или платформенным администратором.
 
-Утверждённое продолжение включает production после qualified dev/migration/rollback;
-раннее исключение production в исходном плане относилось к предыдущему этапу.
+План пространств предусматривает отдельную production-поставку после dev,
+migration и rollback. Это не расширяет объём задачи ролей/приложений:
+её production-пакет готовится отдельно, production writes не разрешены.
 
 Human SDLC project directory/access применяет тот же набор SpaceRef, включая
 наследование, до сортировки и страниц. Native ACL не сохраняет чтение отозванного
@@ -655,3 +661,19 @@ capabilities. Транзакция повторно проверяет исхо�
 пространства и настоящий owner репозитория; Forge owner не становится Wiki owner.
 Повторный owner readback не продлевает human/native срок. При недоступности или
 неизвестной классификации запуск закрыт до совместимой квалификации.
+
+
+## Текущий допуск владельца native SDLC: source candidate
+
+NativeRequest сохраняет техническую identity и exact credential scopes.
+После проверки task/assignment/lease сохранённый aggregate передаёт свой
+центральный owner_subject общему Auth reader. Это дополнительное ограничение
+операции, не human impersonation и не новая человеческая роль. Исходный owner
+proof один на запрос; его clock может только сократить native/COMMIT/body
+window. Новые запросы стадий подтверждают доступ заново; недоступность после
+expiry закрывает операцию. Включение берётся из того же validated bridge config,
+что human ingress, независимо от policy пространств.
+
+Реализация и тесты находятся в feature-ветке; полный runtime cohort и реальное
+связанное задание не считаются принятыми по одному owner adapter. Подробности:
+[человеческие роли и приложения](HUMAN_APPLICATION_ACCESS.md).

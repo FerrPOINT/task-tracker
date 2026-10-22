@@ -188,7 +188,10 @@ impl crate::context::CommentService for CommentServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        if comment.author_id != requester {
+        if comment.author_id != requester
+            && !(std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some()
+                && crate::authz::central_administrator(requester)?)
+        {
             return Err(AppError::Forbidden);
         }
         let user = self.users.get_by_id(comment.author_id).await?;
@@ -223,7 +226,10 @@ impl crate::context::CommentService for CommentServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        if comment.author_id != requester {
+        if comment.author_id != requester
+            && !(std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some()
+                && crate::authz::central_administrator(requester)?)
+        {
             return Err(AppError::Forbidden);
         }
         self.comments.delete(id).await?;

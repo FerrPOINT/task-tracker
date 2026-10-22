@@ -202,7 +202,10 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        if worklog.author_id != requester {
+        if worklog.author_id != requester
+            && !(std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some()
+                && crate::authz::central_administrator(requester)?)
+        {
             return Err(AppError::Forbidden);
         }
         let user = self.users.get_by_id(worklog.author_id).await?;
@@ -246,7 +249,10 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        if worklog.author_id != requester {
+        if worklog.author_id != requester
+            && !(std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some()
+                && crate::authz::central_administrator(requester)?)
+        {
             return Err(AppError::Forbidden);
         }
         self.worklogs.delete(id).await?;

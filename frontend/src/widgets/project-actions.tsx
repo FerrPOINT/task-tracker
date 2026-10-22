@@ -1,3 +1,4 @@
+import { useApplicationAccess } from '@pdlc/ui/auth'
 import { ProjectLink } from '@/shared/lib/project-navigation'
 import { withSpaceContext } from '@/shared/lib/space-location'
 import { Settings, Trash2 } from 'lucide-react'
@@ -19,35 +20,39 @@ export function ProjectActionItems({
   const { t } = useTranslation()
   const { pathname, search } = useLocation()
   const key = encodeURIComponent(project.key)
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const actions = [
-    { to: `/projects/${key}/trash`, label: t('trash.title'), icon: Trash2 },
+    { to: `/projects/${key}/trash`, label: t('trash.title'), icon: Trash2, administrative: false },
     {
       to: `/projects/${key}/settings`,
       label: t('navigation.settings'),
       icon: Settings,
+      administrative: true,
     },
   ]
   return (
     <>
-      {actions.map(({ to, label, icon: Icon }) => (
-        <DropdownMenuItem key={to} asChild>
-          <Link
-            to={
-              import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
-              import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'
-                ? withNamespaceLocation(to, project.namespace ?? null, search)
-                : import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
-                  ? withSpaceContext(to, search)
-                  : to
-            }
-            onClick={onNavigate}
-            aria-current={pathname === to ? 'page' : undefined}
-          >
-            <Icon aria-hidden className="mr-2 h-4 w-4" />
-            {label}
-          </Link>
-        </DropdownMenuItem>
-      ))}
+      {actions
+        .filter((item) => canAdmin || !item.administrative)
+        .map(({ to, label, icon: Icon }) => (
+          <DropdownMenuItem key={to} asChild>
+            <Link
+              to={
+                import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
+                import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'
+                  ? withNamespaceLocation(to, project.namespace ?? null, search)
+                  : import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+                    ? withSpaceContext(to, search)
+                    : to
+              }
+              onClick={onNavigate}
+              aria-current={pathname === to ? 'page' : undefined}
+            >
+              <Icon aria-hidden className="mr-2 h-4 w-4" />
+              {label}
+            </Link>
+          </DropdownMenuItem>
+        ))}
     </>
   )
 }
@@ -67,13 +72,14 @@ export function ProjectCardActionItems({
   project: Project & { id: string }
   onDelete?: () => void
 }) {
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   return import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
     import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true' ? (
     <BoundCardActionItems project={project} onDelete={onDelete} />
   ) : (
     <>
       <ProjectActionItems project={project} />
-      {onDelete && <DeleteProjectItem onDelete={onDelete} />}
+      {canAdmin && onDelete && <DeleteProjectItem onDelete={onDelete} />}
     </>
   )
 }
@@ -163,6 +169,7 @@ function BoundCardActionItems({
 }) {
   const catalog = useNamespaceCatalog()
   const { services } = usePlatformServices()
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const { t } = useTranslation()
   if (catalog.isPending)
     return <DropdownMenuItem disabled>Проверяем контекст проекта…</DropdownMenuItem>
@@ -186,20 +193,21 @@ function BoundCardActionItems({
   return (
     <>
       <ProjectActionItems project={{ ...project, namespace: context?.binding.namespace }} />
-      {context ? (
-        manageUrl ? (
-          <DropdownMenuItem asChild>
-            <a href={manageUrl}>
-              <Settings aria-hidden className="mr-2 h-4 w-4" />
-              {t('projects.manage')}
-            </a>
-          </DropdownMenuItem>
+      {canAdmin &&
+        (context ? (
+          manageUrl ? (
+            <DropdownMenuItem asChild>
+              <a href={manageUrl}>
+                <Settings aria-hidden className="mr-2 h-4 w-4" />
+                {t('projects.manage')}
+              </a>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled>{t('projects.managementUnavailable')}</DropdownMenuItem>
+          )
         ) : (
-          <DropdownMenuItem disabled>{t('projects.managementUnavailable')}</DropdownMenuItem>
-        )
-      ) : (
-        onDelete && <DeleteProjectItem onDelete={onDelete} />
-      )}
+          onDelete && <DeleteProjectItem onDelete={onDelete} />
+        ))}
     </>
   )
 }
@@ -212,7 +220,9 @@ export function ProjectActions({
 }) {
   const { t } = useTranslation()
   const { pathname, search } = useLocation()
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const to = `/projects/${encodeURIComponent(project.key)}/settings`
+  if (!canAdmin) return null
   return (
     <Button asChild variant="ghost" size="icon" className="h-11 w-11 hover:bg-transparent">
       <Link

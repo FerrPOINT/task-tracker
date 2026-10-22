@@ -4,7 +4,10 @@ use pdlc_auth_core::service_bridge::VerifiedCentralToken;
 use shared::{AppError, UserId, space_access::*, space_lifecycle::SpaceOwnerAuthority};
 use std::sync::Arc;
 pub static CENTRAL_BRIDGE: pdlc_auth_core::service_bridge::ServiceBridge =
-    pdlc_auth_core::service_bridge::ServiceBridge::new("TT_AUTH__CENTRAL");
+    pdlc_auth_core::service_bridge::ServiceBridge::for_application(
+        "TT_AUTH__CENTRAL",
+        "task-tracker",
+    );
 static CLIENT: tokio::sync::OnceCell<pdlc_auth_core::service_bridge::SpaceAdmissionClient> =
     tokio::sync::OnceCell::const_new();
 pub async fn admission_client()
@@ -343,10 +346,12 @@ impl CentralRequestContext {
             catalog_origin,
             user,
             identity_window,
-            global_admin: matches!(
-                actor.subject_role.as_deref(),
-                Some("admin" | "platform_admin")
-            ),
+            global_admin: actor
+                .context
+                .role
+                .as_deref()
+                .or(actor.subject_role.as_deref())
+                == Some("admin"),
             may_write: actor.context.allows_service("task-tracker", "PATCH"),
             operation,
             spaces,

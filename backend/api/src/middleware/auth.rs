@@ -61,6 +61,9 @@ pub async fn bearer_auth(
                 return Err(StatusCode::UNAUTHORIZED);
             }
         }
+        Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::Forbidden) => {
+            return Err(StatusCode::FORBIDDEN);
+        }
         Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable) => {
             return Err(StatusCode::SERVICE_UNAVAILABLE);
         }
@@ -302,11 +305,14 @@ pub(crate) async fn verified_request(
     ctx: Arc<app::AppContext>,
     mut req: Request,
     next: Next,
-    verified: pdlc_auth_core::service_bridge::VerifiedCentralToken,
+    mut verified: pdlc_auth_core::service_bridge::VerifiedCentralToken,
     policy_active: bool,
     operation: app::space_access::RequestOperation,
     profile_mode: CentralProfileMode,
 ) -> Result<Response, StatusCode> {
+    if verified.context.role.is_none() {
+        verified.context.role = verified.subject_role.clone();
+    }
     let central = &verified.context;
     if app::sdlc::has_pm_grant(&central.scopes)
         || app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
@@ -385,9 +391,15 @@ pub(crate) async fn verified_request(
     });
     let response = tokio::time::timeout_at(
         frame.monotonic_deadline().into(),
-        app::space_access::with_request_context(frame.clone(), next.run(req)),
+        pdlc_auth_core::human_request::with_human_request(
+            user.id.as_uuid(),
+            central,
+            verified.application_access.clone(),
+            app::space_access::with_request_context(frame.clone(), next.run(req)),
+        ),
     )
     .await
+    .map_err(|_| StatusCode::FORBIDDEN)?
     .map_err(|_| StatusCode::FORBIDDEN)?;
     if !frame.is_current() {
         return Err(StatusCode::FORBIDDEN);
@@ -403,7 +415,7 @@ pub(crate) async fn verified_request(
         axum::http::HeaderValue::from_str(&valid_until.to_string())
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
     );
-    if frame.spaces().is_some() {
+    if frame.spaces().is_some() || verified.application_access.is_some() {
         response.headers_mut().insert(
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("private, no-store, no-transform"),

@@ -1,3 +1,4 @@
+import { useApplicationAccess } from '@pdlc/ui/auth'
 import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
 import { isUnarchivedProject } from './namespace-context'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
@@ -282,6 +283,7 @@ export function AppShell() {
     projectDisclosures.toggle(id)
   }
   const { data: user } = useCurrentUser()
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -305,6 +307,7 @@ export function AppShell() {
 
   const utilities = useSidebarDisclosure(location.pathname === '/admin' ? location.pathname : null)
   function utilityNavigation(compact = false, onNavigate?: () => void) {
+    if (!canAdmin) return null
     return (
       <SidebarNavigationGroup
         label="Служебное"
@@ -576,12 +579,14 @@ export function AppShell() {
                     </div>
                   )}
                   <ThemeMenuItems />
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin" className="gap-2 text-text-secondary">
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>{t('navigation.admin')}</span>
-                    </Link>
-                  </DropdownMenuItem>
+                  {canAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="gap-2 text-text-secondary">
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>{t('navigation.admin')}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onSelect={() => logout.mutate()}
                     disabled={logout.isPending}

@@ -209,7 +209,9 @@ pub(super) async fn bind_task(
         "SELECT active OR EXISTS(SELECT 1 FROM tracker_space_catalog WHERE metadata IS NOT NULL) AS enforced FROM tracker_space_admission_state WHERE singleton",
         vec![],
     )).await.map_err(map_db)?.ok_or_else(|| AppError::Unavailable("space_admission_state_missing".into()))?;
-    if !row.try_get::<bool>("", "enforced").map_err(map_db)? {
+    let space_policy = row.try_get::<bool>("", "enforced").map_err(map_db)?;
+    let application_policy = app::native_space_access::application_policy_required().await?;
+    if !space_policy && !application_policy {
         return Ok(());
     }
     if actor.trusted_human {
@@ -228,6 +230,23 @@ pub(super) async fn bind_task(
     // A task-scoped PAT cannot borrow a generic machine's native project role.
     app::sdlc::authorize_pm_read(state, actor)?;
     super::lifecycle::authorize_read(tx, state, actor).await?;
+    if application_policy {
+        let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
+        if owner.to_string() != state.owner_subject {
+            return Err(AppError::Forbidden);
+        }
+        // The confirmed aggregate owns this identity. A machine credential and
+        // its exact task/lease grant remain separate from human admission.
+        native
+            .require_owner(owner, &["task-tracker", "fleet-control"])
+            .await?;
+        crate::guarded_db::bind_commit_clock(tx, native.validity()?.valid_until)
+            .await
+            .map_err(map_db)?;
+    }
+    if !space_policy {
+        return Ok(());
+    }
     let scope = serde_json::json!({
         "schema_version":1,"task_id":state.task_id,"project_id":state.project_id,
         "identity":native.identity(),"validity":native.validity()?,

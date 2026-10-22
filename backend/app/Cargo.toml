@@ -33,5 +33,6 @@ data-encoding = "2"
 aes-gcm = "0.10"
 
 [dev-dependencies]
+axum.workspace = true
 proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

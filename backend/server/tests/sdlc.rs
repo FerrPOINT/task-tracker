@@ -153,7 +153,7 @@ async fn session(
     };
     Ok(Json(
         json!({"id":id,"display_name":subject,"status":"active",
-        "role":if matches!(subject,"operator"|"foreign"){"admin"}else{"member"},
+        "role":if subject=="operator"{"admin"}else{"member"},
         "email":format!("{subject}@example.test")}),
     ))
 }
@@ -488,7 +488,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         },
     )
     .await;
-    namespace_catalog::verify(&client, &base, &db, project, &owner).await;
+    namespace_catalog::verify(&client, &base, &db, project, &owner, &operator).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);
@@ -554,7 +554,19 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(count(&db, "sdlc_tasks").await, 1);
-    source_policy::verify(&client, &base, &db, project, task, &owner, &foreign).await;
+    source_policy::verify(
+        &client,
+        &base,
+        &db,
+        project,
+        task,
+        &routing_policy::Actors {
+            owner: &owner,
+            operator: &operator,
+            foreign: &foreign,
+        },
+    )
+    .await;
     lifecycle_guard::reject_child_row(&db, task, unbound).await;
     assert_eq!(
         client
@@ -1194,7 +1206,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &client,
         &restarted,
         task,
-        &owner,
+        &routing_actors,
         &routing_ready,
         &fleet_stub,
     )
