@@ -3,7 +3,9 @@
   "product": "task-tracker",
   "components": {
     "tooling": [
-      "scripts/tests/test_ci_contract_checks.py"
+      "scripts/tests/test_ci_contract_checks.py",
+      "backend/Dockerfile",
+      "backend/Dockerfile.umbrella"
     ],
     "docs": [
       "docs/**",

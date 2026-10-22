@@ -107,6 +107,16 @@ class CiContractChecksTest(unittest.TestCase):
 
 class DomainUnitInputContractTest(unittest.TestCase):
     def test_unit_target_has_only_manifest_and_domain_preparation_ancestors(self):
+        # Assert the full source owner before examining stage ancestry.
+        import json
+        from fnmatch import fnmatchcase
+        descriptor = json.loads((ROOT / '.quality-gate.json').read_text(encoding='utf-8'))
+        owners = [g for g in descriptor['gates'] if 'scripts.tests.test_ci_contract_checks' in g['argv']]
+        self.assertEqual(len(owners), 1)
+        self.assertEqual(owners[0]['component'], 'tooling')
+        for recipe in ['backend/Dockerfile', 'backend/Dockerfile.umbrella']:
+            self.assertTrue(any(fnmatchcase(recipe, p) for p in descriptor['components']['tooling']))
+            self.assertTrue(any(fnmatchcase(recipe, p) for p in owners[0]['inputs']))
         for name in ("Dockerfile", "Dockerfile.umbrella"):
             with self.subTest(recipe=name):
                 stages = re.split(r"(?m)^FROM ", (ROOT / "backend" / name).read_text())[1:]
