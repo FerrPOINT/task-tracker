@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Standalone product Compose build; context is the parent source workspace.
 # Keep the verified sibling Base sources at their Cargo path-dependency location.
-FROM rust:1.88.0-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS dependencies
+FROM rust:1.88.0-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS manifests
 ARG PDLC_RUN_SLOT_SHARING=locked
 ARG TARGETARCH
 ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
@@ -26,19 +26,24 @@ COPY task-tracker/backend/infra/Cargo.toml infra/Cargo.toml
 COPY task-tracker/backend/migration/Cargo.toml migration/Cargo.toml
 COPY task-tracker/backend/server/Cargo.toml server/Cargo.toml
 COPY task-tracker/backend/shared/Cargo.toml shared/Cargo.toml
-# Immutable dependency layer; all product packages are removed before real source COPY.
-RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
+# Stable manifests and product stubs; unit preparation never builds server dependencies.
+RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} \
     for package in api app cli domain infra migration server shared; do mkdir -p "$package/src"; printf '%s\n' '' > "$package/src/lib.rs"; printf '%s\n' 'fn main() {}' > "$package/src/main.rs"; done \
     && mkdir -p api/src/bin \
-    && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs \
-    && cargo build --locked --release --bin server \
-    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
+    && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs
 
-FROM dependencies AS unit-dependencies
+FROM manifests AS unit-dependencies
 ARG PDLC_RUN_SLOT_SHARING=locked
 # Compile the test dependency graph before mutable product sources.
 RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
     cargo test --locked --release -p domain --lib --no-run \
+    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
+
+FROM unit-dependencies AS dependencies
+ARG PDLC_RUN_SLOT_SHARING=locked
+# Full builds extend the same immutable unit dependency layer once.
+RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
+    cargo build --locked --release --bin server \
     && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
 
 FROM unit-dependencies AS unit

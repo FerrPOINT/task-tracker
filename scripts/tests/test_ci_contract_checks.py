@@ -15,6 +15,27 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_unit_target_has_only_manifest_and_domain_preparation_ancestors(self):
+        for name in ("Dockerfile", "Dockerfile.umbrella"):
+            with self.subTest(recipe=name):
+                stages = re.split(r"(?m)^FROM ", (ROOT / "backend" / name).read_text())[1:]
+                self.assertTrue(stages[0].splitlines()[0].endswith(" AS manifests"))
+                self.assertTrue(stages[0].startswith("rust:"))
+                prepared = next(stage for stage in stages if stage.startswith("manifests AS unit-dependencies\n"))
+                unit = next(stage for stage in stages if stage.startswith("unit-dependencies AS unit\n"))
+                path = "\n".join((stages[0], prepared, unit))
+                self.assertNotIn("cargo build", path)
+                self.assertEqual(set(re.findall(r"(?:--from=|\bfrom=)([a-zA-Z0-9_-]+)", path)), set())
+                command = "cargo test --locked --release -p domain --lib"
+                self.assertIn(command + " --no-run", prepared)
+                self.assertIn(command + " &&", unit)
+                full = next(stage for stage in stages if stage.startswith("unit-dependencies AS dependencies\n"))
+                self.assertIn("cargo build --locked --release --bin server", full)
+                self.assertIn("cargo clean --release", full)
+                builder = next(stage for stage in stages if stage.startswith("dependencies AS builder\n"))
+                self.assertIn("from=unit,source=/tmp/rust-unit-check", builder)
+
+
     def test_normal_seaorm_consumers_do_not_enable_the_mock_driver(self) -> None:
         workspace = tomllib.loads((ROOT / 'backend/Cargo.toml').read_text(encoding='utf-8'))['workspace']
         seaorm = workspace['dependencies']['sea-orm']
