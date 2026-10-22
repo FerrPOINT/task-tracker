@@ -554,7 +554,19 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(count(&db, "sdlc_tasks").await, 1);
-    source_policy::verify(&client, &base, &db, project, task, &owner, &foreign).await;
+    source_policy::verify(
+        &client,
+        &base,
+        &db,
+        project,
+        task,
+        &routing_policy::Actors {
+            owner: &owner,
+            operator: &operator,
+            foreign: &foreign,
+        },
+    )
+    .await;
     lifecycle_guard::reject_child_row(&db, task, unbound).await;
     assert_eq!(
         client

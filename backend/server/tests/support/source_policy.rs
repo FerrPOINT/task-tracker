@@ -7,9 +7,11 @@ pub async fn verify(
     db: &DatabaseConnection,
     project: Uuid,
     task: Uuid,
-    owner: &str,
-    foreign: &str,
+    actors: &routing_policy::Actors<'_>,
 ) {
+    let owner = actors.owner;
+    let foreign = actors.foreign;
+    let administrator = actors.operator;
     let policy = format!("{base}/api/v1/projects/{project}/sdlc/source-policy");
     let binding = format!("{base}/api/v1/issues/{task}/sdlc/source-binding");
     let enrollment = format!("{base}/api/v1/issues/{task}/sdlc/source-enrollment");
@@ -21,7 +23,22 @@ pub async fn verify(
         (enrollment.clone(), 409),
     ] {
         for (token, expected) in [
-            (owner, own_status),
+            (
+                owner,
+                if path.contains("/source-policy/operations/") {
+                    403
+                } else {
+                    own_status
+                },
+            ),
+            (
+                if path.contains("/source-policy/operations/") {
+                    administrator
+                } else {
+                    owner
+                },
+                own_status,
+            ),
             (foreign, 403),
             ("invalid-source-reader", 401),
         ] {
@@ -39,12 +56,17 @@ pub async fn verify(
         "forge_instance_id":Uuid::new_v4(),"repository_id":Uuid::new_v4(),
         "base_ref":"refs/heads/main","base_commit":"a".repeat(40)},"idempotency_key":"source-http"});
     // No active namespace/registered Forge: do not invent a successful verification.
-    for (token, expected) in [(owner, 409), (foreign, 403), ("sdlc_pat_owner", 403)] {
+    for (token, expected) in [
+        (owner, 403),
+        (administrator, 409),
+        (foreign, 403),
+        ("sdlc_pat_owner", 403),
+    ] {
         post(client, &policy, token, &command, expected).await;
     }
     let mut injected = command;
     injected["verification"] = json!({"fixture":"untrusted caller"});
-    post(client, &policy, owner, &injected, 422).await;
+    post(client, &policy, administrator, &injected, 422).await;
     let enroll = json!({"expected_preflight_sha256":"a".repeat(64),"source_revision":1,
         "policy_hash":"b".repeat(64),"idempotency_key":"enrollment-http"});
     for (token, expected) in [(owner, 409), (foreign, 403), ("sdlc_pat_owner", 403)] {
