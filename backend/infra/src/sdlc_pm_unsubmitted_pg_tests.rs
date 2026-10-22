@@ -8,7 +8,16 @@ mod bootstrap_retry_tests;
 async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
     let migrations = migration::Migrator::migrations();
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-    assert_eq!(names.len(), 31);
+    assert_eq!(names.len(), 35);
+    assert_eq!(
+        &names[31..],
+        &[
+            "m20261019_0000099_unified_spaces",
+            "m20261021_0000100_human_sdlc_spaces",
+            "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
+        ]
+    );
     assert_eq!(names[27], "m20261017_0000097_task_source_binding");
     assert_eq!(names[28], "m20261018_0000098_pm_unsubmitted_recovery");
     assert_eq!(names[29], "m20261018_0000098_project_repository_catalog");
@@ -195,6 +204,13 @@ async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; populated 0097->0098 upgrade and one real lease TTL"]
 async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
+    crate::legacy_schema_fixture::scope(
+        unsubmitted_pm_recovery_cas_witness_replay_and_history_seed(),
+    )
+    .await;
+}
+
+async fn unsubmitted_pm_recovery_cas_witness_replay_and_history_seed() {
     let migrations = migration::Migrator::migrations();
     let recovery_index = migrations
         .iter()
@@ -267,7 +283,19 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
     );
     migration::Migrator::up(&f.db, None).await.unwrap();
     let mut final_versions = catalog_versions;
-    final_versions.push("m20261021_0000099_pm_bootstrap_retry".into());
+    final_versions.extend(
+        [
+            "m20261021_0000099_pm_bootstrap_retry",
+            "m20261019_0000099_unified_spaces",
+            "m20261021_0000100_human_sdlc_spaces",
+            "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
+        ]
+        .into_iter()
+        .map(str::to_owned),
+    );
+    // The SQL ledger is ordered by version; registration remains append-only.
+    final_versions.sort();
     assert_eq!(migration_versions(&f).await, final_versions);
     for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
         assert_eq!(&upgrade_snapshot(&f, pm).await, saved);

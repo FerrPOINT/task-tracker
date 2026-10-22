@@ -1,6 +1,9 @@
 import { chooseValue } from '../../test/choice'
+
+import { acceptSpaceSession, useSpaceSession } from '@/shared/auth/space-session'
+import { useAuthStore } from '@/shared/auth/store'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -645,4 +648,61 @@ describe('ReportsPage', () => {
     expect(fetchIssueExport).toHaveBeenNthCalledWith(1, 'TT', 'csv')
     expect(fetchIssueExport).toHaveBeenNthCalledWith(2, 'TT', 'csv')
   })
+  it.each([false, true])(
+    'delivers the completed export only in its initiating identity (same actor: %s)',
+    async (same) => {
+      vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'true')
+      function login(subject: string, token: string) {
+        useAuthStore.getState().setAuth({ token, userId: subject, email: 'fixture@example.test' })
+        acceptSpaceSession(
+          {
+            accessToken: token,
+            subject,
+            email: 'fixture@example.test',
+            name: subject,
+            returnTo: '/',
+            expiresAt: Date.now() + 60_000,
+          },
+          { id: subject },
+        )
+      }
+      const create = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+      const revoke = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+      const objectURL = vi.fn(() => 'blob:scoped-export'),
+        revokeURL = vi.fn()
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: objectURL })
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeURL })
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+      try {
+        login('A', 'a')
+        let complete: (file: { blob: Blob; filename: string }) => void = () => {}
+        vi.mocked(fetchIssueExport).mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              complete = resolve
+            }),
+        )
+        renderPage('/reports?project_key=TT')
+        await userEvent.setup().click(screen.getByRole('button', { name: 'CSV' }))
+        await waitFor(() => expect(fetchIssueExport).toHaveBeenCalledTimes(1))
+        await act(async () => {
+          login(same ? 'A' : 'B', same ? 'fresh-a' : 'b')
+          complete({ blob: new Blob(['A export']), filename: 'A.csv' })
+        })
+        await waitFor(() => expect(screen.getByRole('button', { name: 'CSV' })).toBeEnabled())
+        expect(objectURL).toHaveBeenCalledTimes(same ? 1 : 0)
+        expect(click).toHaveBeenCalledTimes(same ? 1 : 0)
+        expect(revokeURL).toHaveBeenCalledTimes(same ? 1 : 0)
+      } finally {
+        click.mockRestore()
+        if (create) Object.defineProperty(URL, 'createObjectURL', create)
+        else Reflect.deleteProperty(URL, 'createObjectURL')
+        if (revoke) Object.defineProperty(URL, 'revokeObjectURL', revoke)
+        else Reflect.deleteProperty(URL, 'revokeObjectURL')
+        vi.unstubAllEnvs()
+        useAuthStore.getState().logout()
+        useSpaceSession.setState({ session: null })
+      }
+    },
+  )
 })

@@ -36,6 +36,7 @@ async fn owner_access(tx: &DatabaseTransaction, state: &TaskState) -> Result<(),
         .map_err(map_db)?
         .ok_or(AppError::Forbidden)?;
     let owner: Uuid = row.try_get("", "id").map_err(map_db)?;
+    super::spaces::require_owner_project(tx, state.project_id, owner).await?;
     if owner != row.try_get::<Uuid>("", "owner_id").map_err(map_db)? {
         tx.query_one(statement(
             "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",

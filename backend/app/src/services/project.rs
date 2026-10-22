@@ -55,35 +55,17 @@ impl ProjectServiceImpl {
         }
     }
 
-    async fn count_by_status_categories(
-        &self,
-        project_id: ProjectId,
-        statuses: &[domain::Status],
-    ) -> Result<(i64, i64, i64), AppError> {
-        let mut todo = 0;
-        let mut in_progress = 0;
-        let mut done = 0;
-        for status in statuses {
-            let count = self
-                .issues
-                .count_by_project_status(project_id, status.id)
-                .await? as i64;
-            match status.category {
-                StatusCategory::Todo => todo += count,
-                StatusCategory::InProgress => in_progress += count,
-                StatusCategory::Done => done += count,
-            }
-        }
-        Ok((todo, in_progress, done))
-    }
-}
-
-#[async_trait]
-impl crate::context::ProjectService for ProjectServiceImpl {
-    async fn create(
+    async fn persist_new(
         &self,
         cmd: crate::commands::CreateProjectCommand,
+        spaces: Option<(
+            &[shared::space_access::SpaceRef],
+            &domain::project_spaces::SpaceWritePermit,
+        )>,
     ) -> Result<ProjectDto, AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            crate::authz::require_central_administrator()?;
+        }
         let name = normalize_project_name(&cmd.name)?;
         let owner = self.users.get_by_id(cmd.owner_id).await?;
         let board_id = BoardId::new();
@@ -106,7 +88,13 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         // Project + default board must land atomically: a project whose
         // default_board_id points at a nonexistent board breaks board reads
         // and issue creation.
-        self.projects.save_with_board(&project, &board).await?;
+        if let Some((spaces, permit)) = spaces {
+            self.projects
+                .save_with_board_and_spaces(&project, &board, spaces, permit)
+                .await?;
+        } else {
+            self.projects.save_with_board(&project, &board).await?;
+        }
         Ok(ProjectDto::from_project(
             project,
             owner.display_name.as_ref().to_string(),
@@ -116,30 +104,13 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         ))
     }
 
-    async fn list(
+    async fn project_dtos(
         &self,
-        query: crate::commands::ProjectQueryDto,
-        requester: UserId,
+        projects: Vec<domain::Project>,
     ) -> Result<Vec<ProjectDto>, AppError> {
-        let limit = if query.limit == 0 {
-            50
-        } else {
-            query.limit.clamp(1, 100)
-        };
-        let projects = if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
-            self.projects
-                .list(domain::ProjectQuery {
-                    owner_id: None,
-                    limit,
-                    offset: query.offset,
-                })
-                .await?
-        } else {
-            let accessible = self.authz.accessible_project_ids(requester).await?;
-            self.projects
-                .list_accessible_page(&accessible, limit, query.offset)
-                .await?
-        };
+        if projects.is_empty() {
+            return Ok(Vec::new());
+        }
         let statuses = self.statuses.list_all().await?;
         // One user-list fetch instead of a per-project owner lookup (N+1).
         let owner_names: std::collections::HashMap<_, _> = self
@@ -172,6 +143,214 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             ));
         }
         Ok(dtos)
+    }
+
+    async fn count_by_status_categories(
+        &self,
+        project_id: ProjectId,
+        statuses: &[domain::Status],
+    ) -> Result<(i64, i64, i64), AppError> {
+        let mut todo = 0;
+        let mut in_progress = 0;
+        let mut done = 0;
+        for status in statuses {
+            let count = self
+                .issues
+                .count_by_project_status(project_id, status.id)
+                .await? as i64;
+            match status.category {
+                StatusCategory::Todo => todo += count,
+                StatusCategory::InProgress => in_progress += count,
+                StatusCategory::Done => done += count,
+            }
+        }
+        Ok((todo, in_progress, done))
+    }
+}
+
+#[async_trait]
+impl crate::context::ProjectService for ProjectServiceImpl {
+    async fn lifecycle(
+        &self,
+        key: &ProjectKey,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        let project = self.projects.get_by_key(key).await?;
+        let links = self.projects.project_spaces(project.id).await?;
+        actor.require_read(&links)?;
+        let life = self.projects.project_lifecycle(project.id).await?;
+        if life.project != links.project {
+            return Err(AppError::Unavailable(
+                "project_lifecycle_identity_mismatch".into(),
+            ));
+        }
+        actor.require_read(&links)?;
+        Ok(life)
+    }
+    async fn change_lifecycle(
+        &self,
+        key: &ProjectKey,
+        change: domain::project_spaces::ChangeProjectLifecycle,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        change.validate()?;
+        let project = self.projects.get_by_key(key).await?;
+        if project.owner_id != actor.user() {
+            return Err(AppError::Forbidden);
+        }
+        let links = self.projects.project_spaces(project.id).await?;
+        actor.require_project_write(&links)?;
+        // Restoration has a dedicated owner port; the generic writable gate
+        // intentionally forbids editing an archived project's ordinary resources.
+        self.projects
+            .change_project_lifecycle(project.id, &change, &actor.permit()?)
+            .await
+    }
+    async fn create(
+        &self,
+        cmd: crate::commands::CreateProjectCommand,
+    ) -> Result<ProjectDto, AppError> {
+        if self.projects.space_admission_enabled().await? {
+            return Err(AppError::invalid_input("project_spaces_required_use_v2"));
+        }
+        self.persist_new(cmd, None).await
+    }
+
+    async fn create_in_spaces(
+        &self,
+        cmd: crate::commands::CreateProjectCommand,
+        spaces: Vec<shared::space_access::SpaceRef>,
+        actor: crate::space_access::SpaceActor,
+    ) -> Result<ProjectDto, AppError> {
+        if cmd.owner_id != actor.user() {
+            return Err(AppError::Forbidden);
+        }
+        let permit = actor.permit()?;
+        permit.require_set(&spaces)?;
+        self.persist_new(cmd, Some((&spaces, &permit))).await
+    }
+    async fn spaces(
+        &self,
+        key: &ProjectKey,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        let project = self.projects.get_by_key(key).await?;
+        let links = self.projects.project_spaces(project.id).await?;
+        actor.confirm_links(links)
+    }
+    async fn space_operation(
+        &self,
+        key: &ProjectKey,
+        operation: uuid::Uuid,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<domain::project_spaces::ProjectSpaceOperationReceipt, AppError> {
+        if operation.is_nil() {
+            return Err(AppError::invalid_input("invalid_project_space_operation"));
+        }
+        let project = self.projects.get_by_key(key).await?;
+        let links = actor.confirm_links(self.projects.project_spaces(project.id).await?)?;
+        let stored = self
+            .projects
+            .project_space_operation(project.id, operation, actor.identity())
+            .await?
+            .ok_or_else(|| AppError::not_found("project_space_operation", operation))?;
+        actor.require_read(&links)?;
+        let receipt = domain::project_spaces::ProjectSpaceOperationReceipt {
+            schema_version: 1,
+            project: stored.project,
+            operation_id: stored.operation_id,
+            applied: true,
+            applied_revision: stored.applied_revision,
+            change: stored.change,
+            validity: links.validity,
+        };
+        if receipt.project != links.project || receipt.operation_id != operation || !receipt.valid()
+        {
+            return Err(AppError::Unavailable(
+                "invalid_project_space_receipt".into(),
+            ));
+        }
+        Ok(receipt)
+    }
+    async fn replace_spaces(
+        &self,
+        key: &ProjectKey,
+        change: domain::project_spaces::ReplaceProjectSpaces,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        change.validate()?;
+        let project = self.projects.get_by_key(key).await?;
+        if project.owner_id != actor.user() {
+            return Err(AppError::Forbidden);
+        }
+        let previous = self.projects.project_spaces(project.id).await?;
+        actor.require_read(&previous)?;
+        let permit = actor.permit()?;
+        if !permit.is_current() {
+            return Err(AppError::Forbidden);
+        }
+        if !previous.spaces.iter().any(|space| permit.allows(space)) {
+            return Err(AppError::Forbidden);
+        }
+        let links = self
+            .projects
+            .replace_project_spaces(project.id, &change, &permit)
+            .await?;
+        actor.confirm_links(links)
+    }
+
+    async fn visible_catalog(
+        &self,
+        query: domain::project_spaces::ProjectCatalogQuery,
+        space: Option<&shared::space_access::SpaceRef>,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<(Vec<ProjectDto>, u64), AppError> {
+        query.validate()?;
+        let allowed = actor.catalog_spaces(space, query.working_only)?;
+        let page = self
+            .projects
+            .list_space_accessible_catalog(&allowed, &query)
+            .await?;
+        let dtos = self.project_dtos(page.projects).await?;
+        actor.readable_spaces()?;
+        Ok((dtos, page.total))
+    }
+    async fn list(
+        &self,
+        query: crate::commands::ProjectQueryDto,
+        requester: UserId,
+    ) -> Result<Vec<ProjectDto>, AppError> {
+        let limit = if query.limit == 0 {
+            50
+        } else {
+            query.limit.clamp(1, 100)
+        };
+        let policy_active = self.projects.space_admission_enabled().await?;
+        let projects = if policy_active {
+            let frame =
+                crate::space_access::current_request_for(requester)?.ok_or(AppError::Forbidden)?;
+            let actor = frame.spaces().ok_or(AppError::Forbidden)?;
+            let projects = self
+                .projects
+                .list_space_accessible_page(&actor.readable_spaces()?, limit, query.offset)
+                .await?;
+            actor.readable_spaces()?;
+            projects
+        } else if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            self.projects
+                .list(domain::ProjectQuery {
+                    owner_id: None,
+                    limit,
+                    offset: query.offset,
+                })
+                .await?
+        } else {
+            let accessible = self.authz.accessible_project_ids(requester).await?;
+            self.projects
+                .list_accessible_page(&accessible, limit, query.offset)
+                .await?
+        };
+        self.project_dtos(projects).await
     }
 
     async fn get_by_key(

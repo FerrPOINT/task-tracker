@@ -149,3 +149,35 @@ Dialog и Toaster/toast использовать из публичного @pdlc
 Брендинг применяется общим runtime; draft preview изолируется BrandingScope.
 Канонический контракт — Base docs/platform/DESIGN_SYSTEM.md и docs/BRANDING.md.
 UI/SDK/skills pins независимы; source-изменения не означают установку.
+
+## Единое пространство PDLC
+
+[Согласованный план](docs/plans/unified-spaces-20261019.md) вводит M:N и общий read admission. До полного
+совместимого cohort это цель, не установленное поведение. Строгие V1/V2 и
+applied migrations сохранять; ProjectRef/SpaceRef/V3 отдельны. Полный gate на
+интегрированной вехе, в ходе реализации scoped checks. Runtime не активировать
+по готовности одного продукта; не выбирать первый Project/Space неявно.
+
+
+Контекст центрального запроса содержит immutable identity, свежую глобальную
+роль, product scopes и исходный срок допуска. Не повышать роль в JIT и не
+использовать исторический `is_system_admin` как доказательство роли платформы.
+Task-local proof не передаётся в spawned jobs автоматически; потоки используют
+явно захваченный исходный proof, а фоновые операции — свой ограниченный протокол.
+Исторические уведомления и аудит не сохраняют доступ к данным отозванного
+проекта. Ограничивать выборку и счётчики до pagination; неизвестный ресурс не
+считать глобальным. События пользователей и system settings классифицировать
+по их существующим глобальным правилам, отдельно от проектного содержимого.
+
+Правила текущей транзакционной записи:
+[PROJECT_CONTENT_AUTHORIZATION_V2](docs/PROJECT_CONTENT_AUTHORIZATION_V2.md).
+Не использовать raw concrete connection как обход ordinary content guards.
+Owner/reconcile и machine artifact/job ports имеют отдельные typed proofs;
+read-only proof не становится правом записи. После owner-v2 adoption legacy
+writer не считается совместимым даже до включения общего policy flag.
+
+Для новых v2 machine context/recipient readers использовать authoritative
+service_account factory и сохранять исходный proof до конца IO:
+[PROJECT_SPACES_V2](docs/PROJECT_SPACES_V2.md#machine-context-reader-kind-revision-и-http-lifetime).
+Legacy registered reader не заменяет эту проверку kind. Known policy revision
+выбирает cache entry, но не является полномочием или owner revision.

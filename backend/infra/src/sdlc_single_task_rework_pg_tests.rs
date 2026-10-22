@@ -189,7 +189,7 @@ async fn complete_initial_pm(
         .unwrap();
     assert!(!replayed);
     assert_eq!(completed.fence.execution_id, lease.fence.execution_id);
-    crate::sdlc::seed_analysis_fixture(&repo.db, task, owner).await;
+    crate::sdlc::seed_analysis_fixture(repo.db.raw(), task, owner).await;
 }
 
 impl ReworkFixture {

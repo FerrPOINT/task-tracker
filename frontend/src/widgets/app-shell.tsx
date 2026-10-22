@@ -1,3 +1,7 @@
+import { useApplicationAccess } from '@pdlc/ui/auth'
+import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
+import { isUnarchivedProject } from './namespace-context'
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
   AppShell as BaseAppShell,
   Button,
@@ -55,7 +59,6 @@ import {
   useMarkNotificationRead,
   useIssue,
   useNotifications,
-  useProjects,
 } from '@/shared/api/hooks'
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
@@ -225,19 +228,22 @@ export function AppShell() {
   const location = useLocation()
   const routeProject = useCurrentProjectKey()
   const routeProjectKey = routeProject.key
-  const namespace = useNamespaceContext()
-  const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+  const spaceEnabled = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && !spaceEnabled
+  const namespace = useNamespaceContext(namespaceEnabled)
   const allProjects = !namespace.malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog(namespaceEnabled)
-  const projectKey = namespace.ref
-    ? namespace.query.isError
-      ? undefined
-      : namespace.query.data?.resource_key
-    : routeProject.key
-  const createContextPending = namespace.ref ? namespace.query.isPending : routeProject.pending
+  const projectKey =
+    namespaceEnabled && namespace.ref
+      ? namespace.query.isError
+        ? undefined
+        : namespace.query.data?.resource_key
+      : routeProject.key
+  const createContextPending =
+    namespaceEnabled && namespace.ref ? namespace.query.isPending : routeProject.pending
   const createContextError =
-    namespace.malformed ||
-    (namespace.ref
+    (namespaceEnabled && namespace.malformed) ||
+    (namespaceEnabled && namespace.ref
       ? !namespace.query.isPending &&
         (namespace.query.isError || !namespace.query.data?.resource_key)
       : routeProject.unavailable)
@@ -258,7 +264,7 @@ export function AppShell() {
           ? []
           : (catalog.data ?? [])
   const projectGroups: ProjectNavigationGroup[] = namespaceEnabled
-    ? contexts.map((context) => ({
+    ? contexts.filter(isUnarchivedProject).map((context) => ({
         id: `${context.binding.resource.instance_id}/${context.binding.resource.resource_id}`,
         key: context.resource_key,
         name: context.label,
@@ -277,6 +283,7 @@ export function AppShell() {
     projectDisclosures.toggle(id)
   }
   const { data: user } = useCurrentUser()
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -300,6 +307,7 @@ export function AppShell() {
 
   const utilities = useSidebarDisclosure(location.pathname === '/admin' ? location.pathname : null)
   function utilityNavigation(compact = false, onNavigate?: () => void) {
+    if (!canAdmin) return null
     return (
       <SidebarNavigationGroup
         label="Служебное"
@@ -398,7 +406,9 @@ export function AppShell() {
             </>
           }
           context={
-            import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+            spaceEnabled ? (
+              <SpaceShellContext projectKey={projectKey} />
+            ) : namespaceEnabled ? (
               <NamespaceShellContext />
             ) : (
               <DropdownMenu modal={false}>
@@ -569,12 +579,14 @@ export function AppShell() {
                     </div>
                   )}
                   <ThemeMenuItems />
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin" className="gap-2 text-text-secondary">
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>{t('navigation.admin')}</span>
-                    </Link>
-                  </DropdownMenuItem>
+                  {canAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="gap-2 text-text-secondary">
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>{t('navigation.admin')}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onSelect={() => logout.mutate()}
                     disabled={logout.isPending}
@@ -590,7 +602,11 @@ export function AppShell() {
         />
       )}
     >
-      {namespace.malformed ? (
+      {spaceEnabled ? (
+        <SpaceRouteOutlet projectKey={projectKey}>
+          <Outlet />
+        </SpaceRouteOutlet>
+      ) : namespace.malformed ? (
         <p role="alert" className="text-danger">
           Некорректная ссылка на проект.
         </p>

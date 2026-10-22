@@ -80,7 +80,28 @@ pub async fn apply(
     db: &DatabaseConnection,
     command: &OwnerCommand,
 ) -> Result<OwnerReadback, AppError> {
+    let row=db.query_one(statement("SELECT EXISTS(SELECT 1 FROM tracker_space_catalog WHERE registry_instance_id=$1 AND space_id=$2 AND metadata IS NOT NULL) OR (SELECT active FROM tracker_space_admission_state WHERE singleton) AS shared",vec![id(command.namespace.registry_instance_id),id(command.namespace.namespace_id)])).await.map_err(AppError::database)?.ok_or_else(||AppError::Unavailable("space_admission_state_missing".into()))?;
+    if row
+        .try_get::<bool>("", "shared")
+        .map_err(AppError::database)?
+    {
+        return Err(AppError::conflict("space_owner_v2_required"));
+    }
     let tx = db.begin().await.map_err(AppError::database)?;
+    let mode = tx
+        .query_one(statement(
+            "SELECT active FROM tracker_space_admission_state WHERE singleton FOR SHARE",
+            vec![],
+        ))
+        .await
+        .map_err(AppError::database)?
+        .ok_or_else(|| AppError::Unavailable("space_admission_state_missing".into()))?;
+    if mode
+        .try_get::<bool>("", "active")
+        .map_err(AppError::database)?
+    {
+        return Err(AppError::conflict("space_owner_v2_required"));
+    }
     tx.execute(statement(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
         vec![command.resource.resource_id.to_string().into()],

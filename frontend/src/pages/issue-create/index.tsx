@@ -1,3 +1,4 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import { Select, Textarea, ProjectPicker, EmptyState, Button, ErrorState, Input } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
@@ -17,7 +18,6 @@ import {
   useIssueTypes,
   useProjectCustomFields,
   useProjectMembers,
-  useProjects,
   useUsers,
 } from '@/shared/api/hooks'
 import { useAuthStore } from '@/shared/auth/store'

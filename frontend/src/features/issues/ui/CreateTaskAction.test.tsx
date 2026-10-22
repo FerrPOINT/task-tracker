@@ -4,6 +4,7 @@ import { CreateTaskAction, newPmChatUrl } from './CreateTaskAction'
 
 const mocks = vi.hoisted(() => ({
   services: vi.fn(),
+  access: vi.fn(),
   product: vi.fn(),
   navigate: vi.fn(),
   error: vi.fn(),
@@ -19,6 +20,10 @@ vi.mock('@pdlc/ui/ui', async (original) => ({
   usePlatformServices: mocks.services,
   toast: { error: mocks.error },
 }))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: mocks.access,
+}))
 vi.mock('@pdlc/ui/platform', async (original) => ({
   ...(await original<object>()),
   getPlatformProduct: mocks.product,
@@ -29,6 +34,7 @@ const id = 'af51e677-f2f4-4af5-a4f3-5d8e35f0a719'
 let requests: Request[]
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.access.mockReturnValue({ permits: () => true })
   mocks.services.mockReturnValue({
     source: 'runtime',
     services: [{ key: 'fleet-control', ui_url: 'https://fleet.example.test/ui/' }],
@@ -49,6 +55,45 @@ afterAll(() => {
 })
 
 describe('new task opens the existing empty PM route', () => {
+  it('keeps Tracker work but does not offer or navigate to Fleet without its assignment', async () => {
+    mocks.access.mockReturnValue({ permits: () => false })
+    const view = render(<CreateTaskAction projectKey="TT" />)
+    expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('нужен доступ к Fleet')
+    expect(requests).toHaveLength(0)
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    mocks.access.mockReturnValue({ permits: () => true })
+    view.rerender(<CreateTaskAction projectKey="TT" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledTimes(1))
+    expect(requests).toHaveLength(1)
+  })
+
+  it('cancels a pending project read and navigation when Fleet is revoked', async () => {
+    let reply!: (response: Response) => void
+    wire.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          reply = resolve
+        }),
+    )
+    const view = render(<CreateTaskAction projectKey="TT" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+    await waitFor(() => expect(reply).toBeTypeOf('function'))
+    mocks.access.mockReturnValue({ permits: () => false })
+    view.rerender(<CreateTaskAction projectKey="TT" />)
+    await act(async () =>
+      reply(
+        new Response(JSON.stringify({ id, key: 'TT' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('нужен доступ к Fleet')
+  })
+
   it('resolves project key through the production GET adapter, never creates an issue or chat', async () => {
     render(<CreateTaskAction projectKey="TT" />)
     expect(requests).toHaveLength(0)

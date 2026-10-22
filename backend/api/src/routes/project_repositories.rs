@@ -22,7 +22,7 @@ async fn project_for_access(
     let project = ctx.repos.projects.get_by_key(&key).await?;
     if edit {
         ctx.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
     } else {
         ctx.authz

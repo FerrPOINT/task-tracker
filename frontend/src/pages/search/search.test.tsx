@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { act, render, screen, fireEvent } from '@testing-library/react'
 import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
@@ -37,10 +38,14 @@ function LocationProbe() {
 
 function renderPage(url = '/search') {
   return render(
-    <MemoryRouter initialEntries={[url]}>
-      <SearchPage />
-      <LocationProbe />
-    </MemoryRouter>,
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <MemoryRouter initialEntries={[url]}>
+        <SearchPage />
+        <LocationProbe />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 

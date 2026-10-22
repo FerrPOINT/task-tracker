@@ -46,7 +46,7 @@ impl crate::context::ComponentService for ComponentServiceImpl {
     ) -> Result<crate::context::ComponentDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("component name must not be empty"));
@@ -85,7 +85,7 @@ impl crate::context::ComponentService for ComponentServiceImpl {
     ) -> Result<crate::context::ComponentDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         let mut component = self.components.get_by_id(id).await?;
         if component.project_id != project.id {
@@ -108,7 +108,7 @@ impl crate::context::ComponentService for ComponentServiceImpl {
     ) -> Result<(), AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         let component = self.components.get_by_id(id).await?;
         if component.project_id != project.id {

@@ -1,6 +1,15 @@
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
+import { useVisibleProjects } from './useVisibleProjects'
+import { readSpaceLocation } from '@/shared/lib/space-location'
+import { SpaceRequestError } from '@/api/space-catalog'
 import { useLocation } from 'react-router'
 import { parseNamespaceLocation } from '@pdlc/ui/lib'
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useMutation as useIdentityMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { endSso } from '@pdlc/ui/sso'
 import {
@@ -229,7 +238,7 @@ export function useDeleteAttachment(issueId: string) {
   })
 }
 
-const projectKeys = {
+export const projectKeys = {
   all: ['projects'] as const,
   detail: (key: string) => ['project', key] as const,
   info: (key: string) => ['project-info', key] as const,
@@ -333,11 +342,28 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   })
 }
 
-export function useProjects(offset = 0, limit = 100) {
-  return useQuery({
+export function useProjects(offset = 0, limit = 100, search = '', workingOnly = false) {
+  const context = readSpaceLocation(useLocation().search)
+  const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const visible = useVisibleProjects(
+    { space: context.space, offset, limit, q: search, workingOnly },
+    v2 && !context.invalid,
+  )
+  const legacy = useQuery({
     queryKey: [...projectKeys.all, offset, limit],
     queryFn: ({ signal }) => listProjects(offset, limit, signal),
+    enabled: !v2,
   })
+  if (!v2) return { ...legacy, catalog: undefined }
+  const unavailable = context.invalid || visible.unavailable
+  return {
+    ...visible,
+    data: visible.data?.projects,
+    catalog: visible.data,
+    isLoading: visible.isLoading && !unavailable,
+    isError: visible.isError || unavailable,
+    error: unavailable ? new SpaceRequestError(403) : visible.error,
+  }
 }
 
 export function useProjectDetails(key: string) {
@@ -414,7 +440,7 @@ export function useDashboard() {
 export function useLogin() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const qc = useQueryClient()
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: login,
     onSuccess: (data) => {
       setAuth({
@@ -430,7 +456,7 @@ export function useLogin() {
 export function useRegister() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const qc = useQueryClient()
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: register,
     onSuccess: (data) => {
       setAuth({
@@ -483,7 +509,7 @@ export function useCurrentUser() {
 }
 
 export function useLogout() {
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: async () => {},
     onSuccess: () => {
       endSso(ssoConfig)

@@ -250,3 +250,9 @@ Commercial, production, resale, redistribution, SaaS/hosting use require written
 Из корня подготовленного React-продукта: `pnpm --dir frontend exec pdlc-ui`.
 Полный каталог и запуск Storybook/API для offline-поиска не нужны. Общие
 компоненты и брендинг исправляются в Base, данные и правила остаются у продукта.
+
+## Единое пространство PDLC
+
+[Согласованная M:N-модель и план](docs/plans/unified-spaces-20261019.md): реализация в работе. Source, tests,
+миграция, образы и live dev acceptance учитываются раздельно; документация цели
+не подтверждает установленную политику.

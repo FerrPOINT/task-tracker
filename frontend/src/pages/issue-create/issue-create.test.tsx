@@ -1,3 +1,13 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'user' as 'user' | 'admin',
+  applications: ['task-tracker'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -154,9 +164,11 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 
 describe('IssueCreatePage', () => {
   beforeEach(() => {
+    accessActor.role = 'user'
     window.sessionStorage.clear()
     POST.mockReset()
     createIssue.mockClear()
+    createProject.mockReset()
     listProjects.mockClear()
     listUsers.mockClear()
     listProjectMembers.mockClear()
@@ -391,6 +403,7 @@ describe('IssueCreatePage', () => {
     )
   })
   it('creates the prerequisite project without navigating away or submitting the issue draft', async () => {
+    accessActor.role = 'admin'
     listProjects.mockResolvedValueOnce([])
     const project = {
       id: 'new-project',
@@ -423,6 +436,7 @@ describe('IssueCreatePage', () => {
   })
 
   it('retains the issue and project input after project creation is denied', async () => {
+    accessActor.role = 'admin'
     listProjects.mockResolvedValueOnce([])
     createProject.mockRejectedValueOnce(new Error('Нет прав на создание проекта'))
     render(wrapper(<IssueCreatePage />))
@@ -443,6 +457,7 @@ describe('IssueCreatePage', () => {
   it.each([false, true])(
     'uses authoritative catalogue readback after inline creation (removed: %s)',
     async (removed) => {
+      accessActor.role = 'admin'
       const project = {
         id: 'new-project',
         key: 'NEW',
@@ -484,4 +499,13 @@ describe('IssueCreatePage', () => {
       expect(createIssue).not.toHaveBeenCalled()
     },
   )
+  it('retains the native task form for a Tracker user without granting project creation', async () => {
+    accessActor.role = 'user'
+    listProjects.mockResolvedValueOnce([])
+    render(wrapper(<IssueCreatePage />))
+    await waitFor(() => expect(listProjects).toHaveBeenCalled())
+    expect(screen.getByLabelText(/Заголовок/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Создать проект' })).not.toBeInTheDocument()
+    expect(createProject).not.toHaveBeenCalled()
+  })
 })

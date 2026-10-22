@@ -173,6 +173,7 @@ impl SdlcService {
         actor: &Principal,
         command: domain::sdlc_routing::SetRoutingPolicy,
     ) -> Result<(domain::sdlc_routing::RoutingPolicy, bool), AppError> {
+        crate::sdlc_source::human_owner(actor)?;
         self.repository
             .set_routing_policy(project, actor, command)
             .await

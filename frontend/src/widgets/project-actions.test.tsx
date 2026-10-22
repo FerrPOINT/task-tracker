@@ -1,11 +1,24 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'admin' as 'user' | 'admin',
+  applications: ['task-tracker'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { ProjectActions, ProjectCardActionItems, ProjectCardLink } from './project-actions'
 const catalog = vi.hoisted(() => vi.fn())
 vi.mock('./namespace-context', () => ({ useNamespaceCatalog: catalog }))
 
+beforeEach(() => {
+  accessActor.role = 'admin'
+})
 afterEach(() => vi.unstubAllEnvs())
 it('opens settings for the exact project without losing the all-projects scope', async () => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
@@ -77,4 +90,18 @@ it('resolves card actions and its board by resource identity despite a different
   )
   expect(target.searchParams.get('namespace_id')).toBe(destination)
   expect(target.searchParams.get('project_scope')).toBe('all')
+})
+
+it('keeps the project board visible while hiding its settings from a user', () => {
+  accessActor.role = 'user'
+  render(
+    <MemoryRouter>
+      <ProjectCardLink project={{ id: 'second', key: 'SECOND', name: 'Same name' }}>
+        Open board
+      </ProjectCardLink>
+      <ProjectActions project={{ key: 'SECOND', name: 'Same name' }} />
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('link', { name: 'Open board' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Настройки проекта/ })).not.toBeInTheDocument()
 })

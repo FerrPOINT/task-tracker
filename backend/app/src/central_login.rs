@@ -5,7 +5,7 @@ use pdlc_auth_core::service_bridge::{BridgeOutcome, CentralTokenPair, ServiceBri
 
 /// Env prefix shared with the api-crate middleware bridge instance.
 const ENV_PREFIX: &str = "TT_AUTH__CENTRAL";
-static BRIDGE: ServiceBridge = ServiceBridge::new(ENV_PREFIX);
+static BRIDGE: ServiceBridge = ServiceBridge::for_application(ENV_PREFIX, "task-tracker");
 
 /// A configured central bridge must fail closed when login or profile
 /// verification fails; the caller only permits legacy login when unconfigured.

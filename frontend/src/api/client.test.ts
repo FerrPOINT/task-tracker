@@ -17,6 +17,8 @@ vi.mock('@/shared/auth/store', () => ({
   },
 }))
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('API client transport', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -74,4 +76,74 @@ describe('API client transport', () => {
     expect(assign).toHaveBeenCalledWith('/login')
     expect(fetchMock).not.toHaveBeenCalled()
   })
+})
+
+it.each(['different-user-token', 'refreshed-session-token', null])(
+  'does not invalidate a successor session after an old request returns401: %s',
+  async (token) => {
+    vi.resetModules()
+    createClient.mockReset()
+    authState.logout.mockClear()
+    let middleware: {
+      onRequest: (args: { request: Request }) => Request
+      onResponse: (args: { request: Request; response: Response }) => Response
+    }
+    createClient.mockReturnValueOnce({
+      use: vi.fn((value) => {
+        middleware = value
+      }),
+    })
+    authState.token = 'old-session-token'
+    const assign = vi.fn()
+    vi.stubGlobal('window', { location: { assign } })
+    await import('./client')
+    const request = middleware!.onRequest({
+      request: new Request('https://api.example.test/api/v2/projects/QA/spaces'),
+    })
+    authState.token = token
+    middleware!.onResponse({ request, response: new Response(null, { status: 401 }) })
+    expect(authState.logout).not.toHaveBeenCalled()
+    expect(assign).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  },
+)
+
+it('rejects a streamed body after an application change with the same token', async () => {
+  vi.resetModules()
+  createClient.mockReset()
+  let middleware!: {
+    onRequest: (args: { request: Request }) => Request
+    onResponse: (args: { request: Request; response: Response }) => Response
+  }
+  createClient.mockReturnValueOnce({
+    use: vi.fn((value) => {
+      middleware = value
+    }),
+  })
+  authState.token = 'same-token'
+  await import('./client')
+  const { clearPlatformPrivateQueries } = await import('@pdlc/ui/platform')
+  const request = middleware.onRequest({
+    request: new Request('https://api.example.test/api/v1/issues'),
+  })
+  let source!: ReadableStreamDefaultController<Uint8Array>
+  const response = middleware.onResponse({
+    request,
+    response: new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          source = controller
+        },
+      }),
+    ),
+  })
+  const reading = response.json()
+  const rejection = expect(reading).rejects.toMatchObject({
+    status: 403,
+    code: 'AUTH_CONTEXT_CHANGED',
+  })
+  clearPlatformPrivateQueries()
+  source.enqueue(new TextEncoder().encode('{"private":"old"}'))
+  source.close()
+  await rejection
 })

@@ -170,7 +170,7 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     ) -> Result<crate::context::CustomFieldDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("field name must not be empty"));
@@ -214,7 +214,7 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     ) -> Result<crate::context::CustomFieldDto, AppError> {
         let field = self.fields.get_by_id(field_id).await?;
         self.authz
-            .require_project_edit(field.project_id, requester)
+            .require_configuration_edit(field.project_id, requester)
             .await?;
         let mut field = field;
         if !name.trim().is_empty() {
@@ -234,7 +234,7 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     ) -> Result<(), AppError> {
         let field = self.fields.get_by_id(field_id).await?;
         self.authz
-            .require_project_edit(field.project_id, requester)
+            .require_configuration_edit(field.project_id, requester)
             .await?;
         self.fields.delete(field_id).await?;
         Ok(())

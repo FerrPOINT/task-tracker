@@ -1,28 +1,33 @@
+import { ApplicationAccessError } from '@pdlc/ui/auth'
 import { applySsoSession, restoreSso, type SsoSession } from '@pdlc/ui/sso'
 import { apiBaseUrl } from '@/api/client'
 import { ssoConfig, useAuthStore } from './store'
+import { acceptSpaceSession } from './space-session'
 
 export async function loadSsoSession(session: SsoSession, canApply = () => true): Promise<boolean> {
   const response = await fetch(`${apiBaseUrl}/api/v1/users/me`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   })
+  if (response.status === 403) throw new ApplicationAccessError(403, 'Нет доступа к приложению.')
   if (!response.ok) throw new Error(`Не удалось открыть профиль Tracker (HTTP ${response.status}).`)
   const user = (await response.json()) as {
     id: string
     email: string
     username: string
     display_name: string
+    is_system_admin?: boolean
   }
   if (!canApply()) return false
-  applySsoSession(session, () =>
+  applySsoSession(session, () => {
     useAuthStore.getState().setAuth({
       token: session.accessToken,
       userId: user.id,
       email: user.email,
       username: user.username,
       displayName: user.display_name,
-    }),
-  )
+    })
+    acceptSpaceSession(session, user)
+  })
   return true
 }
 let pending: Promise<void> | null = null

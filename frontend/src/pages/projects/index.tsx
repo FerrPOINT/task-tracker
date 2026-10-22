@@ -1,4 +1,11 @@
-import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
+import { useApplicationAccess } from '@pdlc/ui/auth'
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
+import {
+  ProjectCardActionItems,
+  ProjectCardLink,
+  ProjectCardState,
+} from '@/widgets/project-actions'
 import {
   ProjectAvatar,
   ResourceList,
@@ -16,15 +23,14 @@ import {
   AlertDialogTitle,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
 
-import { Plus, Search, Trash2, MoreHorizontal } from 'lucide-react'
+import { Plus, Search, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 
-import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
+import { useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 
 import type { Project } from '@/api/project'
@@ -32,11 +38,20 @@ import type { Project } from '@/api/project'
 export function ProjectsPage() {
   const { t } = useTranslation()
   const [offset, setOffset] = useState(0)
-  const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
+  const [search, setSearch] = useState('')
+  const spaceEnabled = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+  const {
+    data: projects,
+    isLoading,
+    error,
+    refetch,
+    catalog,
+    unfilteredCount,
+  } = useProjects(offset, 50, spaceEnabled ? search : '')
   const [formOpen, setFormOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
-  const [search, setSearch] = useState('')
 
+  const canAdmin = useApplicationAccess()?.permits([], true) === true
   const create = useCreateProject()
   const remove = useDeleteProject()
 
@@ -44,9 +59,11 @@ export function ProjectsPage() {
   if (error) return <ErrorState message={error.message} onRetry={() => void refetch()} />
 
   const normalizedSearch = search.trim().toLocaleLowerCase()
-  const filteredProjects = projects?.filter((project) =>
-    `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
-  )
+  const filteredProjects = spaceEnabled
+    ? projects
+    : projects?.filter((project) =>
+        `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
+      )
 
   return (
     <div className="space-y-4">
@@ -60,25 +77,30 @@ export function ProjectsPage() {
         </Button>
         <Button
           variant="outline"
-          disabled={(projects?.length ?? 0) < 50}
+          disabled={spaceEnabled ? !catalog?.has_more : unfilteredCount < 50}
           onClick={() => setOffset(offset + 50)}
         >
           Далее
         </Button>
       </div>
-      <ProjectFormDialog
-        open={formOpen}
-        onOpenChange={(open) => {
-          setFormOpen(open)
-        }}
-        onSubmit={(values) => {
-          create.mutate(values as import('@/api/project').CreateProjectRequest, {
-            onSuccess: () => setFormOpen(false),
-          })
-        }}
-        isPending={create.isPending}
-        error={create.error}
-      />
+      {canAdmin &&
+        (import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true' ? (
+          <CreateProjectInSpacesDialog open={formOpen} onOpenChange={setFormOpen} />
+        ) : (
+          <ProjectFormDialog
+            open={formOpen}
+            onOpenChange={(open) => {
+              setFormOpen(open)
+            }}
+            onSubmit={(values) => {
+              create.mutate(values as import('@/api/project').CreateProjectRequest, {
+                onSuccess: () => setFormOpen(false),
+              })
+            }}
+            isPending={create.isPending}
+            error={create.error}
+          />
+        ))}
 
       <AlertDialog
         open={!!deletingProject}
@@ -122,11 +144,13 @@ export function ProjectsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
-        <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('projects.create')}</span>
-          <span className="sm:hidden">{t('navigation.create')}</span>
-        </Button>
+        {canAdmin && (
+          <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('projects.create')}</span>
+            <span className="sm:hidden">{t('navigation.create')}</span>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -138,7 +162,12 @@ export function ProjectsPage() {
             placeholder={t('projects.search')}
             className="h-9 w-full pl-9 sm:w-64"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(
+                spaceEnabled ? Array.from(e.target.value).slice(0, 200).join('') : e.target.value,
+              )
+              if (spaceEnabled) setOffset(0)
+            }}
           />
         </div>
       </div>
@@ -173,6 +202,7 @@ export function ProjectsPage() {
                         {project.key} · {t('projects.lead')}:{' '}
                         {project.owner_name || project.owner_id}
                       </span>
+                      <ProjectCardState projectId={project.id} />
                     </span>
                   </ProjectCardLink>
                   <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
@@ -204,17 +234,17 @@ export function ProjectsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <ProjectCardActionItems project={project} />
-                        <DropdownMenuItem
-                          onClick={() => {
-                            remove.reset()
-                            setDeletingProject(project)
-                          }}
-                          className="gap-2 text-danger"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {t('common.delete')}
-                        </DropdownMenuItem>
+                        <ProjectCardActionItems
+                          project={project}
+                          onDelete={
+                            canAdmin
+                              ? () => {
+                                  remove.reset()
+                                  setDeletingProject(project)
+                                }
+                              : undefined
+                          }
+                        />
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

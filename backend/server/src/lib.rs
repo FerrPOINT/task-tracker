@@ -197,6 +197,12 @@ async fn run_digest_cycle(
         return Ok(());
     }
 
+    let admission_active = ctx.repos.projects.space_admission_enabled().await?;
+    let reader = if admission_active {
+        Some(app::space_access::notification_reader().await?)
+    } else {
+        None
+    };
     // Group unread notifications by recipient.
     let mut by_user: HashMap<shared::UserId, Vec<domain::Notification>> = HashMap::new();
     for n in notifications {
@@ -213,6 +219,9 @@ async fn run_digest_cycle(
             }
         };
 
+        if !user.is_active {
+            continue;
+        }
         // Check the user's notification settings — only send to users whose
         // email_frequency is 'hourly' or 'daily'.
         let settings = match ctx.repos.notification_settings.get_settings(user_id).await {
@@ -228,6 +237,61 @@ async fn run_digest_cycle(
             continue;
         }
 
+        // Fresh recipient admission is independent of the actor who created the
+        // historical message. Retain denied notifications; do not mark them read.
+        let mut delivery_proof = None;
+        let user_notifications = if let Some(reader) = reader.as_ref() {
+            let proof = match app::space_access::recipient_read(
+                user_id,
+                ctx.repos.users.as_ref(),
+                ctx.repos.projects.as_ref(),
+                reader,
+            )
+            .await
+            {
+                Ok(p) => p,
+                Err(_) => {
+                    warn!("digest: recipient admission unavailable for {user_id}");
+                    continue;
+                }
+            };
+            let spaces = proof
+                .readable_spaces()
+                .map_err(|_| shared::AppError::Forbidden)?;
+            let mut visible = Vec::new();
+            let mut offset = 0;
+            loop {
+                if !proof.is_current() {
+                    return Err(shared::AppError::Forbidden);
+                }
+                let (page, _) = ctx
+                    .repos
+                    .notifications
+                    .list_space_visible(user_id, &spaces, false, 50, offset)
+                    .await?;
+                let count = page.len();
+                visible.extend(page);
+                if count < 50 {
+                    break;
+                }
+                offset += 50;
+                if offset >= 10000 {
+                    return Err(shared::AppError::Unavailable(
+                        "notification_delivery_limit_exceeded".into(),
+                    ));
+                }
+            }
+            if visible.is_empty() {
+                continue;
+            }
+            if !proof.is_current() {
+                return Err(shared::AppError::Forbidden);
+            }
+            delivery_proof = Some(proof);
+            visible
+        } else {
+            user_notifications
+        };
         // Build the digest body.
         let count = user_notifications.len();
         let mut body = format!("You have {count} unread notification(s):\n\n");
@@ -249,7 +313,26 @@ async fn run_digest_cycle(
 
         // Send the digest email. On failure, log and skip marking as read
         // so the notifications remain for the next cycle.
-        if let Err(e) = ctx.email.send(&email_notification).await {
+        let sent = if let Some(proof) = delivery_proof.as_ref() {
+            if !proof.is_current() {
+                continue;
+            }
+            match tokio::time::timeout_at(
+                proof.monotonic_deadline().into(),
+                ctx.email.send(&email_notification),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    warn!("digest: confirmation expired during delivery for {user_id}");
+                    continue;
+                }
+            }
+        } else {
+            ctx.email.send(&email_notification).await
+        };
+        if let Err(e) = sent {
             error!("digest: failed to send email to {}: {e}", user.email);
             continue;
         }
@@ -328,3 +411,6 @@ mod tests {
         assert!(!digest_is_due("never", &settings, now));
     }
 }
+
+#[cfg(test)]
+mod unified_notification_tests;

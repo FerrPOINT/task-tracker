@@ -1,3 +1,4 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
   ProjectAvatar,
   ResourceList,
@@ -18,7 +19,7 @@ import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucid
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
 
-import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
+import { useIssues, useUsers } from '@/shared/api/hooks'
 import { SearchRequestError, type Issue } from '@/api/search'
 
 const PAGE_SIZE = 25

@@ -30,6 +30,7 @@ pub async fn verify(
     db: &DatabaseConnection,
     source_project: Uuid,
     human: &str,
+    administrator: &str,
 ) {
     use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
     let project = Uuid::new_v4();
@@ -197,17 +198,20 @@ pub async fn verify(
         503
     );
     let reference = json!({"forge_instance_id":forge,"repository_id":Uuid::new_v4()});
-    assert_eq!(
-        client
-            .post(&links_url)
-            .bearer_auth(human)
-            .json(&reference)
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        503
-    );
+    // A reader cannot change repository links even when the catalog is unavailable.
+    for (token, expected) in [(human, 403), (administrator, 503)] {
+        assert_eq!(
+            client
+                .post(&links_url)
+                .bearer_auth(token)
+                .json(&reference)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            expected
+        );
+    }
     let remove = format!(
         "{links_url}/{forge}/{}",
         first[0]["repository_id"].as_str().unwrap()
@@ -233,7 +237,7 @@ pub async fn verify(
         assert_eq!(
             client
                 .delete(url)
-                .bearer_auth(human)
+                .bearer_auth(administrator)
                 .send()
                 .await
                 .unwrap()
@@ -274,7 +278,7 @@ pub async fn verify(
     assert_eq!(
         client
             .delete(&remove)
-            .bearer_auth(human)
+            .bearer_auth(administrator)
             .send()
             .await
             .unwrap()
@@ -284,7 +288,7 @@ pub async fn verify(
     assert_eq!(
         client
             .delete(&remove)
-            .bearer_auth(human)
+            .bearer_auth(administrator)
             .send()
             .await
             .unwrap()
