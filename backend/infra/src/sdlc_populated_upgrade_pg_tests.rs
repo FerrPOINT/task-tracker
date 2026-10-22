@@ -1096,7 +1096,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     }
     assert_eq!(
         ledger_spaces.as_array().unwrap().len(),
-        ledger_retry.as_array().unwrap().len() + 3
+        ledger_retry.as_array().unwrap().len() + 4
     );
     // Compare every original project column separately from the two additive
     // lifecycle fields, whose exact initial values are also required.

@@ -291,7 +291,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                 count.fetch_add(1,Ordering::SeqCst);
                 let token=headers["authorization"].to_str().unwrap().strip_prefix("Bearer ").unwrap();
                 let (status,subject,scopes)=match token {
-                    DELIVERY | MISSING_LIFETIME => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),grant.clone()]),
+                    DELIVERY | MISSING_LIFETIME | "sdlc_pat_missing_role_fixture" => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),grant.clone()]),
                     READ_ONLY => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),grant.clone()]),
                     PM => (StatusCode::OK,"pm-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),pm_grant.clone()]),
                     PM_NO_READ => (StatusCode::OK,"pm-fixture",vec!["task-tracker:write".into(),pm_grant.clone()]),
@@ -301,8 +301,12 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                     _ => (StatusCode::UNAUTHORIZED,"",vec![]),
                 };
                 let include_lifetime=token != MISSING_LIFETIME;
+                let include_role=token != "sdlc_pat_missing_role_fixture";
                 async move {
                     let mut identity=json!({"sub":subject,"email":"central-fixture@example.test","scopes":scopes});
+                    if include_role {
+                        identity["subject_role"]=json!("service_account");
+                    }
                     if include_lifetime {
                         let observed=chrono::Utc::now();
                         identity["observed_at"]=json!(observed);
@@ -316,6 +320,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
         let ctx=context();
         let probe=machine_routes(ctx.clone());
         for (token,method,path,expected) in [
+            ("sdlc_pat_missing_role_fixture","POST",task_path.as_str(),StatusCode::FORBIDDEN),
             (DELIVERY,"POST",task_path.as_str(),StatusCode::NO_CONTENT),
             (DELIVERY,"GET",task_path.as_str(),StatusCode::NO_CONTENT),
             (DELIVERY,"GET",download.as_str(),StatusCode::NO_CONTENT),
@@ -334,7 +339,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
             (UNAVAILABLE,"GET",download.as_str(),StatusCode::SERVICE_UNAVAILABLE),
         ] {
             let before=calls.load(Ordering::SeqCst);
-            assert_eq!(request(probe.clone(),method,path,Some(token)).await,expected);
+            assert_eq!(request(probe.clone(),method,path,Some(token)).await,expected,"{method} {path} fixture {token}");
             assert_eq!(calls.load(Ordering::SeqCst),before+1,"machine request must not fall back to human auth");
         }
         let foreign=format!("/api/v1/issues/{foreign_task}/attachments");

@@ -278,7 +278,7 @@ pub async fn verify(
     assert_eq!(
         client
             .delete(&remove)
-            .bearer_auth(human)
+            .bearer_auth(administrator)
             .send()
             .await
             .unwrap()
@@ -288,7 +288,7 @@ pub async fn verify(
     assert_eq!(
         client
             .delete(&remove)
-            .bearer_auth(human)
+            .bearer_auth(administrator)
             .send()
             .await
             .unwrap()
