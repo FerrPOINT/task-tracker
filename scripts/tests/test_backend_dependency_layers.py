@@ -110,6 +110,21 @@ class BackendDependencyLayerTests(unittest.TestCase):
                     self.assertIn(token,rules)
                     self.assertGreater(rules.index(token),last_exception)
 
+    def test_sidecar_preserves_live_workspace_private_exclusions(self):
+        policy=ROOT.parent/'.dockerignore'
+        if not (ROOT.parent/'source-workspace.json').is_file() or not policy.is_file():
+            self.skipTest('Standalone checkout: no PDLC workspace private policy')
+        source=policy.read_text(encoding='utf-8')
+        self.assertIn('**/.git',source)
+        private=['**/.git',*source.split('**/.git',1)[1].splitlines()]
+        private=[line.strip() for line in private if line.strip() and not line.startswith('#')]
+        for recipe in RECIPES:
+            rules=recipe.with_name(recipe.name+'.dockerignore').read_text(encoding='utf-8').splitlines()
+            last_exception=max(i for i,line in enumerate(rules) if line.startswith('!'))
+            for rule in private:
+                self.assertIn(rule,rules)
+                self.assertGreater(rules.index(rule),last_exception)
+
     def test_server_consumers_runtime_and_single_guard_owner_survive(self):
         packages={tomllib.loads(p.read_text(encoding='utf-8'))['package']['name']:p.parent.name for p in (ROOT/'backend').glob('*/Cargo.toml')}
         seen,pending=set(),['server']
