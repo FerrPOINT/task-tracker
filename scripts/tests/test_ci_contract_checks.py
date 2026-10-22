@@ -106,6 +106,26 @@ class CiContractChecksTest(unittest.TestCase):
 
 
 class DomainUnitInputContractTest(unittest.TestCase):
+    def test_unit_target_has_only_manifest_and_domain_preparation_ancestors(self):
+        for name in ("Dockerfile", "Dockerfile.umbrella"):
+            with self.subTest(recipe=name):
+                stages = re.split(r"(?m)^FROM ", (ROOT / "backend" / name).read_text())[1:]
+                self.assertTrue(stages[0].splitlines()[0].endswith(" AS manifests"))
+                self.assertTrue(stages[0].startswith("rust:"))
+                prepared = next(stage for stage in stages if stage.startswith("manifests AS unit-dependencies\n"))
+                unit = next(stage for stage in stages if stage.startswith("unit-dependencies AS unit\n"))
+                path = "\n".join((stages[0], prepared, unit))
+                self.assertNotIn("cargo build", path)
+                self.assertEqual(set(re.findall(r"(?:--from=|\bfrom=)([a-zA-Z0-9_-]+)", path)), set())
+                command = "cargo test --locked --release -p domain --lib"
+                self.assertIn(command + " --no-run", prepared)
+                self.assertIn(command + " &&", unit)
+                full = next(stage for stage in stages if stage.startswith("unit-dependencies AS dependencies\n"))
+                self.assertIn("cargo build --locked --release --bin server", full)
+                self.assertIn("cargo clean --release", full)
+                builder = next(stage for stage in stages if stage.startswith("dependencies AS builder\n"))
+                self.assertIn("from=unit,source=/tmp/rust-unit-check", builder)
+
     def test_contract_script_has_its_own_static_component(self) -> None:
         candidate=selector.plan(ROOT,"unit",changed=["scripts/tests/test_ci_contract_checks.py"])
         self.assertEqual([gate["id"] for gate in candidate["gates"]],["tooling:build-contracts"])

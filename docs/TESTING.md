@@ -1,5 +1,16 @@
 # Стратегия тестирования Task Tracker
 
+## Backend unit dependency graph
+
+Обе backend recipes выбирают для unit только domain: цепочка
+`manifests → unit-dependencies → unit` не компилирует server dependencies.
+Full build расширяет тот же immutable слой; unit barrier, fixtures и runtime
+сохраняются. Из root workspace source checks доступны через
+`check-workspace.ps1 -Profile Unit -Repository task-tracker -Component tooling`.
+Общие правила — Base `docs/BUILD_PERFORMANCE.md`; native qualification и замер
+CPU/RAM/time нового recipe tuple выполняются отдельно. Source checks не являются
+новым выполнением Rust units или acceptance прежнего image proof.
+
 Актуальная политика 2026-10-15: unit/static запускаются при обычной сборке;
 integration/slow/full coverage и browser/live — вручную перед релизом.
 Команды быстрых уровней приведены в разделе «Тестовые уровни (2026-10-15)» ниже.
