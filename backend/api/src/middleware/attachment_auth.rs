@@ -91,9 +91,17 @@ pub async fn attachment_auth(
                 .get::<OriginalUri>()
                 .map_or_else(|| request.uri().path(), |uri| uri.0.path());
             let operation = super::auth::request_operation(request.method(), path);
-            super::auth::verified_request(ctx, request, next, verified, active, operation)
-                .await
-                .map_err(map_status)
+            super::auth::verified_request(
+                ctx,
+                request,
+                next,
+                verified,
+                active,
+                operation,
+                super::auth::CentralProfileMode::Provision,
+            )
+            .await
+            .map_err(map_status)
         }
         Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable) => {
             Err(AppError::Unavailable("Central Auth unavailable".into()))
