@@ -105,7 +105,10 @@ impl BoundRequest {
     }
 }
 /// The DB checks after row waits, including time spent inside COMMIT itself.
-async fn bind_commit_clock(tx: &DatabaseTransaction, valid_until: i64) -> Result<(), DbErr> {
+pub(crate) async fn bind_commit_clock(
+    tx: &DatabaseTransaction,
+    valid_until: i64,
+) -> Result<(), DbErr> {
     let fence = uuid::Uuid::new_v4();
     tx.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,

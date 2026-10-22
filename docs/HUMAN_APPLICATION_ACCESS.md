@@ -79,9 +79,26 @@ ports и внешние эффекты требуют собственной п�
 и fleet-control у текущего человека. Strict SDLC ingress использует общий
 VerifiedCentralToken.require_applications: исходный Auth proof, срок и scopes
 PAT не заменяются локальным флагом или служебным credential. Технические
-principals остаются в отдельных PM/delivery протоколах; текущий допуск их
-владельца должен проверять отдельный on-behalf-of adapter; эта интеграция
-остаётся открытым этапом перед активацией.
+principals остаются в отдельных PM/delivery протоколах. Source adapter в
+NativeRequest получает immutable owner_subject из уже подтверждённого task
+aggregate; scopes, текущие assignment/lease и machine identity сохраняются.
+Для native PM/delivery операции требуются task-tracker и fleet-control у
+владельца. Приложения остальных фактических этапов проверяются их владельцами;
+это не заменяет полный Tracker/Fleet/Workflow/Forge matrix.
+
+При обязательной app policy используется отдельный Auth reader credential
+TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN с application-access:read.
+Секрет не хранится в задаче или profile; единственный configured HTTP client
+получает текущий owner proof один раз на request. Следующий stage/request
+проверяет владельца заново. Ошибка Auth закрывает операцию; истёкший proof не
+обновляется внутри принятой команды. Policy OFF остаётся явной совместимостью
+и не создаёт запросов к owner reader.
+
+Owner clock сужает имеющийся native window, общий transaction commit fence и
+response/attachment stream. Он не создаёт human context, role или session для
+служебного субъекта. Private clock и исходные scopes не меняют самостоятельный
+namespace/data admission. Native ingress, actual owner readback и COMMIT/stream
+квалификация этой новой композиции ещё должны быть исполнены до активации.
 
 Обычные Tracker history, комментарии и подтверждение требований не требуют
 Fleet сами по себе. Подтверждение не считается автоматическим запуском Analysis.

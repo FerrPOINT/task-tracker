@@ -661,3 +661,19 @@ capabilities. Транзакция повторно проверяет исхо�
 пространства и настоящий owner репозитория; Forge owner не становится Wiki owner.
 Повторный owner readback не продлевает human/native срок. При недоступности или
 неизвестной классификации запуск закрыт до совместимой квалификации.
+
+
+## Текущий допуск владельца native SDLC: source candidate
+
+NativeRequest сохраняет техническую identity и exact credential scopes.
+После проверки task/assignment/lease сохранённый aggregate передаёт свой
+центральный owner_subject общему Auth reader. Это дополнительное ограничение
+операции, не human impersonation и не новая человеческая роль. Исходный owner
+proof один на запрос; его clock может только сократить native/COMMIT/body
+window. Новые запросы стадий подтверждают доступ заново; недоступность после
+expiry закрывает операцию. Включение берётся из того же validated bridge config,
+что human ingress, независимо от policy пространств.
+
+Реализация и тесты находятся в feature-ветке; полный runtime cohort и реальное
+связанное задание не считаются принятыми по одному owner adapter. Подробности:
+[человеческие роли и приложения](HUMAN_APPLICATION_ACCESS.md).

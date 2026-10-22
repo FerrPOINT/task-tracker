@@ -479,7 +479,7 @@ async fn space_guard_inner(
         let mutation = !matches!(request.method().as_str(), "GET" | "HEAD" | "OPTIONS");
         let scope = app::native_space_access::NativeRequest::verified(&verified, native, mutation)
             .map_err(|_| StatusCode::FORBIDDEN)?;
-        let validity = scope.validity().map_err(|_| StatusCode::FORBIDDEN)?;
+        let response_scope = scope.clone();
         let deadline = scope.deadline();
         request.extensions_mut().insert(verified.clone());
         let mut response = tokio::time::timeout_at(
@@ -491,7 +491,14 @@ async fn space_guard_inner(
         if !verified.lifetime.is_current() {
             return Err(StatusCode::UNAUTHORIZED);
         }
-        super::auth::restrict_response(&mut response, validity.valid_until, deadline);
+        let validity = response_scope
+            .validity()
+            .map_err(|_| StatusCode::FORBIDDEN)?;
+        super::auth::restrict_response(
+            &mut response,
+            validity.valid_until,
+            response_scope.deadline(),
+        );
         return Ok(response);
     }
     let policy = ctx

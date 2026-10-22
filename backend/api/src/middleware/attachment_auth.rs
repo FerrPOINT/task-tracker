@@ -62,21 +62,23 @@ pub async fn attachment_auth(
                     request.extensions_mut().insert(actor);
                     request.extensions_mut().insert(verified.clone());
                     let lifetime = verified.lifetime.clone();
-                    let deadline = lifetime.monotonic_deadline();
+                    let response_scope = native.clone();
+                    let deadline = native.deadline();
                     let response = tokio::time::timeout_at(
                         deadline.into(),
                         app::native_space_access::with_request(native, next.run(request)),
                     )
                     .await
                     .map_err(|_| AppError::Forbidden)?;
-                    if !lifetime.is_current() {
+                    if !lifetime.is_current() || !response_scope.is_current() {
                         return Err(AppError::Forbidden);
                     }
+                    let deadline = response_scope.deadline();
                     let (parts, body) = response.into_parts();
                     Ok(Response::from_parts(
                         parts,
                         super::auth::guard_admission_body(body, deadline, move || {
-                            lifetime.is_current()
+                            lifetime.is_current() && response_scope.is_current()
                         }),
                     ))
                 }
