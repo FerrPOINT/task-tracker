@@ -126,6 +126,8 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack(
         .into_iter()
         .map(str::to_owned),
     );
+    // The SQL ledger is ordered by version; registration remains append-only.
+    expected_ledger.sort();
     assert_eq!(migration_versions(&f).await, expected_ledger);
     let (c, mut w) = retry(&p);
     let (mut unbound, mut unbound_witness) = retry(&u);

@@ -285,6 +285,8 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
         .into_iter()
         .map(str::to_owned),
     );
+    // The SQL ledger is ordered by version; registration remains append-only.
+    final_versions.sort();
     assert_eq!(migration_versions(&f).await, final_versions);
     for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
         assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
