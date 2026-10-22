@@ -130,10 +130,6 @@ impl GuardedDb {
     pub fn new(inner: DatabaseConnection) -> Self {
         Self { inner }
     }
-    #[cfg(test)]
-    pub(crate) fn into_transaction_log(self) -> Vec<sea_orm::Transaction> {
-        self.inner.into_transaction_log()
-    }
     /// Explicit only: owner/reconcile/read-snapshot ports own their typed proof.
     /// A caller must not use this to bypass ordinary content authorization.
     pub(crate) fn raw(&self) -> &DatabaseConnection {

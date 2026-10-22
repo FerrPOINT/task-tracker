@@ -129,6 +129,7 @@ async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack_
             "m20261019_0000099_unified_spaces",
             "m20261021_0000100_human_sdlc_spaces",
             "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
         ]
         .into_iter()
         .map(str::to_owned),

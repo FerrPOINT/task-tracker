@@ -665,7 +665,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 34));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 35));
     assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
         names[predecessor + 1],
@@ -689,6 +689,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             "m20261019_0000099_unified_spaces",
             "m20261021_0000100_human_sdlc_spaces",
             "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
         ]
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")

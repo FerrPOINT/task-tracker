@@ -8,13 +8,14 @@ mod bootstrap_retry_tests;
 async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
     let migrations = migration::Migrator::migrations();
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-    assert_eq!(names.len(), 34);
+    assert_eq!(names.len(), 35);
     assert_eq!(
         &names[31..],
         &[
             "m20261019_0000099_unified_spaces",
             "m20261021_0000100_human_sdlc_spaces",
             "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
         ]
     );
     assert_eq!(names[27], "m20261017_0000097_task_source_binding");
@@ -288,6 +289,7 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history_seed() {
             "m20261019_0000099_unified_spaces",
             "m20261021_0000100_human_sdlc_spaces",
             "m20261021_0000101_native_sdlc_spaces",
+            "m20261022_0000102_request_commit_clock",
         ]
         .into_iter()
         .map(str::to_owned),

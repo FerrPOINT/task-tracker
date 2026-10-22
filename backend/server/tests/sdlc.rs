@@ -488,7 +488,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         },
     )
     .await;
-    namespace_catalog::verify(&client, &base, &db, project, &owner).await;
+    namespace_catalog::verify(&client, &base, &db, project, &owner, &operator).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);
