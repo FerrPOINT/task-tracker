@@ -113,10 +113,12 @@ impl PostgresSdlcRepository {
             "SELECT registry_instance_id,namespace_id FROM tracker_namespace_bindings WHERE resource_id=$1 AND state='active' FOR SHARE",
             vec![project.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("active project namespace required for source binding"))?;
-        Ok(NamespaceRef {
+        let namespace = NamespaceRef {
             registry_instance_id: row.try_get("", "registry_instance_id").map_err(map_db)?,
             namespace_id: row.try_get("", "namespace_id").map_err(map_db)?,
-        })
+        };
+        super::spaces::require_resource_namespace(&namespace)?;
+        Ok(namespace)
     }
 
     async fn retained_source_policy(
@@ -131,6 +133,7 @@ impl PostgresSdlcRepository {
         )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("source policy", project))?;
         let policy: ProjectSourcePolicy = decode(&row)?;
         app::sdlc_source::validate_policy(&policy)?;
+        super::spaces::require_resource_namespace(&policy.verification.namespace)?;
         if policy.project_id != project || revision.is_some_and(|r| r != policy.source_revision) {
             return Err(AppError::conflict("source policy identity differs"));
         }

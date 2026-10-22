@@ -40,17 +40,28 @@ pub async fn events(
     Extension(claims): Extension<app::auth::UserClaims>,
 ) -> Result<impl IntoResponse, AppError> {
     let requester = parse_user_id(&claims)?;
+    let request_context = app::space_access::current_request_for(requester)?;
     let rx = ctx.events.subscribe();
     let stream = BroadcastStream::new(rx)
         .then(move |msg| {
             let ctx = ctx.clone();
+            let request_context = request_context.clone();
             async move {
                 let event = match msg {
                     Ok(event) => event,
                     // Lagged subscribers just refetch; skip the gap notification.
                     Err(_) => return None,
                 };
-                if !event_visible_to(&ctx, &event, requester).await {
+                let visible = if let Some(frame) = request_context {
+                    app::space_access::with_request_context(
+                        frame,
+                        event_visible_to(&ctx, &event, requester),
+                    )
+                    .await
+                } else {
+                    event_visible_to(&ctx, &event, requester).await
+                };
+                if !visible {
                     return None;
                 }
                 let json = serde_json::to_string(&event).unwrap_or_default();

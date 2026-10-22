@@ -8,19 +8,15 @@ use uuid::Uuid;
 
 async fn setup() -> (DatabaseConnection, SeaOrmRepositories) {
     let base = std::env::var("TT_TEST_DATABASE_URL").expect("isolated PostgreSQL URL");
-    let host = base.rsplit_once('/').expect("database URL").0;
-    let db = Database::connect(format!("{host}/tasktracker_infra_test"))
-        .await
-        .unwrap();
+    let mut target = reqwest::Url::parse(&base).expect("database URL");
+    target.set_path("/tasktracker_infra_test");
+    let target = target.to_string();
+    let db = Database::connect(target.clone()).await.unwrap();
     migration::Migrator::up(&db, None).await.unwrap();
     db.execute_unprepared("TRUNCATE users CASCADE")
         .await
         .unwrap();
-    let repos = SeaOrmRepositories::new(
-        Database::connect(format!("{host}/tasktracker_infra_test"))
-            .await
-            .unwrap(),
-    );
+    let repos = SeaOrmRepositories::new(Database::connect(target.clone()).await.unwrap());
     (db, repos)
 }
 
@@ -42,9 +38,26 @@ async fn directory_profile_lookup_is_read_only_and_includes_inactive_bindings() 
         .await
         .unwrap();
     assert_eq!(profile.id, shared::UserId::for_central_subject(&subject));
+    assert!(
+        !profile.is_system_admin,
+        "new central profile is not an automatic product admin"
+    );
+    assert_eq!(
+        repos.users.central_subject(profile.id).await.unwrap(),
+        Some(subject.clone())
+    );
+    assert_eq!(
+        repos
+            .users
+            .central_subject(shared::UserId::new())
+            .await
+            .unwrap(),
+        None
+    );
     let mut inactive = profile.clone();
     inactive.is_active = false;
     repos.users.save(&inactive).await.unwrap();
+    assert_eq!(repos.users.central_subject(profile.id).await.unwrap(), None);
     let before = repos.users.get_by_id(profile.id).await.unwrap();
     let found = repos
         .users
@@ -150,6 +163,10 @@ async fn verified_name_updates_only_the_matching_subject() {
     assert_eq!(renamed.created_at, first.created_at);
     assert_eq!(renamed.display_name.as_ref(), "Renamed Human");
     assert_eq!(renamed.is_system_admin, first.is_system_admin);
+    assert!(
+        !renamed.is_system_admin,
+        "profile refresh never promotes an ordinary user"
+    );
     assert!(matches!(
         repos
             .users

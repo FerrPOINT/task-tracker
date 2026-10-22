@@ -136,7 +136,7 @@ impl OriginalData {
 
     async fn snapshot(&self, db: &DatabaseConnection, namespaced: bool) -> Json {
         let project_row = if namespaced {
-            "to_jsonb(p)-'namespace_managed'"
+            "to_jsonb(p)-'namespace_managed'-'archived_at'-'project_lifecycle_revision'"
         } else {
             "to_jsonb(p)"
         };
@@ -644,6 +644,13 @@ async fn pending_096_guard_eol_cases(db: &DatabaseConnection) {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history() {
+    crate::legacy_schema_fixture::scope(
+        populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history_seed(),
+    )
+    .await;
+}
+
+async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history_seed() {
     let names: Vec<String> = migration::Migrator::migrations()
         .iter()
         .map(|m| m.name().to_owned())
@@ -658,7 +665,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 31));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 34));
     assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
         names[predecessor + 1],
@@ -673,8 +680,16 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         "m20261018_0000098_project_repository_catalog"
     );
     assert_eq!(
-        names.last().unwrap(),
+        names[predecessor + 4],
         "m20261021_0000099_pm_bootstrap_retry"
+    );
+    assert_eq!(
+        &names[31..],
+        &[
+            "m20261019_0000099_unified_spaces",
+            "m20261021_0000100_human_sdlc_spaces",
+            "m20261021_0000101_native_sdlc_spaces",
+        ]
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("fresh isolated upgrade database required");
@@ -1054,7 +1069,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     assert_eq!(history(&db, &all_tables, false).await, before_catalog);
     let before_retry = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_retry = ledger(&db, &names).await;
+    let ledger_retry = ledger(&db, &names[..predecessor + 5]).await;
     for entry in ledger_catalog.as_array().unwrap() {
         assert!(ledger_retry.as_array().unwrap().contains(entry));
     }
@@ -1070,11 +1085,26 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             .to_string()
             .contains("PM bootstrap retry history is immutable; destructive rollback is disabled")
     );
-    assert_eq!(ledger(&db, &names).await, ledger_retry);
+    assert_eq!(ledger(&db, &names[..predecessor + 5]).await, ledger_retry);
     assert_eq!(history(&db, &all_tables, false).await, before_retry);
     let before_rerun = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger(&db, &names).await, ledger_retry);
+    let ledger_spaces = ledger(&db, &names).await;
+    for entry in ledger_retry.as_array().unwrap() {
+        assert!(ledger_spaces.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(
+        ledger_spaces.as_array().unwrap().len(),
+        ledger_retry.as_array().unwrap().len() + 3
+    );
+    // Compare every original project column separately from the two additive
+    // lifecycle fields, whose exact initial values are also required.
+    assert_eq!(scalar_json(&db,
+        "SELECT jsonb_build_object('archived_at',archived_at,'project_lifecycle_revision',project_lifecycle_revision) AS value FROM projects WHERE id=$1",
+        vec![original.project.into()]).await,
+        json!({"archived_at":null,"project_lifecycle_revision":1}));
+    migration::Migrator::up(&db, None).await.unwrap();
+    assert_eq!(ledger(&db, &names).await, ledger_spaces);
     assert_eq!(history(&db, &all_tables, false).await, before_rerun);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
     assert_eq!(count(&db, "issues").await, 3);

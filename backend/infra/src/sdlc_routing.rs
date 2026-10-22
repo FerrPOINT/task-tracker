@@ -45,6 +45,8 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("project", project))?;
+        let user_id = user.try_get::<Uuid>("", "id").map_err(map_db)?;
+        super::spaces::require_project(tx, project, user_id, actor).await?;
         if row.try_get::<Uuid>("", "owner_id").map_err(map_db)?
             != user.try_get::<Uuid>("", "id").map_err(map_db)?
         {

@@ -17,6 +17,8 @@ vi.mock('@/shared/auth/store', () => ({
   },
 }))
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('API client transport', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -75,3 +77,33 @@ describe('API client transport', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+it.each(['different-user-token', 'refreshed-session-token', null])(
+  'does not invalidate a successor session after an old request returns401: %s',
+  async (token) => {
+    vi.resetModules()
+    createClient.mockReset()
+    authState.logout.mockClear()
+    let middleware: {
+      onRequest: (args: { request: Request }) => Request
+      onResponse: (args: { request: Request; response: Response }) => Response
+    }
+    createClient.mockReturnValueOnce({
+      use: vi.fn((value) => {
+        middleware = value
+      }),
+    })
+    authState.token = 'old-session-token'
+    const assign = vi.fn()
+    vi.stubGlobal('window', { location: { assign } })
+    await import('./client')
+    const request = middleware!.onRequest({
+      request: new Request('https://api.example.test/api/v2/projects/QA/spaces'),
+    })
+    authState.token = token
+    middleware!.onResponse({ request, response: new Response(null, { status: 401 }) })
+    expect(authState.logout).not.toHaveBeenCalled()
+    expect(assign).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  },
+)

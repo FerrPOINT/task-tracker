@@ -16,28 +16,39 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
                 .or_else(|| h.strip_prefix("bearer "))
         })
         .ok_or(AppError::Unauthorized)?;
-    let central = match super::central_auth::check_token(token).await {
-        super::central_auth::CentralCheck::Validated(central, _verified_name) => central,
-        super::central_auth::CentralCheck::Unavailable => {
-            return Err(AppError::Unavailable("Central Auth unavailable".into()));
-        }
-        _ => return Err(AppError::Unauthorized),
+    let verified = match request
+        .extensions()
+        .get::<pdlc_auth_core::service_bridge::VerifiedCentralToken>()
+    {
+        Some(proof) if proof.lifetime.is_current() => proof.clone(),
+        Some(_) => return Err(AppError::Unauthorized),
+        None => super::central_auth::BRIDGE
+            .try_verified_token(token)
+            .await
+            .map_err(|error| match error {
+                pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable
+                | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured => {
+                    AppError::Unavailable("Central Auth unavailable".into())
+                }
+                _ => AppError::Unauthorized,
+            })?,
     };
+    let central = verified.context;
     if !central.allows_service("task-tracker", request.method().as_str()) {
         return Err(AppError::Forbidden);
     }
     if crate::routes::namespace::registered_machine(&central.user_id) {
         return Err(AppError::Forbidden);
     }
-    let configured_machine = [
-        "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
-        "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
-        "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
-    ]
-    .iter()
-    .any(|key| {
-        std::env::var(key).is_ok_and(|subject| !subject.is_empty() && subject == central.user_id)
-    });
+    let configured_machine = registered_sdlc_subject(&central.user_id)
+        || verified.subject_role.as_deref() == Some("service_account");
+    if (configured_machine
+        || app::sdlc::has_pm_grant(&central.scopes)
+        || app::sdlc_lifecycle::has_delivery_grant(&central.scopes))
+        && verified.subject_role.as_deref() != Some("service_account")
+    {
+        return Err(AppError::Forbidden);
+    }
     let trusted_human = is_trusted_human(&central, configured_machine);
     let human_session = is_human_session(&central, configured_machine);
     let actor = domain::sdlc::Principal {
@@ -50,14 +61,9 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         .extensions()
         .get::<OriginalUri>()
         .map_or_else(|| request.uri().path(), |uri| uri.0.path());
-    if (configured_machine || central.role.as_deref() == Some("service_account"))
-        && matches!(
-            path,
-            "/api/v1/sdlc/project-directory" | "/api/v1/sdlc/project-access"
-        )
-    {
-        return Err(AppError::Forbidden);
-    }
+    // V1 directory reads retain explicit native owner/member ACL. Generic
+    // machines remain native principals; assignment-scoped grants are rejected
+    // by their exact request policy below and never become user claims.
     pm_request_policy(&actor, request.method().as_str(), path)?;
     app::sdlc_lifecycle::delivery_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
@@ -337,4 +343,116 @@ mod tests {
             assert!(pm_request_policy(&actor, "GET", "/api/v1/sdlc/project-directory").is_ok());
         }
     }
+}
+
+fn registered_sdlc_subject(subject: &str) -> bool {
+    [
+        "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
+        "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
+        "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+    ]
+    .iter()
+    .any(|key| {
+        std::env::var(key).is_ok_and(|configured| !configured.is_empty() && configured == subject)
+    })
+}
+
+/// The serving router mounts this outside strict SDLC classification. Typed native
+/// capabilities keep their existing protocol; human operations share the ordinary
+/// request frame, original clocks and transaction-local write guard.
+pub async fn space_guard(
+    axum::extract::State(ctx): axum::extract::State<std::sync::Arc<app::AppContext>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    use axum::response::IntoResponse;
+    let mut response = match space_guard_inner(ctx, request, next).await {
+        Ok(response) => response,
+        Err(status) => match status {
+            axum::http::StatusCode::UNAUTHORIZED => AppError::Unauthorized.into_response(),
+            axum::http::StatusCode::FORBIDDEN => AppError::Forbidden.into_response(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE => {
+                AppError::Unavailable("authorization unavailable".into()).into_response()
+            }
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR => {
+                AppError::internal("authorization unavailable").into_response()
+            }
+            _ => status.into_response(),
+        },
+    };
+    response
+        .headers_mut()
+        .entry(axum::http::header::CACHE_CONTROL)
+        .or_insert(axum::http::HeaderValue::from_static("no-store"));
+    response
+}
+async fn space_guard_inner(
+    ctx: std::sync::Arc<app::AppContext>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, axum::http::StatusCode> {
+    use axum::http::StatusCode;
+    let token = request
+        .headers()
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| {
+            h.strip_prefix("Bearer ")
+                .or_else(|| h.strip_prefix("bearer "))
+        })
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let verified = super::central_auth::BRIDGE
+        .try_verified_token(token)
+        .await
+        .map_err(|error| match error {
+            pdlc_auth_core::service_bridge::VerifiedBridgeError::Unavailable
+            | pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+            _ => StatusCode::UNAUTHORIZED,
+        })?;
+    let native = registered_sdlc_subject(&verified.context.user_id)
+        || verified.subject_role.as_deref() == Some("service_account")
+        || app::sdlc::has_pm_grant(&verified.context.scopes)
+        || app::sdlc_lifecycle::has_delivery_grant(&verified.context.scopes);
+    if native {
+        let mutation = !matches!(request.method().as_str(), "GET" | "HEAD" | "OPTIONS");
+        let scope = app::native_space_access::NativeRequest::verified(&verified, native, mutation)
+            .map_err(|_| StatusCode::FORBIDDEN)?;
+        let validity = scope.validity().map_err(|_| StatusCode::FORBIDDEN)?;
+        let deadline = scope.deadline();
+        request.extensions_mut().insert(verified.clone());
+        let mut response = tokio::time::timeout_at(
+            deadline.into(),
+            app::native_space_access::with_request(scope, next.run(request)),
+        )
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+        if !verified.lifetime.is_current() {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        super::auth::restrict_response(&mut response, validity.valid_until, deadline);
+        return Ok(response);
+    }
+    let policy = ctx
+        .repos
+        .projects
+        .space_admission_enabled()
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let path = request
+        .extensions()
+        .get::<OriginalUri>()
+        .map_or_else(|| request.uri().path(), |uri| uri.0.path());
+    let operation = super::auth::request_operation(request.method(), path);
+    super::auth::verified_request(
+        ctx,
+        request,
+        next,
+        verified,
+        policy,
+        operation,
+        super::auth::CentralProfileMode::Existing,
+    )
+    .await
 }
