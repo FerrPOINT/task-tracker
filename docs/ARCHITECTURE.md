@@ -6,6 +6,14 @@ not Tracker, reads Workflow. Original-key recovery is ledger-first; no public
 boolean, fake checkpoint, new execution/owner or direct Workflow credential.
 [Source-only boundary](contracts/pm-bootstrap-technical-retry.md).
 
+Bootstrap callback candidate cf5a57e0 uses a request-local180s deadline rather
+than the ordinary10s configuration-reader budget. The native/Workflow witness
+must complete before the existing atomic lease transaction; no transaction spans
+HTTP. Ordinary configuration and unsubmitted reads retain10s/connect3s, with
+unchanged credentials/64KiB/JSON/redirect restrictions. Producer schema, exact-key
+replay, fencing, lease TTL and history are unchanged. Source checks and live PM
+acceptance remain separate gates.
+
 Project counters читают сохранённые `statuses.category` без учёта ASCII-регистра:
 Debug-формат записи `Todo`/`InProgress`/`Done`, wire-формат и прежнее
 `in_progress` дают соответствующую категорию как в status mapping, так и в batch

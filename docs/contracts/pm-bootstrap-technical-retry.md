@@ -71,9 +71,21 @@ Fleet owns native custody validation and its existing durable barrier. It querie
 B's authoritative Workflow predecessor reader with its EXISTING assignment
 credential, including unknown command/read/bind status. It must not convert
 timeout/404/list-empty into an absence proof. Tracker adds no Workflow credential,
-client or integration. The existing reader limits remain 10s / 64KiB, redirects
-disabled, identity JSON only, no-cache. An unavailable witness returns 503 with no
+client or integration. The callback-budget candidate gives only this bootstrap
+witness request180s (bounded native/Workflow reads); the shared client keeps10s
+for configuration and unsubmitted reads, connect timeout3s. The64KiB response
+limit, disabled redirects, identity JSON and no-cache checks remain unchanged.
+The caller's outer deadline must cover this callback plus preflight/commit.
+An unavailable witness returns503 with no
 renewal; unknown original-key POST is reconciled by GET, not a new key.
+
+The existing producer is atomic and exact-key idempotent: identical actor/key/full
+command may be replayed, including concurrently or after an uncertain response.
+Ledger-first readback returns the original receipt before a fresh callback;
+otherwise fresh authorization/witness/fencing precede the atomic commit. This
+does not prove that an earlier request had no effects, grant dispatch authority,
+permit a new successor/key, or authorize deleting a caller's durable marker.
+The Fleet consumer owns its saved-command recovery policy separately.
 
 ## Persistence and successor boundary
 
