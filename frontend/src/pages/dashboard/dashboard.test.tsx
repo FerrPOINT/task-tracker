@@ -1,3 +1,13 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'user' as 'user' | 'admin',
+  applications: ['task-tracker'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -62,6 +72,7 @@ function wrapper(children: React.ReactNode) {
 
 describe('DashboardPage', () => {
   beforeEach(() => {
+    accessActor.role = 'user'
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
   })
@@ -142,11 +153,19 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('link', { name: /P6 · Project 6/ })).not.toBeInTheDocument()
   })
   it('offers creation of the first project after a successful empty catalogue read', async () => {
+    accessActor.role = 'admin'
     listProjects.mockResolvedValueOnce([])
     render(wrapper(<DashboardPage />))
     expect(await screen.findByRole('button', { name: 'Создать проект' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Создать проект' }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByLabelText(/Ключ/)).toBeInTheDocument()
+  })
+  it('does not offer project structure creation to an ordinary user with an empty catalogue', async () => {
+    accessActor.role = 'user'
+    listProjects.mockResolvedValueOnce([])
+    render(wrapper(<DashboardPage />))
+    await screen.findByText('Fix tests')
+    expect(screen.queryByRole('button', { name: 'Создать проект' })).not.toBeInTheDocument()
   })
 })

@@ -1,3 +1,13 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'user' as 'user' | 'admin',
+  applications: ['task-tracker', 'fleet-control'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

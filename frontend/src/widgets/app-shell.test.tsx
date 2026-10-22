@@ -1,3 +1,13 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'user' as 'user' | 'admin',
+  applications: ['task-tracker', 'fleet-control'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render as renderView, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -78,6 +88,8 @@ function mockHooks(notifications: Notification[] | undefined, unreadCount?: numb
 
 describe('AppShell notifications', () => {
   beforeEach(() => {
+    accessActor.role = 'user'
+    accessActor.applications = ['task-tracker', 'fleet-control']
     window.localStorage.removeItem('tt-sidebar-collapsed')
   })
 
@@ -170,6 +182,7 @@ describe('AppShell notifications', () => {
   })
 
   it('keeps global navigation available on desktop outside a project', () => {
+    accessActor.role = 'admin'
     mockHooks([])
     render(
       <ThemeProvider>
@@ -196,6 +209,7 @@ describe('AppShell notifications', () => {
   })
 
   it('highlights only the current project destination', async () => {
+    accessActor.role = 'admin'
     mockHooks([])
     render(
       <ThemeProvider>
@@ -372,26 +386,33 @@ describe('AppShell notifications', () => {
     )
   })
 
-  it('shows product settings to every signed-in user', async () => {
-    const user = userEvent.setup()
-    mockHooks([])
-    useCurrentUser.mockReturnValue({
-      data: { email: 'member@example.test', display_name: 'Member', is_system_admin: false },
-    })
+  it.each([false, true])(
+    'hides administration from a user regardless of historical admin flag (%s)',
+    async (legacyAdmin) => {
+      const user = userEvent.setup()
+      mockHooks([])
+      useCurrentUser.mockReturnValue({
+        data: {
+          email: 'member@example.test',
+          display_name: 'Member',
+          is_system_admin: legacyAdmin,
+        },
+      })
 
-    render(
-      <ThemeProvider>
-        <MemoryRouter>
-          <AppShell />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
+      render(
+        <ThemeProvider>
+          <MemoryRouter>
+            <AppShell />
+          </MemoryRouter>
+        </ThemeProvider>,
+      )
 
-    await user.click(screen.getByRole('button', { name: /аккаунт|account/i }))
-    expect(
-      await screen.findByRole('menuitem', { name: /администрирование|administration/i }),
-    ).toHaveAttribute('href', '/admin')
-  })
+      await user.click(screen.getByRole('button', { name: /аккаунт|account/i }))
+      expect(
+        screen.queryByRole('menuitem', { name: /администрирование|administration/i }),
+      ).not.toBeInTheDocument()
+    },
+  )
 
   it('opens an empty notification dropdown without a badge', async () => {
     const user = userEvent.setup()
@@ -456,5 +477,39 @@ describe('AppShell notifications', () => {
       name: /все уведомления|view all notifications/i,
     })
     expect(viewAllLink).toHaveAttribute('href', '/notifications')
+  })
+  it('uses the current administrator role independently of the historical user flag', async () => {
+    accessActor.role = 'admin'
+    mockHooks([])
+    useCurrentUser.mockReturnValue({
+      data: { email: 'admin@example.test', is_system_admin: false },
+    })
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /аккаунт|account/i }))
+    expect(
+      await screen.findByRole('menuitem', { name: /администрирование|administration/i }),
+    ).toHaveAttribute('href', '/admin')
+  })
+  it('keeps Tracker navigation without offering a Fleet operation to a Tracker-only user', () => {
+    accessActor.role = 'user'
+    navigateToFleet.mockClear()
+    accessActor.applications = ['task-tracker']
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()
+    expect(screen.getAllByText(/нужен доступ к Fleet/).length).toBeGreaterThan(0)
+    expect(navigateToFleet).not.toHaveBeenCalled()
   })
 })
