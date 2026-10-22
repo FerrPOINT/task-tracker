@@ -644,6 +644,13 @@ async fn pending_096_guard_eol_cases(db: &DatabaseConnection) {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history() {
+    crate::legacy_schema_fixture::scope(
+        populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history_seed(),
+    )
+    .await;
+}
+
+async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history_seed() {
     let names: Vec<String> = migration::Migrator::migrations()
         .iter()
         .map(|m| m.name().to_owned())

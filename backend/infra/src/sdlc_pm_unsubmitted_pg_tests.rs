@@ -203,6 +203,13 @@ async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; populated 0097->0098 upgrade and one real lease TTL"]
 async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
+    crate::legacy_schema_fixture::scope(
+        unsubmitted_pm_recovery_cas_witness_replay_and_history_seed(),
+    )
+    .await;
+}
+
+async fn unsubmitted_pm_recovery_cas_witness_replay_and_history_seed() {
     let migrations = migration::Migrator::migrations();
     let recovery_index = migrations
         .iter()

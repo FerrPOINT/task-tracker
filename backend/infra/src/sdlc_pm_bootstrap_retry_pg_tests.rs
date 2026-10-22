@@ -98,6 +98,13 @@ async fn bootstrap_retry_0099_appends_after_0098_and_refuses_destructive_down() 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test and one real 30s lease TTL"]
 async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack() {
+    crate::legacy_schema_fixture::scope(
+        bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack_seed(),
+    )
+    .await;
+}
+
+async fn bootstrap_retry_populated_history_concurrency_bad_witness_and_lost_ack_seed() {
     let index = migration::Migrator::migrations()
         .iter()
         .position(|m| m.name() == "m20261021_0000099_pm_bootstrap_retry")
