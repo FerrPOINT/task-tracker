@@ -8,7 +8,9 @@
       "backend/Cargo.toml",
       "backend/*/Cargo.toml",
       ".github/workflows/ci.yml",
-      ".github/workflows/release.yml"
+      ".github/workflows/release.yml",
+      "backend/Dockerfile",
+      "backend/Dockerfile.umbrella"
     ],
     "docs": [
       "docs/**",
@@ -48,7 +50,9 @@
         "backend/Cargo.toml",
         "backend/*/Cargo.toml",
         ".github/workflows/ci.yml",
-        ".github/workflows/release.yml"
+        ".github/workflows/release.yml",
+        "backend/Dockerfile",
+        "backend/Dockerfile.umbrella"
       ],
       "tools": [{"argv": ["{python}", "--version"], "pattern": "^Python 3\\.(1[1-9]|[2-9][0-9])\\."}],
       "cacheable": true
