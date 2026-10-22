@@ -1,10 +1,11 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import { ProjectAvatar, ResourceList, ResourceListRow, EmptyState, ErrorState } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
 
-import { useDashboard, useProjects } from '@/shared/api/hooks'
+import { useDashboard } from '@/shared/api/hooks'
 import { statusLabel } from '@/shared/lib/status-label'
 import { useAuthStore } from '@/shared/auth/store'
 import { usePlatformReadiness } from '@pdlc/ui/platform'

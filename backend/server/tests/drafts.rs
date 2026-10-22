@@ -59,7 +59,19 @@ async fn session(
         .map_err(|_| StatusCode::UNAUTHORIZED)?
         .claims;
     let subject = claims["sub"].as_str().ok_or(StatusCode::UNAUTHORIZED)?;
-    Ok(Json(json!({"id":subject,"display_name":subject})))
+    // Match the fresh role Auth assigns to the explicitly configured native
+    // subjects. A machine JWT alone must never prove this role.
+    let machine = [
+        "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
+        "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
+        "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+    ]
+    .iter()
+    .any(|key| std::env::var(key).is_ok_and(|value| value == subject));
+    let role = if machine { "service_account" } else { "member" };
+    Ok(Json(
+        json!({"id":subject,"display_name":subject,"status":"active","role":role,"email":"owner@example.test"}),
+    ))
 }
 
 async fn introspect(
@@ -76,7 +88,8 @@ async fn introspect(
         _ => return Err(StatusCode::UNAUTHORIZED),
     };
     Ok(Json(
-        json!({"sub":stub.owner,"email":"owner@example.test","display_name":"owner","role":"member","scopes":scopes}),
+        json!({"sub":stub.owner,"email":"owner@example.test","display_name":"owner","role":"member","subject_role":"member","scopes":scopes,
+            "observed_at":shared::now(),"expires_at":shared::now()+std::time::Duration::from_secs(3600)}),
     ))
 }
 
@@ -141,9 +154,9 @@ async fn expect(client: &Client, url: &str, token: &str, body: &Value, status: u
 async fn get_json(client: &Client, url: &str, token: &str, status: u16) -> Value {
     let response = client.get(url).bearer_auth(token).send().await.unwrap();
     let actual = response.status().as_u16();
-    let result: Value = response.json().await.unwrap();
-    assert_eq!(actual, status, "GET {url}: {result}");
-    result
+    let text = response.text().await.unwrap();
+    assert_eq!(actual, status, "GET {url}: {text}");
+    serde_json::from_str(&text).expect("SDLC response must retain its JSON contract")
 }
 
 async fn start(

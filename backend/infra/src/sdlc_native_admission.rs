@@ -233,7 +233,7 @@ mod owned_history_tests {
             vec![],
         )).await.unwrap().unwrap()).unwrap();
         let repo = PostgresSdlcRepository {
-            db,
+            db: crate::guarded_db::GuardedDb::new(db),
             file_storage: None,
             config: SdlcConfig {
                 single_task_project_ids: std::collections::HashSet::new(),

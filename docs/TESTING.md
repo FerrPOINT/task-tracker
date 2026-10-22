@@ -276,6 +276,16 @@ cd frontend
 pnpm exec playwright test --project=chromium
 ```
 
+Для standalone fixture smoke с переходом в PM чат нужен явно настроенный каталог
+во время сборки: `VITE_PLATFORM_SERVICES_URL=/api/v1/runtime/services pnpm build`
+(PowerShell: `$env:VITE_PLATFORM_SERVICES_URL='/api/v1/runtime/services'; pnpm build`).
+Затем `pnpm exec playwright test smoke.spec.ts --project=chromium` запускает свой
+preview либо использует явный `PLAYWRIGHT_BASE_URL`. Сценарий перехватывает каталог
+и API синтетическими ответами; без build-time URL Base по контракту оставляет
+только display defaults и не разрешает переход в Fleet. Обычный production build
+без этого override проверяется отдельно. Эта fixture-конфигурация не является
+настройкой установленного runtime или доказательством live SSO/backend.
+
 ### Live platform gate
 
 `SDLC_LIVE_QA=1` выбирает no-mock сценарии шести приложений, SSO, личных

@@ -115,7 +115,7 @@ pub(super) async fn verify(
         403,
     )
     .await;
-    // The fixture gives this verified human a global admin hint, but no membership.
+    // The fixture keeps a legacy local admin hint, but no central admin role or membership.
     // Keep the legacy public Tracker route's existing policy outside this fix.
     read(client, base, &format!("issues/{task}"), actors.foreign, 200).await;
     for (table, expected) in tables.into_iter().zip(before) {

@@ -80,6 +80,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::space_catalog::visible,
         routes::sdlc_candidates::delivery_candidates,
         routes::sdlc_delivery::current,
         routes::sdlc_delivery::command,
@@ -153,6 +154,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::evidence,
         routes::sdlc::events,
         routes::namespace::apply,
+        routes::namespace::apply_space_v2,
         routes::namespace::available_resources,
         routes::namespace::stats,
         routes::namespace::contexts,
@@ -185,6 +187,18 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::auth::logout_openapi,
         routes::projects::list_projects,
         routes::projects::create_project,
+        routes::project_spaces::create,
+        routes::project_catalog::visible,
+        routes::project_access::get,
+        routes::project_contexts::query,
+        routes::project_lifecycle::get,
+        routes::project_lifecycle::change,
+        routes::project_spaces::operation_receipt,
+        routes::project_spaces::projection_status,
+        routes::project_spaces::reconcile_projection,
+
+        routes::project_spaces::get,
+        routes::project_spaces::replace,
         routes::projects::get_project,
         routes::projects::update_project,
         routes::projects::delete_project,
@@ -454,6 +468,8 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .burst_size(ctx.config.server.general_rate_burst)
         .finish()
         .expect("valid general rate limit config");
+    // Both API versions share the same admission budget and limiter state.
+    let general_limiter = Arc::new(general_limiter);
 
     // /health stays public AND unthrottled: container/orchestrator probes
     // share one IP key with real traffic and must not be rate-limited.
@@ -780,12 +796,63 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                 )
                 .route_layer(axum::middleware::from_fn(routes::namespace::reader_auth)),
         );
+    let project_context_readers = Router::new()
+        .route(
+            "/project-contexts/query",
+            post(routes::project_contexts::query),
+        )
+        .route_layer(axum::middleware::from_fn(
+            routes::project_contexts::reader_auth,
+        ));
+    let space_api = Router::new()
+        .route("/sdlc/project-access", get(routes::project_access::get))
+        .route("/spaces/visible", get(routes::space_catalog::visible))
+        .route(
+            "/projects",
+            post(routes::project_spaces::create).get(routes::project_catalog::visible),
+        )
+        .route(
+            "/projects/{project_key}/lifecycle",
+            get(routes::project_lifecycle::get).put(routes::project_lifecycle::change),
+        )
+        .route(
+            "/projects/{project_key}/spaces",
+            get(routes::project_spaces::get).put(routes::project_spaces::replace),
+        )
+        .route(
+            "/projects/{project_key}/spaces/operations/{operation_id}",
+            get(routes::project_spaces::operation_receipt),
+        )
+        .route(
+            "/projects/{project_key}/spaces/projection",
+            get(routes::project_spaces::projection_status),
+        )
+        .route(
+            "/projects/{project_key}/spaces/projection/reconcile",
+            post(routes::project_spaces::reconcile_projection),
+        )
+        .route_layer(from_fn_with_state(
+            ctx.clone(),
+            middleware::auth::bearer_auth,
+        ))
+        .merge(project_context_readers)
+        .merge(
+            Router::new()
+                .route(
+                    "/spaces/{registry}/{space}/owner-state",
+                    axum::routing::put(routes::namespace::apply_space_v2),
+                )
+                .route_layer(axum::middleware::from_fn(routes::namespace::owner_v2_auth)),
+        );
     let api = public
         .merge(auth_routes)
         .merge(protected)
         .merge(attachment_routes)
         .merge(owner_routes)
-        .merge(routes::sdlc::router());
+        .merge(routes::sdlc::router().route_layer(from_fn_with_state(
+            ctx.clone(),
+            middleware::sdlc_auth::space_guard,
+        )));
 
     // The SSE stream is a long-lived connection, not a request/response the
     // burst limiter was designed for: each reconnect burns a permit from the
@@ -806,7 +873,14 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let mut root = Router::new()
         .route("/health", get(routes::health::catalog_health))
         .route("/api/v1/health", get(routes::health::health))
-        .nest("/api/v1", api.layer(GovernorLayer::new(general_limiter)))
+        .nest(
+            "/api/v1",
+            api.layer(GovernorLayer::new(general_limiter.clone())),
+        )
+        .nest(
+            "/api/v2",
+            space_api.layer(GovernorLayer::new(general_limiter)),
+        )
         .nest("/api/v1", events_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()));
 
@@ -1524,5 +1598,62 @@ mod tests {
     fn general_rate_preserves_sub_millisecond_intervals() {
         assert_eq!(rate_per_second_period(60), Duration::from_nanos(16_666_666));
         assert_eq!(rate_per_second_period(5_000), Duration::from_nanos(200_000));
+    }
+}
+
+#[cfg(test)]
+mod openapi_contract_tests {
+    use super::*;
+    #[test]
+    fn generated_operations_are_unique_and_v2_mutations_have_error_contracts() {
+        let value = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let paths = value["paths"].as_object().unwrap();
+        let mut ids = std::collections::HashSet::new();
+        for (path, methods) in paths {
+            for (method, operation) in methods.as_object().unwrap() {
+                if let Some(id) = operation
+                    .get("operationId")
+                    .and_then(|value| value.as_str())
+                {
+                    assert!(ids.insert(id), "duplicate operation {id}: {method} {path}");
+                }
+            }
+        }
+        let create = &value["paths"]["/api/v2/projects"]["post"]["responses"];
+        for status in ["201", "400", "401", "403", "409", "422", "503"] {
+            assert!(
+                create.get(status).is_some(),
+                "missing create response {status}"
+            );
+        }
+        assert!(value["paths"]["/api/v2/projects/{project_key}/spaces"]["get"]["responses"]["200"]["headers"]
+            .get("x-pdlc-project-spaces-can-change").is_some());
+        for (path, method) in [
+            ("/api/v2/projects/{project_key}/spaces", "get"),
+            ("/api/v2/projects/{project_key}/spaces", "put"),
+            ("/api/v2/projects/{project_key}/spaces/projection", "get"),
+            (
+                "/api/v2/projects/{project_key}/spaces/projection/reconcile",
+                "post",
+            ),
+            ("/api/v2/projects/{project_key}/lifecycle", "get"),
+            ("/api/v2/projects/{project_key}/lifecycle", "put"),
+            ("/api/v2/project-contexts/query", "post"),
+            (
+                "/api/v2/projects/{project_key}/spaces/operations/{operation_id}",
+                "get",
+            ),
+        ] {
+            for status in ["403", "503"] {
+                assert!(
+                    value["paths"][path][method]["responses"]
+                        .get(status)
+                        .is_some(),
+                    "missing {status} contract: {method} {path}"
+                );
+            }
+        }
+        assert!(value["paths"]["/api/v2/spaces/visible"]["get"].is_object());
+        assert!(value["paths"]["/api/v2/projects/{project_key}/spaces"]["put"].is_object());
     }
 }

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { components } from '@/api/generated'
 import { listWorklogs, createWorklog, updateWorklog, deleteWorklog } from '@/api/worklog'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'

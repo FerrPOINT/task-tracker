@@ -1,7 +1,11 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
-import { getPlatformProduct } from '@pdlc/ui/platform'
+import {
+  getPlatformProduct,
+  capturePlatformPrivateState,
+  guardPlatformPrivateResponse,
+} from '@pdlc/ui/platform'
 
 export const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ??
@@ -25,9 +29,12 @@ function shouldIntercept401(req: Request): boolean {
   return !url.includes('/api/v1/auth/')
 }
 
+const requestOwners = new WeakMap<Request, { token: string | null; current: () => boolean }>()
+
 api.use({
   onRequest: ({ request }) => {
     const token = useAuthStore.getState().token
+    requestOwners.set(request, { token, current: capturePlatformPrivateState() })
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`)
     }
@@ -35,9 +42,18 @@ api.use({
   },
   onResponse: ({ request, response }) => {
     if (response.status === 401 && shouldIntercept401(request)) {
-      void refreshAccessToken()
+      const token = useAuthStore.getState().token
+      const current = token ? 'Bearer ' + token : null
+      // A late failure from a previous session must not log out its successor.
+      if (request.headers.get('authorization') === current) void refreshAccessToken()
     }
-    return response
+    const owner = requestOwners.get(request)
+    if (!owner) throw new Error('Не найден контекст запроса')
+    if (response.status === 401 && owner.token !== useAuthStore.getState().token) return response
+    return guardPlatformPrivateResponse(
+      response,
+      () => owner.current() && owner.token === useAuthStore.getState().token,
+    )
   },
 })
 

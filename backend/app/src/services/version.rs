@@ -50,7 +50,7 @@ impl crate::context::VersionService for VersionServiceImpl {
     ) -> Result<crate::context::VersionDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("version name must not be empty"));
@@ -93,7 +93,7 @@ impl crate::context::VersionService for VersionServiceImpl {
     ) -> Result<crate::context::VersionDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         let mut version = self.versions.get_by_id(id).await?;
         if version.project_id != project.id {
@@ -120,7 +120,7 @@ impl crate::context::VersionService for VersionServiceImpl {
     ) -> Result<(), AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         let version = self.versions.get_by_id(id).await?;
         if version.project_id != project.id {

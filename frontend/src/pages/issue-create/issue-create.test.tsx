@@ -1,3 +1,13 @@
+import { applicationAccessFixture } from '@/test/application-access'
+
+const accessActor = vi.hoisted(() => ({
+  role: 'user' as 'user' | 'admin',
+  applications: ['task-tracker'],
+}))
+vi.mock('@pdlc/ui/auth', async (original) => ({
+  ...(await original<object>()),
+  useApplicationAccess: () => applicationAccessFixture(accessActor),
+}))
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -154,9 +164,11 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 
 describe('IssueCreatePage', () => {
   beforeEach(() => {
+    accessActor.role = 'user'
     window.sessionStorage.clear()
     POST.mockReset()
     createIssue.mockClear()
+    createProject.mockReset()
     listProjects.mockClear()
     listUsers.mockClear()
     listProjectMembers.mockClear()
@@ -184,7 +196,8 @@ describe('IssueCreatePage', () => {
       try {
         const user = userEvent.setup()
         render(wrapper(<IssueCreatePage />))
-        await user.type(screen.getByLabelText(/Заголовок/), 'Rejected issue')
+        await user.click(screen.getByLabelText(/Заголовок/))
+        await user.paste('Rejected issue')
         await user.type(await screen.findByLabelText(/Required text/), 'ready')
         await user.click(screen.getByRole('button', { name: /^создать$/i }))
         await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
@@ -193,7 +206,7 @@ describe('IssueCreatePage', () => {
           screen.queryByText('Повтор отправит исходную задачу с прежним ключом операции.'),
         ).not.toBeInTheDocument()
         await user.clear(screen.getByLabelText(/Заголовок/))
-        await user.type(screen.getByLabelText(/Заголовок/), 'Corrected issue')
+        await user.paste('Corrected issue')
         await user.click(screen.getByRole('button', { name: /^создать$/i }))
         await screen.findByText('Backlog')
         expect(POST).toHaveBeenCalledTimes(2)
@@ -226,13 +239,14 @@ describe('IssueCreatePage', () => {
     try {
       const user = userEvent.setup()
       render(wrapper(<IssueCreatePage />))
-      await user.type(screen.getByLabelText(/Заголовок/), 'Original issue')
+      await user.click(screen.getByLabelText(/Заголовок/))
+      await user.paste('Original issue')
       await user.type(await screen.findByLabelText(/Required text/), 'ready')
       await user.click(screen.getByRole('button', { name: /^создать$/i }))
       await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
       expect(POST).toHaveBeenCalledTimes(1)
       await user.clear(screen.getByLabelText(/Заголовок/))
-      await user.type(screen.getByLabelText(/Заголовок/), 'New input after unknown result')
+      await user.paste('New input after unknown result')
       await user.click(screen.getByRole('button', { name: /^создать$/i }))
       await waitFor(() => expect(POST).toHaveBeenCalledTimes(2))
       await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled())
@@ -389,6 +403,7 @@ describe('IssueCreatePage', () => {
     )
   })
   it('creates the prerequisite project without navigating away or submitting the issue draft', async () => {
+    accessActor.role = 'admin'
     listProjects.mockResolvedValueOnce([])
     const project = {
       id: 'new-project',
@@ -421,6 +436,7 @@ describe('IssueCreatePage', () => {
   })
 
   it('retains the issue and project input after project creation is denied', async () => {
+    accessActor.role = 'admin'
     listProjects.mockResolvedValueOnce([])
     createProject.mockRejectedValueOnce(new Error('Нет прав на создание проекта'))
     render(wrapper(<IssueCreatePage />))
@@ -441,6 +457,7 @@ describe('IssueCreatePage', () => {
   it.each([false, true])(
     'uses authoritative catalogue readback after inline creation (removed: %s)',
     async (removed) => {
+      accessActor.role = 'admin'
       const project = {
         id: 'new-project',
         key: 'NEW',
@@ -460,7 +477,8 @@ describe('IssueCreatePage', () => {
       render(wrapper(<IssueCreatePage />))
       const user = userEvent.setup()
       await screen.findByRole('button', { name: 'Создать проект' })
-      await user.type(screen.getByLabelText(/Заголовок/), 'Draft stays after catalogue refresh')
+      await user.click(screen.getByLabelText(/Заголовок/))
+      await user.paste('Draft stays after catalogue refresh')
       await user.click(screen.getByRole('button', { name: 'Создать проект' }))
       const dialog = within(screen.getByRole('dialog'))
       await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
@@ -481,4 +499,13 @@ describe('IssueCreatePage', () => {
       expect(createIssue).not.toHaveBeenCalled()
     },
   )
+  it('retains the native task form for a Tracker user without granting project creation', async () => {
+    accessActor.role = 'user'
+    listProjects.mockResolvedValueOnce([])
+    render(wrapper(<IssueCreatePage />))
+    await waitFor(() => expect(listProjects).toHaveBeenCalled())
+    expect(screen.getByLabelText(/Заголовок/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Создать проект' })).not.toBeInTheDocument()
+    expect(createProject).not.toHaveBeenCalled()
+  })
 })

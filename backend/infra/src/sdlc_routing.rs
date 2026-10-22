@@ -45,7 +45,11 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("project", project))?;
-        if row.try_get::<Uuid>("", "owner_id").map_err(map_db)?
+        let user_id = user.try_get::<Uuid>("", "id").map_err(map_db)?;
+        super::spaces::require_project(tx, project, user_id, actor).await?;
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            app::authz::require_central_administrator()?;
+        } else if row.try_get::<Uuid>("", "owner_id").map_err(map_db)?
             != user.try_get::<Uuid>("", "id").map_err(map_db)?
         {
             return Err(AppError::Forbidden);

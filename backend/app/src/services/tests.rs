@@ -2567,7 +2567,11 @@ fn notification(recipient_id: UserId, created_at: shared::Timestamp) -> Notifica
 async fn notification_service_lists_newest_ten_and_counts_all_unread() {
     let user_id = UserId::new();
     let repo = Arc::new(MemoryNotificationRepository::default());
-    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let service = NotificationServiceImpl::new(
+        repo.clone(),
+        Arc::new(MemoryProjectRepository::default()),
+        repo.clone(),
+    );
     let now = shared::now();
 
     for offset in 0..12 {
@@ -2587,7 +2591,11 @@ async fn notification_service_lists_newest_ten_and_counts_all_unread() {
 async fn notification_service_can_page_all_notifications_without_losing_unread_count() {
     let user_id = UserId::new();
     let repo = Arc::new(MemoryNotificationRepository::default());
-    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let service = NotificationServiceImpl::new(
+        repo.clone(),
+        Arc::new(MemoryProjectRepository::default()),
+        repo.clone(),
+    );
     let now = shared::now();
 
     let mut old_unread = notification(user_id, now);
@@ -2634,7 +2642,11 @@ async fn notification_service_marks_only_recipients_unread_notification_read() {
     let user_id = UserId::new();
     let other_user_id = UserId::new();
     let repo = Arc::new(MemoryNotificationRepository::default());
-    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let service = NotificationServiceImpl::new(
+        repo.clone(),
+        Arc::new(MemoryProjectRepository::default()),
+        repo.clone(),
+    );
     let item = notification(other_user_id, shared::now());
     repo.save(&item).await.unwrap();
 
@@ -2657,7 +2669,11 @@ async fn notification_service_marks_only_recipients_unread_notification_read() {
 async fn notification_service_returns_default_settings_and_persists_valid_updates() {
     let user_id = UserId::new();
     let repo = Arc::new(MemoryNotificationRepository::default());
-    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let service = NotificationServiceImpl::new(
+        repo.clone(),
+        Arc::new(MemoryProjectRepository::default()),
+        repo.clone(),
+    );
 
     let defaults = service.get_settings(user_id).await.unwrap();
     assert_eq!(defaults.email_frequency, "immediate");
@@ -7643,4 +7659,34 @@ async fn issue_identifier_resolves_key_uuid_and_restore_with_access_check() {
             .unwrap(),
         id
     );
+}
+
+/// A read-admitted user still needs an explicit product write/admin role.
+/// The same scoped test is also run with central-mode environment configured.
+#[tokio::test]
+async fn authz_read_visibility_does_not_grant_edit_or_owner_permissions() {
+    let (ctx, owner, member, project_id) = ctx_with_real_members().await;
+    let authz = crate::authz::Authz::new(ctx.repos.members.clone(), ctx.repos.projects.clone());
+    let outsider = UserId::new();
+    assert!(matches!(
+        authz.require_project_edit(project_id, outsider).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        authz.require_owner(project_id, outsider).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        authz.require_owner(project_id, member.id).await,
+        Err(AppError::Forbidden)
+    ));
+    authz
+        .require_project_edit(project_id, member.id)
+        .await
+        .unwrap();
+    authz
+        .require_project_edit(project_id, owner.id)
+        .await
+        .unwrap();
+    authz.require_owner(project_id, owner.id).await.unwrap();
 }

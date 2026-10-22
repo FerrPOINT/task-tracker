@@ -14,6 +14,7 @@ import {
 import { useProjectDetails, useUpdateProject } from '@/shared/api/hooks'
 import { ProjectLink } from '@/shared/lib/project-navigation'
 import type { Project } from '@/api/project'
+import { ProjectSpacesSettings } from '@/features/projects/ui/ProjectSpacesSettings'
 
 export function ProjectSettingsPage() {
   const { projectKey = '' } = useParams()
@@ -62,7 +63,12 @@ export function ProjectSettingsPage() {
 export function ProjectGeneralSettingsPage() {
   const project = useOutletContext<Project>()
   // A different project gets a fresh draft; background refetches cannot erase unsaved input.
-  return <ProjectPropertiesForm key={project.id} project={project} />
+  return (
+    <div className="space-y-6">
+      <ProjectPropertiesForm key={project.id} project={project} />
+      <ProjectSpacesSettings project={project} />
+    </div>
+  )
 }
 
 function ProjectPropertiesForm({ project }: { project: Project }) {

@@ -23,7 +23,11 @@ impl From<User> for UserDto {
             email: user.email.as_ref().to_string(),
             username: user.username.as_ref().to_string(),
             display_name: user.display_name.as_ref().to_string(),
-            is_system_admin: user.is_system_admin,
+            is_system_admin: if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+                crate::authz::central_administrator(user.id).unwrap_or(false)
+            } else {
+                user.is_system_admin
+            },
         }
     }
 }

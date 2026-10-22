@@ -276,6 +276,7 @@ impl AppContext {
                 )),
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
                     repos.notifications.clone(),
+                    repos.projects.clone(),
                     repos.notification_settings.clone(),
                 )),
                 report: Arc::new(crate::services::ReportServiceImpl::new(
@@ -287,6 +288,7 @@ impl AppContext {
                 )),
                 admin: Arc::new(AdminServiceImpl::new(
                     repos.users.clone(),
+                    repos.projects.clone(),
                     repos.audit_logs.clone(),
                     repos.system_settings.clone(),
                 )),
