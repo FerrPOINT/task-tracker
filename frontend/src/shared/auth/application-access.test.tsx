@@ -49,13 +49,11 @@ beforeEach(() => {
     .replace(/=/g, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
-  useAuthStore
-    .getState()
-    .setAuth({
-      token: 'header.' + payload + '.signature',
-      userId: 'local-user',
-      email: 'user@example.test',
-    })
+  useAuthStore.getState().setAuth({
+    token: 'header.' + payload + '.signature',
+    userId: 'local-user',
+    email: 'user@example.test',
+  })
 })
 afterEach(() => {
   cleanup()

@@ -71,14 +71,25 @@ describe('new task opens the existing empty PM route', () => {
 
   it('cancels a pending project read and navigation when Fleet is revoked', async () => {
     let reply!: (response: Response) => void
-    wire.mockImplementation(() => new Promise<Response>(resolve => { reply = resolve }))
+    wire.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          reply = resolve
+        }),
+    )
     const view = render(<CreateTaskAction projectKey="TT" />)
     fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
     await waitFor(() => expect(reply).toBeTypeOf('function'))
     mocks.access.mockReturnValue({ permits: () => false })
     view.rerender(<CreateTaskAction projectKey="TT" />)
-    await act(async () => reply(new Response(JSON.stringify({ id, key: 'TT' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await act(async () =>
+      reply(
+        new Response(JSON.stringify({ id, key: 'TT' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
     expect(mocks.navigate).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('нужен доступ к Fleet')
   })

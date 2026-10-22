@@ -44,7 +44,10 @@ export function CreateTaskAction({
   const [opening, setOpening] = useState(false)
   const inFlight = useRef(false)
   const request = useRef<AbortController | null>(null)
-  useEffect(() => () => request.current?.abort(), [projectKey, contextPending, contextError, canOpenFleet])
+  useEffect(
+    () => () => request.current?.abort(),
+    [projectKey, contextPending, contextError, canOpenFleet],
+  )
 
   async function open() {
     if (!allowed.current || inFlight.current || contextPending) return
@@ -91,7 +94,11 @@ export function CreateTaskAction({
   }
 
   if (!canOpenFleet) {
-    return <p role="status" className="text-sm text-text-muted">Для создания задачи через PM нужен доступ к Fleet. Обратитесь к администратору.</p>
+    return (
+      <p role="status" className="text-sm text-text-muted">
+        Для создания задачи через PM нужен доступ к Fleet. Обратитесь к администратору.
+      </p>
+    )
   }
   const pending = opening || contextPending
   return (

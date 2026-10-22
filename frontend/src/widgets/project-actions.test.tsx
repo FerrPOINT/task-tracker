@@ -96,7 +96,9 @@ it('keeps the project board visible while hiding its settings from a user', () =
   accessActor.role = 'user'
   render(
     <MemoryRouter>
-      <ProjectCardLink project={{ id: 'second', key: 'SECOND', name: 'Same name' }}>Open board</ProjectCardLink>
+      <ProjectCardLink project={{ id: 'second', key: 'SECOND', name: 'Same name' }}>
+        Open board
+      </ProjectCardLink>
       <ProjectActions project={{ key: 'SECOND', name: 'Same name' }} />
     </MemoryRouter>,
   )
