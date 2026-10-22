@@ -492,12 +492,12 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);
-    // A mismatched optional profile cannot replace the verified JWT subject.
-    // The existing exact-subject profile remains usable; the unbound SDLC
-    // context is absent. Corrupt required PAT identity still fails closed.
+    // Fresh profile identity is authoritative: a signed JWT cannot reuse a
+    // historical local profile when the current Auth response names somebody else.
+    // Required PAT identity corruption also remains fail-closed.
     for (path, owner_status) in [
-        (format!("{url}/context"), 404),
-        (format!("{base}/api/v1/issues/{task}"), 200),
+        (format!("{url}/context"), 401),
+        (format!("{base}/api/v1/issues/{task}"), 401),
     ] {
         for (token, expected) in [(&owner[..], owner_status), ("sdlc_pat_owner", 401)] {
             assert_eq!(
