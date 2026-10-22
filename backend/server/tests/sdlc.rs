@@ -153,7 +153,7 @@ async fn session(
     };
     Ok(Json(
         json!({"id":id,"display_name":subject,"status":"active",
-        "role":if matches!(subject,"operator"|"foreign"){"admin"}else{"member"},
+        "role":if subject=="operator"{"admin"}else{"member"},
         "email":format!("{subject}@example.test")}),
     ))
 }
@@ -1206,7 +1206,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &client,
         &restarted,
         task,
-        &owner,
+        &routing_actors,
         &routing_ready,
         &fleet_stub,
     )

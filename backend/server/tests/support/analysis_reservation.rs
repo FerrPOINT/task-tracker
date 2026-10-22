@@ -66,15 +66,15 @@ async fn new_policy(
     client: &Client,
     base: &str,
     project: Uuid,
-    owner: &str,
+    actors: &routing_policy::Actors<'_>,
     version: i64,
 ) -> Value {
     let url = format!("{base}/api/v1/projects/{project}/sdlc/routing-policy");
-    let current = read(client, &url, owner, 200).await;
+    let current = read(client, &url, actors.owner, 200).await;
     let mut c = json!({"expected_version":version,"routes":current["routes"],"idempotency_key":format!("reservation-policy-{version}")});
     c["routes"]["analyst"]["agent_id"] = json!(Uuid::new_v4());
     c["routes"]["analyst"]["fleet_config_revision"] = json!(version + 1);
-    post(client, &url, owner, &c, 201).await
+    post(client, &url, actors.operator, &c, 201).await
 }
 fn heartbeat(r: &Value, key: &str) -> Value {
     json!({"assignment_id":r["assignment"]["assignment_id"],"execution_id":r["assignment"]["execution_id"],"fencing_token":r["assignment"]["fencing_token"],"lease_id":r["lease"]["lease_id"],"expected_lease_version":r["lease"]["version"],"idempotency_key":key})
@@ -108,10 +108,11 @@ pub async fn check(
     client: &Client,
     base: &str,
     pm_task: Uuid,
-    owner: &str,
+    actors: &routing_policy::Actors<'_>,
     ready: &TaskState,
     fleet_stub: &FleetStub,
 ) -> (Uuid, Value) {
+    let owner = actors.owner;
     let project = ready.project_id;
     assert_eq!(project, fleet_stub.project);
     let path = |task| format!("{base}/api/v1/issues/{task}/sdlc/analysis-reservation");
@@ -356,9 +357,9 @@ pub async fn check(
                 && e["payload"]["resource"]["assignment_hash"]
                     == result["assignment"]["assignment_hash"])
     );
-    new_policy(client, base, project, owner, 3).await;
+    new_policy(client, base, project, actors, 3).await;
     let (c, cc) = publication(db, client, base, owner, ready, "SDLC-1003", Some(4)).await;
-    new_policy(client, base, project, owner, 4).await;
+    new_policy(client, base, project, actors, 4).await;
     let (d, cd) = publication(db, client, base, owner, ready, "SDLC-1004", Some(5)).await;
     let (rc, rd) = tokio::join!(
         client.post(path(c)).bearer_auth(scheduler).json(&cc).send(),

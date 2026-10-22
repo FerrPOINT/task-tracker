@@ -15,30 +15,17 @@ pub async fn verify(
     let policy = format!("{base}/api/v1/projects/{project}/sdlc/source-policy");
     let binding = format!("{base}/api/v1/issues/{task}/sdlc/source-binding");
     let enrollment = format!("{base}/api/v1/issues/{task}/sdlc/source-enrollment");
-    for (path, own_status) in [
-        (policy.clone(), 404),
-        (format!("{policy}/versions/1"), 404),
-        (format!("{policy}/operations/source-http"), 404),
-        (binding.clone(), 200),
-        (enrollment.clone(), 409),
+    for (path, own_status, admin_status) in [
+        (policy.clone(), 404, 404),
+        (format!("{policy}/versions/1"), 404, 404),
+        (format!("{policy}/operations/source-http"), 403, 404),
+        (binding.clone(), 200, 200),
+        // Enrollment also retains the native task-owner requirement.
+        (enrollment.clone(), 403, 403),
     ] {
         for (token, expected) in [
-            (
-                owner,
-                if path.contains("/source-policy/operations/") {
-                    403
-                } else {
-                    own_status
-                },
-            ),
-            (
-                if path.contains("/source-policy/operations/") {
-                    administrator
-                } else {
-                    owner
-                },
-                own_status,
-            ),
+            (owner, own_status),
+            (administrator, admin_status),
             (foreign, 403),
             ("invalid-source-reader", 401),
         ] {
@@ -69,7 +56,12 @@ pub async fn verify(
     post(client, &policy, administrator, &injected, 422).await;
     let enroll = json!({"expected_preflight_sha256":"a".repeat(64),"source_revision":1,
         "policy_hash":"b".repeat(64),"idempotency_key":"enrollment-http"});
-    for (token, expected) in [(owner, 409), (foreign, 403), ("sdlc_pat_owner", 403)] {
+    for (token, expected) in [
+        (owner, 403),
+        (administrator, 403),
+        (foreign, 403),
+        ("sdlc_pat_owner", 403),
+    ] {
         post(client, &enrollment, token, &enroll, expected).await;
     }
     for table in [
