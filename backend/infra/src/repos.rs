@@ -1391,7 +1391,9 @@ impl IssueRepository for IssueRepo {
         let rows = self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT i.project_id,s.category,count(*)::bigint AS count FROM issues i JOIN statuses s ON s.id=i.status_id WHERE i.project_id=ANY($1) AND i.deleted_at IS NULL GROUP BY i.project_id,s.category",[sea_orm::Value::Array(sea_orm::sea_query::ArrayType::Uuid,Some(Box::new(values)))])).await.map_err(crate::db_error::map)?;
         let mut result = std::collections::HashMap::new();
         for row in rows {
-            let project: Uuid = row.try_get("", "project_id").map_err(crate::db_error::map)?;
+            let project: Uuid = row
+                .try_get("", "project_id")
+                .map_err(crate::db_error::map)?;
             let category: String = row.try_get("", "category").map_err(crate::db_error::map)?;
             let index = match map_status_category(&category)
                 .ok_or_else(|| AppError::Internal("invalid_status_category".into()))?
