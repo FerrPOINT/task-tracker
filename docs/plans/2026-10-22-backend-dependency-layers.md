@@ -2,7 +2,7 @@
 
 Область: две backend Docker recipes, их собственные dockerignore, один source
 contract guard и обычные tooling/CI callers. Полный план и общий контракт —
-[Base BUILD_PERFORMANCE](../../../services-base/docs/BUILD_PERFORMANCE.md).
+[инструкции по pinned Base standard](../../AGENTS.md).
 
 Сначала сохранить actual source/SDK/runtime contract, затем разделить preparation:
 metadata и product stubs → domain test dependencies → server dependencies.
