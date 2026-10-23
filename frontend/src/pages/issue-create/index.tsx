@@ -1,6 +1,6 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import {
+import { Fieldset,
   PageHeader,
   SectionHeader,
   Select,
@@ -391,7 +391,7 @@ export function IssueCreatePage() {
         </div>
 
         {customFields.length > 0 && (
-          <fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
+          <Fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
             <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
             <div className="grid gap-4 sm:grid-cols-2">
               {customFields.map((field) => (
@@ -415,7 +415,7 @@ export function IssueCreatePage() {
                 </label>
               ))}
             </div>
-          </fieldset>
+          </Fieldset>
         )}
 
         <div className="flex gap-2 pt-2">

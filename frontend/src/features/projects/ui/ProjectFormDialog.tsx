@@ -1,4 +1,4 @@
-import {
+import { Fieldset,
   ProjectAvatar,
   Button,
   Input,
@@ -72,9 +72,9 @@ export function ProjectFormDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <fieldset
+          <Fieldset
             disabled={isPending}
-            className="min-w-0 space-y-4 border-0 p-0"
+            className="min-w-0 space-y-4"
             aria-busy={isPending || undefined}
           >
             {error && <ErrorState message={error.message} />}
@@ -125,7 +125,7 @@ export function ProjectFormDialog({
                 {isPending ? t('common.saving') : isEdit ? t('common.save') : t('projects.create')}
               </Button>
             </div>
-          </fieldset>
+          </Fieldset>
         </form>
       </DialogContent>
     </Dialog>

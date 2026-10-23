@@ -14,7 +14,7 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import {
+import { Fieldset,
   RadioGroup,
   PageHeader,
   Select,
@@ -420,8 +420,8 @@ export function NotificationsPage() {
                   }
                   disabled={updateSettings.isPending}
                 />
-                <fieldset className="border-t border-border pt-3">
-                  <legend className="text-sm font-medium">{t('notifications.eventsTitle')}</legend>
+                <Fieldset className="border-t border-border pt-3" legend={t('notifications.eventsTitle')}>
+                  
                   {NOTIFICATION_EVENTS.map((eventType) => (
                     <Checkbox
                       key={eventType}
@@ -431,7 +431,7 @@ export function NotificationsPage() {
                       disabled={updateSettings.isPending}
                     />
                   ))}
-                </fieldset>
+                </Fieldset>
                 <div className="space-y-2 border-t border-border pt-4">
                   {(updateSettings.isPending ||
                     updateSettings.isSuccess ||
