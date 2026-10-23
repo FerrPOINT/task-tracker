@@ -296,6 +296,80 @@ async fn http_rejects_redirect_errors_oversize_encoding_and_invalid_json() {
 }
 
 #[tokio::test]
+async fn settled_pm_readback_uses_exact_barrier_path_and_existing_reader_token() {
+    let run = Uuid::new_v4();
+    let barrier = Uuid::new_v4();
+    let id = Uuid::new_v4();
+    let command = json!({
+        "expected_owner_version":1,"lease_id":id,"expected_lease_version":103,
+        "input":{"input_kind":"feedback","input_id":id},
+        "checkpoint":{"checkpoint_id":id,"checkpoint_revision":2,
+            "checkpoint_sha256":"a".repeat(64),
+            "fence":{"assignment_id":id,"execution_id":id,"agent_id":id,"assignment_version":1},
+            "requirement_revision":null,"content_hash":null},
+        "previous_run_id":run,
+        "previous_run_terminal":{"reference":format!("/internal/runtime/v1/pm/runs/{run}"),
+            "sha256":"b".repeat(64)},
+        "idempotency_key":"settled-recovery-1",
+        "recovery":{"kind":"settled_input_expiry","original_key":"original",
+            "original_request_sha256":"c".repeat(64),"predecessor_key":"original",
+            "predecessor_request_sha256":"c".repeat(64),"barrier_id":barrier}
+    });
+    let body = json!({
+        "contract_version":1,"session_run_id":run,"barrier_id":barrier,
+        "identity":{"task":"SDLC-1","execution_ref":id,"tracker_instance_ref":"tracker",
+            "tracker_project_ref":id,"task_ref":id,"root_ref":id,"agent_ref":id,
+            "assignment_operation_key":"original-key","assignment_ref":id,"assignment_revision":1},
+        "request_sha256":crate::sdlc::canonical_hash(
+            &json!({"operation":"resume_pm_execution_lease","payload":command})
+        ).unwrap(),"command":command
+    })
+    .to_string();
+    let (origin, task) = serve(format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )).await;
+    let token = format!("sdlc_pat_{}", "a".repeat(64));
+    let reader = FleetConfigurationReader::new(&origin, &token).unwrap();
+    let witness = reader
+        .read_settled_pm_input_recovery(run, barrier)
+        .await
+        .unwrap();
+    assert_eq!(witness.session_run_id, run);
+    assert_eq!(witness.barrier_id, barrier);
+    assert_eq!(witness.command.recovery.unwrap().barrier_id, barrier);
+    let request = task.await.unwrap();
+    assert!(request.starts_with(&format!(
+        "GET /internal/runtime/v1/pm/runs/{run}/settled-input-recovery?barrier_id={barrier} HTTP/1.1"
+    )));
+    assert!(request.contains(&format!("authorization: Bearer {token}")));
+    assert!(request.contains("cache-control: no-cache, no-store"));
+}
+
+#[tokio::test]
+async fn settled_pm_readback_rejects_redirect_denial_and_caller_boolean() {
+    for response in [
+        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/steal\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 4\r\n\r\ntrue",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 999999\r\n\r\n",
+    ] {
+        let (origin, task) = serve(response.into()).await;
+        let reader =
+            FleetConfigurationReader::new(&origin, &format!("sdlc_pat_{}", "a".repeat(64)))
+                .unwrap();
+        assert!(
+            reader
+                .read_settled_pm_input_recovery(Uuid::new_v4(), Uuid::new_v4())
+                .await
+                .is_err()
+        );
+        task.await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn unsubmitted_pm_readback_uses_exact_barrier_path_and_existing_reader_token() {
     let run = Uuid::new_v4();
     let barrier = Uuid::new_v4();

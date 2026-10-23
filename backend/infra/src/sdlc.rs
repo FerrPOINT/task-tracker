@@ -27,14 +27,14 @@ mod native_admission;
 mod pm_bootstrap_retry;
 #[path = "sdlc_pm_resume.rs"]
 mod pm_resume;
-#[path = "sdlc_settled_input_recovery.rs"]
-mod settled_input_recovery;
 #[path = "sdlc_pm_unsubmitted.rs"]
 mod pm_unsubmitted;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
 mod routing;
+#[path = "sdlc_settled_input_recovery.rs"]
+mod settled_input_recovery;
 #[path = "sdlc_source.rs"]
 mod source;
 
@@ -974,6 +974,25 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
         self.read_pm_resume_operation(task, actor, key).await
+    }
+    async fn preflight_settled_pm_recovery(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
+        self.preflight_settled_input_recovery(task, actor, command)
+            .await
+    }
+    async fn recover_settled_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
+        witness: domain::sdlc_execution_lease::PmSettledInputRecoveryWitness,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.recover_settled_input_lease(task, actor, command, witness)
+            .await
     }
     async fn preflight_unsubmitted_pm_recovery(
         &self,

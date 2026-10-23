@@ -241,6 +241,23 @@ impl FleetConfigurationReader {
         self.read_pm_witness(self.client.get(url)).await
     }
 
+    pub async fn read_settled_pm_input_recovery(
+        &self,
+        run: Uuid,
+        barrier: Uuid,
+    ) -> Result<domain::sdlc_execution_lease::PmSettledInputRecoveryWitness, AppError> {
+        if run.is_nil() || barrier.is_nil() {
+            return Err(unavailable());
+        }
+        let mut url = self.origin.clone();
+        url.set_path(&format!(
+            "/internal/runtime/v1/pm/runs/{run}/settled-input-recovery"
+        ));
+        url.query_pairs_mut()
+            .append_pair("barrier_id", &barrier.to_string());
+        self.read_pm_witness(self.client.get(url)).await
+    }
+
     async fn read_pm_witness<T: serde::de::DeserializeOwned>(
         &self,
         request: reqwest::RequestBuilder,
