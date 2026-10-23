@@ -124,16 +124,15 @@ export function ProjectCustomFieldsPage() {
                     }}
                   />
                 )}
-                <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
-                  <Checkbox
-                    checked={draft.is_required}
-                    onCheckedChange={(checked) => {
-                      create.reset()
-                      setDraft({ ...draft, is_required: checked === true })
-                    }}
-                  />
+                <Checkbox
+                  checked={draft.is_required}
+                  onCheckedChange={(checked) => {
+                    create.reset()
+                    setDraft({ ...draft, is_required: checked === true })
+                  }}
+                >
                   {t('customFields.required')}
-                </label>
+                </Checkbox>
                 {needsOptions && options.length === 0 && (
                   <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
                 )}

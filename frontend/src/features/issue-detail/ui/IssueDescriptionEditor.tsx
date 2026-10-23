@@ -1,4 +1,4 @@
-import { Input, Button, Textarea, Notice, FormField, PageHeader } from '@pdlc/ui/ui'
+import { Input, Button, Textarea, Notice, FormField, PageHeader, Prose } from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -179,18 +179,18 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 function renderDescription(text: string) {
   const lines = text.split('\n')
   return (
-    <div className="space-y-3 break-words text-sm text-text-secondary">
+    <Prose>
       {lines.map((line, idx) => {
         if (line.startsWith('· ')) {
           return (
-            <ul key={idx} className="ml-5 list-disc">
+            <ul key={idx}>
               <li>{line.slice(2)}</li>
             </ul>
           )
         }
         if (line.startsWith('# ')) {
           return (
-            <h3 key={idx} className="text-base font-semibold text-text-primary">
+            <h3 key={idx}>
               {line.slice(2)}
             </h3>
           )
@@ -200,6 +200,6 @@ function renderDescription(text: string) {
         }
         return <p key={idx}>{line}</p>
       })}
-    </div>
+    </Prose>
   )
 }

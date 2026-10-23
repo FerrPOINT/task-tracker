@@ -93,20 +93,17 @@ export function SpaceSetField({
           {rows.map((entry) => {
             const checked = selected.has(spaceKey(entry.space))
             return (
-              <label
+              <Checkbox
                 key={spaceKey(entry.space)}
-                className="flex items-start gap-3 rounded-md border border-border p-3"
+                appearance="card"
+                checked={checked}
+                disabled={
+                  disabled ||
+                  (!checked && entry.state !== 'active') ||
+                  (checked && keepNonEmpty && value.length === 1)
+                }
+                onCheckedChange={() => toggle(entry.space)}
               >
-                <Checkbox
-                  className="mt-1 shrink-0"
-                  checked={checked}
-                  disabled={
-                    disabled ||
-                    (!checked && entry.state !== 'active') ||
-                    (checked && keepNonEmpty && value.length === 1)
-                  }
-                  onCheckedChange={() => toggle(entry.space)}
-                />
                 <span className="min-w-0">
                   <span className="block break-words text-sm font-medium">
                     {entry.metadata.name}
@@ -115,7 +112,7 @@ export function SpaceSetField({
                     {entry.metadata.slug} · {stateLabels[entry.state]} · {entry.space.space_id}
                   </span>
                 </span>
-              </label>
+              </Checkbox>
             )
           })}
           <PageNavigation
