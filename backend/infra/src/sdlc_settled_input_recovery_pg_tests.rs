@@ -339,7 +339,7 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
         "/identity/agent_ref",
         "/request_sha256",
     ] {
-        let mut raw = json_value(&witness(&f, &initial)).unwrap();
+        let mut raw = serde_json::to_value(witness(&f, &initial)).unwrap();
         *raw.pointer_mut(pointer).unwrap() = if pointer == "/request_sha256" {
             json!("f".repeat(64))
         } else {
@@ -371,7 +371,7 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
         "/recovery/original_request_sha256",
         "/recovery/predecessor_request_sha256",
     ] {
-        let mut raw = json_value(&initial).unwrap();
+        let mut raw = serde_json::to_value(&initial).unwrap();
         *raw.pointer_mut(pointer).unwrap() = if pointer == "/input/input_id" {
             json!(Uuid::new_v4())
         } else {
