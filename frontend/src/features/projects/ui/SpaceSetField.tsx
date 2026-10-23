@@ -45,7 +45,7 @@ export function SpaceSetField({
   }
   return (
     <Fieldset className="space-y-3" aria-busy={catalog.isFetching || undefined} legend={"Пространства проекта"}>
-      
+
       <p className="text-sm text-text-muted">
         Проекту нужно хотя бы одно пространство. Новые связи добавляются с активными пространствами.
       </p>

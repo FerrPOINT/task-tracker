@@ -421,7 +421,7 @@ export function NotificationsPage() {
                   disabled={updateSettings.isPending}
                 />
                 <Fieldset className="border-t border-border pt-3" legend={t('notifications.eventsTitle')}>
-                  
+
                   {NOTIFICATION_EVENTS.map((eventType) => (
                     <Checkbox
                       key={eventType}
