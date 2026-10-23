@@ -342,8 +342,10 @@ async fn unsubmitted_pm_readback_rejects_redirect_denial_and_caller_boolean() {
     }
 }
 
-#[tokio::test]
-async fn bootstrap_retry_readback_uses_only_existing_fleet_origin_reader_token_and_exact_barrier() {
+fn bootstrap_retry_fixture() -> (
+    domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    Value,
+) {
     use domain::sdlc_pm_bootstrap_retry::*;
     let run = Uuid::new_v4();
     let next = Uuid::new_v4();
@@ -362,14 +364,88 @@ async fn bootstrap_retry_readback_uses_only_existing_fleet_origin_reader_token_a
         "lease_id":lease,"expected_lease_version":4,"creation_operation_id":run,"previous_session_run_id":run,
         "next_session_run_id":next,"previous_native_run_ref":"run_original","chat_id":chat,"barrier_id":barrier,
         "predecessor":predecessor,"idempotency_key":"original-retry"})).unwrap();
-    let body=json!({"contract_version":1,"observed_at":"2026-10-21T00:00:00Z","identity":identity,"owner_subject":"owner",
+    let body = json!({"contract_version":1,"observed_at":"2026-10-21T00:00:00Z","identity":identity,"owner_subject":"owner",
         "input":{"snapshot_ref":Uuid::new_v4(),"sha256":"a".repeat(64)},"owner_version":1,"lease_id":lease,"lease_version":4,
         "creation_operation_id":run,"session_run_id":run,"native_run_ref":"run_original","chat_id":chat,"barrier_id":barrier,
         "next_session_run_id":next,"terminal":"stopped","predecessor":predecessor,"initial_phase_id":2,"current_phase_id":2,
         "workflow_status":"active","first_instruction":"absent","pm_enrollment":"absent","generic_binding":"present",
         "business_result":"absent","inflight_work":"absent",
         "terminal_receipt":{"reference":"fixture://native","sha256":"b".repeat(64)},
-        "bootstrap_receipt":{"reference":"fixture://workflow","sha256":"c".repeat(64)}}).to_string();
+        "bootstrap_receipt":{"reference":"fixture://workflow","sha256":"c".repeat(64)}});
+    (command, body)
+}
+
+#[test]
+fn bootstrap_retry_callback_has_a_request_local_180_second_budget() {
+    let (command, _) = bootstrap_retry_fixture();
+    let reader =
+        FleetConfigurationReader::new("http://fleet:7811", &format!("sdlc_pat_{}", "a".repeat(64)))
+            .unwrap();
+    let request = reader.pm_bootstrap_retry_request(&command).build().unwrap();
+    assert_eq!(request.timeout(), Some(&Duration::from_secs(180)));
+    assert_eq!(request.method(), reqwest::Method::GET);
+    assert_eq!(
+        request.url().path(),
+        format!(
+            "/internal/runtime/v1/pm/runs/{}/bootstrap-retry",
+            command.previous_session_run_id
+        )
+    );
+    // The override belongs to this request, not the shared client.
+    assert_eq!(
+        reader
+            .client
+            .get("http://fleet:7811/")
+            .build()
+            .unwrap()
+            .timeout(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ordinary_configuration_and_unsubmitted_reads_keep_ten_second_deadline() {
+    let (route, _) = fixture();
+    for bootstrap_unsubmitted in [false, true] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+            drop(stream);
+        });
+        let reader =
+            FleetConfigurationReader::new(&origin, &format!("sdlc_pat_{}", "a".repeat(64)))
+                .unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(12), async {
+            if bootstrap_unsubmitted {
+                reader
+                    .read_unsubmitted_pm(Uuid::new_v4(), Uuid::new_v4())
+                    .await
+                    .map(|_| ())
+            } else {
+                reader.read(&route, "analyst", "analysis").await.map(|_| ())
+            }
+        })
+        .await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(
+            result
+                .expect("ordinary reads must retain the client's 10s deadline")
+                .is_err()
+        );
+    }
+}
+
+#[tokio::test]
+async fn bootstrap_retry_readback_uses_only_existing_fleet_origin_reader_token_and_exact_barrier() {
+    use domain::sdlc_pm_bootstrap_retry::BootstrapNativeTerminal;
+    let (command, body) = bootstrap_retry_fixture();
+    let run = command.previous_session_run_id;
+    let next = command.next_session_run_id;
+    let barrier = command.barrier_id;
+    let body = body.to_string();
     let (origin,task)=serve(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len())).await;
     let token = format!("sdlc_pat_{}", "a".repeat(64));
     let reader = FleetConfigurationReader::new(&origin, &token).unwrap();

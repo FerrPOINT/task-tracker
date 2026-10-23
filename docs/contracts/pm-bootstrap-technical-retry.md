@@ -1,9 +1,25 @@
 # Initial PM bootstrap technical retry
 
-Source candidate only. No Cargo, PG, HTTP, image or installed acceptance is claimed.
+Source contract; scoped callback qualification is recorded below. No installed
+or live business acceptance is claimed by the reader tests.
 The canonical Tracker task, owner, assignment/execution/revision, business input
 and Fleet chat remain unchanged. This is NOT a requirements answer, confirmation,
 critical review, Workflow completion/checkpoint, or replay of the original native POST.
+
+## Callback Qualification: 22 October 2026
+
+Source cf5a57e0 on SDK2ad passed local app fmt, all-targets check, strict Clippy,
+and all13 configuration-reader tests, zero ignored. The tests include the scoped
+180s request timeout and unchanged10s ordinary requests. Immutable Git exports,
+compiled ELF/listing and actual executed names were verified; own temporary
+Compose resources and inputs were cleaned. Result SHA256:
+`37fce1b852218fef298941f618e9a628236f3589e8c728c1bf83ba9932d4f70d`.
+
+This is not a new execution of the unchanged producer's PostgreSQL tests or a
+server image/install gate. Current main's SDK291/native space admission adds an
+independent60s original request clock; merged release must test expiry without
+effects and same-key recovery, not silently increase that clock. The13-test
+SDK2ad result does not qualify that changed dependency closure.
 
 ## Tracker wire
 
@@ -71,9 +87,21 @@ Fleet owns native custody validation and its existing durable barrier. It querie
 B's authoritative Workflow predecessor reader with its EXISTING assignment
 credential, including unknown command/read/bind status. It must not convert
 timeout/404/list-empty into an absence proof. Tracker adds no Workflow credential,
-client or integration. The existing reader limits remain 10s / 64KiB, redirects
-disabled, identity JSON only, no-cache. An unavailable witness returns 503 with no
+client or integration. The callback-budget candidate gives only this bootstrap
+witness request180s (bounded native/Workflow reads); the shared client keeps10s
+for configuration and unsubmitted reads, connect timeout3s. The64KiB response
+limit, disabled redirects, identity JSON and no-cache checks remain unchanged.
+The caller's outer deadline must cover this callback plus preflight/commit.
+An unavailable witness returns503 with no
 renewal; unknown original-key POST is reconciled by GET, not a new key.
+
+The existing producer is atomic and exact-key idempotent: identical actor/key/full
+command may be replayed, including concurrently or after an uncertain response.
+Ledger-first readback returns the original receipt before a fresh callback;
+otherwise fresh authorization/witness/fencing precede the atomic commit. This
+does not prove that an earlier request had no effects, grant dispatch authority,
+permit a new successor/key, or authorize deleting a caller's durable marker.
+The Fleet consumer owns its saved-command recovery policy separately.
 
 ## Persistence and successor boundary
 
@@ -114,3 +142,18 @@ this mapping or enroll Workflow. Pending/unknown work must reconcile first.
 
 Registration is authored locally. Main reviews migration order and generates the
 OpenAPI/client snapshots; generated files are deliberately not fabricated here.
+
+## Integrated source checkpoint — 23 October 2026
+
+The candidate includes current main and its pinned SDK and request-commit guards.
+All 13 Fleet configuration reader tests pass, including the request-local 180s
+budget and unchanged ordinary 10s reads. The exact rebuilt SDLC PostgreSQL HTTP
+case covers clarification ownership, replay and restart on an isolated database.
+Source bytes remained stable; no installed runtime was changed.
+
+The original-authority expiry/no-effects and same-key recovery matrix still
+requires fresh qualification with the combined Fleet caller. A separate native
+request-clock target has not run: the 3.5 GiB disk admission guard refused it.
+The protocol's 60s authority lifetime is unchanged. Business PM acceptance and
+the linked Fleet/Base installation remain open; this checkpoint does not mark
+the package release-ready.
