@@ -1,5 +1,17 @@
 # Стратегия тестирования Task Tracker
 
+## Python tooling unit
+
+Известные `test_build_pin`, `test_verify_readme`, `test_ci_change_classifier` и
+`test_tooling_ownership` выбирают только `tooling:python-helpers` в Fast/Unit/Build.
+CI-contract test сохраняет свой `tooling:build-contracts`, неизвестные scripts —
+полный fallback. Из root:
+`check-workspace.ps1 -Profile Unit -Repository task-tracker -Component tooling -PlanOnly`.
+Явный tooling выбирает оба лёгких gates. Прямой запуск из Tracker:
+`python -B -m unittest scripts.tests.test_build_pin scripts.tests.test_verify_readme scripts.tests.test_ci_change_classifier scripts.tests.test_tooling_ownership -q`.
+POSIX maintenance и live checks этим Python gate не подменяются.
+Результаты — [в плане](plans/python-tooling-test-selection-20261024.md).
+
 ## Backend unit dependency graph
 
 Обе backend recipes выбирают для unit только domain: цепочка
