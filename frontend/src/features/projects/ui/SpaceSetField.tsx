@@ -1,5 +1,17 @@
 import { useId, useLayoutEffect, useState } from 'react'
-import { Fieldset, Button, Checkbox, ErrorState, Input, LoadingState } from '@pdlc/ui/ui'
+import {
+  Card,
+  CardContent,
+  Fieldset,
+  Button,
+  Checkbox,
+  ErrorState,
+  EmptyState,
+  FormField,
+  Input,
+  LoadingState,
+  PageNavigation,
+} from '@pdlc/ui/ui'
 import { spaceKey, type SpaceRef } from '@/api/space-catalog'
 import { useVisibleSpaces } from '@/shared/api/useVisibleSpaces'
 
@@ -44,26 +56,30 @@ export function SpaceSetField({
     }
   }
   return (
-    <Fieldset className="space-y-3" aria-busy={catalog.isFetching || undefined} legend={"Пространства проекта"}>
-
+    <Fieldset
+      className="space-y-3"
+      aria-busy={catalog.isFetching || undefined}
+      legend={'Пространства проекта'}
+    >
       <p className="text-sm text-text-muted">
         Проекту нужно хотя бы одно пространство. Новые связи добавляются с активными пространствами.
       </p>
-      <label htmlFor={id} className="text-sm">
-        Поиск пространств
-      </label>
-      <Input
-        id={id}
-        type="search"
-        value={search}
-        onChange={(event) => {
-          setSearch(event.target.value)
-          setOffset(0)
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') event.preventDefault()
-        }}
-      />
+      <FormField id={id} label="Поиск пространств">
+        {(attrs) => (
+          <Input
+            {...attrs}
+            type="search"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setOffset(0)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.preventDefault()
+            }}
+          />
+        )}
+      </FormField>
       {!catalog.data && catalog.isFetching ? (
         <LoadingState />
       ) : catalog.unavailable ? (
@@ -73,7 +89,7 @@ export function SpaceSetField({
         />
       ) : (
         <div className="space-y-2">
-          {!rows.length && <p className="text-sm text-text-muted">Пространства не найдены.</p>}
+          {!rows.length && <EmptyState message="Пространства не найдены." />}
           {rows.map((entry) => {
             const checked = selected.has(spaceKey(entry.space))
             return (
@@ -102,25 +118,14 @@ export function SpaceSetField({
               </label>
             )
           })}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={offset === 0 || catalog.isFetching}
-              onClick={() => setOffset(Math.max(0, offset - 10))}
-            >
-              Назад
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!catalog.data?.has_more || catalog.isFetching}
-              onClick={() => setOffset(offset + 10)}
-            >
-              Далее
-            </Button>
-            <span className="text-sm text-text-muted">Найдено: {catalog.data?.total ?? 0}</span>
-          </div>
+          <PageNavigation
+            label="Страницы доступных пространств"
+            page={Math.floor(offset / 10) + 1}
+            hasNext={Boolean(catalog.data?.has_more)}
+            pending={catalog.isFetching}
+            onPageChange={(page) => setOffset((page - 1) * 10)}
+            summary={`Найдено: ${catalog.data?.total ?? 0}`}
+          />
         </div>
       )}
       <div className="space-y-2" aria-label="Выбранные пространства">
@@ -128,23 +133,26 @@ export function SpaceSetField({
         {value.map((ref) => {
           const entry = rows.find((item) => spaceKey(item.space) === spaceKey(ref))
           return (
-            <div
-              key={spaceKey(ref)}
-              className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border p-2"
-            >
-              <span className="min-w-0 break-all text-sm">
-                {entry?.metadata.name ?? 'Пространство'} · {ref.registry_instance_id}/{ref.space_id}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={disabled || !ready || (keepNonEmpty && value.length === 1)}
-                aria-label={'Убрать пространство ' + ref.space_id}
-                onClick={() => toggle(ref)}
+            <Card key={spaceKey(ref)}>
+              <CardContent
+                density="compact"
+                className="flex min-w-0 items-center justify-between gap-2"
               >
-                Убрать
-              </Button>
-            </div>
+                <span className="min-w-0 break-all text-sm">
+                  {entry?.metadata.name ?? 'Пространство'} · {ref.registry_instance_id}/
+                  {ref.space_id}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={disabled || !ready || (keepNonEmpty && value.length === 1)}
+                  aria-label={'Убрать пространство ' + ref.space_id}
+                  onClick={() => toggle(ref)}
+                >
+                  Убрать
+                </Button>
+              </CardContent>
+            </Card>
           )
         })}
       </div>

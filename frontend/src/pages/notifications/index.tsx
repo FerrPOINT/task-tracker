@@ -14,7 +14,8 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Fieldset,
+import {
+  Fieldset,
   RadioGroup,
   PageHeader,
   Select,
@@ -28,11 +29,14 @@ import { Fieldset,
   CardHeader,
   CardTitle,
   ErrorState,
+  EmptyState,
+  LoadingState,
   Label,
   Notice,
+  PageNavigation,
 } from '@pdlc/ui/ui'
 
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check } from 'lucide-react'
 
 const PAGE_SIZE = 20
 
@@ -310,15 +314,13 @@ export function NotificationsPage() {
           )}
 
           {notificationsLoading ? (
-            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
-              {t('notifications.loading')}
-            </p>
+            <LoadingState message={t('notifications.loading')} />
           ) : notificationsError ? (
             <ErrorState message={t('common.error')} onRetry={() => void refetchNotifications()} />
           ) : visibleNotifications.length === 0 ? (
-            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
-              {showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}
-            </p>
+            <EmptyState
+              message={showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}
+            />
           ) : (
             <>
               <ResourceList asChild variant="bordered">
@@ -340,36 +342,17 @@ export function NotificationsPage() {
                 </ul>
               </ResourceList>
               {(page > 0 || hasNextPage) && (
-                <nav
-                  aria-label={t('notifications.pagination')}
-                  className="flex items-center justify-center gap-3 pt-1"
-                >
-                  <Button
-                    variant="outline"
-                    size="icon"
-
-                    aria-label={t('notifications.previousPage')}
-                    title={t('notifications.previousPage')}
-                    disabled={page === 0}
-                    onClick={() => updateListParams(showUnread, page - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-text-secondary">
-                    {t('notifications.page', { page: page + 1 })}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-
-                    aria-label={t('notifications.nextPage')}
-                    title={t('notifications.nextPage')}
-                    disabled={!hasNextPage}
-                    onClick={() => updateListParams(showUnread, page + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </nav>
+                <PageNavigation
+                  label={t('notifications.pagination')}
+                  compact
+                  page={page + 1}
+                  hasNext={hasNextPage}
+                  previousLabel={t('notifications.previousPage')}
+                  nextLabel={t('notifications.nextPage')}
+                  summary={t('notifications.page', { page: page + 1 })}
+                  onPageChange={(next) => updateListParams(showUnread, next - 1)}
+                  className="justify-center pt-1"
+                />
               )}
             </>
           )}
@@ -420,8 +403,10 @@ export function NotificationsPage() {
                   }
                   disabled={updateSettings.isPending}
                 />
-                <Fieldset className="border-t border-border pt-3" legend={t('notifications.eventsTitle')}>
-
+                <Fieldset
+                  className="border-t border-border pt-3"
+                  legend={t('notifications.eventsTitle')}
+                >
                   {NOTIFICATION_EVENTS.map((eventType) => (
                     <Checkbox
                       key={eventType}
