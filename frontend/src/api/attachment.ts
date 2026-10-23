@@ -1,3 +1,4 @@
+import { downloadBlob } from '@pdlc/ui/lib'
 import { api } from './client'
 import { apiBaseUrl, refreshAccessToken } from './client'
 import type { components } from './generated'
@@ -95,17 +96,5 @@ export async function downloadAttachment(a: Attachment): Promise<void> {
     })
   }
   if (!res.ok) throw new Error('download failed')
-  await saveDownload(a, res)
-}
-
-async function saveDownload(a: Attachment, res: Response): Promise<void> {
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = a.file_name
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  downloadBlob(await res.blob(), a.file_name)
 }

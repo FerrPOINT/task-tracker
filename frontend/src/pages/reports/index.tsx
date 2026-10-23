@@ -1,4 +1,5 @@
 import { Notice } from '@pdlc/ui/ui'
+import { downloadBlob } from '@pdlc/ui/lib'
 import {
   Table,
   TableHeader,
@@ -186,12 +187,7 @@ export function ReportsPage() {
           })
         : fetchIssueExport(projectKey, format),
     onSuccess: (file) => {
-      const url = URL.createObjectURL(file.blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = file.filename
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(file.blob, file.filename)
     },
     onError: (_error, request) => {
       setExportError(t('reports.exportError'))

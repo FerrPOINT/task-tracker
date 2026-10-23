@@ -55,6 +55,10 @@ describe('attachment api', () => {
 
     await downloadAttachment(attachment)
 
+    expect(vi.mocked(HTMLAnchorElement.prototype.click).mock.contexts[0]).toHaveProperty(
+      'download',
+      attachment.file_name,
+    )
     expect(refreshAccessToken).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock).toHaveBeenNthCalledWith(
