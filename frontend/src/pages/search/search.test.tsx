@@ -84,7 +84,7 @@ describe('SearchPage', () => {
     mockHooks()
     renderPage()
 
-    fireEvent.change(screen.getByRole('textbox', { name: /поиск задач|search issues/i }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: /поиск задач|search issues/i }), {
       target: { value: 'test' },
     })
     expect(screen.getByTestId('location')).toHaveTextContent('q=test')
@@ -97,7 +97,7 @@ describe('SearchPage', () => {
   it('runs JQL only on submit and keeps its draft until then', () => {
     mockHooks()
     renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'JQL' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'JQL' }))
     const input = screen.getByRole('textbox', { name: /например: project|for example: project/i })
     fireEvent.change(input, { target: { value: 'project = TT' } })
 
@@ -142,14 +142,14 @@ describe('SearchPage', () => {
   it('resets page on query or mode changes and clears hidden simple sorting', () => {
     mockHooks()
     renderPage('/search?page=3&sort=priority_desc')
-    fireEvent.change(screen.getByRole('textbox', { name: /поиск задач|search issues/i }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: /поиск задач|search issues/i }), {
       target: { value: 'new query' },
     })
     expect(screen.getByTestId('location')).not.toHaveTextContent('page=')
-    fireEvent.click(screen.getByRole('button', { name: 'JQL' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'JQL' }))
     expect(screen.getByTestId('location')).not.toHaveTextContent('page=')
     expect(screen.getByTestId('location')).not.toHaveTextContent('sort=')
-    fireEvent.click(screen.getByRole('button', { name: /простой|simple/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /простой|simple/i }))
     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }))
   })
 

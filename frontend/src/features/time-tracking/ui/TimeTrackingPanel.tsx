@@ -25,7 +25,13 @@ export function TimeTrackingPanel({
 
   return (
     <div className="space-y-3">
-      <Progress value={timeSpentSeconds} max={estimate || 1} variant={progressVariant} />
+      <Progress
+        value={timeSpentSeconds}
+        max={estimate || 1}
+        variant={progressVariant}
+        aria-label={`${t('timeTracking.spent')} / ${t('timeTracking.estimated')}`}
+        aria-valuetext={`${formatDuration(timeSpentSeconds)} / ${estimate > 0 ? formatDuration(estimate) : '-'}`}
+      />
       <div
         className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary"
         data-testid="time-tracking-summary"
@@ -51,7 +57,7 @@ export function TimeTrackingPanel({
           </span>
         )}
       </div>
-      <Button variant="secondary" size="sm" className="h-10 w-full xl:h-8" onClick={onLogWork}>
+      <Button variant="secondary" size="sm" className="w-full" onClick={onLogWork}>
         {t('timeTracking.logWork')}
       </Button>
     </div>

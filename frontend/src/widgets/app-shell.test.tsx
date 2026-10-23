@@ -433,51 +433,58 @@ describe('AppShell notifications', () => {
     expect(await screen.findByText(/нет уведомлений|no notifications yet/i)).toBeInTheDocument()
   })
 
-  it('shows unread notifications and invokes mark-read and mark-all actions', async () => {
-    const user = userEvent.setup()
-    const markRead = vi.fn()
-    const markAll = vi.fn()
-    mockHooks(
-      [
-        {
-          id: 'notification-1',
-          title: 'Issue updated',
-          body: 'TT-12 has moved to done',
-          is_read: false,
-          action_url: '/issues/12',
-          created_at: '2026-08-24T10:00:00Z',
-        },
-      ],
-      12,
-    )
-    useMarkNotificationRead.mockReturnValue({ mutate: markRead })
-    useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
+  it.each([12, 1200])(
+    'shows %i unread notifications and invokes mark-read and mark-all actions',
+    async (count) => {
+      const user = userEvent.setup()
+      const markRead = vi.fn()
+      const markAll = vi.fn()
+      mockHooks(
+        [
+          {
+            id: 'notification-1',
+            title: 'Issue updated',
+            body: 'TT-12 has moved to done',
+            is_read: false,
+            action_url: '/issues/12',
+            created_at: '2026-08-24T10:00:00Z',
+          },
+        ],
+        count,
+      )
+      useMarkNotificationRead.mockReturnValue({ mutate: markRead })
+      useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
 
-    render(
-      <ThemeProvider>
-        <MemoryRouter>
-          <AppShell />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
+      render(
+        <ThemeProvider>
+          <MemoryRouter>
+            <AppShell />
+          </MemoryRouter>
+        </ThemeProvider>,
+      )
 
-    const trigger = screen.getByTestId('notification-trigger')
-    expect(trigger).toHaveTextContent('12')
-    await user.click(trigger)
+      const trigger = screen.getByTestId('notification-trigger')
+      expect(trigger).toHaveTextContent(String(count))
+      expect(markRead).not.toHaveBeenCalled()
+      expect(markAll).not.toHaveBeenCalled()
+      await user.click(trigger)
 
-    expect(await screen.findByText('Issue updated')).toBeInTheDocument()
-    await user.click(screen.getByRole('menuitem', { name: /отметить прочитанным: Issue updated/i }))
-    expect(markRead).toHaveBeenCalledWith('notification-1')
+      expect(await screen.findByText('Issue updated')).toBeInTheDocument()
+      await user.click(
+        screen.getByRole('menuitem', { name: /отметить прочитанным: Issue updated/i }),
+      )
+      expect(markRead).toHaveBeenCalledWith('notification-1')
 
-    await user.click(trigger)
-    await user.click(screen.getByRole('menuitem', { name: /прочитать все|mark all as read/i }))
-    await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
-    await user.click(trigger)
-    const viewAllLink = screen.getByRole('menuitem', {
-      name: /все уведомления|view all notifications/i,
-    })
-    expect(viewAllLink).toHaveAttribute('href', '/notifications')
-  })
+      await user.click(trigger)
+      await user.click(screen.getByRole('menuitem', { name: /прочитать все|mark all as read/i }))
+      await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
+      await user.click(trigger)
+      const viewAllLink = screen.getByRole('menuitem', {
+        name: /все уведомления|view all notifications/i,
+      })
+      expect(viewAllLink).toHaveAttribute('href', '/notifications')
+    },
+  )
   it('uses the current administrator role independently of the historical user flag', async () => {
     accessActor.role = 'admin'
     mockHooks([])

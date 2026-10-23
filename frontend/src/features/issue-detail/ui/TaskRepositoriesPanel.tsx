@@ -5,8 +5,14 @@ import {
   LoadingState,
   Button,
   usePlatformServices,
+  Card,
+  CardContent,
+  SectionHeader,
+  Notice,
+  FormField,
+  PageNavigation,
 } from '@pdlc/ui/ui'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -22,6 +28,7 @@ export function TaskRepositoriesPanel({
   projectKey: string
 }) {
   const { ref, query: context } = useNamespaceContext()
+  const repositoryField = useId()
   const { search } = useLocation()
   const { services } = usePlatformServices()
   const cache = useQueryClient()
@@ -107,222 +114,209 @@ export function TaskRepositoriesPanel({
   const forge = services.find((service) => service.key === 'ci-cd')?.ui_url
   const fleet = services.find((service) => service.key === 'fleet-control')?.ui_url
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
-      <h2 className="font-semibold">Репозитории проекта</h2>
-      {fleet && (
-        <p>
-          <a
-            className="text-accent"
-            href={withNamespaceLocation(
-              `${fleet}/chats?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
-              ref,
-            )}
-          >
-            Чаты Fleet с контекстом задачи
-          </a>
-        </p>
-      )}
-      {linked.isPending ? (
-        <LoadingState message="Загружаем связи…" />
-      ) : linked.isError ? (
-        <p role="alert" className="text-danger">
-          Связи репозиториев недоступны.
-        </p>
-      ) : (
-        <ResourceList asChild>
-          <ul>
-            {linked.data?.map((repository) => (
-              <ResourceListRow
-                asChild
-                key={`${repository.forge_instance_id}/${repository.repository_id}`}
+    <Card asChild>
+      <section>
+        <CardContent className="space-y-3">
+          <SectionHeader title="Репозитории проекта" />
+          {fleet && (
+            <p>
+              <a
+                className="text-accent"
+                href={withNamespaceLocation(
+                  `${fleet}/chats?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
+                  ref,
+                )}
               >
-                <li>
-                  {forge ? (
-                    <a
-                      className="text-accent"
-                      href={withNamespaceLocation(
-                        `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
-                        ref,
-                        search,
-                      )}
-                    >
-                      {repository.public_name}
-                    </a>
-                  ) : (
-                    repository.public_name
-                  )}
-                </li>
-              </ResourceListRow>
-            ))}
-            {linked.data?.length === 0 && (
-              <ResourceListRow asChild>
-                <li className="text-text-muted">
-                  {linkedOffset === 0
-                    ? 'Репозитории пока не указаны.'
-                    : 'На этой странице связей нет.'}
-                </li>
-              </ResourceListRow>
-            )}
-          </ul>
-        </ResourceList>
-      )}
-      {(linkedOffset > 0 || (!linked.isError && (linked.data?.length ?? 0) === 100)) && (
-        <div className="flex gap-2" aria-label="Страницы связей проекта">
-          <Button
-            variant="outline"
-            disabled={linked.isFetching || linkedOffset === 0}
-            onClick={() => setLinkedPage({ scope, offset: Math.max(0, linkedOffset - 100) })}
-          >
-            Предыдущие связи
-          </Button>
-          <Button
-            variant="outline"
-            disabled={linked.isFetching || linked.isError || (linked.data?.length ?? 0) < 100}
-            onClick={() => setLinkedPage({ scope, offset: linkedOffset + 100 })}
-          >
-            Следующие связи
-          </Button>
-        </div>
-      )}
-      {context.data?.binding.state === 'active' && (
-        <div className="space-y-3">
-          {available.isError ? (
-            <p role="alert" className="text-danger">
-              Каталог Forge недоступен. Сохранённые связи остаются выше.
+                Чаты Fleet с контекстом задачи
+              </a>
             </p>
+          )}
+          {linked.isPending ? (
+            <LoadingState message="Загружаем связи…" />
+          ) : linked.isError ? (
+            <Notice role="alert" tone="danger" appearance="inline">
+              Связи репозиториев недоступны.
+            </Notice>
           ) : (
-            <>
-              <label className="block text-sm">
-                Добавить репозиторий
-                <Select
-                  className="mt-2 w-full"
-                  value={selected}
-                  onValueChange={(nextValue) => setSelected(nextValue)}
-                  options={[
-                    { value: '', label: 'Выберите репозиторий' },
-                    ...(available.data?.map((repository) => ({
-                      value: String(`${repository.forge_instance_id}/${repository.repository_id}`),
-                      label: String(repository.public_name),
-                    })) ?? []),
-                  ]}
-                />
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  disabled={offset === 0}
-                  onClick={() => {
-                    setOffset(Math.max(0, offset - 50))
-                    setSelected('')
-                  }}
-                >
-                  Назад
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={(available.data?.length ?? 0) < 50}
-                  onClick={() => {
-                    setOffset(offset + 50)
-                    setSelected('')
-                  }}
-                >
-                  Далее
-                </Button>
-                <Button disabled={busy || !selected} onClick={() => void link()}>
-                  Связать
-                </Button>
-              </div>
-            </>
-          )}
-          {error && (
-            <p role="alert" className="text-danger">
-              {error}
-            </p>
-          )}
-        </div>
-      )}
-      <div className="space-y-3 border-t border-border pt-3">
-        <h3 className="font-medium">PR, коммиты и проверки</h3>
-        {evidence.isPending ? (
-          <p role="status">Читаем свидетельства…</p>
-        ) : evidence.isError ? (
-          <p role="alert" className="text-danger">
-            Свидетельства Forge недоступны.
-          </p>
-        ) : evidence.data?.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.
-          </p>
-        ) : (
-          evidence.data?.map((item) => (
-            <article
-              key={item.pull_request_id}
-              className="space-y-2 rounded-md border border-border p-3"
-            >
-              <p>
-                {forge ? (
-                  <a
-                    className="text-accent"
-                    href={withNamespaceLocation(
-                      `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
-                      ref,
-                      search,
-                    )}
+            <ResourceList asChild>
+              <ul>
+                {linked.data?.map((repository) => (
+                  <ResourceListRow
+                    asChild
+                    key={`${repository.forge_instance_id}/${repository.repository_id}`}
                   >
-                    #{item.number} {item.title}
-                  </a>
-                ) : (
-                  item.title
-                )}{' '}
-                · {item.status}
-              </p>
-              <p className="break-all text-xs text-text-muted">
-                Коммиты: {item.commits.join(', ')}
-              </p>
-              <ul className="space-y-1 text-sm">
-                {item.checks.map((check) => (
-                  <li key={check.pipeline_id}>
-                    {forge ? (
-                      <a
-                        className="text-accent"
-                        href={withNamespaceLocation(
-                          `${forge}/pipelines/${check.pipeline_id}`,
-                          ref,
-                          search,
-                        )}
-                      >
-                        CI · {check.status}
-                      </a>
-                    ) : (
-                      check.status
-                    )}
-                    <span className="ml-2 font-mono text-xs">{check.commit_sha.slice(0, 12)}</span>
-                  </li>
+                    <li>
+                      {forge ? (
+                        <a
+                          className="text-accent"
+                          href={withNamespaceLocation(
+                            `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
+                            ref,
+                            search,
+                          )}
+                        >
+                          {repository.public_name}
+                        </a>
+                      ) : (
+                        repository.public_name
+                      )}
+                    </li>
+                  </ResourceListRow>
                 ))}
-                {item.checks.length === 0 && (
-                  <li className="text-text-muted">Проверок этих коммитов пока нет.</li>
+                {linked.data?.length === 0 && (
+                  <ResourceListRow asChild>
+                    <li className="text-text-muted">
+                      {linkedOffset === 0
+                        ? 'Репозитории пока не указаны.'
+                        : 'На этой странице связей нет.'}
+                    </li>
+                  </ResourceListRow>
                 )}
               </ul>
-            </article>
-          ))
-        )}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            disabled={evidenceOffset === 0}
-            onClick={() => setEvidenceOffset(Math.max(0, evidenceOffset - 10))}
-          >
-            Назад
-          </Button>
-          <Button
-            variant="outline"
-            disabled={(evidence.data?.length ?? 0) < 10}
-            onClick={() => setEvidenceOffset(evidenceOffset + 10)}
-          >
-            Далее
-          </Button>
-        </div>
-      </div>
-    </section>
+            </ResourceList>
+          )}
+          {(linkedOffset > 0 || (!linked.isError && (linked.data?.length ?? 0) === 100)) && (
+            <PageNavigation
+              label="Страницы связей проекта"
+              page={linkedOffset / 100 + 1}
+              hasNext={!linked.isError && (linked.data?.length ?? 0) >= 100}
+              pending={linked.isFetching}
+              previousLabel="Предыдущие связи"
+              nextLabel="Следующие связи"
+              onPageChange={(page) => setLinkedPage({ scope, offset: (page - 1) * 100 })}
+            />
+          )}
+          {context.data?.binding.state === 'active' && (
+            <div className="space-y-3">
+              {available.isError ? (
+                <Notice role="alert" tone="danger" appearance="inline">
+                  Каталог Forge недоступен. Сохранённые связи остаются выше.
+                </Notice>
+              ) : (
+                <>
+                  <FormField id={repositoryField} label="Добавить репозиторий">
+                    {(attrs) => (
+                      <Select
+                        {...attrs}
+                        className="w-full"
+                        value={selected}
+                        onValueChange={(nextValue) => setSelected(nextValue)}
+                        options={[
+                          { value: '', label: 'Выберите репозиторий' },
+                          ...(available.data?.map((repository) => ({
+                            value: String(
+                              `${repository.forge_instance_id}/${repository.repository_id}`,
+                            ),
+                            label: String(repository.public_name),
+                          })) ?? []),
+                        ]}
+                      />
+                    )}
+                  </FormField>
+                  <div className="flex flex-wrap gap-2">
+                    <PageNavigation
+                      label="Страницы каталога Forge"
+                      page={offset / 50 + 1}
+                      hasNext={(available.data?.length ?? 0) >= 50}
+                      previousLabel="Назад"
+                      nextLabel="Далее"
+                      onPageChange={(page) => {
+                        setOffset((page - 1) * 50)
+                        setSelected('')
+                      }}
+                    />
+                    <Button disabled={busy || !selected} onClick={() => void link()}>
+                      Связать
+                    </Button>
+                  </div>
+                </>
+              )}
+              {error && (
+                <Notice role="alert" tone="danger" appearance="inline">
+                  {error}
+                </Notice>
+              )}
+            </div>
+          )}
+          <div className="space-y-3 border-t border-border pt-3">
+            <SectionHeader level={3} title="PR, коммиты и проверки" />
+            {evidence.isPending ? (
+              <LoadingState message="Читаем свидетельства…" />
+            ) : evidence.isError ? (
+              <Notice role="alert" tone="danger" appearance="inline">
+                Свидетельства Forge недоступны.
+              </Notice>
+            ) : evidence.data?.length === 0 ? (
+              <p className="text-sm text-text-muted">
+                Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.
+              </p>
+            ) : (
+              evidence.data?.map((item) => (
+                <Card asChild key={item.pull_request_id}>
+                  <article>
+                    <CardContent className="space-y-2">
+                      <p>
+                        {forge ? (
+                          <a
+                            className="text-accent"
+                            href={withNamespaceLocation(
+                              `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
+                              ref,
+                              search,
+                            )}
+                          >
+                            #{item.number} {item.title}
+                          </a>
+                        ) : (
+                          item.title
+                        )}{' '}
+                        · {item.status}
+                      </p>
+                      <p className="break-all text-xs text-text-muted">
+                        Коммиты: {item.commits.join(', ')}
+                      </p>
+                      <ul className="space-y-1 text-sm">
+                        {item.checks.map((check) => (
+                          <li key={check.pipeline_id}>
+                            {forge ? (
+                              <a
+                                className="text-accent"
+                                href={withNamespaceLocation(
+                                  `${forge}/pipelines/${check.pipeline_id}`,
+                                  ref,
+                                  search,
+                                )}
+                              >
+                                CI · {check.status}
+                              </a>
+                            ) : (
+                              check.status
+                            )}
+                            <span className="ml-2 font-mono text-xs">
+                              {check.commit_sha.slice(0, 12)}
+                            </span>
+                          </li>
+                        ))}
+                        {item.checks.length === 0 && (
+                          <li className="text-text-muted">Проверок этих коммитов пока нет.</li>
+                        )}
+                      </ul>
+                    </CardContent>
+                  </article>
+                </Card>
+              ))
+            )}
+            <PageNavigation
+              label="Страницы свидетельств Forge"
+              page={evidenceOffset / 10 + 1}
+              hasNext={(evidence.data?.length ?? 0) >= 10}
+              previousLabel="Назад"
+              nextLabel="Далее"
+              onPageChange={(page) => setEvidenceOffset((page - 1) * 10)}
+            />
+          </div>
+        </CardContent>
+      </section>
+    </Card>
   )
 }

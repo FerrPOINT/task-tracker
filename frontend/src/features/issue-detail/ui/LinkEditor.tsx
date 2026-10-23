@@ -1,4 +1,14 @@
-import { Select, ResourceList, ResourceListRow, Button, Input, toast } from '@pdlc/ui/ui'
+import {
+  TextLink,
+  SectionHeader,
+  Select,
+  ResourceList,
+  ResourceListRow,
+  Button,
+  Input,
+  toast,
+  Notice,
+} from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
@@ -32,10 +42,15 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
 
   return (
     <div className="space-y-2" data-testid="link-editor">
-      <h3 className="flex items-center gap-2 text-sm font-semibold">
-        <Link2 className="h-4 w-4" aria-hidden />
-        {t('links.title')}
-      </h3>
+      <SectionHeader
+        level={3}
+        title={
+          <>
+            <Link2 className="h-4 w-4" aria-hidden />
+            {t('links.title')}
+          </>
+        }
+      />
 
       {links.length > 0 && (
         <ResourceList asChild>
@@ -52,15 +67,15 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                   <li className="flex items-center justify-between gap-2 text-sm">
                     <span className="min-w-0 break-words">
                       <span className="text-muted-foreground">{label}</span>{' '}
-                      <Link
-                        to={`/issues/${otherId}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        {otherKey}
-                      </Link>
+                      <TextLink asChild>
+                        <Link to={`/issues/${otherId}`} className="font-medium">
+                          {otherKey}
+                        </Link>
+                      </TextLink>
                     </span>
                     <Button
-                      variant="ghost"
+                      size="icon"
+                      variant="destructive-outline"
                       type="button"
                       aria-label={t('links.delete', { key: otherKey })}
                       onClick={() =>
@@ -69,7 +84,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                           onError: (error) => toast.error(error.message),
                         })
                       }
-                      className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      className="shrink-0"
                     >
                       <X className="h-3.5 w-3.5" aria-hidden />
                     </Button>
@@ -89,7 +104,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
             onChange={(e) => setTargetKey(e.target.value)}
             aria-label={t('links.targetKey')}
             placeholder={currentKey ? `${currentKey.split('-')[0]}-42` : 'TT-42'}
-            className="min-h-10 min-w-0 flex-1 text-xs sm:w-32 sm:flex-none"
+            className="min-w-0 flex-1 text-xs sm:w-32 sm:flex-none"
             data-testid="link-target-input"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -113,7 +128,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           <Button
             type="button"
             size="sm"
-            className="h-10 xl:h-8"
+
             onClick={() => void onAdd()}
             disabled={create.isPending || !targetKey.trim()}
             data-testid="link-submit"
@@ -121,9 +136,9 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
             {create.isPending ? t('common.saving') : t('links.submit')}
           </Button>
           {error && (
-            <p role="alert" className="w-full text-xs text-destructive">
+            <Notice role="alert" className="w-full" tone="danger" appearance="inline">
               {error}
-            </p>
+            </Notice>
           )}
         </div>
       ) : (
@@ -131,7 +146,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 px-2 text-xs xl:h-8"
+          className="px-2 text-xs"
           onClick={() => setAdding(true)}
         >
           <Plus className="mr-1 h-3 w-3" aria-hidden />

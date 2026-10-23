@@ -1,6 +1,13 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
+  RadioGroup,
+  TextLink,
+  Card,
+  CardContent,
+  CardHeader,
+  Badge,
+  PageHeader,
   ProjectAvatar,
   Button,
   DropdownMenu,
@@ -57,61 +64,60 @@ function IssueCard({
   }
 
   return (
-    <article
-      draggable
-      onDragStart={handleDragStart}
-      className={`cursor-grab rounded-md border border-border bg-surface-raised hover:border-border-strong active:cursor-grabbing ${
-        compact ? 'p-2' : 'p-2 md:p-3'
-      }`}
-    >
-      <div className="flex items-start gap-2">
-        <Link
-          to={`/issues/${issue.id}`}
-          className="min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-        >
-          <div className="text-xs text-text-muted">{issue.key}</div>
-          <div
-            className={`${compact ? 'my-0.5' : 'my-0.5 md:my-1'} break-words text-sm font-medium`}
-          >
-            {issue.summary}
+    <Card asChild surface="raised">
+      <article draggable onDragStart={handleDragStart}>
+        <CardContent density={compact ? 'compact' : 'default'}>
+          <div className="flex items-start gap-2">
+            <TextLink asChild className="min-w-0 flex-1">
+              <Link to={`/issues/${issue.id}`}>
+                <div className="text-xs text-text-muted">{issue.key}</div>
+                <div
+                  className={`${compact ? 'my-0.5' : 'my-0.5 md:my-1'} break-words text-sm font-medium`}
+                >
+                  {issue.summary}
+                </div>
+              </Link>
+            </TextLink>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  aria-label={`Изменить статус ${issue.key}`}
+                  disabled={isMoving}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {destinations.length > 0 ? (
+                  destinations.map((status) => (
+                    <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
+                      {t('board.moveTo', { status: statusLabel(status.name, t) })}
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        </Link>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 shrink-0"
-              aria-label={`Изменить статус ${issue.key}`}
-              disabled={isMoving}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            {destinations.length > 0 ? (
-              destinations.map((status) => (
-                <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
-                  {t('board.moveTo', { status: statusLabel(status.name, t) })}
-                </DropdownMenuItem>
-              ))
-            ) : (
-              <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <PriorityBadge priority={issue.priority} />
-          <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
-          </span>
-        </div>
-        <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
-      </div>
-    </article>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <PriorityBadge priority={issue.priority} />
+              <Badge tone="muted">
+                {t(`issueType.${issue.issue_type.toLowerCase()}`, {
+                  defaultValue: issue.issue_type,
+                })}
+              </Badge>
+            </div>
+            <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
+          </div>
+        </CardContent>
+      </article>
+    </Card>
   )
 }
 
@@ -208,81 +214,64 @@ export function ProjectBoardPage() {
 
   return (
     <div className="min-w-0">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex min-w-0 items-center gap-2 truncate text-lg font-bold sm:text-xl">
-            <ProjectAvatar projectKey={key ?? ''} />
-            {t('board.title', { projectName: key, sprintName: sprint?.name ?? t('board.backlog') })}
-          </h1>
-          <div className="text-sm text-text-muted">
-            {t('board.subtitle', {
-              backlog: board.backlog_total,
-              remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
-            })}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="hidden grid-cols-2 rounded-md border border-border bg-surface p-1 md:inline-grid"
-            role="group"
-            aria-label={t('board.density')}
-          >
-            {(['comfortable', 'compact'] as const).map((option) => (
+      <div className="mb-4">
+        <PageHeader
+          title={t('board.title', {
+            projectName: key,
+            sprintName: sprint?.name ?? t('board.backlog'),
+          })}
+          leading={<ProjectAvatar projectKey={key ?? ''} />}
+          context={t('board.subtitle', {
+            backlog: board.backlog_total,
+            remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
+          })}
+          actions={
+            <>
+              <div className="hidden md:block">
+                <RadioGroup
+                  appearance="segmented"
+                  label={t('board.density')}
+                  value={density}
+                  onValueChange={(value) => setDensity(value as 'comfortable' | 'compact')}
+                  options={(['comfortable', 'compact'] as const).map((value) => ({
+                    value,
+                    label: t(`board.density${value === 'compact' ? 'Compact' : 'Comfortable'}`),
+                  }))}
+                />
+              </div>
               <Button
-                variant="ghost"
-                key={option}
-                type="button"
-                aria-pressed={density === option}
-                onClick={() => setDensity(option)}
-                className={`min-h-10 rounded px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
-                  density === option
-                    ? 'bg-surface-raised text-text-primary shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                asChild
+                aria-label={t('board.backlog')}
               >
-                {t(`board.density${option === 'compact' ? 'Compact' : 'Comfortable'}`)}
+                <Link to={`/projects/${key}/backlog`}>
+                  <List className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t('board.backlog')}</span>
+                </Link>
               </Button>
-            ))}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            asChild
-            aria-label={t('board.backlog')}
-          >
-            <Link to={`/projects/${key}/backlog`}>
-              <List className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('board.backlog')}</span>
-            </Link>
-          </Button>
-        </div>
+            </>
+          }
+        />
       </div>
 
-      <div
-        className="mb-3 grid grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1 md:hidden"
-        aria-label="Статус задач"
-      >
-        {columns.map((column) => (
-          <Button
-            variant="ghost"
-            key={column.id}
-            type="button"
-            aria-pressed={activeColumnId === column.id}
-            onClick={() => {
-              const next = new URLSearchParams(searchParams)
-              next.set('status', column.id)
-              setSearchParams(next, { replace: true })
-            }}
-            className={`min-h-10 min-w-0 rounded px-2 text-sm font-medium ${
-              activeColumnId === column.id
-                ? 'bg-accent text-accent-foreground'
-                : 'text-text-secondary hover:bg-surface-raised'
-            }`}
-          >
-            <span className="block truncate">{statusLabel(column.name, t)}</span>
-          </Button>
-        ))}
+      <div className="mb-3 md:hidden">
+        <RadioGroup
+          appearance="segmented"
+          className="w-full"
+          label="Статус задач"
+          value={activeColumnId}
+          onValueChange={(value) => {
+            const next = new URLSearchParams(searchParams)
+            next.set('status', value)
+            setSearchParams(next, { replace: true })
+          }}
+          options={columns.map((column) => ({
+            value: column.id,
+            label: statusLabel(column.name, t),
+          }))}
+        />
       </div>
 
       <div
@@ -299,20 +288,15 @@ export function ProjectBoardPage() {
           const overLimit = wipLimit !== null && colIssues.length >= wipLimit
           const isDropTarget = dropTarget === column.id && drag.dragging
           return (
-            <div
+            <Card
               key={column.id}
+              highlighted={isDropTarget}
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDrop={(e) => handleDrop(e, column.id)}
               onDragLeave={handleDragLeave}
-              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col rounded-lg border bg-surface transition-colors md:flex ${
-                isDropTarget ? 'border-accent ring-1 ring-accent' : 'border-border'
-              }`}
+              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
             >
-              <div
-                className={`flex items-center justify-between border-b border-border ${
-                  density === 'compact' ? 'p-2' : 'p-2 md:p-3'
-                }`}
-              >
+              <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">
                     {statusLabel(column.name, t)}
@@ -322,11 +306,12 @@ export function ProjectBoardPage() {
                     {overLimit && <span className="ml-1 text-danger">{t('board.wipWarning')}</span>}
                   </div>
                 </div>
-              </div>
+              </CardHeader>
 
-              <div
+              <CardContent
+                density="compact"
                 className={`min-h-24 flex-1 ${
-                  density === 'compact' ? 'space-y-1 p-1.5' : 'space-y-1 p-1.5 md:space-y-2 md:p-2'
+                  density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-2'
                 }`}
               >
                 {colIssues.map((issue) => (
@@ -348,17 +333,17 @@ export function ProjectBoardPage() {
                     {t('board.emptyStatus')}
                   </p>
                 )}
-              </div>
+              </CardContent>
 
               <CreateTaskAction
                 projectKey={key}
                 aria-label={t('board.create')}
-                variant="ghost"
-                className={`${density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'} flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary`}
+                variant="dashed"
+                className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
               >
                 {t('board.create')}
               </CreateTaskAction>
-            </div>
+            </Card>
           )
         })}
       </div>

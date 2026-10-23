@@ -8,7 +8,7 @@ import {
   useWatchIssue,
   useUnwatchIssue,
 } from '@/shared/api/hooks'
-import { Button, ErrorState, UserAvatar } from '@pdlc/ui/ui'
+import { Badge, Button, ErrorState, UserAvatar } from '@pdlc/ui/ui'
 
 type IssueEngagementPanelProps = {
   issueId: string
@@ -66,7 +66,6 @@ export function IssueEngagementPanel({
           type="button"
           variant={hasVoted ? 'secondary' : 'outline'}
           size="sm"
-          className="h-10 xl:h-8"
           disabled={
             !currentUserId ||
             cannotAddVote ||
@@ -107,9 +106,9 @@ export function IssueEngagementPanel({
                   </span>
                 ))}
                 {hiddenWatchers > 0 && (
-                  <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  <Badge tone="muted" className="ml-1">
                     +{hiddenWatchers}
-                  </span>
+                  </Badge>
                 )}
               </div>
             ) : (
@@ -121,7 +120,6 @@ export function IssueEngagementPanel({
           type="button"
           variant={isWatching ? 'secondary' : 'outline'}
           size="sm"
-          className="h-10 xl:h-8"
           disabled={
             !currentUserId ||
             watchersQuery.isPending ||

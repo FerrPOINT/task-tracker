@@ -136,19 +136,19 @@ describe('AdminPage', () => {
     },
   )
 
-  it('keeps primary targets at 44 px on mobile and 40 px on larger screens', () => {
+  it('uses the common sizing contracts for tabs, inputs and primary actions', () => {
     renderPage()
 
     for (const tab of screen.getAllByRole('tab')) {
-      expect(tab).toHaveClass('min-h-11', 'sm:min-h-10')
+      expect(tab).toHaveClass('base-control', 'base-tabs-trigger')
     }
     expect(screen.getByLabelText(/ключ настройки|setting key/i)).toHaveClass(
-      'min-h-11',
-      'sm:min-h-10',
+      'base-control',
+      'base-input',
     )
     expect(screen.getByRole('button', { name: /сохранить настройку|save setting/i })).toHaveClass(
-      'min-h-11',
-      'sm:min-h-10',
+      'base-control',
+      'base-button',
     )
   })
 
@@ -257,7 +257,7 @@ describe('AdminPage', () => {
 
     await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
     const loadMore = screen.getByRole('button', { name: /загрузить ещё|load more/i })
-    expect(loadMore).toHaveClass('min-h-11', 'sm:min-h-10')
+    expect(loadMore).toHaveClass('base-control', 'base-button')
     await user.click(loadMore)
     expect(useAdminAuditLog).toHaveBeenLastCalledWith(40)
   })

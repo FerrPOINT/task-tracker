@@ -2,6 +2,15 @@ import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
   ProjectAvatar,
+  PageHeader,
+  PageNavigation,
+  CardContent,
+  Card,
+  CardHeader,
+  SectionHeader,
+  ResourceList,
+  ResourceListRow,
+  EmptyState,
   Button,
   ErrorState,
   LoadingState,
@@ -37,24 +46,26 @@ type Issue = components['schemas']['IssueResponse']
 
 function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (
-    <div className="group flex min-w-0 items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+    <div className="group flex min-w-0 items-center gap-2">
+      <ResourceListRow asChild interactive>
         <Link
           to={`/issues/${issue.id}`}
           title={issue.summary}
-          className="flex min-h-10 min-w-0 flex-1 flex-col justify-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:flex-row sm:items-center sm:gap-3"
+          className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3"
         >
-          <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
-          <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
-            {issue.summary}
+          <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+            <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
+            <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
+              {issue.summary}
+            </span>
+          </span>
+          <span className="flex items-center gap-2 sm:shrink-0">
+            <PriorityBadge priority={issue.priority} />
+            <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
           </span>
         </Link>
-        <div className="flex items-center gap-2 sm:shrink-0">
-          <PriorityBadge priority={issue.priority} />
-          <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
-        </div>
-      </div>
-      <div className="shrink-0">{action}</div>
+      </ResourceListRow>
+      <div className="mr-3 shrink-0">{action}</div>
     </div>
   )
 }
@@ -83,7 +94,7 @@ function MoveIssueAction({
         <Button
           variant="ghost"
           size="icon"
-          className="h-10 w-10"
+
           aria-label={t('backlog.issueActions', { key: issue.key })}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -133,7 +144,7 @@ function MoveIssueAction({
   )
 }
 
-function Section<T extends Issue>({
+function BacklogSection({
   title,
   action,
   items,
@@ -142,23 +153,22 @@ function Section<T extends Issue>({
 }: {
   title: string
   action?: React.ReactNode
-  items: T[]
-  renderItem: (item: T) => React.ReactNode
+  items: Issue[]
+  renderItem: (item: Issue) => React.ReactNode
   emptyText?: string
 }) {
   return (
-    <div className="mb-5">
-      <div className="flex flex-col gap-2 rounded-t-lg border border-border bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-        <span className="font-semibold">{title}</span>
-        {action}
-      </div>
-      <div className="rounded-b-lg border-x border-b border-border bg-surface">
-        {items.length === 0 && emptyText && (
-          <div className="px-3 py-6 text-center text-sm text-text-muted">{emptyText}</div>
-        )}
-        {items.map(renderItem)}
-      </div>
-    </div>
+    <Card asChild className="mb-5">
+      <section aria-label={title}>
+        <CardHeader>
+          <SectionHeader title={title} actions={action} />
+        </CardHeader>
+        <ResourceList>
+          {items.length === 0 && emptyText && <EmptyState message={emptyText} />}
+          {items.map(renderItem)}
+        </ResourceList>
+      </section>
+    </Card>
   )
 }
 
@@ -260,13 +270,11 @@ export function ProjectBacklogPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold sm:text-2xl">
-            <ProjectAvatar projectKey={key ?? ''} />
-            {t('backlog.title', { projectName: key })}
-          </h1>
-          <div className="text-sm text-text-muted">
+      <PageHeader
+        title={t('backlog.title', { projectName: key })}
+        leading={<ProjectAvatar projectKey={key ?? ''} />}
+        context={
+          <>
             {t('backlog.velocity', { velocity: activeSprint.velocity ?? '-' })} ·{' '}
             {t('backlog.backlogCount', { count: backlogTotal })}
             {hasNext &&
@@ -275,26 +283,27 @@ export function ProjectBacklogPage() {
                 to: currentOffset + backlog_issues.length,
                 total: backlogTotal,
               })}`}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="min-h-10 gap-1 sm:min-h-10" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            {t('backlog.createSprint')}
-          </Button>
-          <CreateTaskAction
-            projectKey={key}
-            aria-label={t('backlog.createIssue')}
-            variant="outline"
-            size="sm"
-            className="min-h-10 gap-1 sm:min-h-10"
-          >
-            <span>{t('backlog.createIssue')}</span>
-          </CreateTaskAction>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              {t('backlog.createSprint')}
+            </Button>
+            <CreateTaskAction
+              projectKey={key}
+              aria-label={t('backlog.createIssue')}
+              variant="outline"
+              size="sm"
+            >
+              <span>{t('backlog.createIssue')}</span>
+            </CreateTaskAction>
+          </>
+        }
+      />
 
-      <Section
+      <BacklogSection
         title={
           hasActiveSprint
             ? t('backlog.activeSprint', {
@@ -309,21 +318,21 @@ export function ProjectBacklogPage() {
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="min-h-10 px-2.5 text-xs sm:min-h-10"
+
                 onClick={() => startSprint.mutate(activeSprint.id)}
                 disabled={activeFromList?.state === 'active'}
               >
-                <Play className="mr-1 h-3 w-3" />
+                <Play className="h-3 w-3" />
                 {t('backlog.startSprint')}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                className="min-h-10 px-2.5 text-xs sm:min-h-10"
+
                 onClick={() => closeSprint.mutate(activeSprint.id)}
                 disabled={activeFromList?.state !== 'active'}
               >
-                <CheckCircle2 className="mr-1 h-3 w-3" />
+                <CheckCircle2 className="h-3 w-3" />
                 {t('backlog.closeSprint')}
               </Button>
               <DropdownMenu>
@@ -331,7 +340,7 @@ export function ProjectBacklogPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="min-h-10 min-w-10 sm:min-h-10 sm:min-w-10"
+
                     aria-label={t('common.edit')}
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -367,17 +376,17 @@ export function ProjectBacklogPage() {
       />
 
       {futureSprints.map((sprint) => (
-        <Section
+        <BacklogSection
           key={sprint.id}
           title={t('backlog.futureSprint', { name: sprint.name })}
           action={
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="min-h-10 px-2.5 text-xs sm:min-h-10"
+
                 onClick={() => startSprint.mutate(sprint.id)}
               >
-                <Play className="mr-1 h-3 w-3" />
+                <Play className="h-3 w-3" />
                 {t('backlog.startSprint')}
               </Button>
               <DropdownMenu>
@@ -385,7 +394,7 @@ export function ProjectBacklogPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="min-h-10 min-w-10 sm:min-h-10 sm:min-w-10"
+
                     aria-label={t('common.edit')}
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -420,15 +429,10 @@ export function ProjectBacklogPage() {
         />
       ))}
 
-      <Section
+      <BacklogSection
         title={t('backlog.backlogSection', { count: backlog_issues.length })}
         action={
-          <CreateTaskAction
-            projectKey={key}
-            variant="outline"
-            size="sm"
-            className="min-h-10 px-2.5 text-xs sm:min-h-10"
-          >
+          <CreateTaskAction projectKey={key} variant="outline" size="sm">
             {t('navigation.create')}
           </CreateTaskAction>
         }
@@ -451,33 +455,30 @@ export function ProjectBacklogPage() {
       />
 
       {(hasPrev || hasNext) && (
-        <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-10 sm:min-h-10"
-            disabled={!hasPrev || backlogLoading}
-            onClick={() => updateBacklogOffset(Math.max(0, currentOffset - pageSize))}
-          >
-            {t('backlog.prevPage')}
-          </Button>
-          <span className="text-sm text-text-muted">
-            {t('backlog.pageInfo', {
-              from: currentOffset + 1,
-              to: currentOffset + backlog_issues.length,
-              total: backlogTotal,
-            })}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-10 sm:min-h-10"
-            disabled={!hasNext || backlogLoading}
-            onClick={() => updateBacklogOffset(currentOffset + pageSize)}
-          >
-            {t('backlog.nextPage')}
-          </Button>
-        </div>
+        <Card>
+          <CardContent>
+            <PageNavigation
+              page={Math.ceil(currentOffset / pageSize) + 1}
+              hasNext={hasNext}
+              pending={backlogLoading}
+              label={t('backlog.title', { projectName: key })}
+              previousLabel={t('backlog.prevPage')}
+              nextLabel={t('backlog.nextPage')}
+              onPageChange={(page) =>
+                updateBacklogOffset(
+                  page < Math.ceil(currentOffset / pageSize) + 1
+                    ? Math.max(0, currentOffset - pageSize)
+                    : currentOffset + pageSize,
+                )
+              }
+              summary={t('backlog.pageInfo', {
+                from: currentOffset + 1,
+                to: currentOffset + backlog_issues.length,
+                total: backlogTotal,
+              })}
+            />
+          </CardContent>
+        </Card>
       )}
 
       <SprintFormDialog

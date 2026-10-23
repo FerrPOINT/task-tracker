@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
 import {
+  PageHeader,
+  SectionHeader,
   Button,
   ResourceList,
   ResourceListRow,
@@ -16,6 +18,7 @@ import {
   TabsTrigger,
   Textarea,
   QueryState,
+  Notice,
 } from '@pdlc/ui/ui'
 
 type TabValue = 'settings' | 'audit'
@@ -121,31 +124,18 @@ export function AdminPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('admin.title')}</h1>
-        <p className="mt-1 text-sm text-text-muted">{t('admin.description')}</p>
-      </div>
+      <PageHeader title={t('admin.title')} context={t('admin.description')} />
 
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:inline-flex sm:w-auto">
-          <TabsTrigger
-            value="settings"
-            className="min-h-11 px-2 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
-          >
-            {t('admin.tabs.settings')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="audit"
-            className="min-h-11 px-2 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
-          >
-            {t('admin.tabs.audit')}
-          </TabsTrigger>
+          <TabsTrigger value="settings">{t('admin.tabs.settings')}</TabsTrigger>
+          <TabsTrigger value="audit">{t('admin.tabs.audit')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="settings">
           <div className="grid gap-4 lg:max-w-6xl lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
             <section className="min-w-0 border-t border-border pt-4">
-              <h2 className="mb-3 text-sm font-semibold">{t('admin.settings.title')}</h2>
+              <SectionHeader level={2} className="mb-3" title={<>{t('admin.settings.title')}</>} />
               <QueryState
                 isLoading={settings.isLoading}
                 error={settings.error}
@@ -176,7 +166,7 @@ export function AdminPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-11 w-11"
+
                             title={t('admin.settings.edit', { key: setting.key })}
                             aria-label={t('admin.settings.edit', { key: setting.key })}
                             onClick={() => editSetting(setting.key, setting.value)}
@@ -192,7 +182,7 @@ export function AdminPage() {
               </QueryState>
             </section>
             <section className="min-w-0 border-t border-border pt-4">
-              <h2 className="mb-3 text-sm font-semibold">{t('admin.settings.update')}</h2>
+              <SectionHeader level={2} className="mb-3" title={<>{t('admin.settings.update')}</>} />
               <form
                 className="space-y-4"
                 onSubmit={submitSetting}
@@ -202,7 +192,7 @@ export function AdminPage() {
                   <Label htmlFor="setting-key">{t('admin.settings.key')}</Label>
                   <Input
                     id="setting-key"
-                    className="min-h-11 sm:min-h-10"
+
                     value={settingKey}
                     onChange={(event) => {
                       setSettingKey(event.target.value)
@@ -237,23 +227,23 @@ export function AdminPage() {
                   />
                 </div>
                 {settingError && (
-                  <p role="alert" className="text-sm text-danger">
+                  <Notice role="alert" tone="danger" appearance="inline">
                     {settingError}
-                  </p>
+                  </Notice>
                 )}
                 {saveError && (
-                  <p role="alert" className="text-sm text-danger">
+                  <Notice role="alert" tone="danger" appearance="inline">
                     {t('admin.settings.saveError')}
-                  </p>
+                  </Notice>
                 )}
                 {savedKey && (
-                  <p role="status" className="text-sm text-success">
+                  <Notice role="status" tone="success" appearance="inline">
                     {t('admin.settings.saved', { key: savedKey })}
-                  </p>
+                  </Notice>
                 )}
                 <Button
                   type="submit"
-                  className="min-h-11 sm:min-h-10"
+
                   disabled={updateSetting.isPending}
                 >
                   {updateSetting.isPending ? t('common.loading') : t('admin.settings.save')}
@@ -265,7 +255,7 @@ export function AdminPage() {
 
         <TabsContent value="audit">
           <section className="min-w-0 border-t border-border pt-4">
-            <h2 className="mb-3 text-sm font-semibold">{t('admin.audit.title')}</h2>
+            <SectionHeader level={2} className="mb-3" title={<>{t('admin.audit.title')}</>} />
             <QueryState
               isLoading={auditLog.isLoading}
               error={auditLog.error}
@@ -274,7 +264,7 @@ export function AdminPage() {
               errorMessage={t('admin.audit.loadError')}
               onRetry={() => void auditLog.refetch()}
             >
-              <div role="list" className="divide-y divide-border rounded-md border border-border">
+              <ResourceList role="list" variant="bordered">
                 <div className="hidden gap-3 bg-surface-raised px-3 py-2 text-xs font-semibold text-text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem]">
                   <span>{t('admin.audit.action')}</span>
                   <span>{t('admin.audit.entity')}</span>
@@ -283,43 +273,44 @@ export function AdminPage() {
                   <span>{t('admin.audit.time')}</span>
                 </div>
                 {auditLog.data?.map((entry) => (
-                  <div
-                    role="listitem"
-                    key={entry.id}
-                    className="grid min-w-0 gap-2 p-3 text-sm lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem] lg:gap-3"
-                  >
-                    <div className="min-w-0 break-all font-mono text-xs font-semibold">
-                      {entry.action}
+                  <ResourceListRow asChild key={entry.id}>
+                    <div
+                      role="listitem"
+                      className="grid min-w-0 gap-2 text-sm lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem] lg:gap-3"
+                    >
+                      <div className="min-w-0 break-all font-mono text-xs font-semibold">
+                        {entry.action}
+                      </div>
+                      <div className="min-w-0 break-all text-xs">
+                        <span className="mr-1 text-text-muted lg:hidden">
+                          {t('admin.audit.entity')}:
+                        </span>
+                        {entry.entity_type}
+                        {entry.entity_id ? ` · ${entry.entity_id}` : ''}
+                      </div>
+                      <div className="min-w-0 break-all font-mono text-xs">
+                        <span className="mr-1 font-sans text-text-muted lg:hidden">
+                          {t('admin.audit.actor')}:
+                        </span>
+                        {entry.actor_id || t('admin.audit.system')}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs text-text-muted lg:hidden">
+                          {t('admin.audit.changes')}:
+                        </span>
+                        <ChangesSummary value={entry.metadata} />
+                      </div>
+                      <div className="text-xs text-text-muted">{formatDate(entry.created_at)}</div>
                     </div>
-                    <div className="min-w-0 break-all text-xs">
-                      <span className="mr-1 text-text-muted lg:hidden">
-                        {t('admin.audit.entity')}:
-                      </span>
-                      {entry.entity_type}
-                      {entry.entity_id ? ` · ${entry.entity_id}` : ''}
-                    </div>
-                    <div className="min-w-0 break-all font-mono text-xs">
-                      <span className="mr-1 font-sans text-text-muted lg:hidden">
-                        {t('admin.audit.actor')}:
-                      </span>
-                      {entry.actor_id || t('admin.audit.system')}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-xs text-text-muted lg:hidden">
-                        {t('admin.audit.changes')}:
-                      </span>
-                      <ChangesSummary value={entry.metadata} />
-                    </div>
-                    <div className="text-xs text-text-muted">{formatDate(entry.created_at)}</div>
-                  </div>
+                  </ResourceListRow>
                 ))}
-              </div>
+              </ResourceList>
               {(auditLog.data?.length ?? 0) >= auditLimit && auditLimit < 1000 && (
                 <div className="flex justify-center pt-3">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-10"
+
                     onClick={() => setAuditLimit((prev) => Math.min(prev + 20, 1000))}
                     disabled={auditLog.isFetching}
                   >

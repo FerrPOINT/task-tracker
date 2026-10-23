@@ -34,6 +34,7 @@ function settingsView() {
       <Routes>
         <Route path="/projects/:projectKey/settings" element={<ProjectSettingsPage />}>
           <Route index element={<ProjectGeneralSettingsPage />} />
+          <Route path="custom-fields" element={<p>Custom fields outlet</p>} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -67,8 +68,8 @@ it('shows properties and preserves project scope in both settings tabs', () => {
 it('submits editable properties, clears an empty description, and cancels a draft', async () => {
   renderSettings()
   const user = userEvent.setup()
-  await user.clear(screen.getByLabelText('Название'))
-  await user.type(screen.getByLabelText('Название'), 'New name')
+  await user.clear(screen.getByRole('textbox', { name: 'Название' }))
+  await user.type(screen.getByRole('textbox', { name: 'Название' }), 'New name')
   await user.clear(screen.getByLabelText('Описание'))
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(state.mutate).toHaveBeenCalledWith(
@@ -76,12 +77,12 @@ it('submits editable properties, clears an empty description, and cancels a draf
     expect.any(Object),
   )
   await user.click(screen.getByRole('button', { name: 'Отмена' }))
-  expect(screen.getByLabelText('Название')).toHaveValue('Same name')
+  expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Same name')
   expect(screen.getByLabelText('Описание')).toHaveValue('Saved description')
 })
 it('retains a draft after a failed save or background project refresh', async () => {
   const view = renderSettings()
-  await userEvent.type(screen.getByLabelText('Название'), ' draft')
+  await userEvent.type(screen.getByRole('textbox', { name: 'Название' }), ' draft')
   state.mutation.mockReturnValue({
     mutate: state.mutate,
     reset: state.reset,
@@ -95,7 +96,7 @@ it('retains a draft after a failed save or background project refresh', async ()
   })
   view.rerender(settingsView())
   expect(screen.getByRole('alert')).toHaveTextContent('Не удалось сохранить настройки')
-  expect(screen.getByLabelText('Название')).toHaveValue('Same name draft')
+  expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Same name draft')
 })
 it('offers a retry on project load failure instead of an editable empty form', async () => {
   const refetch = vi.fn()
@@ -115,7 +116,7 @@ it('saves only the edited description after another user renames the project', a
     isError: false,
   })
   view.rerender(settingsView())
-  expect(screen.getByLabelText('Название')).toHaveValue('Remote name')
+  expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Remote name')
   await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(state.mutate).toHaveBeenCalledWith(
     { description: 'Saved description local edit' },
@@ -125,7 +126,7 @@ it('saves only the edited description after another user renames the project', a
 
 it('saves only the edited name after another user changes the description', async () => {
   const view = renderSettings()
-  await userEvent.type(screen.getByLabelText('Название'), ' local edit')
+  await userEvent.type(screen.getByRole('textbox', { name: 'Название' }), ' local edit')
   state.query.mockReturnValue({
     data: { ...project, description: 'Remote description' },
     isPending: false,
@@ -145,6 +146,26 @@ it('keeps a pristine form pristine when the background query changes', () => {
     isError: false,
   })
   view.rerender(settingsView())
-  expect(screen.getByLabelText('Название')).toHaveValue('Remote name')
+  expect(screen.getByRole('textbox', { name: 'Название' })).toHaveValue('Remote name')
   expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+})
+
+it('keeps route navigation and selection accessible through Base section items', async () => {
+  renderSettings()
+  const user = userEvent.setup()
+  const general = screen.getByRole('link', { name: 'Общие' })
+  const fields = screen.getByRole('link', { name: 'Кастомные поля' })
+  expect(general).toHaveClass('base-section-navigation-item')
+  expect(fields).toHaveClass('base-section-navigation-item')
+  expect(general).toHaveAttribute('aria-current', 'page')
+  expect(fields).not.toHaveAttribute('aria-current')
+  await user.tab()
+  expect(general).toHaveFocus()
+  await user.tab()
+  expect(fields).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(screen.getByText('Custom fields outlet')).toBeVisible()
+  expect(fields).toHaveAttribute('aria-current', 'page')
+  expect(general).not.toHaveAttribute('aria-current')
+  expect(state.mutate).not.toHaveBeenCalled()
 })

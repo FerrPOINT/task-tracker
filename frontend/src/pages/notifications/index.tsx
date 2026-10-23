@@ -15,6 +15,8 @@ import {
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
 import {
+  RadioGroup,
+  PageHeader,
   Select,
   Button,
   ResourceList,
@@ -27,6 +29,7 @@ import {
   CardTitle,
   ErrorState,
   Label,
+  Notice,
 } from '@pdlc/ui/ui'
 
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -93,27 +96,24 @@ const NotificationRow = memo(function NotificationRow({
     </>
   )
   return (
-    <ResourceListRow asChild>
-      <li
-        className={`flex min-w-0 items-center gap-2 border-l-2   ${notification.is_read ? 'border-l-transparent' : 'border-l-accent'}`}
-      >
-        {notification.action_url ? (
-          <Link
-            to={notification.action_url}
-            className="block min-h-11 min-w-0 flex-1 py-1.5 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-            onClick={handleClick}
-          >
+    <li
+      className={`flex min-w-0 items-stretch border-l-2 ${notification.is_read ? 'border-l-transparent' : 'border-l-accent'}`}
+    >
+      {notification.action_url ? (
+        <ResourceListRow asChild interactive className="min-w-0 flex-1">
+          <Link to={notification.action_url} className="block" onClick={handleClick}>
             {content}
           </Link>
-        ) : (
-          <div className="min-w-0 flex-1 py-1">{content}</div>
-        )}
-        {!notification.is_read && (
+        </ResourceListRow>
+      ) : (
+        <ResourceListRow className="min-w-0 flex-1">{content}</ResourceListRow>
+      )}
+      {!notification.is_read && (
+        <ResourceListRow className="flex shrink-0 items-center">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-11 w-11 shrink-0 sm:h-10 sm:w-10"
             aria-label={`${t('notifications.markRead')}: ${notification.title}`}
             title={t('notifications.markRead')}
             disabled={pendingRead}
@@ -121,9 +121,9 @@ const NotificationRow = memo(function NotificationRow({
           >
             <Check className="h-4 w-4" />
           </Button>
-        )}
-      </li>
-    </ResourceListRow>
+        </ResourceListRow>
+      )}
+    </li>
   )
 })
 
@@ -222,80 +222,52 @@ export function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold sm:text-2xl">{t('notifications.title')}</h1>
-          <p className="mt-1 text-sm text-text-muted">{t('notifications.description')}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-h-11 sm:min-h-10"
-          onClick={() => {
-            updateListParams(showUnread, 0, true)
-            setReadAction('all')
-            markAllNotificationsRead.mutate()
-          }}
-          disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
-        >
-          {t('notifications.markAllRead')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('notifications.title')}
+        context={t('notifications.description')}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+
+            onClick={() => {
+              updateListParams(showUnread, 0, true)
+              setReadAction('all')
+              markAllNotificationsRead.mutate()
+            }}
+            disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+          >
+            {t('notifications.markAllRead')}
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <section aria-label={t('notifications.title')} className="min-w-0 space-y-3">
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
-            <Button
-              variant={showUnread ? 'ghost' : 'secondary'}
-              size="sm"
-              className="min-h-11 sm:min-h-10"
-              aria-pressed={!showUnread}
-              onClick={() => updateListParams(false, 0)}
-            >
-              {t('notifications.all')}
-            </Button>
-            <Button
-              variant={showUnread ? 'secondary' : 'ghost'}
-              size="sm"
-              className="min-h-11 sm:min-h-10"
-              aria-pressed={showUnread}
-              onClick={() => updateListParams(true, 0)}
-            >
-              {t('notifications.unread', { count: unreadCount })}
-            </Button>
-          </div>
+          <RadioGroup
+            appearance="segmented"
+            label={t('notifications.title')}
+            value={showUnread ? 'unread' : 'all'}
+            onValueChange={(value) => updateListParams(value === 'unread', 0)}
+            options={[
+              { value: 'all', label: t('notifications.all') },
+              { value: 'unread', label: t('notifications.unread', { count: unreadCount }) },
+            ]}
+          />
 
           {readAction && (
-            <div role="status" aria-live="polite" className="text-sm">
-              {readMutation.isPending && (
-                <span className="text-text-muted">
-                  {t(
-                    readAction === 'all'
-                      ? 'notifications.markAllPending'
-                      : 'notifications.markReadPending',
-                  )}
-                </span>
-              )}
-              {readMutation.isSuccess && (
-                <span className="text-success">
-                  {t(
-                    readAction === 'all'
-                      ? 'notifications.markAllSuccess'
-                      : 'notifications.markReadSuccess',
-                  )}
-                </span>
-              )}
-              {readMutation.isError && (
-                <span className="flex items-center gap-2 text-danger">
-                  {t(
-                    readAction === 'all'
-                      ? 'notifications.markAllError'
-                      : 'notifications.markReadError',
-                  )}
+            <Notice
+              role="status"
+              aria-live="polite"
+              appearance="inline"
+              tone={
+                readMutation.isError ? 'danger' : readMutation.isSuccess ? 'success' : 'neutral'
+              }
+              actions={
+                readMutation.isError && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="min-h-10"
                     onClick={() => {
                       if (readAction === 'all') markAllNotificationsRead.mutate()
                       else if (markNotificationRead.variables)
@@ -304,9 +276,37 @@ export function NotificationsPage() {
                   >
                     {t('common.retry')}
                   </Button>
+                )
+              }
+            >
+              {readMutation.isPending && (
+                <span>
+                  {t(
+                    readAction === 'all'
+                      ? 'notifications.markAllPending'
+                      : 'notifications.markReadPending',
+                  )}
                 </span>
               )}
-            </div>
+              {readMutation.isSuccess && (
+                <span>
+                  {t(
+                    readAction === 'all'
+                      ? 'notifications.markAllSuccess'
+                      : 'notifications.markReadSuccess',
+                  )}
+                </span>
+              )}
+              {readMutation.isError && (
+                <span>
+                  {t(
+                    readAction === 'all'
+                      ? 'notifications.markAllError'
+                      : 'notifications.markReadError',
+                  )}
+                </span>
+              )}
+            </Notice>
           )}
 
           {notificationsLoading ? (
@@ -347,7 +347,7 @@ export function NotificationsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-11 w-11 sm:h-10 sm:w-10"
+
                     aria-label={t('notifications.previousPage')}
                     title={t('notifications.previousPage')}
                     disabled={page === 0}
@@ -361,7 +361,7 @@ export function NotificationsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-11 w-11 sm:h-10 sm:w-10"
+
                     aria-label={t('notifications.nextPage')}
                     title={t('notifications.nextPage')}
                     disabled={!hasNextPage}
@@ -412,55 +412,54 @@ export function NotificationsPage() {
                     ]}
                   />
                 </div>
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
-                  <Switch
-                    className="shrink-0"
-                    checked={displayedSettings.notify_own_changes}
-                    onCheckedChange={(checked) =>
-                      updatePreference({ notify_own_changes: checked === true })
-                    }
-                    disabled={updateSettings.isPending}
-                  />
-                  <span className="leading-5">{t('notifications.ownChanges')}</span>
-                </label>
+                <Switch
+                  label={t('notifications.ownChanges')}
+                  checked={displayedSettings.notify_own_changes}
+                  onCheckedChange={(checked) =>
+                    updatePreference({ notify_own_changes: checked === true })
+                  }
+                  disabled={updateSettings.isPending}
+                />
                 <fieldset className="border-t border-border pt-3">
                   <legend className="text-sm font-medium">{t('notifications.eventsTitle')}</legend>
                   {NOTIFICATION_EVENTS.map((eventType) => (
-                    <label
+                    <Checkbox
                       key={eventType}
-                      className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-text-secondary sm:min-h-10"
-                    >
-                      <Checkbox
-                        className="shrink-0"
-                        checked={!displayedSettings.disabled_event_types.includes(eventType)}
-                        onCheckedChange={(checked) => toggleEvent(eventType, checked === true)}
-                        disabled={updateSettings.isPending}
-                      />
-                      <span>{t(`notifications.events.${eventType}`)}</span>
-                    </label>
+                      label={t(`notifications.events.${eventType}`)}
+                      checked={!displayedSettings.disabled_event_types.includes(eventType)}
+                      onCheckedChange={(checked) => toggleEvent(eventType, checked === true)}
+                      disabled={updateSettings.isPending}
+                    />
                   ))}
                 </fieldset>
                 <div className="space-y-2 border-t border-border pt-4">
                   {(updateSettings.isPending ||
                     updateSettings.isSuccess ||
                     updateSettings.isError) && (
-                    <div role="status" aria-live="polite" className="text-xs">
-                      {updateSettings.isPending && (
-                        <span className="text-text-muted">{t('common.saving')}</span>
-                      )}
-                      {updateSettings.isSuccess && (
-                        <span className="text-success">{t('common.saved')}</span>
-                      )}
+                    <Notice
+                      role="status"
+                      aria-live="polite"
+                      appearance="inline"
+                      tone={
+                        updateSettings.isError
+                          ? 'danger'
+                          : updateSettings.isSuccess
+                            ? 'success'
+                            : 'neutral'
+                      }
+                    >
+                      {updateSettings.isPending && <span>{t('common.saving')}</span>}
+                      {updateSettings.isSuccess && <span>{t('common.saved')}</span>}
                       {updateSettings.isError && (
-                        <span className="text-danger">{t('notifications.settingsSaveError')}</span>
+                        <span>{t('notifications.settingsSaveError')}</span>
                       )}
-                    </div>
+                    </Notice>
                   )}
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       variant="ghost"
-                      className="min-h-11 sm:min-h-10"
+
                       disabled={!settingsDirty || updateSettings.isPending}
                       onClick={() => {
                         setSettingsDraft(null)
@@ -471,7 +470,7 @@ export function NotificationsPage() {
                     </Button>
                     <Button
                       type="submit"
-                      className="min-h-11 sm:min-h-10"
+
                       disabled={!settingsDirty || updateSettings.isPending}
                     >
                       {t('common.save')}

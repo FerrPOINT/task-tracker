@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
@@ -9,7 +9,13 @@ beforeAll(() => {
   i18n.changeLanguage('en')
 })
 
-const mutations = vi.hoisted(() => ({ create: vi.fn(), attach: vi.fn() }))
+const mutations = vi.hoisted(() => ({
+  create: vi.fn(),
+  attach: vi.fn(),
+  attachNow: vi.fn(),
+  detach: vi.fn(),
+}))
+beforeEach(() => vi.resetAllMocks())
 
 vi.mock('@/shared/api/hooks', () => ({
   useProjectLabels: () => ({
@@ -25,8 +31,12 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  useAttachLabel: () => ({ mutate: vi.fn(), mutateAsync: mutations.attach, isPending: false }),
-  useDetachLabel: () => ({ mutate: vi.fn(), isPending: false }),
+  useAttachLabel: () => ({
+    mutate: mutations.attachNow,
+    mutateAsync: mutations.attach,
+    isPending: false,
+  }),
+  useDetachLabel: () => ({ mutate: mutations.detach, isPending: false }),
   useCreateLabel: () => ({ mutateAsync: mutations.create, isPending: false }),
 }))
 
@@ -53,6 +63,30 @@ describe('LabelEditor', () => {
     render(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
     fireEvent.click(screen.getByText(/new label/i))
     expect(screen.getByTestId('label-name-input')).toBeInTheDocument()
+  })
+
+  it('keeps subject data and mutations in the product while Base owns presentation', () => {
+    const view = render(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
+    const label = screen.getByTestId('issue-label')
+    expect(label).toHaveClass('base-badge')
+    expect(label).toHaveAttribute('data-subject-color', '#ef4444')
+    fireEvent.click(screen.getByText('bug'))
+    view.rerender(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
+    expect(mutations.attachNow).not.toHaveBeenCalled()
+    expect(mutations.detach).not.toHaveBeenCalled()
+    const attach = screen.getByRole('button', { name: '+ feature' })
+    expect(attach).toHaveAttribute('data-variant', 'subject')
+    fireEvent.click(attach)
+    expect(mutations.attachNow).toHaveBeenCalledExactlyOnceWith(
+      'l2',
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /bug/ }))
+    expect(mutations.detach).toHaveBeenCalledExactlyOnceWith(
+      'l1',
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
+    expect(mutations.create).not.toHaveBeenCalled()
   })
 
   it('retains the name and reuses a created label when attachment fails', async () => {

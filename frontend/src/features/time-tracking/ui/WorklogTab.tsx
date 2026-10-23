@@ -87,10 +87,7 @@ export function WorklogTab({
         <p className="text-sm text-text-muted">{t('timeTracking.worklog.empty')}</p>
       ) : (
         <div className="space-y-4">
-          <div
-            className="hidden rounded-md border border-border 2xl:block"
-            data-testid="worklog-table"
-          >
+          <Card data-testid="worklog-table" className="hidden 2xl:block">
             <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
@@ -134,7 +131,7 @@ export function WorklogTab({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-10 w-10"
+
                             onClick={() => onEdit(w)}
                             aria-label={t('timeTracking.editWorklog')}
                           >
@@ -143,7 +140,7 @@ export function WorklogTab({
                           <Button
                             variant="destructive-outline"
                             size="icon"
-                            className="h-10 w-10 text-danger hover:opacity-80"
+
                             onClick={(event) => openDelete(w.id, event.currentTarget)}
                             aria-label={t('timeTracking.deleteWorklog')}
                           >
@@ -156,7 +153,7 @@ export function WorklogTab({
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </Card>
 
           <div className="space-y-3 2xl:hidden">
             {worklogs.map((w) => (
@@ -171,7 +168,7 @@ export function WorklogTab({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-10 w-10"
+
                           onClick={() => onEdit(w)}
                           aria-label={t('timeTracking.editWorklog')}
                         >
@@ -180,7 +177,7 @@ export function WorklogTab({
                         <Button
                           variant="destructive-outline"
                           size="icon"
-                          className="h-10 w-10 text-danger hover:opacity-80"
+
                           onClick={(event) => openDelete(w.id, event.currentTarget)}
                           aria-label={t('timeTracking.deleteWorklog')}
                         >

@@ -112,8 +112,10 @@ keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
 
 Сначала искать общий UI в Base: search → show → example. Общие исправления
 вносить в Base; продукт передаёт данные, права, преобразования и сохранение.
-Для одного известного значения использовать Select, для нескольких — MultiSelect,
-для каталога с поиском/пагинацией — SearchableSelect из публичного @pdlc/ui.
+Для закрытого списка с одним значением — Select; для нескольких — MultiSelect.
+Одно значение из всех видимых вариантов — RadioGroup, взаимноисключающие режимы — appearance="segmented".
+Вкладки с панелями используют Tabs. Каталог с поиском/пагинацией — SearchableSelect.
+Использовать публичный @pdlc/ui и сверять наличие API по точному UI pin.
 Контракт Select/MultiSelect: options, value/defaultValue, onValueChange;
 HTML children/option/onChange/multiple/size больше не являются их API.
 Видимые raw select и локальные копии оформления не добавлять. Технический form
@@ -147,6 +149,9 @@ Dialog и Toaster/toast использовать из публичного @pdlc
 исправлять в Base; продукт сохраняет данные, права и сохранение. Прямой Sonner,
 копии примитивов и продуктовые определения общих tokens не добавлять.
 Брендинг применяется общим runtime; draft preview изолируется BrandingScope.
+Размеры однострочных контролов и типографика/padding TabsTrigger принадлежат
+Base; локальные h-10/min-h-10 и мобильные копии не добавлять. Textarea,
+ширина предметной панели, внешний margin и компоновка сохраняют свой контракт.
 Канонический контракт — Base docs/platform/DESIGN_SYSTEM.md и docs/BRANDING.md.
 UI/SDK/skills pins независимы; source-изменения не означают установку.
 

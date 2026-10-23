@@ -59,7 +59,7 @@ export function ProjectActionItems({
 function DeleteProjectItem({ onDelete }: { onDelete: () => void }) {
   const { t } = useTranslation()
   return (
-    <DropdownMenuItem onClick={onDelete} className="gap-2 text-danger">
+    <DropdownMenuItem onClick={onDelete} tone="danger" className="gap-2">
       <Trash2 className="h-4 w-4" />
       {t('common.delete')}
     </DropdownMenuItem>
@@ -224,7 +224,7 @@ export function ProjectActions({
   const to = `/projects/${encodeURIComponent(project.key)}/settings`
   if (!canAdmin) return null
   return (
-    <Button asChild variant="ghost" size="icon" className="h-11 w-11 hover:bg-transparent">
+    <Button asChild variant="ghost" size="icon" className="hover:bg-transparent">
       <Link
         to={
           import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
