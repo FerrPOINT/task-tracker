@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-23: Settled PM Input Recovery Source Candidate
+
+- Added append-only recovery for a consumed PM input whose renewed lease expired
+  before continuation. Original messages, inputs, receipts and assignment stay
+  unchanged; issuance requires an authenticated Fleet barrier and exact expired CAS.
+- Added typed reader/witness, cross-ledger key guards and additive0103. Original
+  resume payloads omit the optional extension and preserve their old hash.
+- Format/diff checks pass. Cargo/PG/OpenAPI and live PM acceptance are pending;
+  this is a Draft source package, not a verified installation.
+- Rollout is Tracker then Fleet. The current main native-spaces/auth/SDK package
+  is not silently included in the bounded installed7d6 runtime repair.
+
 - Источник можно выбрать после публикации требований PM, пока владелец ещё
   не подтвердил их. При повторном согласовании через PM новая версия сохраняет
   исходный выбранный источник и прежние binding-записи.

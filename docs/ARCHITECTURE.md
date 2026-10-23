@@ -1,5 +1,11 @@
 # Архитектура Task Tracker
 
+Settled-input expiry recovery reads a typed Fleet barrier outside the issuance
+transaction, then rechecks owner/assignment/lease CAS under existing task locks.
+It is a narrow branch of the existing resume producer, not a scheduler or native
+dispatch path. Historical ACK settlement and live authority are separate states.
+[Contract and pending qualification](contracts/pm-settled-input-recovery.md).
+
 Initial PM bootstrap retry reads a composite witness from the EXISTING Fleet
 reader outside SQL, then rechecks task/lease/authorization under locks. Fleet,
 not Tracker, reads Workflow. Original-key recovery is ledger-first; no public

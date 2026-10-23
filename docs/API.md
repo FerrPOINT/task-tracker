@@ -1,5 +1,14 @@
 # API v1 Specification — Task Tracker
 
+## Settled PM Input Recovery (Source Candidate)
+
+The existing resume POST accepts the optional typed recovery variant and its
+existing operation GET reads both immutable ledgers with collision detection.
+The authenticated Fleet callback proves the exact retained no-successor barrier;
+the producer rechecks current authority and expired CAS after the callback.
+Original requests without recovery keep their existing serialization/hash.
+[Contract, replay and unrun gates](contracts/pm-settled-input-recovery.md).
+
 Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
 project source-policy CAS, explicit owner Draft enrollment and typed readback.
 Migration/schema and Forge source verification qualification are required.
