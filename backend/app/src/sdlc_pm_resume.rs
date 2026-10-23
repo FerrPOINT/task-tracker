@@ -12,6 +12,25 @@ impl crate::sdlc::SdlcService {
         command: ResumePmExecutionLease,
     ) -> Result<(ExecutionLeaseReceipt, bool), AppError> {
         validate_command(&command)?;
+        if let Some(recovery) = &command.recovery {
+            if let Some(receipt) = self
+                .repository
+                .preflight_settled_pm_recovery(task, actor, &command)
+                .await?
+            {
+                return Ok((receipt, true));
+            }
+            let reader = self.fleet_configuration.as_ref().ok_or_else(|| {
+                AppError::Unavailable("Fleet PM readback is not configured".into())
+            })?;
+            let witness = reader
+                .read_settled_pm_input_recovery(command.previous_run_id, recovery.barrier_id)
+                .await?;
+            return self
+                .repository
+                .recover_settled_pm_execution_lease(task, actor, command, witness)
+                .await;
+        }
         self.repository
             .resume_pm_execution_lease(task, actor, command)
             .await
@@ -35,6 +54,20 @@ fn hash(value: &str) -> bool {
 
 pub fn validate_command(c: &ResumePmExecutionLease) -> Result<(), AppError> {
     crate::sdlc::validate_key(&c.idempotency_key)?;
+    if let Some(recovery) = &c.recovery {
+        crate::sdlc::validate_key(&recovery.original_key)?;
+        crate::sdlc::validate_key(&recovery.predecessor_key)?;
+        if recovery.barrier_id.is_nil()
+            || !hash(&recovery.original_request_sha256)
+            || !hash(&recovery.predecessor_request_sha256)
+            || c.idempotency_key == recovery.original_key
+            || c.idempotency_key == recovery.predecessor_key
+            || (recovery.predecessor_key == recovery.original_key
+                && recovery.predecessor_request_sha256 != recovery.original_request_sha256)
+        {
+            return Err(AppError::validation("invalid settled PM recovery anchor"));
+        }
+    }
     let p = &c.checkpoint;
     let f = &p.fence;
     if [
@@ -74,6 +107,31 @@ pub fn request_hash(c: &ResumePmExecutionLease) -> Result<String, AppError> {
     crate::sdlc::canonical_hash(
         &serde_json::json!({"operation":"resume_pm_execution_lease","payload":c}),
     )
+}
+
+pub fn validate_settled_witness(
+    witness: &PmSettledInputRecoveryWitness,
+    reservation: &PmDraftReservation,
+    command: &ResumePmExecutionLease,
+) -> Result<(), AppError> {
+    validate_command(command)?;
+    let recovery = command
+        .recovery
+        .as_ref()
+        .ok_or_else(|| AppError::validation("settled PM recovery discriminator required"))?;
+    if witness.contract_version != 1
+        || witness.session_run_id != command.previous_run_id
+        || witness.barrier_id != recovery.barrier_id
+        || witness.identity != crate::sdlc_pm_bootstrap_retry::identity(reservation)
+        || witness.request_sha256 != request_hash(command)?
+        || serde_json::to_value(&witness.command).map_err(AppError::internal)?
+            != serde_json::to_value(command).map_err(AppError::internal)?
+    {
+        return Err(AppError::conflict(
+            "Fleet settled PM recovery barrier changed",
+        ));
+    }
+    Ok(())
 }
 
 pub fn validate_context(
@@ -162,7 +220,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn fixture() -> (TaskState, PmDraftReservation, ResumePmExecutionLease) {
+    pub(super) fn fixture() -> (TaskState, PmDraftReservation, ResumePmExecutionLease) {
         let task = Uuid::new_v4();
         let assignment = PmAssignment {
             assignment_id: Uuid::new_v4(),
@@ -213,6 +271,7 @@ mod tests {
                 sha256: "c".repeat(64),
             },
             idempotency_key: "resume".into(),
+            recovery: None,
         };
         (state, reservation, command)
     }
@@ -319,3 +378,7 @@ mod tests {
         assert_eq!(serde_json::to_value(state).unwrap(), before);
     }
 }
+
+#[cfg(test)]
+#[path = "sdlc_settled_input_recovery_tests.rs"]
+mod settled_input_tests;

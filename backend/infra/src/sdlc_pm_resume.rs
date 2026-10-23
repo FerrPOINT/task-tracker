@@ -8,7 +8,7 @@ fn inconsistent() -> AppError {
 }
 
 impl PostgresSdlcRepository {
-    async fn resume_operation_source(
+    pub(super) async fn resume_operation_source(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
@@ -31,7 +31,8 @@ impl PostgresSdlcRepository {
         app::sdlc_pm_resume::validate_command(&command)?;
         let reservation = Self::reservation(tx, state, result.fence.execution_id).await?;
         valid_receipt(&result, &reservation)?;
-        if command.idempotency_key != key
+        if command.recovery.is_some()
+            || command.idempotency_key != key
             || request_sha256 != app::sdlc_pm_resume::request_hash(&command)?
             || result.fence != command.checkpoint.fence
             || result.owner_version != command.expected_owner_version
@@ -51,7 +52,7 @@ impl PostgresSdlcRepository {
         }))
     }
 
-    async fn resume_input(
+    pub(super) async fn resume_input(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
@@ -149,11 +150,16 @@ impl PostgresSdlcRepository {
         // Fleet owns actual terminal/checkpoint observations, just as for Lifecycle Complete.
         app::sdlc_reservation::scheduler(actor, &self.config)?;
         app::sdlc_pm_resume::validate_command(&command)?;
+        if command.recovery.is_some() {
+            return Err(AppError::conflict(
+                "settled PM recovery requires Fleet barrier readback",
+            ));
+        }
         let hash = app::sdlc_pm_resume::request_hash(&command)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let mut state = self.load(&tx, task, actor).await?;
         if let Some(saved) = self
-            .resume_operation_source(&tx, &state, actor, &command.idempotency_key)
+            .resume_route_operation_source(&tx, &state, actor, &command.idempotency_key)
             .await?
         {
             if saved.request_sha256 != hash {
@@ -289,7 +295,7 @@ impl PostgresSdlcRepository {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
         let operation = self
-            .resume_operation_source(&tx, &state, actor, key)
+            .resume_route_operation_source(&tx, &state, actor, key)
             .await?
             .ok_or_else(|| AppError::not_found("PM resume operation", key))?;
         tx.commit().await.map_err(map_db)?;

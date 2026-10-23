@@ -27,6 +27,8 @@ mod native_admission;
 mod pm_bootstrap_retry;
 #[path = "sdlc_pm_resume.rs"]
 mod pm_resume;
+#[path = "sdlc_settled_input_recovery.rs"]
+mod settled_input_recovery;
 #[path = "sdlc_pm_unsubmitted.rs"]
 mod pm_unsubmitted;
 #[path = "sdlc_reservation.rs"]

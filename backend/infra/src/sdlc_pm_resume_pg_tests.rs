@@ -3,6 +3,9 @@ use super::*;
 use domain::sdlc_execution_lease::*;
 use domain::sdlc_lifecycle::SubmitPmFeedback;
 
+#[path = "sdlc_settled_input_recovery_pg_tests.rs"]
+mod settled_input_recovery_tests;
+
 fn resume(
     lease: &ExecutionLeaseReceipt,
     input: PmResumeInput,
@@ -16,6 +19,7 @@ fn resume(
         None => (None, None),
     };
     ResumePmExecutionLease {
+        recovery: None,
         expected_owner_version: lease.owner_version,
         lease_id: lease.lease.lease_id,
         expected_lease_version: lease.lease.version,
