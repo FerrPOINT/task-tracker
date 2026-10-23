@@ -4,7 +4,16 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Play, Square } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, Button, Input, Label } from '@pdlc/ui/ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  Input,
+  Notice,
+  FormField,
+} from '@pdlc/ui/ui'
 
 import { parseDuration, formatDuration } from '@/shared/lib/time'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
@@ -126,47 +135,47 @@ export function LogWorkDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <p role="alert" className="text-sm text-danger">
+            <Notice role="alert" tone="danger" appearance="inline">
               {error.message}
-            </p>
+            </Notice>
           )}
-          <div className="space-y-1">
-            <Label htmlFor="timeSpent">{t('timeTracking.fields.timeSpent')}</Label>
-            <div className="flex gap-2">
-              <Input id="timeSpent" {...form.register('timeSpent')} placeholder="1h 30m" />
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                onClick={toggleTimer}
-                aria-label={
-                  timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
-                }
-              >
-                {timerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
-            </div>
-            {timerRunning && (
-              <p className="text-xs text-text-muted">{formatDuration(timerSeconds)}</p>
+          <FormField
+            id="timeSpent"
+            label={t('timeTracking.fields.timeSpent')}
+            error={form.formState.errors.timeSpent?.message}
+            hint={timerRunning ? formatDuration(timerSeconds) : undefined}
+          >
+            {(attrs) => (
+              <div className="flex gap-2">
+                <Input {...attrs} {...form.register('timeSpent')} placeholder="1h 30m" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={toggleTimer}
+                  aria-label={
+                    timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
+                  }
+                >
+                  {timerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </Button>
+              </div>
             )}
-            {form.formState.errors.timeSpent && (
-              <p className="text-xs text-danger">{form.formState.errors.timeSpent.message}</p>
+          </FormField>
+
+          <FormField id="startedAt" label={t('timeTracking.fields.startedAt')}>
+            {(attrs) => <Input {...attrs} type="date" {...form.register('startedAt')} />}
+          </FormField>
+
+          <FormField id="comment" label={t('timeTracking.fields.comment')}>
+            {(attrs) => (
+              <Input
+                {...attrs}
+                {...form.register('comment')}
+                placeholder={t('timeTracking.fields.commentPlaceholder')}
+              />
             )}
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="startedAt">{t('timeTracking.fields.startedAt')}</Label>
-            <Input id="startedAt" type="date" {...form.register('startedAt')} />
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="comment">{t('timeTracking.fields.comment')}</Label>
-            <Input
-              id="comment"
-              {...form.register('comment')}
-              placeholder={t('timeTracking.fields.commentPlaceholder')}
-            />
-          </div>
+          </FormField>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

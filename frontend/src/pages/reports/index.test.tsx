@@ -464,14 +464,14 @@ describe('ReportsPage', () => {
     )
   })
 
-  it('keeps primary report controls at 44 px on mobile and 40 px on larger screens', () => {
+  it('uses shared Base sizing contracts for the primary report tabs', () => {
     renderPage('/reports?project_key=TT')
 
     expect(screen.getByRole('button', { name: /проект|project/i })).toHaveClass(
       'base-project-picker',
     )
     for (const tab of screen.getAllByRole('tab')) {
-      expect(tab).toHaveClass('min-h-11', 'sm:min-h-10')
+      expect(tab).toHaveClass('base-control', 'base-tabs-trigger')
     }
   })
 

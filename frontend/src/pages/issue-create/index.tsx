@@ -1,6 +1,17 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { Select, Textarea, ProjectPicker, EmptyState, Button, ErrorState, Input } from '@pdlc/ui/ui'
+import { Fieldset,
+  PageHeader,
+  SectionHeader,
+  Select,
+  Textarea,
+  ProjectPicker,
+  EmptyState,
+  Button,
+  ErrorState,
+  Input,
+  Notice,
+} from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -189,7 +200,9 @@ export function IssueCreatePage() {
 
   return (
     <div>
-      <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
+      <div className="mb-5">
+        <PageHeader title={t('issueCreate.title')} />
+      </div>
 
       <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
         {namespace.malformed && <ErrorState message="Некорректная ссылка на проект Namespace" />}
@@ -198,9 +211,9 @@ export function IssueCreatePage() {
         )}
         {error && <ErrorState message={t('issueCreate.saveError')} />}
         {pendingRef.current && (
-          <p role="status" className="text-sm">
+          <Notice role="status" tone="neutral" appearance="inline">
             Повтор отправит исходную задачу с прежним ключом операции.
-          </p>
+          </Notice>
         )}
         {validationError && <ErrorState message={validationError} />}
         {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
@@ -312,7 +325,7 @@ export function IssueCreatePage() {
               setValidationError(null)
             }}
             required
-            className="min-h-11 sm:min-h-10"
+
             disabled={isPending}
           />
         </div>
@@ -378,8 +391,8 @@ export function IssueCreatePage() {
         </div>
 
         {customFields.length > 0 && (
-          <fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
-            <h2 className="text-sm font-semibold">{t('customFields.title')}</h2>
+          <Fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
+            <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
             <div className="grid gap-4 sm:grid-cols-2">
               {customFields.map((field) => (
                 <label
@@ -402,18 +415,18 @@ export function IssueCreatePage() {
                 </label>
               ))}
             </div>
-          </fieldset>
+          </Fieldset>
         )}
 
         <div className="flex gap-2 pt-2">
-          <Button type="submit" disabled={!canSubmit} className="min-h-11 gap-1 sm:min-h-10">
+          <Button type="submit" disabled={!canSubmit} className="gap-1">
             <Plus className="h-4 w-4" />
             {isPending ? t('common.creating') : t('issueCreate.submit')}
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 sm:min-h-10"
+
             disabled={isPending}
             onClick={() => navigate(-1)}
           >

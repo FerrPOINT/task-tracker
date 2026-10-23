@@ -92,7 +92,7 @@ describe('NotificationsPage', () => {
     expect(useNotifications).toHaveBeenCalledWith({ includeRead: true, limit: 21, offset: 0 })
     expect(screen.getByText('Issue updated')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /TT-12 has moved to done/i })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /unread|непрочитанные/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /unread|непрочитанные/i }))
     expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: false, limit: 21, offset: 0 })
     expect(screen.queryByText('Mentioned in a comment')).not.toBeInTheDocument()
 
@@ -144,7 +144,7 @@ describe('NotificationsPage', () => {
       '/notifications?page=2',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /unread|непрочитанные/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /unread|непрочитанные/i }))
     expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: false, limit: 21, offset: 0 })
     expect(screen.getByText('Event 2')).toBeInTheDocument()
     expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
@@ -169,10 +169,7 @@ describe('NotificationsPage', () => {
       limit: 21,
       offset: 20,
     })
-    expect(screen.getByRole('button', { name: /unread|непрочитанные/i })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    expect(screen.getByRole('radio', { name: /unread|непрочитанные/i })).toBeChecked()
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/notifications?filter=unread&page=2&source=qa',
     )
@@ -471,3 +468,28 @@ describe('NotificationsPage', () => {
     expect(retry).toHaveBeenCalledOnce()
   })
 })
+
+it.each(['read', 'open'])(
+  'keeps the %s notification action independent and writes only after activation',
+  (action) => {
+    mockHooks()
+    renderPage()
+    const mark = useMarkNotificationRead.mock.results.at(-1)!.value.mutate
+    const link = screen.getByRole('link', { name: /Issue updated/ })
+    const button = screen.getByRole('button', {
+      name: `${i18n.t('notifications.markRead')}: Issue updated`,
+    })
+    expect(link).toHaveClass('base-resource-list-row')
+    expect(link).toHaveAttribute('data-interactive', 'true')
+    expect(link.querySelector('button')).toBeNull()
+    expect(button.closest('a')).toBeNull()
+    fireEvent.mouseEnter(link)
+    link.focus()
+    expect(mark).not.toHaveBeenCalled()
+    fireEvent.click(action === 'open' ? link : button)
+    expect(mark).toHaveBeenCalledExactlyOnceWith('notification-1')
+    const location = screen.getByLabelText('current location')
+    expect(location).toHaveTextContent(action === 'open' ? '/issues/12' : '/notifications')
+    expect(screen.getByText('Mentioned in a comment').closest('a')).toBeNull()
+  },
+)

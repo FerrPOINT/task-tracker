@@ -1,6 +1,6 @@
-import { MultiSelect, Input, Select, toast } from '@pdlc/ui/ui'
+import { MultiSelect, Input, Select, FormField, toast } from '@pdlc/ui/ui'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   useIssueCustomFieldValues,
@@ -36,11 +36,13 @@ function customFieldValueFromInput(field: CustomField, value: string) {
 }
 
 export function CustomFieldValueInput({
+  id,
   field,
   value,
   onSave,
   commit = 'blur',
 }: {
+  id?: string
   field: CustomField
   value: unknown
   onSave: (value: unknown) => void
@@ -57,6 +59,7 @@ export function CustomFieldValueInput({
   if (field.field_type === 'select') {
     return (
       <Select
+        id={id}
         className="w-full"
         value={current}
         onValueChange={(nextValue) => onSave(nextValue)}
@@ -72,6 +75,7 @@ export function CustomFieldValueInput({
     const selected = Array.isArray(value) ? value.map(String) : []
     return (
       <MultiSelect
+        id={id}
         className="w-full"
         value={selected}
         onValueChange={(nextValues) => onSave(nextValues)}
@@ -87,6 +91,7 @@ export function CustomFieldValueInput({
   if (commit === 'change') {
     return (
       <Input
+        id={id}
         type={type}
         value={current}
         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
@@ -95,6 +100,7 @@ export function CustomFieldValueInput({
   }
   return (
     <Input
+      id={id}
       type={type}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -111,6 +117,7 @@ export function CustomFieldsPanel({
   projectKey: string
 }) {
   const { t } = useTranslation()
+  const fieldId = useId()
   const fields = useProjectCustomFields(projectKey)
   const values = useIssueCustomFieldValues(issueId)
   const save = useSetIssueCustomFieldValue(issueId)
@@ -123,11 +130,15 @@ export function CustomFieldsPanel({
   return (
     <div className="space-y-3">
       {fields.data.map((field) => (
-        <label key={field.id} className="block text-sm font-medium text-text-secondary">
-          {field.name}
-          {field.is_required ? ' *' : ''}
-          <div className="mt-1">
+        <FormField
+          key={field.id}
+          id={`${fieldId}-${field.id}`}
+          label={field.name}
+          required={field.is_required}
+        >
+          {({ id }) => (
             <CustomFieldValueInput
+              id={id}
               field={field}
               value={byField.get(field.id)}
               onSave={(value) =>
@@ -140,8 +151,8 @@ export function CustomFieldsPanel({
                 )
               }
             />
-          </div>
-        </label>
+          )}
+        </FormField>
       ))}
     </div>
   )

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  SectionHeader,
   toast,
   Input,
   Select,
@@ -15,6 +16,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Notice,
 } from '@pdlc/ui/ui'
 import { Trash2 } from 'lucide-react'
 
@@ -44,10 +46,17 @@ export function ProjectCustomFieldsPage() {
     .filter(Boolean)
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">{t('customFields.title')}</h2>
-        {!adding && <Button onClick={() => setAdding(true)}>{t('customFields.addButton')}</Button>}
-      </div>
+      <SectionHeader
+        level={2}
+        title={<>{t('customFields.title')}</>}
+        actions={
+          <>
+            {!adding && (
+              <Button onClick={() => setAdding(true)}>{t('customFields.addButton')}</Button>
+            )}
+          </>
+        }
+      />
       <div className="space-y-5">
         {adding && (
           <Card>
@@ -75,9 +84,9 @@ export function ProjectCustomFieldsPage() {
                 }}
               >
                 {create.error && (
-                  <p role="alert" className="text-sm text-danger">
+                  <Notice role="alert" tone="danger" appearance="inline">
                     {t('customFields.createError')}
-                  </p>
+                  </Notice>
                 )}
                 <Input
                   aria-label={t('customFields.fieldName')}
@@ -131,7 +140,7 @@ export function ProjectCustomFieldsPage() {
                 <div className="flex gap-2">
                   <Button
                     type="submit"
-                    className="min-h-11 justify-self-start sm:min-h-10"
+                    className="justify-self-start"
                     disabled={
                       create.isPending ||
                       !draft.name.trim() ||
@@ -159,9 +168,12 @@ export function ProjectCustomFieldsPage() {
           </Card>
         )}
         <section className="min-w-0" aria-labelledby="configured-fields-title">
-          <h2 id="configured-fields-title" className="mb-3 text-base font-semibold">
-            {t('customFields.configuredTitle')}
-          </h2>
+          <SectionHeader
+            level={2}
+            headingId="configured-fields-title"
+            className="mb-3"
+            title={<>{t('customFields.configuredTitle')}</>}
+          />
           <div>
             {fields.isLoading ? (
               <p className="text-sm text-text-muted">{t('customFields.loading')}</p>
@@ -189,7 +201,7 @@ export function ProjectCustomFieldsPage() {
                         <Button
                           variant="destructive-outline"
                           size="icon"
-                          className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
+                          className="shrink-0"
                           aria-label={t('customFields.deleteField', { name: field.name })}
                           title={t('customFields.deleteField', { name: field.name })}
                           onClick={() => {

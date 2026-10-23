@@ -118,7 +118,7 @@ describe('ProjectsPage', () => {
       await i18n.changeLanguage('en')
     })
     renderPage()
-    fireEvent.change(screen.getByRole('textbox', { name: /search projects/i }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: /search projects/i }), {
       target: { value: 'not found' },
     })
     expect(screen.getByText('No projects match your search.')).toBeInTheDocument()

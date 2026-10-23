@@ -1,3 +1,4 @@
+import { Notice } from '@pdlc/ui/ui'
 import {
   Table,
   TableHeader,
@@ -18,6 +19,9 @@ import {
   Button,
   ErrorState,
   Label,
+  PageHeader,
+  LoadingState,
+  EmptyState,
 } from '@pdlc/ui/ui'
 
 import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
@@ -93,7 +97,7 @@ function ReportPanel({
       </CardHeader>
       <CardContent className="min-w-0 overflow-x-clip">
         {isLoading && !hasData ? (
-          <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
+          <LoadingState message={t('reports.loading')} />
         ) : (
           <>
             {hasError && (
@@ -104,12 +108,12 @@ function ReportPanel({
             )}
             {hasData ? (
               isEmpty ? (
-                <p className="py-8 text-center text-text-muted">{emptyMessage}</p>
+                <EmptyState message={emptyMessage} />
               ) : (
                 children
               )
             ) : !hasError ? (
-              <p className="py-8 text-center text-text-muted">{emptyMessage}</p>
+              <EmptyState message={emptyMessage} />
             ) : null}
           </>
         )}
@@ -215,7 +219,7 @@ export function ReportsPage() {
 
   return (
     <div className="w-full space-y-4">
-      <h1 className="text-2xl font-bold">{t('reports.title')}</h1>
+      <PageHeader title={t('reports.title')} />
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -277,7 +281,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-11 sm:min-h-10"
+
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('csv')}
           >
@@ -287,7 +291,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-11 sm:min-h-10"
+
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('json')}
           >
@@ -298,52 +302,70 @@ export function ReportsPage() {
       </div>
 
       {projectsQuery.error && (
-        <div className="flex flex-wrap items-center gap-2" role="alert">
-          <span className="text-sm text-danger">{t('reports.projectsError')}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 sm:min-h-10"
-            onClick={() => void projectsQuery.refetch()}
-          >
-            <RotateCcw className="h-4 w-4" />
-            {t('common.retry')}
-          </Button>
-        </div>
-      )}
-      {tab === 'burndown' && sprintsQuery.error && (
-        <div className="flex flex-wrap items-center gap-2" role="alert">
-          <span className="text-sm text-danger">{t('reports.sprintsError')}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 sm:min-h-10"
-            onClick={() => void sprintsQuery.refetch()}
-          >
-            <RotateCcw className="h-4 w-4" />
-            {t('common.retry')}
-          </Button>
-        </div>
-      )}
-      {exportError && (
-        <div className="flex flex-wrap items-center gap-2" role="alert">
-          <span className="text-sm text-danger">{exportError}</span>
-          {failedExport && (
+        <Notice
+          role="alert"
+          tone="danger"
+          appearance="inline"
+          actions={
             <Button
               variant="outline"
               size="sm"
-              className="min-h-11 sm:min-h-10"
-              onClick={() => void downloadExport(failedExport)}
+
+              onClick={() => void projectsQuery.refetch()}
             >
               <RotateCcw className="h-4 w-4" />
               {t('common.retry')}
             </Button>
-          )}
-        </div>
+          }
+        >
+          <span>{t('reports.projectsError')}</span>
+        </Notice>
+      )}
+      {tab === 'burndown' && sprintsQuery.error && (
+        <Notice
+          role="alert"
+          tone="danger"
+          appearance="inline"
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+
+              onClick={() => void sprintsQuery.refetch()}
+            >
+              <RotateCcw className="h-4 w-4" />
+              {t('common.retry')}
+            </Button>
+          }
+        >
+          <span>{t('reports.sprintsError')}</span>
+        </Notice>
+      )}
+      {exportError && (
+        <Notice
+          role="alert"
+          tone="danger"
+          appearance="inline"
+          actions={
+            failedExport && (
+              <Button
+                variant="outline"
+                size="sm"
+
+                onClick={() => void downloadExport(failedExport)}
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t('common.retry')}
+              </Button>
+            )
+          }
+        >
+          <span>{exportError}</span>
+        </Notice>
       )}
 
       {projectsQuery.isLoading && projects.length === 0 ? (
-        <p className="py-8 text-center text-text-muted">{t('reports.loadingProjects')}</p>
+        <LoadingState message={t('reports.loadingProjects')} />
       ) : projectsQuery.error && projects.length === 0 ? null : !projectId ? (
         <div className="space-y-3 py-8 text-center text-text-muted">
           <p>
@@ -356,7 +378,7 @@ export function ReportsPage() {
             )}
           </p>
           {projects.length === 0 && (
-            <Button asChild variant="outline" className="min-h-11 sm:min-h-10">
+            <Button asChild variant="outline">
               <Link to="/projects">{t('projects.title')}</Link>
             </Button>
           )}
@@ -364,28 +386,16 @@ export function ReportsPage() {
       ) : (
         <Tabs value={tab} onValueChange={changeTab}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
-            <TabsTrigger
-              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
-              value="velocity"
-            >
+            <TabsTrigger className="whitespace-normal text-center" value="velocity">
               {t('reports.tabVelocity')}
             </TabsTrigger>
-            <TabsTrigger
-              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
-              value="burndown"
-            >
+            <TabsTrigger className="whitespace-normal text-center" value="burndown">
               {t('reports.tabBurndown')}
             </TabsTrigger>
-            <TabsTrigger
-              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
-              value="cumulative-flow"
-            >
+            <TabsTrigger className="whitespace-normal text-center" value="cumulative-flow">
               {t('reports.tabCumulativeFlow')}
             </TabsTrigger>
-            <TabsTrigger
-              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
-              value="control-chart"
-            >
+            <TabsTrigger className="whitespace-normal text-center" value="control-chart">
               {t('reports.tabControlChart')}
             </TabsTrigger>
           </TabsList>

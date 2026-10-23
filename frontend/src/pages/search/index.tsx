@@ -1,5 +1,10 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
+  RadioGroup,
+  TextLink,
+  PageNavigation,
+  Badge,
+  PageHeader,
   ProjectAvatar,
   ResourceList,
   ResourceListRow,
@@ -12,10 +17,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  SearchInput,
+  Notice,
 } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
-import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, ArrowUpDown, Filter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
 
@@ -198,50 +205,43 @@ export default function SearchPage() {
 
   return (
     <div className="py-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t('search.title')}</h1>
-        <Button variant="outline" asChild className="h-10">
-          <Link to="/projects">{t('search.backToProjects')}</Link>
-        </Button>
+      <div className="mb-6">
+        <PageHeader
+          title={t('search.title')}
+          actions={
+            <Button variant="outline" asChild>
+              <Link to="/projects">{t('search.backToProjects')}</Link>
+            </Button>
+          }
+        />
       </div>
 
-      <div className="mb-4 inline-grid grid-cols-2 rounded-md border border-border bg-surface p-1">
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => setMode('simple')}
-          aria-pressed={mode === 'simple'}
-          className={`min-h-10 rounded px-4 text-sm ${mode === 'simple' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
-        >
-          {t('search.modeSimple')}
-        </Button>
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => setMode('jql')}
-          aria-pressed={mode === 'jql'}
-          className={`min-h-10 rounded px-4 text-sm ${mode === 'jql' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
-        >
-          JQL
-        </Button>
-      </div>
+      <RadioGroup
+        appearance="segmented"
+        className="mb-4"
+        label={t('search.mode')}
+        value={mode}
+        onValueChange={(value) => setMode(value as 'simple' | 'jql')}
+        options={[
+          { value: 'simple', label: t('search.modeSimple') },
+          { value: 'jql', label: 'JQL' },
+        ]}
+      />
 
       {mode === 'simple' ? (
         <Card className="mb-6">
           <CardContent className="space-y-3 pt-6">
-            <div className="relative min-w-0">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
-              <Input
+            <div className="min-w-0">
+              <SearchInput
                 aria-label={t('search.placeholder')}
                 placeholder={t('search.placeholder')}
-                className="min-h-10 pl-9"
                 value={query}
                 onChange={(e) => updateQuery(e.target.value)}
               />
             </div>
             <Button
               variant="outline"
-              className="h-10 w-full justify-between sm:hidden"
+              className="w-full justify-between sm:hidden"
               aria-expanded={showMobileFilters}
               aria-controls="search-filters"
               onClick={() => setShowMobileFilters((shown) => !shown)}
@@ -258,7 +258,7 @@ export default function SearchPage() {
             >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-between">
+                  <Button variant="outline" className="w-full justify-between">
                     <span className="flex min-w-0 items-center gap-2">
                       {projectKey && <ProjectAvatar projectKey={projectKey} size="xs" />}
                       <span className="truncate">{projectName}</span>
@@ -289,7 +289,7 @@ export default function SearchPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-between">
+                  <Button variant="outline" className="w-full justify-between">
                     {statusLabel}
                   </Button>
                 </DropdownMenuTrigger>
@@ -314,7 +314,7 @@ export default function SearchPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-between">
+                  <Button variant="outline" className="w-full justify-between">
                     {priorityLabel}
                   </Button>
                 </DropdownMenuTrigger>
@@ -339,7 +339,7 @@ export default function SearchPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-between">
+                  <Button variant="outline" className="w-full justify-between">
                     {assigneeName}
                   </Button>
                 </DropdownMenuTrigger>
@@ -364,7 +364,7 @@ export default function SearchPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-between">
+                  <Button variant="outline" className="w-full justify-between">
                     <ArrowUpDown className="mr-2 h-4 w-4" />
                     {sortLabel}
                   </Button>
@@ -386,7 +386,7 @@ export default function SearchPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-10 w-full justify-start sm:w-10 sm:justify-center"
+                  className="w-full justify-start sm:justify-center"
                   onClick={clearFilters}
                   aria-label={t('search.clear')}
                 >
@@ -413,16 +413,14 @@ export default function SearchPage() {
                 value={jqlDraft}
                 onChange={(e) => setJqlDraft(e.target.value)}
                 aria-invalid={invalidJql}
-                className="min-h-10 min-w-0 flex-1 font-mono text-sm"
+                className="min-w-0 flex-1 font-mono text-sm"
               />
-              <Button type="submit" className="h-10">
-                {t('jql.execute')}
-              </Button>
+              <Button type="submit">{t('jql.execute')}</Button>
             </form>
             {invalidJql ? (
-              <p role="alert" className="mt-2 text-sm text-destructive">
+              <Notice role="alert" className="mt-2" tone="danger" appearance="inline">
                 {t('jql.invalid')}
-              </p>
+              </Notice>
             ) : (
               <p className="mt-2 text-xs text-text-muted">{t('jql.help')}</p>
             )}
@@ -452,30 +450,16 @@ export default function SearchPage() {
         </ResourceList>
       )}
       {!isLoading && !error && (page > 1 || hasNext) && (
-        <nav
-          aria-label={t('search.pages')}
-          className="mt-5 flex items-center justify-between gap-3"
-        >
-          <Button
-            variant="outline"
-            className="h-10"
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {t('search.previous')}
-          </Button>
-          <span className="text-sm text-text-muted">{t('search.page', { page })}</span>
-          <Button
-            variant="outline"
-            className="h-10"
-            disabled={!hasNext}
-            onClick={() => setPage(page + 1)}
-          >
-            {t('search.next')}
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </nav>
+        <PageNavigation
+          className="mt-5"
+          page={page}
+          hasNext={hasNext}
+          onPageChange={setPage}
+          label={t('search.pages')}
+          previousLabel={t('search.previous')}
+          nextLabel={t('search.next')}
+          summary={t('search.page', { page })}
+        />
       )}
     </div>
   )
@@ -489,21 +473,21 @@ function SearchResultRow({ issue }: { issue: Issue }) {
     <ResourceListRow asChild>
       <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
-          <span className="mt-2 shrink-0 rounded border px-2 py-0.5 text-xs font-medium sm:mt-0">
-            {issue.key}
-          </span>
-          <Link
-            to={`/issues/${issue.id}`}
-            title={issue.summary}
-            className="line-clamp-2 min-h-10 min-w-0 rounded-sm py-2 font-medium hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:line-clamp-1"
-          >
-            {issue.summary}
-          </Link>
+          <Badge className="mt-2 shrink-0 sm:mt-0">{issue.key}</Badge>
+          <TextLink asChild>
+            <Link
+              to={`/issues/${issue.id}`}
+              title={issue.summary}
+              className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1"
+            >
+              {issue.summary}
+            </Link>
+          </TextLink>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted sm:max-w-[45%] sm:flex-nowrap">
-          <span className="shrink-0 rounded bg-surface-raised px-2 py-0.5 text-xs">
+          <Badge tone="muted" className="shrink-0">
             {t(`status.${normalizedStatus}`, issue.status)}
-          </span>
+          </Badge>
           <span className="shrink-0">{t(`priority.${normalizedPriority}`, issue.priority)}</span>
           <span className="min-w-0 truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>
         </div>

@@ -7,11 +7,3 @@ body {
   color: var(--color-text-primary);
   font-family: var(--base-font-sans);
 }
-
-.notification-count {
-  color: var(--color-background);
-}
-
-[data-theme='light'] .notification-count {
-  color: #fff;
-}

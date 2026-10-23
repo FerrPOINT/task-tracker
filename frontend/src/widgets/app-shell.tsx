@@ -4,6 +4,7 @@ import { isUnarchivedProject } from './namespace-context'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
   AppShell as BaseAppShell,
+  Badge,
   Button,
   DropdownMenuGroup,
   DropdownMenuLabel,
@@ -20,6 +21,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Notice,
+  LoadingState,
+  ErrorState,
 } from '@pdlc/ui/ui'
 
 import { useProjectDisclosures } from '@pdlc/ui/lib'
@@ -152,17 +156,12 @@ function ProjectNavigation({
   const { t } = useTranslation()
   if (catalogStatus === 'error')
     return (
-      <p role="alert" className="p-3 text-sm text-warning">
+      <Notice role="alert" tone="warning" appearance="inline">
         Проекты недоступны
-      </p>
+      </Notice>
     )
-  if (catalogStatus === 'loading')
-    return (
-      <p role="status" className="p-3 text-sm text-text-muted">
-        Загружаем проекты…
-      </p>
-    )
-  if (!groups.length) return <p className="p-3 text-sm text-text-muted">Нет доступных проектов</p>
+  if (catalogStatus === 'loading') return <LoadingState message="Загружаем проекты…" />
+  if (!groups.length) return <Notice appearance="inline">Нет доступных проектов</Notice>
   return (
     <nav
       aria-label={t('navigation.projectNav')}
@@ -352,7 +351,7 @@ export function AppShell() {
               projectKey={projectKey}
               contextPending={createContextPending}
               contextError={createContextError}
-              className="mb-3 min-h-11 w-full gap-2"
+              className="mb-3 w-full"
             >
               {t('navigation.create')}
             </CreateTaskAction>
@@ -396,13 +395,11 @@ export function AppShell() {
           leading={
             <>
               {navigationTrigger}
-              <Link
-                to="/"
-                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
-                aria-label={t('app.name')}
-              >
-                <PlatformMark size="shell" withName={false} />
-              </Link>
+              <Button asChild variant="ghost" size="icon">
+                <Link to="/" className="hidden md:flex" aria-label={t('app.name')}>
+                  <PlatformMark size="shell" withName={false} />
+                </Link>
+              </Button>
             </>
           }
           context={
@@ -418,7 +415,7 @@ export function AppShell() {
                     type="button"
                     aria-label={t('navigation.projects')}
                     title={currentProject?.name ?? t('navigation.projects')}
-                    className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
+                    className="hidden min-w-0 max-w-32 lg:flex xl:max-w-52"
                   >
                     {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
                     <span className="truncate">
@@ -457,7 +454,6 @@ export function AppShell() {
                 contextPending={createContextPending}
                 contextError={createContextError}
                 size="sm"
-                className="min-h-10 min-w-10 gap-1 px-2.5 text-xs"
               >
                 <span className="hidden xl:inline">{t('navigation.create')}</span>
               </CreateTaskAction>
@@ -466,15 +462,19 @@ export function AppShell() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="relative h-11 w-11 md:h-10 md:w-10"
+                    className="relative"
                     aria-label={t('notifications.open')}
                     data-testid="notification-trigger"
                   >
                     <Bell className="h-[18px] w-[18px]" />
                     {unreadCount > 0 && (
-                      <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+                      <Badge
+                        appearance="counter"
+                        tone="danger"
+                        className="absolute -right-1 -top-1"
+                      >
                         {unreadCount}
-                      </span>
+                      </Badge>
                     )}
                   </Button>
                 </DropdownMenuTrigger>
@@ -560,12 +560,7 @@ export function AppShell() {
               </DropdownMenu>
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-11 w-11 md:h-10 md:w-10"
-                    aria-label={t('navigation.account')}
-                  >
+                  <Button variant="ghost" size="icon" aria-label={t('navigation.account')}>
                     <User className="h-[18px] w-[18px]" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -581,7 +576,7 @@ export function AppShell() {
                   <ThemeMenuItems />
                   {canAdmin && (
                     <DropdownMenuItem asChild>
-                      <Link to="/admin" className="gap-2 text-text-secondary">
+                      <Link to="/admin" className="gap-2">
                         <ShieldCheck className="h-4 w-4" />
                         <span>{t('navigation.admin')}</span>
                       </Link>
@@ -590,7 +585,7 @@ export function AppShell() {
                   <DropdownMenuItem
                     onSelect={() => logout.mutate()}
                     disabled={logout.isPending}
-                    className="gap-2 text-text-secondary"
+                    className="gap-2"
                   >
                     <LogOut className="h-4 w-4" />
                     <span>{t('navigation.logout')}</span>
@@ -607,17 +602,13 @@ export function AppShell() {
           <Outlet />
         </SpaceRouteOutlet>
       ) : namespace.malformed ? (
-        <p role="alert" className="text-danger">
-          Некорректная ссылка на проект.
-        </p>
+        <ErrorState message="Некорректная ссылка на проект." />
       ) : namespace.ref && routeProjectKey && namespace.query.isPending ? (
-        <p role="status">Проверяем привязку Tracker…</p>
+        <LoadingState message="Проверяем привязку Tracker…" />
       ) : namespace.ref &&
         routeProjectKey &&
         (namespace.query.isError || namespace.query.data?.resource_key !== routeProjectKey) ? (
-        <p role="alert" className="text-danger">
-          Ресурс не подтверждён в выбранном проекте.
-        </p>
+        <ErrorState message="Ресурс не подтверждён в выбранном проекте." />
       ) : (
         <Outlet />
       )}

@@ -1,4 +1,15 @@
-import { ResourceList, ResourceListRow, LoadingState, usePlatformServices } from '@pdlc/ui/ui'
+import {
+  TextLink,
+  Button,
+  Card,
+  CardContent,
+  SectionHeader,
+  Notice,
+  ResourceList,
+  ResourceListRow,
+  LoadingState,
+  usePlatformServices,
+} from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 
@@ -26,67 +37,71 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
   if (!ref) return null
   const wiki = services.find((service) => service.key === 'wiki')?.ui_url
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
-      <h2 className="font-semibold">Документы задачи</h2>
-      {context.isPending ? (
-        <p role="status">Проверяем контекст задачи…</p>
-      ) : !matching ? (
-        <p role="alert" className="text-danger">
-          Задача не подтверждена в выбранном проекте.
-        </p>
-      ) : links.isPending ? (
-        <LoadingState message="Загружаем связи Wiki…" />
-      ) : links.isError ? (
-        <p role="alert" className="text-danger">
-          Wiki недоступна. Список документов не получен.
-        </p>
-      ) : (
-        <ResourceList asChild>
-          <ul>
-            {links.data?.map((link) => (
-              <ResourceListRow asChild key={link.revision_id}>
-                <li>
-                  {wiki ? (
-                    <a
-                      className="text-accent hover:underline"
-                      href={withNamespaceLocation(
-                        `${wiki}/documents/${link.document_id}/revisions/${link.revision_id}`,
-                        ref,
-                        search,
+    <Card asChild>
+      <section>
+        <CardContent className="space-y-3">
+          <SectionHeader title="Документы задачи" />
+          {context.isPending ? (
+            <LoadingState message="Проверяем контекст задачи…" />
+          ) : !matching ? (
+            <Notice role="alert" appearance="inline" tone="danger">
+              Задача не подтверждена в выбранном проекте.
+            </Notice>
+          ) : links.isPending ? (
+            <LoadingState message="Загружаем связи Wiki…" />
+          ) : links.isError ? (
+            <Notice role="alert" appearance="inline" tone="danger">
+              Wiki недоступна. Список документов не получен.
+            </Notice>
+          ) : (
+            <ResourceList asChild>
+              <ul>
+                {links.data?.map((link) => (
+                  <ResourceListRow asChild key={link.revision_id}>
+                    <li>
+                      {wiki ? (
+                        <TextLink
+                          href={withNamespaceLocation(
+                            `${wiki}/documents/${link.document_id}/revisions/${link.revision_id}`,
+                            ref,
+                            search,
+                          )}
+                        >
+                          {link.title} · ревизия {link.version}
+                        </TextLink>
+                      ) : (
+                        <span>
+                          {link.title} · ревизия {link.version}
+                        </span>
                       )}
-                    >
-                      {link.title} · ревизия {link.version}
-                    </a>
-                  ) : (
-                    <span>
-                      {link.title} · ревизия {link.version}
-                    </span>
-                  )}
-                </li>
-              </ResourceListRow>
-            ))}
-            {links.data?.length === 0 && (
-              <ResourceListRow asChild>
-                <li className="text-text-muted">
-                  Опубликованные ревизии пока не связаны с задачей.
-                </li>
-              </ResourceListRow>
-            )}
-          </ul>
-        </ResourceList>
-      )}
-      {wiki && matching && (
-        <a
-          className="inline-block text-sm text-accent hover:underline"
-          href={withNamespaceLocation(
-            `${wiki}/namespace?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
-            ref,
-            search,
+                    </li>
+                  </ResourceListRow>
+                ))}
+                {links.data?.length === 0 && (
+                  <ResourceListRow asChild>
+                    <li className="text-text-muted">
+                      Опубликованные ревизии пока не связаны с задачей.
+                    </li>
+                  </ResourceListRow>
+                )}
+              </ul>
+            </ResourceList>
           )}
-        >
-          Открыть документы проекта и связать ревизию
-        </a>
-      )}
-    </section>
+          {wiki && matching && (
+            <Button asChild variant="link">
+              <a
+                href={withNamespaceLocation(
+                  `${wiki}/namespace?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
+                  ref,
+                  search,
+                )}
+              >
+                Открыть документы проекта и связать ревизию
+              </a>
+            </Button>
+          )}
+        </CardContent>
+      </section>
+    </Card>
   )
 }

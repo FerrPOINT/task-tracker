@@ -7,13 +7,14 @@ import {
   ProjectCardState,
 } from '@/widgets/project-actions'
 import {
+  EmptyState,
+  PageHeader,
   ProjectAvatar,
   ResourceList,
   ResourceListRow,
   Button,
   ErrorState,
   LoadingState,
-  Input,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,9 +25,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  SearchInput,
+  Notice,
 } from '@pdlc/ui/ui'
 
-import { Plus, Search, MoreHorizontal } from 'lucide-react'
+import { Plus, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 
@@ -119,9 +122,9 @@ export function ProjectsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {remove.error && (
-            <p role="alert" className="text-sm text-danger">
+            <Notice role="alert" tone="danger" appearance="inline">
               {t('projects.deleteError')}
-            </p>
+            </Notice>
           )}
           <div className="flex justify-end gap-2 pt-2">
             <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
@@ -142,25 +145,25 @@ export function ProjectsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
-        {canAdmin && (
-          <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('projects.create')}</span>
-            <span className="sm:hidden">{t('navigation.create')}</span>
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={t('projects.title')}
+        actions={
+          canAdmin && (
+            <Button size="sm" onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('projects.create')}</span>
+              <span className="sm:hidden">{t('navigation.create')}</span>
+            </Button>
+          )
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 basis-full sm:basis-auto">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <Input
-            type="text"
+        <div className="flex-1 basis-full sm:basis-auto">
+          <SearchInput
             aria-label={t('projects.search')}
             placeholder={t('projects.search')}
-            className="h-9 w-full pl-9 sm:w-64"
+            className="w-full sm:w-64"
             value={search}
             onChange={(e) => {
               setSearch(
@@ -173,13 +176,9 @@ export function ProjectsPage() {
       </div>
 
       {projects?.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
-          {t('projects.empty')}
-        </div>
+        <EmptyState message={t('projects.empty')} />
       ) : filteredProjects?.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
-          {t('projects.noMatches')}
-        </div>
+        <EmptyState message={t('projects.noMatches')} />
       ) : (
         <ResourceList asChild variant="bordered">
           <ul>
@@ -227,7 +226,7 @@ export function ProjectsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-10 w-10"
+
                           aria-label={t('projects.moreActionsFor', { name: project.name })}
                         >
                           <MoreHorizontal className="h-4 w-4" />

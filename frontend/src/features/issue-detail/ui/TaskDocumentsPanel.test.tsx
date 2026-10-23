@@ -40,6 +40,9 @@ it.each([true, false])('preserves all=%s across the revision and project links',
   )
   const revision = await screen.findByRole('link', { name: 'Published document · ревизия 1' })
   const overview = screen.getByRole('link', { name: 'Открыть документы проекта и связать ревизию' })
+  expect(revision).toHaveClass('base-text-link')
+  expect(overview).toHaveClass('base-button')
+  expect(overview).toHaveAttribute('data-variant', 'link')
   for (const link of [revision, overview]) {
     const url = new URL(link.getAttribute('href')!)
     expect(url.searchParams.get('project_scope')).toBe(all ? 'all' : null)

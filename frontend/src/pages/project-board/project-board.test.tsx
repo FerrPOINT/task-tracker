@@ -8,15 +8,23 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   ...(await original<object>()),
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
 
 const navigateToFleet = vi.hoisted(() => vi.fn())
+const boardHooks = vi.hoisted(() => ({
+  move: vi.fn(),
+  transitions: [] as Array<{ from_status_id: string; to_status_id: string }>,
+}))
+beforeEach(() => {
+  boardHooks.move.mockReset()
+  boardHooks.transitions = []
+})
 vi.mock('@pdlc/ui/platform', async (original) => ({
   ...(await original<object>()),
   platformNavigate: navigateToFleet,
@@ -56,8 +64,8 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
-  useTransitions: () => ({ data: [], isLoading: false }),
+  useMoveIssue: () => ({ mutate: boardHooks.move, isPending: false }),
+  useTransitions: () => ({ data: boardHooks.transitions, isLoading: false }),
 }))
 
 function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board') {
@@ -73,6 +81,65 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
+  it.each([false, true])(
+    'keeps one native drop and owner transition checks (allowed=%s)',
+    (allowed) => {
+      boardHooks.transitions = allowed ? [{ from_status_id: 'todo', to_status_id: 'done' }] : []
+      render(wrapper(<ProjectBoardPage />))
+      const article = screen.getByRole('article')
+      const board = screen.getByRole('region', { name: 'Колонки доски' })
+      const target = within(board)
+        .getByText(/Готово|Done/)
+        .closest('.base-card')!
+      const transfer = { effectAllowed: '', setData: vi.fn(), getData: vi.fn(() => 'i1') }
+      expect(article).toHaveAttribute('draggable', 'true')
+      expect(article).not.toHaveAttribute('data-interactive')
+      expect(boardHooks.move).not.toHaveBeenCalled()
+      fireEvent.dragStart(article, { dataTransfer: transfer })
+      expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('text/plain', 'i1')
+      fireEvent.dragOver(target, { dataTransfer: transfer })
+      expect(target).toHaveAttribute('data-highlighted', 'true')
+      expect(boardHooks.move).not.toHaveBeenCalled()
+      fireEvent.drop(target, { dataTransfer: transfer })
+      expect(target).not.toHaveAttribute('data-highlighted')
+      if (allowed)
+        expect(boardHooks.move).toHaveBeenCalledExactlyOnceWith(
+          { issue_id: 'i1', status_id: 'done' },
+          expect.any(Object),
+        )
+      else expect(boardHooks.move).not.toHaveBeenCalled()
+    },
+  )
+  it('changes the visible status through the shared group without losing URL context or starting work', async () => {
+    function Address() {
+      const location = useLocation()
+      return <output aria-label="Current URL">{location.pathname + location.search}</output>
+    }
+    navigateToFleet.mockClear()
+    const user = userEvent.setup()
+    render(
+      wrapper(
+        <>
+          <ProjectBoardPage />
+          <Address />
+        </>,
+        '/projects/TT/board?source=qa&status=todo&registry_instance_id=registry-qa&namespace_id=ns-qa',
+      ),
+    )
+    const group = screen.getByRole('radiogroup', { name: 'Статус задач' })
+    expect(within(group).getByRole('radio', { name: /К выполнению|To Do/i })).toBeChecked()
+    await user.click(within(group).getByRole('radio', { name: /Готово|Done/i }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current URL')).toHaveTextContent('status=done'),
+    )
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent('source=qa')
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent(
+      'registry_instance_id=registry-qa',
+    )
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent('namespace_id=ns-qa')
+    expect(within(group).getByRole('radio', { name: /Готово|Done/i })).toBeChecked()
+    expect(navigateToFleet).not.toHaveBeenCalled()
+  })
   it('opens empty PM chat with the same immutable project from every board column', async () => {
     navigateToFleet.mockClear()
     const user = userEvent.setup()
@@ -101,28 +168,32 @@ describe('ProjectBoardPage', () => {
     const user = userEvent.setup()
     render(wrapper(<ProjectBoardPage />))
 
-    const compact = screen.getByRole('button', { name: 'Компактная' })
-    const comfortable = screen.getByRole('button', { name: 'Обычная' })
+    const compact = screen.getByRole('radio', { name: 'Компактная' })
+    const comfortable = screen.getByRole('radio', { name: 'Обычная' })
     const issueCard = screen.getByText('Do work').closest('article')
 
-    expect(comfortable).toHaveAttribute('aria-pressed', 'true')
-    expect(issueCard).toHaveClass('p-2', 'md:p-3')
+    expect(comfortable).toBeChecked()
+    expect(issueCard?.querySelector('.base-card-content')).toHaveAttribute(
+      'data-density',
+      'default',
+    )
 
     await user.click(compact)
 
-    expect(compact).toHaveAttribute('aria-pressed', 'true')
-    expect(issueCard).toHaveClass('p-2')
-    expect(issueCard).not.toHaveClass('md:p-3')
+    expect(compact).toBeChecked()
+    expect(issueCard?.querySelector('.base-card-content')).toHaveAttribute(
+      'data-density',
+      'compact',
+    )
     expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('h-10', 'w-10')
   })
 
   it('restores compact density from the board URL', () => {
     render(wrapper(<ProjectBoardPage />, '/projects/TT/board?density=compact'))
 
-    expect(screen.getByRole('button', { name: 'Компактная' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.getByText('Do work').closest('article')).toHaveClass('p-2')
+    expect(screen.getByRole('radio', { name: 'Компактная' })).toBeChecked()
+    expect(
+      screen.getByText('Do work').closest('article')?.querySelector('.base-card-content'),
+    ).toHaveAttribute('data-density', 'compact')
   })
 })

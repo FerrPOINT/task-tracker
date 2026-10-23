@@ -102,6 +102,9 @@ describe('CustomFieldsPanel', () => {
     render(wrapper(<CustomFieldsPanel issueId="i1" projectKey="TT" />))
     expect(screen.getByText(/Priority/)).toBeInTheDocument()
     expect(screen.getByText(/Estimate/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Priority' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Estimate' })).toBeInTheDocument()
+    expect(mockSave).not.toHaveBeenCalled()
   })
 
   it('renders empty state when no custom fields', () => {
