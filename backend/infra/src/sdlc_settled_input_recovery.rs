@@ -21,7 +21,7 @@ struct Evidence {
 }
 
 fn original_body(command: &ResumePmExecutionLease) -> Result<Json, AppError> {
-    let mut value = json_value(command)?;
+    let mut value = serde_json::to_value(command).map_err(AppError::internal)?;
     let fields = value.as_object_mut().ok_or_else(inconsistent)?;
     for key in [
         "idempotency_key",
@@ -102,8 +102,9 @@ impl PostgresSdlcRepository {
             || result.lease.claimed_at != evidence.before.lease.claimed_at
             || result.lease.holder_subject != evidence.before.lease.holder_subject
             || result.lease.heartbeat_at < evidence.before.lease.expires_at
-            || json_value(&result)? != raw
-            || json_value(&result)?["binding"] != json_value(&evidence.before)?["binding"]
+            || serde_json::to_value(&result).map_err(AppError::internal)? != raw
+            || serde_json::to_value(&result).map_err(AppError::internal)?["binding"]
+                != serde_json::to_value(&evidence.before).map_err(AppError::internal)?["binding"]
             || result.owner_version != c.expected_owner_version
             || result.fence != c.checkpoint.fence
         {
@@ -179,7 +180,7 @@ impl PostgresSdlcRepository {
             vec![state.task_id.into()],
         )).await.map_err(map_db)?.ok_or_else(inconsistent)?;
         if row.try_get::<Json>("", "payload").map_err(map_db)?
-            != json_value(&reservation.assignment)?
+            != serde_json::to_value(&reservation.assignment).map_err(AppError::internal)?
         {
             return Err(inconsistent());
         }
