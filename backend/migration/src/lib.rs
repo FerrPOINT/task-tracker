@@ -28,7 +28,7 @@ mod m20261013_0000096_single_task_delivery;
 mod m20261017_0000097_task_source_binding;
 mod m20261018_0000098_pm_unsubmitted_recovery;
 mod m20261021_0000099_pm_bootstrap_retry;
-mod m20261023_0000100_pm_settled_input_recovery;
+mod m20261023_0000103_pm_settled_input_recovery;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -119,7 +119,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261018_0000098_pm_unsubmitted_recovery::Migration),
             Box::new(m20261018_0000098_project_repository_catalog::Migration),
             Box::new(m20261021_0000099_pm_bootstrap_retry::Migration),
-            Box::new(m20261023_0000100_pm_settled_input_recovery::Migration),
+            Box::new(m20261023_0000103_pm_settled_input_recovery::Migration),
         ]
     }
 }
