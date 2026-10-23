@@ -206,6 +206,14 @@ impl FleetConfigurationReader {
         &self,
         command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
     ) -> Result<domain::sdlc_pm_bootstrap_retry::BootstrapFailureReadback, AppError> {
+        self.read_pm_witness(self.pm_bootstrap_retry_request(command))
+            .await
+    }
+
+    fn pm_bootstrap_retry_request(
+        &self,
+        command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
+    ) -> reqwest::RequestBuilder {
         let mut url = self.origin.clone();
         url.set_path(&format!(
             "/internal/runtime/v1/pm/runs/{}/bootstrap-retry",
@@ -217,7 +225,8 @@ impl FleetConfigurationReader {
                 "next_session_run_id",
                 &command.next_session_run_id.to_string(),
             );
-        self.read_pm_witness(url).await
+        // Two bounded control reads (60s each), native/Workflow reads and margin.
+        self.client.get(url).timeout(Duration::from_secs(180))
     }
 
     pub async fn read_unsubmitted_pm(
@@ -229,16 +238,14 @@ impl FleetConfigurationReader {
         url.set_path(&format!("/internal/runtime/v1/pm/runs/{run}/unsubmitted"));
         url.query_pairs_mut()
             .append_pair("barrier_id", &barrier.to_string());
-        self.read_pm_witness(url).await
+        self.read_pm_witness(self.client.get(url)).await
     }
 
     async fn read_pm_witness<T: serde::de::DeserializeOwned>(
         &self,
-        url: Url,
+        request: reqwest::RequestBuilder,
     ) -> Result<T, AppError> {
-        let mut response = self
-            .client
-            .get(url)
+        let mut response = request
             .header(header::AUTHORIZATION, self.authorization.clone())
             .header(header::CACHE_CONTROL, "no-cache, no-store")
             .header(header::ACCEPT_ENCODING, "identity")

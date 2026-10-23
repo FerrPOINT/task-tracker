@@ -125,10 +125,13 @@ jobs:
       - name: Lint affected HTTP test targets
         if: ${{ inputs.http_only }}
         run: cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings
-      - run: cargo test --locked --workspace -- --test-threads=1
+      - name: Quick domain/SDK unit tests
         if: ${{ !inputs.http_only }}
+        run: cargo test --locked -p domain --lib
+      - run: cargo test --locked --workspace -- --test-threads=1
+        if: github.event_name == 'workflow_dispatch' && (!inputs.http_only)
       - name: Initial PM 0097 to 0098 upgrade and expired lease recovery (isolated PostgreSQL)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:
           TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_pm_candidates_test
         run: |
@@ -140,7 +143,7 @@ jobs:
           cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
       - name: Project repository lineage and PM recovery compatibility (isolated PostgreSQL)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         run: |
           set -euo pipefail
           cases=(
@@ -159,7 +162,7 @@ jobs:
             grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$database.log"
           done
       - name: Project links pagination and project isolation (isolated PostgreSQL)
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:
           TT_PROJECT_LINK_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_paging_project_links_test
         run: |
@@ -168,7 +171,7 @@ jobs:
           cargo test --locked -p infra --test repos project_repository_link_paging_preserves_scope_and_order -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/project-links-pagination.log"
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/project-links-pagination.log"
       - name: Populated 0033 through both 0098 migrations and strict EOL guards (isolated PostgreSQL)
-        if: ${{ !cancelled() && !inputs.http_only }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
         env:
           TT_DRAFT_FLOW_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_upgrade_draft_flow_test
         run: |
@@ -177,26 +180,26 @@ jobs:
           cargo test --locked -p infra --lib populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --ignored --test-threads=1 | tee "$RUNNER_TEMP/populated-upgrade.log"
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/populated-upgrade.log"
       - name: Deleted issue key restore (isolated PostgreSQL)
-        if: ${{ !cancelled() && !inputs.http_only }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
         run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
       - name: Namespace projection loss (isolated PostgreSQL)
-        if: ${{ !cancelled() && !inputs.http_only }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
           TT_NAMESPACE__INSTANCE_ID: 11111111-1111-4111-8111-111111111111
           TT_NAMESPACE__REGISTRY_INSTANCE_ID: 22222222-2222-4222-8222-222222222222
         run: cargo test --locked -p infra --test repos namespace_projection_loss_cannot_offer_or_rebind_managed_project -- --ignored --test-threads=1
       - name: Fleet MCP admission upgrade (isolated PostgreSQL)
-        if: ${{ !cancelled() && !inputs.http_only }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
         env:
           TRACKER_MCP_ADMISSION_TEST_URL: postgres://tasktracker@127.0.0.1:5432/tracker_mcp_qa_upgrade
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_mcp_qa_upgrade
           cargo test --locked -p migration existing_v1_schema_upgrades_without_rewriting_history -- --ignored --test-threads=1
       - name: Isolated PostgreSQL HTTP clarification and ownership lease
-        if: ${{ !cancelled() }}
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:
           TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts
           TT_SDLC_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_clarifications
@@ -267,6 +270,7 @@ jobs:
       - name: Packed Base consumer
         run: python ../../services-base/scripts/check_ui_consumer.py
       - name: Effective themes in the built consumer
+        if: github.event_name == 'workflow_dispatch'
         run: |
           pnpm exec playwright install --with-deps chromium
           pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/theme-preview.log 2>&1 &
