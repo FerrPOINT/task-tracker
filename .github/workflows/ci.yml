@@ -125,8 +125,11 @@ jobs:
       - name: Lint affected HTTP test targets
         if: ${{ inputs.http_only }}
         run: cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings
-      - run: cargo test --locked --workspace -- --test-threads=1
+      - name: Quick domain/SDK unit tests
         if: ${{ !inputs.http_only }}
+        run: cargo test --locked -p domain --lib
+      - run: cargo test --locked --workspace -- --test-threads=1
+        if: github.event_name == 'workflow_dispatch' && (!inputs.http_only)
       - name: Initial PM 0097 to 0098 upgrade and expired lease recovery (isolated PostgreSQL)
         if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:
