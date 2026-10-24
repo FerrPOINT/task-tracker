@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Label,
+  FormField,
+  Notice,
   Textarea,
   Button,
   Input,
@@ -78,48 +79,58 @@ export function SprintFormDialog({
           <DialogTitle>{isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
-          <div className="space-y-2">
-            <Label htmlFor="sprint-form-name">{t('sprints.name')} *</Label>
-            <Input
-              id="sprint-form-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('sprints.namePlaceholder')}
-              required={!isEdit}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sprint-form-goal">{t('sprints.goal')}</Label>
-            <Textarea
-              id="sprint-form-goal"
-              className="w-full"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder={t('sprints.goalPlaceholder')}
-            />
-          </div>
+          {error && (
+            <Notice role="alert" tone="danger" appearance="inline">
+              {error.message}
+            </Notice>
+          )}
+          <FormField id="sprint-form-name" label={t('sprints.name')} required={!isEdit}>
+            {(attrs) => (
+              <Input
+                {...attrs}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('sprints.namePlaceholder')}
+              />
+            )}
+          </FormField>
+          <FormField id="sprint-form-goal" label={t('sprints.goal')}>
+            {(attrs) => (
+              <Textarea
+                {...attrs}
+                className="w-full"
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                placeholder={t('sprints.goalPlaceholder')}
+              />
+            )}
+          </FormField>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="sprint-form-startdate">{t('sprints.startDate')}</Label>
-              <Input
-                id="sprint-form-startdate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sprint-form-enddate">{t('sprints.endDate')}</Label>
-              <Input
-                id="sprint-form-enddate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
+            <FormField id="sprint-form-startdate" label={t('sprints.startDate')}>
+              {(attrs) => (
+                <Input
+                  {...attrs}
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField
+              id="sprint-form-enddate"
+              label={t('sprints.endDate')}
+              error={dateError ?? undefined}
+            >
+              {(attrs) => (
+                <Input
+                  {...attrs}
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              )}
+            </FormField>
           </div>
-          {dateError && <p className="text-sm text-danger">{dateError}</p>}
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}

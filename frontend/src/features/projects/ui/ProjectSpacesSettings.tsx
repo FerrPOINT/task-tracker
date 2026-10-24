@@ -323,9 +323,9 @@ function Management({ project, session }: { project: Project; session: SpaceSess
             </Button>
           )}
           {reconcile.isError && (
-            <p role="alert" className="text-sm text-danger">
+            <Notice role="alert" tone="danger" appearance="inline">
               Синхронизация не подтверждена. Связи и исходная операция сохранены.
-            </p>
+            </Notice>
           )}
         </CardContent>
       </Card>

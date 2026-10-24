@@ -3,6 +3,7 @@ import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
   SectionHeader,
+  FormField,
   toast,
   Input,
   Select,
@@ -88,41 +89,56 @@ export function ProjectCustomFieldsPage() {
                     {t('customFields.createError')}
                   </Notice>
                 )}
-                <Input
-                  aria-label={t('customFields.fieldName')}
-                  placeholder={t('customFields.fieldName')}
-                  required
-                  value={draft.name}
-                  onChange={(e) => {
-                    create.reset()
-                    setDraft({ ...draft, name: e.target.value })
-                  }}
-                />
-                <Select
-                  aria-label={t('customFields.fieldType')}
-                  className="w-auto"
-                  value={draft.field_type}
-                  onValueChange={(nextValue) => {
-                    create.reset()
-                    setDraft({ ...draft, field_type: nextValue as CustomFieldType })
-                  }}
-                  options={[
-                    ...(types.map((type) => ({
-                      value: String(type),
-                      label: String(t(`customFields.types.${type}`)),
-                    })) ?? []),
-                  ]}
-                />
+                <FormField id="custom-field-name" label={t('customFields.fieldName')} required>
+                  {(attrs) => (
+                    <Input
+                      {...attrs}
+                      placeholder={t('customFields.fieldName')}
+                      value={draft.name}
+                      onChange={(e) => {
+                        create.reset()
+                        setDraft({ ...draft, name: e.target.value })
+                      }}
+                    />
+                  )}
+                </FormField>
+                <FormField id="custom-field-type" label={t('customFields.fieldType')}>
+                  {(attrs) => (
+                    <Select
+                      {...attrs}
+                      className="w-auto"
+                      value={draft.field_type}
+                      onValueChange={(nextValue) => {
+                        create.reset()
+                        setDraft({ ...draft, field_type: nextValue as CustomFieldType })
+                      }}
+                      options={[
+                        ...(types.map((type) => ({
+                          value: String(type),
+                          label: String(t(`customFields.types.${type}`)),
+                        })) ?? []),
+                      ]}
+                    />
+                  )}
+                </FormField>
                 {needsOptions && (
-                  <Input
-                    aria-label={t('customFields.options')}
-                    placeholder={t('customFields.options')}
-                    value={optionsText}
-                    onChange={(e) => {
-                      create.reset()
-                      setOptionsText(e.target.value)
-                    }}
-                  />
+                  <FormField
+                    id="custom-field-options"
+                    label={t('customFields.options')}
+                    error={options.length === 0 ? t('customFields.optionsRequired') : undefined}
+                  >
+                    {(attrs) => (
+                      <Input
+                        {...attrs}
+                        placeholder={t('customFields.options')}
+                        value={optionsText}
+                        onChange={(e) => {
+                          create.reset()
+                          setOptionsText(e.target.value)
+                        }}
+                      />
+                    )}
+                  </FormField>
                 )}
                 <Checkbox
                   checked={draft.is_required}
@@ -133,9 +149,6 @@ export function ProjectCustomFieldsPage() {
                 >
                   {t('customFields.required')}
                 </Checkbox>
-                {needsOptions && options.length === 0 && (
-                  <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
-                )}
                 <div className="flex gap-2">
                   <Button
                     type="submit"

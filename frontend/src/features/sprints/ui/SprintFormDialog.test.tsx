@@ -19,6 +19,48 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('SprintFormDialog', () => {
+  it('associates an invalid date range with the end date and submits only after correction', () => {
+    const onSubmit = vi.fn()
+    render(
+      wrapper(
+        <SprintFormDialog open onOpenChange={vi.fn()} onSubmit={onSubmit} isPending={false} />,
+      ),
+    )
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Date check' } })
+    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-10-24' } })
+    const end = screen.getByLabelText(/end date/i)
+    fireEvent.change(end, { target: { value: '2026-10-23' } })
+    fireEvent.click(screen.getByRole('button', { name: /create sprint/i }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(end).toHaveAttribute('aria-invalid', 'true')
+    expect(end).toHaveAccessibleDescription('End date cannot be earlier than start date')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'End date cannot be earlier than start date',
+    )
+    fireEvent.change(end, { target: { value: '2026-10-24' } })
+    fireEvent.click(screen.getByRole('button', { name: /create sprint/i }))
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        name: 'Date check',
+        start_date: '2026-10-24T00:00:00+00:00',
+        end_date: '2026-10-24T00:00:00+00:00',
+      }),
+    )
+    expect(end).not.toHaveAttribute('aria-invalid')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('announces a failed save while retaining entered fields without an automatic retry', () => {
+    const onSubmit = vi.fn()
+    const props = { open: true, onOpenChange: vi.fn(), onSubmit, isPending: false }
+    const view = render(wrapper(<SprintFormDialog {...props} />))
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Retained draft' } })
+    view.rerender(wrapper(<SprintFormDialog {...props} error={new Error('Save not confirmed')} />))
+    expect(screen.getByRole('alert')).toHaveTextContent('Save not confirmed')
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('Retained draft')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('renders form fields when open', () => {
     render(
       wrapper(
