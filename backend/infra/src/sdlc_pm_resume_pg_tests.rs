@@ -203,6 +203,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     )
     .await
     .unwrap();
+    crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
     let (draft, _) = repo
         .create_draft(
             project,
