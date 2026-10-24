@@ -6,6 +6,7 @@
       "scripts/tests/test_base_maintenance.py"
     ],
     "tooling": [
+      "scripts/verify_readme.py",
       "scripts/tests/test_build_pin.py",
       "scripts/tests/test_verify_readme.py",
       "scripts/tests/test_ci_change_classifier.py",
@@ -16,6 +17,7 @@
       "backend/Dockerfile.umbrella"
     ],
     "docs": [
+      "scripts/verify_readme.py",
       "docs/**",
       "*.md",
       "LICENSE"
@@ -507,6 +509,7 @@
     "tooling": [
       {
         "paths": [
+          "scripts/verify_readme.py",
           "scripts/tests/test_build_pin.py",
           "scripts/tests/test_verify_readme.py",
           "scripts/tests/test_ci_change_classifier.py",

@@ -470,3 +470,11 @@ CLI `task-tracker`, migration и OpenAPI остаются отдельными c
 `backend:quality` сохраняет полные workspace clippy/tests в ручном release;
 MSRV/features/OpenAPI и необходимые integration gates не сокращаются.
 Fresh target между source exports и registry/compiler-cache policy Base сохраняются.
+
+## Точный маршрут documentation validator
+
+`scripts/verify_readme.py` и `scripts/tests/test_verify_readme.py` выбирают `tooling:python-helpers`.
+Fast для source validator также сохраняет `docs:readme`; Unit/Build не выбирают application producers.
+Source command: `python -B -m unittest scripts.tests.test_verify_readme`.
+Mixed backend и неизвестные source paths сохраняют своих consumers; actual CI
+и ручные release gates остаются прежними.
