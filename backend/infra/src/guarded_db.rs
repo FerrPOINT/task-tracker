@@ -109,12 +109,22 @@ pub(crate) async fn bind_commit_clock(
     tx: &DatabaseTransaction,
     valid_until: i64,
 ) -> Result<(), DbErr> {
+    let until = chrono::DateTime::from_timestamp(valid_until, 0)
+        .ok_or_else(|| DbErr::Custom(EXPIRED.into()))?;
+    bind_commit_deadline(tx, until).await
+}
+
+pub(crate) async fn bind_commit_deadline(
+    tx: &DatabaseTransaction,
+    valid_until: chrono::DateTime<chrono::Utc>,
+) -> Result<(), DbErr> {
     let fence = uuid::Uuid::new_v4();
     tx.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "INSERT INTO tracker_request_commit_fences(fence_id,valid_until) VALUES($1,to_timestamp(($2::bigint)::double precision))",
+        "INSERT INTO tracker_request_commit_fences(fence_id,valid_until) VALUES($1,$2)",
         [fence.into(), valid_until.into()],
-    )).await?;
+    ))
+    .await?;
     tx.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "DELETE FROM tracker_request_commit_fences WHERE fence_id=$1",

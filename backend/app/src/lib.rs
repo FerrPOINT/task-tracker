@@ -5,6 +5,7 @@ pub mod authz;
 pub mod commands;
 pub mod context;
 pub mod dto;
+pub mod identity_memberships;
 pub mod oidc;
 pub mod sdlc;
 pub mod sdlc_candidates;

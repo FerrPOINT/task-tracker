@@ -2098,3 +2098,5 @@ SDLC repository использует существующий GuardedDb для r
 дочернего пространства оно исчезает из родительского каталога; отдельное прямое
 участие продолжает работать через его собственный каталог. У режима all явная
 иерархия возвращается как metadata, не как новое основание доступа.
+
+Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
