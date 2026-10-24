@@ -122,3 +122,29 @@ server {
 - `docs/LOCAL_SETUP.md`
 - `docs/OPS_RUNBOOK.md`
 - `docs/SECURITY.md`
+
+## Private identity-deletion owner
+
+`TT_IDENTITY_LEGACY_ISSUER` — проверенная оператором привязка прежних central
+references. Startup сохраняет её неизменно до создания adapters. Без binding
+owner возвращает unavailable, а не zero. Не выводите issuer из email или UUID.
+`TT_IDENTITY_DELETION_COORDINATOR_SUBJECTS` — CSV зарегистрированных UUID
+service-account; отсутствие/пустой список не выдаёт права. Нужны существующий
+`TT_AUTH__CENTRAL_ISSUER`/JWKS bridge, совпадение issuer PAT/request/config,
+точный `task-tracker:identity-lifecycle` и отсутствие browser session.
+Обычный machine PAT и human admin не являются coordinator capability.
+
+Read-only Admin memberships включается только явным
+`TT_USER_MANAGEMENT_READ_ENABLED=true`; unset/`false` оставляет 503 unavailable,
+не пустой успешный ответ. Любое другое заданное значение — ошибка конфигурации.
+`TT_USER_MANAGEMENT_MACHINE_SUBJECTS` — CSV исключений из human admission;
+он не выдаёт machine права. Существующие `TT_NAMESPACE__MACHINE_SUBJECTS` и
+`TT_SPACES__ADMISSION_READER_SUBJECTS` также учитываются как исключения.
+Допуск требует fresh human admin с SID и доступом к `task-tracker`; PAT не подходит.
+
+Schema/guards устанавливаются при startup независимо от read-enabled flag и
+coordinator allowlist: выключенный read API не отменяет migration 103.
+Секреты PAT не помещаются в пример. Compose и Kubernetes используют один смысл
+bindings и принимаются отдельно; не активируйте cohort по готовности Tracker.
+См. [контракт](IDENTITY_DELETION.md) и
+[ADR-0012](adr/0012-identity-deletion-owner.md).

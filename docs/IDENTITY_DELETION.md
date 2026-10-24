@@ -80,8 +80,15 @@ Owner target содержит пять cases, typed DTO/PM permit contracts — 
 Реальные router/repositories/PostgreSQL работают с controlled Auth transport.
 Это не genuine central Auth E2E и не приёмка cohort восьми owners. Наличие
 команд и cases не означает завершённый успешный full gate. Исторические ignored
-PG fixtures не считаются выполненными по общему library run. Реальные private
-RPC/cohort, Kubernetes и rollout требуют самостоятельной приёмки точной версии.
+PG fixtures не считаются выполненными по общему library run. Отдельный genuine
+C9 Auth/retained Tracker image curl-run подтвердил семь private HTTP cases:
+no-bearer 401, wrong-scope 403, check, freeze, exact same-operation readback,
+release и late-freeze 409. Receipt SHA-256:
+`3c63673908379f4104b96243a2a1b17c5a1cf6356d9c82b24fd2b093255d999a`;
+source/process cleanup и guards четырёх постоянных групп пройдены. Выдача
+coordinator credential выполнялась в fresh disposable QA Auth DB, inventory
+cohort в Auth не включён. Это не genuine human Admin memberships E2E и не
+приёмка восьми owners, restart/restore, Kubernetes или rollout.
 
 Все обязательные runtime/owner/cohort доказательства остаются в
 [плане](plans/2026-10-22-identity-deletion-owner.md); isolated source gates не
