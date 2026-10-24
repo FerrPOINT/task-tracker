@@ -365,6 +365,15 @@ async fn original_owner_deadline_rolls_back_freeze_and_release_inside_commit() {
             }).await.expect("the fixed DB deadline must expire without renewing the window");
             barrier.commit().await.unwrap();
             let (result, returned) = pending.await.unwrap(); db = returned;
+            let result_code = match &result {
+                Err(shared::AppError::Unauthorized) => 0_u8,
+                Ok(()) => 1,
+                Err(shared::AppError::Unavailable(_)) => 2,
+                Err(shared::AppError::Conflict(_)) => 3,
+                _ => 4,
+            };
+            let phase = if release { 10_u8 } else { 0_u8 };
+            assert_eq!(phase + result_code, phase, "finite owner COMMIT outcome: freeze=0, release=10");
             assert!(matches!(result, Err(shared::AppError::Unauthorized)), "the released database clock must reject the expired COMMIT");
             let after: serde_json::Value = db.query_one(Statement::from_string(DatabaseBackend::Postgres,"SELECT jsonb_build_object('operations',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY operation_id),'[]'::jsonb) FROM tracker_identity_deletion_operations t),'epoch',(SELECT to_jsonb(e) FROM tracker_identity_fence_epoch e WHERE singleton)) AS snapshot")).await.unwrap().unwrap().try_get("", "snapshot").unwrap();
             assert_eq!(before, after, "failed freeze/release must preserve old fences, receipts, journal and epoch revision");

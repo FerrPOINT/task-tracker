@@ -2099,4 +2099,13 @@ SDLC repository использует существующий GuardedDb для r
 участие продолжает работать через его собственный каталог. У режима all явная
 иерархия возвращается как metadata, не как новое основание доступа.
 
-Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+Identity-administration API описан в [контракте владельца identity](IDENTITY_DELETION.md):
+private POST `/api/internal/v1/user-deletions/{operation_id}/{check,freeze,release}`
+требует отдельного coordinator service-account PAT. Read-only GET
+`/api/v2/identity-users/{subject}/memberships` требует fresh human admin и явного
+`TT_USER_MANAGEMENT_READ_ENABLED=true` (по умолчанию выключен); machine/PAT этот
+human допуск не получают. Страница использует `limit=25`, `offset=0`, максимум
+100 записей и не выдаёт membership/content write authority. Схема отражена в
+`openapi/openapi.json` и `frontend/src/api/generated.ts`; существующие
+`openapi:check` и `openapi:compat` проверяют frontend-контракт. Реальные private
+RPC/cohort/Kubernetes остаются отдельными gates, перечисленными в связанном документе.
