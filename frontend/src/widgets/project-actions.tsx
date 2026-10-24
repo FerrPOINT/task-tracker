@@ -232,7 +232,7 @@ export function ProjectActions({
   const to = `/projects/${encodeURIComponent(project.key)}/settings`
   if (!canAdmin) return null
   return (
-    <Button asChild variant="ghost" size="icon" className="hover:bg-transparent">
+    <Button asChild variant="ghost" size="icon">
       <Link
         to={
           import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&

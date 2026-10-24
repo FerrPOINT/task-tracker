@@ -208,3 +208,26 @@ UI producer `56f27ee55bb0481ecc4733a0bb58144ae3cfed60`, reference `ba456575dd41f
 Production React source этой волной не менялся. Обновлён точный UI pin общего оформления focus-visible PageHeader; AI Hub дополнительно обновляет только URI immutable UI snapshot в package/lockfile. Прикладные unit/type результаты неизменных inputs переиспользуются, новый продуктовый browser PASS не заявляется.
 
 UI producer `88e4ed54546181c6ffa46a38651b6553cd4e3aff`, reference `9d8689e5c5e52fd6bc3dd3d2b4b030bc992af26cfa22d626c15268765bb06316`. Семь UI pins согласованы, шесть frozen offline refresh без downloads и сторонних upgrades сохранили React singleton. SDK/skills pins неизменны. Настоящий UI-архив и offline CLI проверены вне workspace. Общий интеграционный gate, hosted CI, публикация веток и установленная приёмка остаются открытыми.
+
+
+## Общий возврат фокуса и presentation — 25 октября 2026
+
+У ghost icon Button настроек проекта удалён hover:bg-transparent. Hover и focus принадлежат Base; обработчики, Router и права проекта сохранены. Scoped TypeScript, ESLint и 8 product cases прошли.
+
+UI producer `ed8edd288f3980b521258bcac9082bfb88856b69`, reference `1424252c8cf384eb42385d5692daa148d0df30796f2a79cf100dd87e56e54743`. Семь UI pins согласованы; шесть frozen
+offline refresh без downloads и сторонних upgrades сохранили React singleton.
+SDK/skills pins неизменны. Настоящий архив UI содержит 780 файлов; offline CLI,
+новые карточки и самостоятельные примеры проверены вне workspace без Storybook.
+
+Общий IAB срез: 144 уникальных сочетания шести source-композиций, трёх тем,
+двух type_scale и ширин 320/375/1920/2560. Из-за пропущенной утилиты временной
+QA-страницы Table 24 сочетания перепроверены; 120 остальных сохранены после
+доказанного сравнения CSS. Дополнительно 18 уникальных открытых Portal-сцен,
+native Tab/ArrowRight таблицы и URL-навигация Forge. Продуктовые записи отключены
+синтетическими adapters; это не backend или установленная приёмка. Снимок
+ревизии Wiki и context drawer Fleet имеют unit, но не отдельный IAB proof этой волны.
+
+Доказательства: private evidence/dialog-compositions-20261025/. Временные
+процессы и IAB-вкладка закрыты, source inputs сохранены, API-запросов нет.
+Общий интеграционный gate, HTTP parity, настоящий zoom 200%, публикация,
+hosted CI и установленная приёмка остаются открытыми. Runtime не изменён.
