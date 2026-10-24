@@ -1,6 +1,6 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
-import {
+import { ResourceListDescription, ResourceListTitle,
   ProjectAvatar,
   PageHeader,
   PageNavigation,
@@ -54,10 +54,10 @@ function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode })
           className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-            <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
-            <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
+            <ResourceListDescription asChild className="shrink-0 sm:w-20"><span >{issue.key}</span></ResourceListDescription>
+            <ResourceListTitle asChild className="line-clamp-2 min-w-0 sm:line-clamp-1 sm:flex-1"><span >
               {issue.summary}
-            </span>
+            </span></ResourceListTitle>
           </span>
           <span className="flex items-center gap-2 sm:shrink-0">
             <PriorityBadge priority={issue.priority} />

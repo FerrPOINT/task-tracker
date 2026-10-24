@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import {
+import { ResourceListTitle,
   SectionHeader,
   FormField,
   toast,
@@ -202,10 +202,10 @@ export function ProjectCustomFieldsPage() {
                     <ResourceListRow asChild key={field.id}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="break-words font-medium">
+                          <ResourceListTitle asChild className="break-words"><p >
                             {field.name}
                             {field.is_required ? ' *' : ''}
-                          </p>
+                          </p></ResourceListTitle>
                           <p className="break-words text-sm text-text-muted">
                             {t(`customFields.types.${field.field_type}`)}
                             {field.options.length ? `: ${field.options.join(', ')}` : ''}

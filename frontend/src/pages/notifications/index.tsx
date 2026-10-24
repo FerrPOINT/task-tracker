@@ -15,6 +15,8 @@ import {
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
 import {
+  ResourceListTitle,
+  ResourceListDescription,
   Fieldset,
   RadioGroup,
   PageHeader,
@@ -85,7 +87,9 @@ const NotificationRow = memo(function NotificationRow({
   const content = (
     <>
       <div className="flex min-w-0 items-start gap-2">
-        <h2 className="min-w-0 flex-1 break-words text-sm font-semibold">{notification.title}</h2>
+        <ResourceListTitle asChild className="flex-1">
+          <h2>{notification.title}</h2>
+        </ResourceListTitle>
         <time
           dateTime={notification.created_at}
           title={createdAt.toLocaleString(i18n.language)}
@@ -95,7 +99,9 @@ const NotificationRow = memo(function NotificationRow({
         </time>
       </div>
       {notification.body && (
-        <p className="mt-0.5 break-words text-xs text-text-secondary">{notification.body}</p>
+        <ResourceListDescription asChild className="mt-0.5">
+          <p>{notification.body}</p>
+        </ResourceListDescription>
       )}
     </>
   )

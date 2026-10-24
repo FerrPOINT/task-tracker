@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import {
+import { ResourceListTitle,
   Button,
   ConfirmDialog,
   ResourceList,
@@ -169,9 +169,9 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                       <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium" title={a.file_name}>
+                      <ResourceListTitle asChild className="truncate"><p  title={a.file_name}>
                         {a.file_name}
-                      </p>
+                      </p></ResourceListTitle>
                       <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
                     </div>
                   </div>

@@ -4,7 +4,7 @@ import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
-import {
+import { ResourceListDescription,
   PageHeader,
   SectionHeader,
   Button,
@@ -297,9 +297,9 @@ export function AdminPage() {
                         {entry.actor_id || t('admin.audit.system')}
                       </div>
                       <div className="min-w-0">
-                        <span className="text-xs text-text-muted lg:hidden">
+                        <ResourceListDescription asChild className="lg:hidden"><span >
                           {t('admin.audit.changes')}:
-                        </span>
+                        </span></ResourceListDescription>
                         <ChangesSummary value={entry.metadata} />
                       </div>
                       <div className="text-xs text-text-muted">{formatDate(entry.created_at)}</div>
