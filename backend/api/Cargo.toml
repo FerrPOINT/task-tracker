@@ -52,3 +52,8 @@ tower.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 jsonwebtoken = { workspace = true }
+
+# Real private-owner HTTP qualification against disposable PostgreSQL.
+infra = { path = "../infra" }
+migration = { path = "../migration" }
+sea-orm.workspace = true

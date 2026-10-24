@@ -11,6 +11,11 @@ pub async fn build_repositories(config: DatabaseConfig) -> Result<Repositories, 
         .min_connections(config.min_connections)
         .acquire_timeout(std::time::Duration::from_secs(5));
     let db = Database::connect(opt).await.map_err(AppError::database)?;
+    if let Ok(issuer) = std::env::var("TT_IDENTITY_LEGACY_ISSUER") {
+        crate::identity_deletion::IdentityDeletionStore::new(&db)
+            .bind_identity_legacy_issuer(&issuer)
+            .await?;
+    }
     let repos = SeaOrmRepositories::new(db);
 
     Ok(Repositories {

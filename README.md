@@ -273,3 +273,16 @@ integration/live/E2E приёмку. Перед относящейся к дан
 
 Полный workspace-набор тоже ручной: автоматический backend выполняет короткие
 SDK/domain unit tests; прежний полный набор сохранён с manual predicate.
+
+## Владелец identity references и Admin metadata
+
+Private `check/freeze/release` сохраняет durable fences и прежнюю identity-историю;
+unknown references не превращаются в zero. Настройки
+`TT_IDENTITY_LEGACY_ISSUER` и `TT_IDENTITY_DELETION_COORDINATOR_SUBJECTS` требуют
+операторской проверки deployment; примеры в `.env.example` закомментированы.
+Human Admin memberships по умолчанию недоступны: только явный
+`TT_USER_MANAGEMENT_READ_ENABLED=true` включает read-only проекцию.
+`TT_USER_MANAGEMENT_MACHINE_SUBJECTS` исключает subjects, не выдаёт полномочий.
+См. [deployment](docs/DEPLOYMENT.md#private-identity-deletion-owner) и
+[контракт](docs/IDENTITY_DELETION.md). Отдельный genuine owner curl не подтверждает
+полный cohort восьми owners, Kubernetes или установленный rollout.
