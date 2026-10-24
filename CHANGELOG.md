@@ -45,6 +45,10 @@
 
 ## [Unreleased]
 
+- Добавлены private identity owner check/freeze/release, immutable aliases, guards
+  74 источников и read-only memberships projection для Admin. Проверен точный
+  source-компонент; real Auth/cohort/Kubernetes и rollout остаются отдельными gates.
+
 - Обновлён общий UI Base; устранено локальное смещение логотипа Tracker в свёрнутом меню. Защита pending-форм и сохранение неопределённого запроса подтверждены тестами и браузерными сценариями.
 
 - Ошибки чтения голосов и наблюдателей показываются отдельно от пустого результата.

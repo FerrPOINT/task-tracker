@@ -2,6 +2,7 @@ pub mod attachment_artifact;
 pub mod email_port;
 pub mod entities;
 pub mod events;
+pub mod identity_memberships;
 pub mod jql;
 pub mod project_spaces;
 pub mod repositories;

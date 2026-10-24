@@ -10,6 +10,180 @@
     "version": "0.2.0"
   },
   "paths": {
+    "/api/internal/v1/user-deletions/{operation_id}/check": {
+      "post": {
+        "tags": [
+          "identity-lifecycle"
+        ],
+        "operationId": "check",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerReferenceSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Expired or invalid coordinator"
+          },
+          "403": {
+            "description": "Registered machine capability required"
+          },
+          "409": {
+            "description": "Operation conflict"
+          },
+          "503": {
+            "description": "Unknown binding or unavailable owner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/internal/v1/user-deletions/{operation_id}/freeze": {
+      "post": {
+        "tags": [
+          "identity-lifecycle"
+        ],
+        "operationId": "freeze",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerFreezeReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Expired or invalid coordinator"
+          },
+          "403": {
+            "description": "Registered machine capability required"
+          },
+          "409": {
+            "description": "Operation conflict"
+          },
+          "503": {
+            "description": "Unknown binding or unavailable owner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/internal/v1/user-deletions/{operation_id}/release": {
+      "post": {
+        "tags": [
+          "identity-lifecycle"
+        ],
+        "operationId": "release",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerReleaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Expired or invalid coordinator"
+          },
+          "403": {
+            "description": "Registered machine capability required"
+          },
+          "409": {
+            "description": "Operation conflict"
+          },
+          "503": {
+            "description": "Unknown binding or unavailable owner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/audit-log": {
       "get": {
         "tags": [
@@ -9712,6 +9886,68 @@
         ]
       }
     },
+    "/api/v2/identity-users/{subject}/memberships": {
+      "get": {
+        "tags": [
+          "identity-administration"
+        ],
+        "operationId": "get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityMembershipPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fresh human platform administrator required"
+          },
+          "503": {
+            "description": "Owner projection unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v2/project-contexts/query": {
       "post": {
         "tags": [
@@ -12856,6 +13092,35 @@
           }
         }
       },
+      "DeletionRequest": {
+        "type": "object",
+        "description": "The required inventory is operator-owned and must include unavailable owners.\nA new registry version cannot change an already prepared operation's inventory.",
+        "required": [
+          "schema_version",
+          "operation_id",
+          "identity",
+          "inventory_revision"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/CentralIdentity"
+          },
+          "inventory_revision": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "DeliveryAssignment": {
         "type": "object",
         "required": [
@@ -13863,6 +14128,76 @@
           }
         },
         "additionalProperties": false
+      },
+      "IdentityMembershipPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdentityProjectMembership"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "IdentityProjectMembership": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_key",
+          "project_name",
+          "role",
+          "spaces"
+        ],
+        "properties": {
+          "joined_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_key": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            }
+          }
+        }
       },
       "IssueLinkListResponse": {
         "type": "object",
@@ -17793,6 +18128,40 @@
         },
         "additionalProperties": false
       },
+      "OwnerFreezeReceipt": {
+        "type": "object",
+        "description": "A receipt means the owner committed a durable freeze before inspecting refs.\nNew references remain blocked until an explicit release or permanent tombstone.",
+        "required": [
+          "request",
+          "owner",
+          "fence",
+          "revision",
+          "reference_count"
+        ],
+        "properties": {
+          "fence": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "reference_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "request": {
+            "$ref": "#/components/schemas/DeletionRequest"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "OwnerReadback": {
         "type": "object",
         "required": [
@@ -17829,6 +18198,60 @@
           },
           "state": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OwnerReferenceSummary": {
+        "type": "object",
+        "description": "A preliminary read is not a freeze and never authorizes finalization.",
+        "required": [
+          "request",
+          "owner",
+          "revision",
+          "reference_count",
+          "fencing_supported"
+        ],
+        "properties": {
+          "fencing_supported": {
+            "type": "boolean"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "reference_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "request": {
+            "$ref": "#/components/schemas/DeletionRequest"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "OwnerReleaseReceipt": {
+        "type": "object",
+        "description": "Release also persists cancellation when no freeze was observed. A delayed\nfreeze request for this operation must then be rejected by the owner.",
+        "required": [
+          "request",
+          "owner",
+          "cancelled"
+        ],
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/DeletionRequest"
           }
         },
         "additionalProperties": false
