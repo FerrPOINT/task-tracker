@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { expect, describe, it } from 'vitest'
 import { parseDuration, formatDuration, formatDurationShort } from './time'
 

@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createClient = vi.hoisted(() => vi.fn(() => ({ use: vi.fn() })))

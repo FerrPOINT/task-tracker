@@ -26,6 +26,21 @@ Frontend build явно подключён к Base prepared-frontend-v1/git-sour
 Обновлённые source maps не дают grant прежним receipts; текущий candidate
 проверяется отдельно. Node22.20.0, pnpm10.28.1, lockfile и UI pin сохранены.
 
+## Frontend unit environments
+
+13 проверенных pure/API-mock suites используют @vitest-environment node.
+Browser setup не загружает для них DOM matchers, i18n bootstrap и storage.
+Attachment, React/UI и все неразобранные suites сохраняют jsdom по умолчанию;
+isolation и maxWorkers4 не менялись. Суффикс .test.ts сам по себе не означает Node.
+Два controls в src/test проверяют чистую Node-среду и сохранение browser defaults.
+Прежние assertions тестов не менялись; общий pnpm test:unit остаётся entrypoint.
+
+Во время правок из root: check-workspace.ps1 -Profile Unit -Repository task-tracker
+-BaseRef HEAD -PlanOnly. HEAD выбирает working-tree delta; default origin/main
+включает также прежние committed изменения task branch. После commit выбирать
+нужный компонент/диапазон явно, не выдавая пустой working diff за test PASS.
+Test-only changes не требуют повторного production Vite build.
+
 ## Backend unit dependency graph
 
 Обе backend recipes выбирают для unit только domain: цепочка
