@@ -179,6 +179,7 @@
         }
       ],
       "prepare_frontend": "22.20.0",
+      "environment_input_contract": "frontend-agent-presence-v1",
       "test_tier": "static"
     },
     {
@@ -220,6 +221,7 @@
         }
       ],
       "prepare_frontend": "22.20.0",
+      "environment_input_contract": "frontend-agent-presence-v1",
       "test_tier": "unit"
     },
     {

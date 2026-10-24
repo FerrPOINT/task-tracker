@@ -29,6 +29,21 @@ RUST_TEST = r"#\[(?:tokio::)?test\]"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_only_prepared_frontend_checks_opt_into_agent_presence(self) -> None:
+        manifest = selector.load(ROOT)
+        gates = {gate['id']: gate for gate in manifest['gates']}
+        for name in ('frontend:types', 'frontend:tests'):
+            gate = gates[name]
+            self.assertEqual(gate.get('environment_input_contract'), 'frontend-agent-presence-v1')
+            self.assertEqual(selector.artifact_environment(gate, {
+                'CODEX_THREAD_ID': 'fixture-thread', 'CODEX_SESSION_ID': 'fixture-session',
+                'VITE_API_BASE_URL': 'https://fixture.test',
+            }), {'CODEX_THREAD_ID': '1', 'CODEX_SESSION_ID': '1',
+                 'VITE_API_BASE_URL': 'https://fixture.test'})
+        self.assertNotIn('environment_input_contract', gates['frontend:build'])
+        self.assertFalse(any(gate.get('environment_input_contract') == 'frontend-agent-presence-v1'
+                             for gate in manifest['gates'] if gate['component'] != 'frontend'))
+
     def test_normal_seaorm_consumers_do_not_enable_the_mock_driver(self) -> None:
         workspace = tomllib.loads((ROOT / 'backend/Cargo.toml').read_text(encoding='utf-8'))['workspace']
         seaorm = workspace['dependencies']['sea-orm']

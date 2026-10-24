@@ -1,5 +1,19 @@
 # Стратегия тестирования Task Tracker
 
+## Стабильная среда frontend-проверок
+
+`frontend:types` и `frontend:tests` используют Base `frontend-agent-presence-v1`:
+уникальные значения ID чата/сессии нормализуются в фактической среде команды,
+сохраняя presence для agent-aware dependencies. Другие параметры остаются inputs.
+Команда из подготовленного workspace:
+`check-workspace.ps1 -Profile Fast -Repository task-tracker -Component frontend`.
+Caller должен поддерживать принятый контракт; standalone CI selector закреплён
+отдельным `.quality-tooling-revision`, SDK/UI pins независимы. Production artifact
+и остальные gates не включены в этот opt-in. Прямой `pnpm test:unit` выполняет
+новую проверку и не потребляет quality receipts.
+Общий контракт и qualification boundaries —
+[в Base](../../services-base/docs/plans/frontend-agent-presence-20261025.md).
+
 ## Python tooling unit
 
 Известные `test_build_pin`, `test_verify_readme`, `test_ci_change_classifier` и
