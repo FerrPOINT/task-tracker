@@ -1,6 +1,7 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
+  FormField,
   Label,
   Fieldset,
   PageHeader,
@@ -385,24 +386,24 @@ export function IssueCreatePage() {
             <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
             <div className="grid gap-4 sm:grid-cols-2">
               {customFields.map((field) => (
-                <label
+                <FormField
+                  id={`issue-custom-field-${field.id}`}
+                  label={field.name + (field.is_required ? ' *' : '')}
                   key={field.id}
-                  className="space-y-2 text-sm font-medium [&_input]:min-h-11 [&_select]:min-h-11 sm:[&_input]:min-h-10 sm:[&_select]:min-h-10"
                 >
-                  <span>
-                    {field.name}
-                    {field.is_required ? ' *' : ''}
-                  </span>
-                  <CustomFieldValueInput
-                    field={field}
-                    value={customFieldValues[field.id]}
-                    onSave={(value) => {
-                      setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
-                      setValidationError(null)
-                    }}
-                    commit="change"
-                  />
-                </label>
+                  {(attrs) => (
+                    <CustomFieldValueInput
+                      id={attrs.id}
+                      field={field}
+                      value={customFieldValues[field.id]}
+                      onSave={(value) => {
+                        setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
+                        setValidationError(null)
+                      }}
+                      commit="change"
+                    />
+                  )}
+                </FormField>
               ))}
             </div>
           </Fieldset>

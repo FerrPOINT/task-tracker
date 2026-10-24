@@ -5,7 +5,9 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
-import { Fieldset,
+import {
+  FormField,
+  Fieldset,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -216,22 +218,21 @@ function CreateForm({
           })}
         >
           <Fieldset disabled={!catalogReady || busy} className="min-w-0 space-y-3">
-            <label className="block space-y-1" htmlFor={id + '-key'}>
-              <span>Ключ проекта</span>
-              <Input id={id + '-key'} maxLength={10} autoComplete="off" {...form.register('key')} />
-            </label>
+            <FormField id={id + '-key'} label={'Ключ проекта'}>
+              {(attrs) => (
+                <Input {...attrs} maxLength={10} autoComplete="off" {...form.register('key')} />
+              )}
+            </FormField>
             {form.formState.errors.key && (
               <p role="alert">Ключ: от 1 до 10 латинских букв, цифр или дефисов.</p>
             )}
-            <label className="block space-y-1" htmlFor={id + '-name'}>
-              <span>Название проекта</span>
-              <Input id={id + '-name'} {...form.register('name')} />
-            </label>
+            <FormField id={id + '-name'} label={'Название проекта'}>
+              {(attrs) => <Input {...attrs} {...form.register('name')} />}
+            </FormField>
             {form.formState.errors.name && <p role="alert">Укажите название до 200 символов.</p>}
-            <label className="block space-y-1" htmlFor={id + '-description'}>
-              <span>Описание проекта</span>
-              <Textarea id={id + '-description'} {...form.register('description')} />
-            </label>
+            <FormField id={id + '-description'} label={'Описание проекта'}>
+              {(attrs) => <Textarea {...attrs} {...form.register('description')} />}
+            </FormField>
           </Fieldset>
           <Controller
             name="spaces"
