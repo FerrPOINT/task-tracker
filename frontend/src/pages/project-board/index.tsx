@@ -303,7 +303,11 @@ export function ProjectBoardPage() {
                   </div>
                   <div className="text-xs text-text-muted">
                     {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                    {overLimit && <span className="ml-1 text-danger">{t('board.wipWarning')}</span>}
+                    {overLimit && (
+                      <Badge appearance="inline" tone="danger" className="ml-1">
+                        {t('board.wipWarning')}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>

@@ -219,7 +219,11 @@ export function IssueCreatePage() {
           </Notice>
         )}
         {validationError && <ErrorState message={validationError} />}
-        {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
+        {!userId && (
+          <Notice tone="danger" appearance="inline">
+            {t('issueCreate.noReporter')}
+          </Notice>
+        )}
         {setupLoading && <LoadingState scope="local" message={t('issueCreate.loading')} />}
         {projectsQuery.error && (
           <ErrorState
