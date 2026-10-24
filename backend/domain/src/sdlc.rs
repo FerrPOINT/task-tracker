@@ -831,6 +831,65 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: crate::sdlc_execution_lease::ResumePmExecutionLease,
     ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn preflight_terminal_idle_checkpoint(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: &crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+    ) -> Result<Option<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError>
+    {
+        Err(AppError::Unavailable(
+            "terminal-idle PM recovery is unavailable".into(),
+        ))
+    }
+    async fn permit_terminal_idle_checkpoint(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+        _witness: crate::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
+    ) -> Result<
+        (
+            crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse,
+            bool,
+        ),
+        AppError,
+    > {
+        Err(AppError::Unavailable(
+            "terminal-idle PM recovery is unavailable".into(),
+        ))
+    }
+    async fn pm_terminal_idle_checkpoint_operation(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: &str,
+    ) -> Result<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
+        Err(AppError::Unavailable(
+            "terminal-idle PM recovery is unavailable".into(),
+        ))
+    }
+    async fn preflight_settled_pm_recovery(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: &crate::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
+        Err(AppError::Unavailable(
+            "settled PM recovery is unavailable".into(),
+        ))
+    }
+    async fn recover_settled_pm_execution_lease(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_execution_lease::ResumePmExecutionLease,
+        _witness: crate::sdlc_execution_lease::PmSettledInputRecoveryWitness,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        Err(AppError::Unavailable(
+            "settled PM recovery is unavailable".into(),
+        ))
+    }
     async fn preflight_unsubmitted_pm_recovery(
         &self,
         task: Uuid,

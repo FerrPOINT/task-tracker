@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-10-24: Terminal-Idle Checkpoint Permit Source
+
+- Independent source review found the new original-key GET required writer
+  authority despite Fleet's read-only scheduler credential. It now uses the
+  existing scheduler_read guard; PG coverage asserts read succeeds while the
+  same principal cannot issue a permit. Execution of this regression is pending.
+- Added a closed Feedback-only branch to the existing PM lease resume API.
+  Trusted Fleet readback and current locked custody permit one exact checkpoint;
+  the canonical expired lease, task state and owner consent do not change.
+- Reused the existing idempotency ledger with immutable expiry and cross-ledger
+  collision checks; no new migration or business queue.
+- Added5 app tests and1 isolated PG test. Rustfmt/diff pass; Cargo/PG, generated
+  API/client, installation and live PM acceptance remain open.
+
+## 2026-10-23: Settled PM Input Recovery Source Candidate
+
+- Added append-only recovery for a consumed PM input whose renewed lease expired
+  before continuation. Original messages, inputs, receipts and assignment stay
+  unchanged; issuance requires an authenticated Fleet barrier and exact expired CAS.
+- Added typed reader/witness, cross-ledger key guards and additive0103. Original
+  resume payloads omit the optional extension and preserve their old hash.
+- Format/diff checks pass. Cargo/PG/OpenAPI and live PM acceptance are pending;
+  this is a Draft source package, not a verified installation.
+- Rollout is Tracker then Fleet. The current main native-spaces/auth/SDK package
+  is not silently included in the bounded installed7d6 runtime repair.
+
 - Источник можно выбрать после публикации требований PM, пока владелец ещё
   не подтвердил их. При повторном согласовании через PM новая версия сохраняет
   исходный выбранный источник и прежние binding-записи.

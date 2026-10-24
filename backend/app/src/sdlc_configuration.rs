@@ -241,6 +241,43 @@ impl FleetConfigurationReader {
         self.read_pm_witness(self.client.get(url)).await
     }
 
+    pub async fn read_settled_pm_input_recovery(
+        &self,
+        run: Uuid,
+        barrier: Uuid,
+    ) -> Result<domain::sdlc_execution_lease::PmSettledInputRecoveryWitness, AppError> {
+        if run.is_nil() || barrier.is_nil() {
+            return Err(unavailable());
+        }
+        let mut url = self.origin.clone();
+        url.set_path(&format!(
+            "/internal/runtime/v1/pm/runs/{run}/settled-input-recovery"
+        ));
+        url.query_pairs_mut()
+            .append_pair("barrier_id", &barrier.to_string());
+        self.read_pm_witness(self.client.get(url)).await
+    }
+
+    pub async fn read_terminal_idle_pm_recovery(
+        &self,
+        barrier: Uuid,
+    ) -> Result<domain::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness, AppError> {
+        if barrier.is_nil() {
+            return Err(unavailable());
+        }
+        let mut url = self.origin.clone();
+        url.set_path(&format!(
+            "/internal/runtime/v1/pm/terminal-idle-recoveries/{barrier}"
+        ));
+        // Same scoped callback allowance as bootstrap proof, never a global timeout change.
+        self.read_pm_witness(
+            self.client
+                .get(url)
+                .timeout(std::time::Duration::from_secs(180)),
+        )
+        .await
+    }
+
     async fn read_pm_witness<T: serde::de::DeserializeOwned>(
         &self,
         request: reqwest::RequestBuilder,

@@ -842,6 +842,7 @@ async fn revise_second(r: &mut ReviewFixture) -> (String, Confirmation) {
                 r.task,
                 &r.f.writer,
                 ResumePmExecutionLease {
+                    recovery: None,
                     expected_owner_version: r.review.reservation.owner_cas.version,
                     lease_id: r.lease.lease.lease_id,
                     expected_lease_version: r.lease.lease.version,
@@ -934,6 +935,7 @@ async fn revise_second(r: &mut ReviewFixture) -> (String, Confirmation) {
                 r.task,
                 &r.f.writer,
                 ResumePmExecutionLease {
+                    recovery: None,
                     expected_owner_version: r.review.reservation.owner_cas.version,
                     lease_id: r.lease.lease.lease_id,
                     expected_lease_version: r.lease.lease.version,

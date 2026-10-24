@@ -33,10 +33,14 @@ mod pm_unsubmitted;
 mod reservation;
 #[path = "sdlc_routing.rs"]
 mod routing;
+#[path = "sdlc_settled_input_recovery.rs"]
+mod settled_input_recovery;
 #[path = "sdlc_source.rs"]
 mod source;
 #[path = "sdlc_spaces.rs"]
 mod spaces;
+#[path = "sdlc_terminal_idle_recovery.rs"]
+mod terminal_idle_recovery;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,
@@ -978,6 +982,58 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
         self.read_pm_resume_operation(task, actor, key).await
+    }
+    async fn preflight_terminal_idle_checkpoint(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+    ) -> Result<Option<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError>
+    {
+        self.preflight_terminal_idle(task, actor, command).await
+    }
+    async fn permit_terminal_idle_checkpoint(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+        witness: domain::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
+    ) -> Result<
+        (
+            domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse,
+            bool,
+        ),
+        AppError,
+    > {
+        self.permit_terminal_idle(task, actor, command, witness)
+            .await
+    }
+    async fn pm_terminal_idle_checkpoint_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
+        self.terminal_idle_operation(task, actor, key).await
+    }
+    async fn preflight_settled_pm_recovery(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
+        self.preflight_settled_input_recovery(task, actor, command)
+            .await
+    }
+    async fn recover_settled_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
+        witness: domain::sdlc_execution_lease::PmSettledInputRecoveryWitness,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.recover_settled_input_lease(task, actor, command, witness)
+            .await
     }
     async fn preflight_unsubmitted_pm_recovery(
         &self,

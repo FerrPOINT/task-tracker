@@ -10,6 +10,7 @@ use domain::sdlc_execution_lease::*;
 use domain::sdlc_metadata::*;
 use domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand;
 use domain::sdlc_pm_draft::*;
+use domain::sdlc_terminal_idle_recovery::*;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
 use std::sync::Arc;
@@ -455,17 +456,17 @@ pub async fn execution_lease(
 }
 
 #[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",tag="sdlc",
-    params(("id"=Uuid,Path)),request_body=ResumePmExecutionLease,
-    responses((status=201,body=ExecutionLeaseReceipt),(status=200,body=ExecutionLeaseReceipt),
+    params(("id"=Uuid,Path)),request_body=PmLeaseResumeRequest,
+    responses((status=201,body=PmLeaseResumeResponse),(status=200,body=PmLeaseResumeResponse),
         (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn resume_execution_lease(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(id): Path<Uuid>,
-    Json(command): Json<ResumePmExecutionLease>,
+    Json(command): Json<PmLeaseResumeRequest>,
 ) -> Result<Response, AppError> {
     let (receipt, replayed) = service(&ctx)?
-        .resume_pm_execution_lease(id, &actor, command)
+        .resume_pm_execution_request(id, &actor, command)
         .await?;
     let status = if replayed {
         axum::http::StatusCode::OK
@@ -482,13 +483,15 @@ pub async fn resume_execution_lease(
 
 #[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",tag="sdlc",
     params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
-    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+    responses((status=200,body=PmLeaseResumeOperationResponse),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn resume_execution_lease_operation(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path((id, key)): Path<(Uuid, String)>,
 ) -> Result<Response, AppError> {
-    let receipt = service(&ctx)?.pm_resume_operation(id, &actor, &key).await?;
+    let receipt = service(&ctx)?
+        .pm_resume_request_operation(id, &actor, &key)
+        .await?;
     Ok((
         [(axum::http::header::CACHE_CONTROL, "no-store")],
         Json(receipt),
