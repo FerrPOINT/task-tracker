@@ -23,6 +23,7 @@ import {
   ErrorState,
   Input,
   LoadingState,
+  Notice,
   Textarea,
 } from '@pdlc/ui/ui'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -147,9 +148,9 @@ function CreateForm({
     <div className="space-y-4">
       {original ? (
         <div className="space-y-3">
-          <p role="status">
+          <Notice role="status" tone="warning" appearance="inline">
             Сохранён исходный запрос: {original.key} · {original.name}. Исход ещё не подтверждён.
-          </p>
+          </Notice>
           <p className="text-sm text-text-muted">
             Повтор использует тот же уникальный ключ проекта. Проверка найденного проекта сама по
             себе не подтверждает авторство исходного создания.
@@ -218,18 +219,22 @@ function CreateForm({
           })}
         >
           <Fieldset disabled={!catalogReady || busy} className="min-w-0 space-y-3">
-            <FormField id={id + '-key'} label={'Ключ проекта'}>
+            <FormField
+              id={id + '-key'}
+              label="Ключ проекта"
+              error={form.formState.errors.key ? 'Ключ: от 1 до 10 латинских букв, цифр или дефисов.' : undefined}
+            >
               {(attrs) => (
                 <Input {...attrs} maxLength={10} autoComplete="off" {...form.register('key')} />
               )}
             </FormField>
-            {form.formState.errors.key && (
-              <p role="alert">Ключ: от 1 до 10 латинских букв, цифр или дефисов.</p>
-            )}
-            <FormField id={id + '-name'} label={'Название проекта'}>
+            <FormField
+              id={id + '-name'}
+              label="Название проекта"
+              error={form.formState.errors.name ? 'Укажите название до 200 символов.' : undefined}
+            >
               {(attrs) => <Input {...attrs} {...form.register('name')} />}
             </FormField>
-            {form.formState.errors.name && <p role="alert">Укажите название до 200 символов.</p>}
             <FormField id={id + '-description'} label={'Описание проекта'}>
               {(attrs) => <Textarea {...attrs} {...form.register('description')} />}
             </FormField>
@@ -247,7 +252,9 @@ function CreateForm({
             )}
           />
           {form.formState.errors.spaces && (
-            <p role="alert">Выберите хотя бы одно активное пространство.</p>
+            <Notice role="alert" tone="danger" appearance="inline">
+              Выберите хотя бы одно активное пространство.
+            </Notice>
           )}
           <Button type="submit" disabled={!catalogReady || busy || !form.formState.isValid}>
             Создать проект

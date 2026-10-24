@@ -150,3 +150,19 @@ IAB пяти реальных композиций с синтетическим
 браузерного среза подтверждена hash. Общий build/route gate, публикация source
 и установленная платформа остаются открытыми. Независимое исправление SSR
 брендинга Base квалифицируется отдельно от этого среза React-форм.
+
+## Сведённый producer и локальные состояния
+
+CreateProjectInSpacesDialog передаёт ошибки key/name в FormField и использует
+Notice для исходного запроса и пустого выбора пространств. Новый user-event
+regression сначала падает на отсутствии aria-invalid; финально проверяет связь
+описаний, исправление обоих полей и отсутствие записи без выбора пространства.
+13 scoped cases, TypeScript и scoped ESLint прошли. IAB подтвердил ошибки,
+label focus, correction и мобильную геометрию в трёх темах/четырёх ширинах.
+
+UI producer — d6c0914ae7bab37fc91b5f10602ad05543551ec0, reference
+`5f4ff5f4ada180236c2d6e014b52e78ad60586824980c7b45316eb20b44a69a8`.
+Frozen offline refresh прошёл без downloads и изменения lockfile; React singleton
+и независимые SDK/skills pins сохранены. Настоящий архив Base проверен отдельно.
+IAB использовал собственные исходники и read-only adapters; новый полный build,
+hosted CI, zoom 200%, публикация и installed acceptance этим срезом не заявляются.

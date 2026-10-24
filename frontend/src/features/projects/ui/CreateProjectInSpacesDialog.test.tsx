@@ -120,6 +120,34 @@ afterEach(() => {
   useSpaceSession.setState({ session: null })
 })
 describe('explicit-space project creation', () => {
+  it('associates key and name validation with their fields and clears it after correction', async () => {
+    mount()
+    const user = userEvent.setup()
+    const keyField = await screen.findByRole('textbox', { name: 'Ключ проекта' })
+    const nameField = screen.getByRole('textbox', { name: 'Название проекта' })
+    await waitFor(() => expect(keyField).toBeEnabled())
+    await user.type(keyField, '?')
+    await screen.findByText('Ключ: от 1 до 10 латинских букв, цифр или дефисов.')
+    expect(keyField).toHaveAttribute('aria-invalid', 'true')
+    expect(keyField).toHaveAccessibleDescription('Ключ: от 1 до 10 латинских букв, цифр или дефисов.')
+    await user.type(nameField, 'x')
+    await user.clear(nameField)
+    await screen.findByText('Укажите название до 200 символов.')
+    expect(nameField).toHaveAttribute('aria-invalid', 'true')
+    expect(nameField).toHaveAccessibleDescription('Укажите название до 200 символов.')
+    await user.clear(keyField)
+    await user.type(keyField, 'VALID')
+    await user.type(nameField, 'Проект')
+    await waitFor(() => {
+      expect(keyField).not.toHaveAttribute('aria-invalid')
+      expect(nameField).not.toHaveAttribute('aria-invalid')
+    })
+    expect(keyField).not.toHaveAttribute('aria-describedby')
+    expect(nameField).not.toHaveAttribute('aria-describedby')
+    expect(screen.getByRole('button', { name: 'Создать проект' })).toBeDisabled()
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
   it('requires an explicit nonempty selection and captures the original valid hyphen key before POST', async () => {
     let captured: string | null = null
     api.create.mockImplementation(async () => {
