@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import unittest
+import hashlib
+import json
 import re
 import shlex
+import subprocess
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
@@ -29,6 +32,15 @@ RUST_TEST = r"#\[(?:tokio::)?test\]"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_committed_selector_matches_its_committed_delivery_receipt(self) -> None:
+        def committed(name: str) -> bytes:
+            return subprocess.check_output(['git', '-C', str(ROOT), 'show', 'HEAD:' + name])
+        selector_bytes = committed('scripts/vendor/base_quality_selection.py')
+        receipt = json.loads(committed('scripts/vendor/base-quality-tooling.json'))
+        self.assertEqual(hashlib.sha256(selector_bytes).hexdigest(), receipt['sha256'])
+        self.assertFalse(b'\r' in selector_bytes, 'Portable selector delivery requires LF bytes')
+        self.assertEqual(committed('.quality-tooling-revision').decode().strip(), receipt['revision'])
+
     def test_only_prepared_frontend_checks_opt_into_agent_presence(self) -> None:
         manifest = selector.load(ROOT)
         gates = {gate['id']: gate for gate in manifest['gates']}
