@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-24: Terminal-Idle Checkpoint Permit Source
+
+- Added a closed Feedback-only branch to the existing PM lease resume API.
+  Trusted Fleet readback and current locked custody permit one exact checkpoint;
+  the canonical expired lease, task state and owner consent do not change.
+- Reused the existing idempotency ledger with immutable expiry and cross-ledger
+  collision checks; no new migration or business queue.
+- Added5 app tests and1 isolated PG test. Rustfmt/diff pass; Cargo/PG, generated
+  API/client, installation and live PM acceptance remain open.
+
 ## 2026-10-23: Settled PM Input Recovery Source Candidate
 
 - Added append-only recovery for a consumed PM input whose renewed lease expired

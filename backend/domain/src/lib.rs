@@ -18,6 +18,7 @@ pub mod sdlc_pm_draft;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
 pub mod sdlc_source;
+pub mod sdlc_terminal_idle_recovery;
 pub mod stubs;
 pub mod value_objects;
 

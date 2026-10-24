@@ -1,5 +1,10 @@
 # Дата-модель Task Tracker
 
+Terminal-idle checkpoint permits reuse the existing `sdlc_idempotency` ledger;
+no migration, canonical lease update, business-state save or outbox write is
+introduced. Replay preserves permit identity/expiry and refreshes only readback
+time. [Source candidate](contracts/pm-terminal-idle-recovery.md).
+
 Additive0103 adds narrow SQL guards for settled-input expiry recovery using
 existing sdlc_pm_lease_operations.recovery. No consumed input/result or original
 receipt is rewritten. The task-locked key namespace covers both resume inputs

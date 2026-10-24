@@ -1,5 +1,9 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+An accepted terminal PM run before its first checkpoint may obtain a bounded
+checkpoint-only permit using real saved technical Feedback. This does not answer
+a business question or confirm requirements. [Source-only contract](contracts/pm-terminal-idle-recovery.md).
+
 A saved PM answer/feedback must survive actual lease expiry before continuation
 without another card, chat or business message. Source candidate recovery uses
 the current assignment and a Fleet no-successor barrier; owner confirmation and

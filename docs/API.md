@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+## Terminal-Idle Checkpoint Permit (Source Candidate)
+
+The existing resume POST/operation GET additionally support the closed
+terminal-idle variant. It issues only a short-lived exact checkpoint permit,
+not a renewed execution lease. Ordinary resume requests and receipts stay
+unchanged. [Contract and open gates](contracts/pm-terminal-idle-recovery.md).
+
 ## Settled PM Input Recovery (Source Candidate)
 
 The existing resume POST accepts the optional typed recovery variant and its

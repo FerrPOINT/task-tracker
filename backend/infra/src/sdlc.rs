@@ -37,6 +37,8 @@ mod routing;
 mod settled_input_recovery;
 #[path = "sdlc_source.rs"]
 mod source;
+#[path = "sdlc_terminal_idle_recovery.rs"]
+mod terminal_idle_recovery;
 
 pub struct PostgresSdlcRepository {
     db: DatabaseConnection,
@@ -974,6 +976,39 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
         self.read_pm_resume_operation(task, actor, key).await
+    }
+    async fn preflight_terminal_idle_checkpoint(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+    ) -> Result<Option<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError>
+    {
+        self.preflight_terminal_idle(task, actor, command).await
+    }
+    async fn permit_terminal_idle_checkpoint(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
+        witness: domain::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
+    ) -> Result<
+        (
+            domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse,
+            bool,
+        ),
+        AppError,
+    > {
+        self.permit_terminal_idle(task, actor, command, witness)
+            .await
+    }
+    async fn pm_terminal_idle_checkpoint_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
+        self.terminal_idle_operation(task, actor, key).await
     }
     async fn preflight_settled_pm_recovery(
         &self,

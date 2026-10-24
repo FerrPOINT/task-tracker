@@ -10,6 +10,8 @@ use serde::de::DeserializeOwned;
 mod draft_flow_tests;
 #[path = "sdlc_pm_resume_pg_tests.rs"]
 mod pm_resume_tests;
+#[path = "sdlc_terminal_idle_recovery_pg_tests.rs"]
+mod terminal_idle_recovery_tests;
 
 #[path = "sdlc_single_task_rework_pg_tests.rs"]
 mod rework_tests;

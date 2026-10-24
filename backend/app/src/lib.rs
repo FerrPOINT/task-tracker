@@ -24,6 +24,7 @@ pub mod sdlc_pm_unsubmitted;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
 pub mod sdlc_source;
+pub mod sdlc_terminal_idle_recovery;
 pub mod services;
 pub mod totp;
 
