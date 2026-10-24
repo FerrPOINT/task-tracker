@@ -166,3 +166,20 @@ Frozen offline refresh прошёл без downloads и изменения lockf
 и независимые SDK/skills pins сохранены. Настоящий архив Base проверен отдельно.
 IAB использовал собственные исходники и read-only adapters; новый полный build,
 hosted CI, zoom 200%, публикация и installed acceptance этим срезом не заявляются.
+
+## Компактные сообщения и актуальная UI-поставка
+
+Два сообщения используют Notice; pending-индикатор CreateTaskAction использует
+Loader. Сложная часть — недоступная карточка: пояснение стоит под сохранённой
+идентичностью, а не сжимается рядом с названием. 31 scoped case, TypeScript и
+ESLint прошли. Новые cases проверяют pending/error/ambiguous без fallback-ссылки.
+IAB четырёх состояний в трёх темах и на четырёх ширинах проверил не только
+нулевой overflow, но и нижнее расположение/полную ширину пояснения. Первоначальная
+регрессия миграции обнаружена на screenshot, исправлена и проверена заново.
+
+UI pin — eb3ceceeb1b1c5029ccaaa9b863d6646b35b1a46; reference
+`5a702cb74a6eff5ec0e298ebdee609e70703e4fb01eda9e101cf7be84f019d36`.
+Cached frozen refresh обновил UI без downloads и сторонних dependency upgrades;
+React singleton и независимые SDK/skills pins сохранены. Настоящий UI-архив
+проверен отдельно. Общий integrated gate, source publication и hosted evidence
+остаются открытыми; установленный runtime этим изменением не обновляется.

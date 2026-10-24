@@ -20,6 +20,41 @@ beforeEach(() => {
   accessActor.role = 'admin'
 })
 afterEach(() => vi.unstubAllEnvs())
+it.each(['pending', 'failed', 'ambiguous'] as const)(
+  'keeps the project identity without inventing a board link when context is %s',
+  (state) => {
+    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+    vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'false')
+    const binding = {
+      resource: { resource_id: 'second' },
+      namespace: {
+        registry_instance_id: '11111111-1111-4111-8111-111111111111',
+        namespace_id: '22222222-2222-4222-8222-222222222222',
+      },
+    }
+    catalog.mockReturnValue({
+      isPending: state === 'pending',
+      isError: state === 'failed',
+      data: state === 'ambiguous' ? [{ binding }, { binding }] : undefined,
+    })
+    render(
+      <MemoryRouter initialEntries={['/projects?project_scope=all']}>
+        <ProjectCardLink project={{ id: 'second', key: 'SECOND', name: 'Same name' }}>
+          <span>Same name · SECOND</span>
+        </ProjectCardLink>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Same name · SECOND')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    if (state === 'pending') {
+      expect(screen.getByText('Same name · SECOND').closest('[aria-busy="true"]')).not.toBeNull()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByRole('alert')).toHaveTextContent('Контекст проекта недоступен')
+    }
+  },
+)
+
 it.each(['admin', 'user'] as const)(
   'keeps delete permission and explicit selection for %s',
   async (role) => {

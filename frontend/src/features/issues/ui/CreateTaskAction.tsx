@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
-import { Button, toast, usePlatformServices } from '@pdlc/ui/ui'
+import { Button, Loader, Notice, toast, usePlatformServices } from '@pdlc/ui/ui'
 import { getPlatformProduct, platformNavigate } from '@pdlc/ui/platform'
-import { LoaderCircle, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useApplicationAccess } from '@pdlc/ui/auth'
 import { getProject } from '@/api/project'
@@ -95,9 +95,9 @@ export function CreateTaskAction({
 
   if (!canOpenFleet) {
     return (
-      <p role="status" className="text-sm text-text-muted">
+      <Notice role="status" appearance="inline">
         Для создания задачи через PM нужен доступ к Fleet. Обратитесь к администратору.
-      </p>
+      </Notice>
     )
   }
   const pending = opening || contextPending
@@ -112,7 +112,7 @@ export function CreateTaskAction({
       onClick={() => void open()}
     >
       {pending ? (
-        <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+        <Loader size="sm" />
       ) : (
         <Plus className="h-4 w-4" aria-hidden />
       )}

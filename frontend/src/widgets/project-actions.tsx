@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
-import { Button, DropdownMenuItem, usePlatformServices } from '@pdlc/ui/ui'
+import { Button, DropdownMenuItem, Notice, usePlatformServices } from '@pdlc/ui/ui'
 import { useNamespaceCatalog } from './namespace-context'
 
 type Project = { key: string; name: string; namespace?: NamespaceLocation }
@@ -136,16 +136,20 @@ function BoundCardLink({
     catalog.data?.filter((context) => context.binding.resource.resource_id === project.id) ?? []
   if (catalog.isPending)
     return (
-      <span className={className} aria-busy="true">
+      <div className={className} aria-busy="true">
         {children}
-      </span>
+      </div>
     )
   if (catalog.isError || matches.length > 1)
     return (
-      <span className={className}>
-        {children}
-        <span role="alert">Контекст проекта недоступен</span>
-      </span>
+      <div className={className}>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex min-w-0 items-center gap-3">{children}</div>
+          <Notice role="alert" tone="danger" appearance="inline">
+            Контекст проекта недоступен
+          </Notice>
+        </div>
+      </div>
     )
   return (
     <Link
