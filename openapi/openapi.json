@@ -3820,7 +3820,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ResumePmExecutionLease"
+                "$ref": "#/components/schemas/PmLeaseResumeRequest"
               }
             }
           },
@@ -3832,7 +3832,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                  "$ref": "#/components/schemas/PmLeaseResumeResponse"
                 }
               }
             }
@@ -3842,7 +3842,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                  "$ref": "#/components/schemas/PmLeaseResumeResponse"
                 }
               }
             }
@@ -3904,7 +3904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionLeaseOperation"
+                  "$ref": "#/components/schemas/PmLeaseResumeOperationResponse"
                 }
               }
             }
@@ -12927,6 +12927,18 @@
         },
         "additionalProperties": false
       },
+      "IdleCheckpointOperation": {
+        "type": "string",
+        "enum": [
+          "permit_pm_idle_checkpoint"
+        ]
+      },
+      "IdleCheckpointScope": {
+        "type": "string",
+        "enum": [
+          "idle_checkpoint"
+        ]
+      },
       "IssueLinkListResponse": {
         "type": "object",
         "required": [
@@ -16937,6 +16949,89 @@
           }
         }
       },
+      "PermitPmIdleCheckpointRequest": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "lease_id",
+          "expected_lease_version",
+          "input",
+          "previous_run_id",
+          "previous_run_terminal",
+          "fence",
+          "terminal_idle_recovery",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/PmIdleFeedbackInput"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_terminal": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "terminal_idle_recovery": {
+            "$ref": "#/components/schemas/PmTerminalIdleRecovery"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PermitPmIdleCheckpointResponse": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "operation",
+          "idempotency_key",
+          "request_sha256",
+          "permit",
+          "observed_at"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/IdleCheckpointOperation"
+          },
+          "permit": {
+            "$ref": "#/components/schemas/PmIdleCheckpointPermit"
+          },
+          "request_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "PmAssignment": {
         "type": "object",
         "required": [
@@ -17439,6 +17534,109 @@
         },
         "additionalProperties": false
       },
+      "PmIdleCheckpointPermit": {
+        "type": "object",
+        "required": [
+          "permit_id",
+          "scope",
+          "barrier_id",
+          "session_run_id",
+          "input_id",
+          "checkpoint_operation_key",
+          "checkpoint_sha256",
+          "issued_at",
+          "expires_at"
+        ],
+        "properties": {
+          "barrier_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkpoint_operation_key": {
+            "type": "string"
+          },
+          "checkpoint_sha256": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "input_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "permit_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/IdleCheckpointScope"
+          },
+          "session_run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmIdleFeedbackInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "feedback"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "PmLeaseResumeOperationResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ExecutionLeaseOperation"
+          },
+          {
+            "$ref": "#/components/schemas/PermitPmIdleCheckpointResponse"
+          }
+        ]
+      },
+      "PmLeaseResumeRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ResumePmExecutionLease"
+          },
+          {
+            "$ref": "#/components/schemas/PermitPmIdleCheckpointRequest"
+          }
+        ]
+      },
+      "PmLeaseResumeResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+          },
+          {
+            "$ref": "#/components/schemas/PermitPmIdleCheckpointResponse"
+          }
+        ]
+      },
       "PmResumeCheckpoint": {
         "type": "object",
         "required": [
@@ -17544,6 +17742,72 @@
             }
           }
         ]
+      },
+      "PmSettledInputRecovery": {
+        "type": "object",
+        "required": [
+          "kind",
+          "original_key",
+          "original_request_sha256",
+          "predecessor_key",
+          "predecessor_request_sha256",
+          "barrier_id"
+        ],
+        "properties": {
+          "barrier_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PmSettledInputRecoveryKind"
+          },
+          "original_key": {
+            "type": "string"
+          },
+          "original_request_sha256": {
+            "type": "string"
+          },
+          "predecessor_key": {
+            "type": "string"
+          },
+          "predecessor_request_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmSettledInputRecoveryKind": {
+        "type": "string",
+        "enum": [
+          "settled_input_expiry"
+        ]
+      },
+      "PmTerminalIdleRecovery": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "barrier_id",
+          "checkpoint_operation_key",
+          "checkpoint_sha256"
+        ],
+        "properties": {
+          "barrier_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkpoint_operation_key": {
+            "type": "string"
+          },
+          "checkpoint_sha256": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "PreparedAnalysisAssignment": {
         "type": "object",
@@ -18814,6 +19078,16 @@
           },
           "previous_run_terminal": {
             "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "recovery": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmSettledInputRecovery"
+              }
+            ]
           }
         },
         "additionalProperties": false
