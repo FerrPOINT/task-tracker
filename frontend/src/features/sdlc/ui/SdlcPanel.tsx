@@ -1,5 +1,5 @@
 import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
-import { Notice, SectionHeader } from '@pdlc/ui/ui'
+import { PageNavigation, Notice, SectionHeader } from '@pdlc/ui/ui'
 import {
   Disclosure,
   Button,
@@ -15,7 +15,7 @@ import {
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
+import { Check, RefreshCw } from 'lucide-react'
 
 import {
   confirmRequirements,
@@ -541,28 +541,23 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                 </ol>
               </ResourceList>
             )}
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label={t('sdlc.previous')}
-                title={t('sdlc.previous')}
-                disabled={cursors.length === 1 || metadata.isFetching}
-                onClick={() => setCursors((current) => current.slice(0, -1))}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label={t('sdlc.next')}
-                title={t('sdlc.next')}
-                disabled={!metadata.data.has_more || metadata.isFetching}
-                onClick={() => setCursors((current) => [...current, metadata.data!.next_after])}
-              >
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <PageNavigation
+              page={cursors.length}
+              hasNext={metadata.data.has_more}
+              onPageChange={(nextPage) =>
+                setCursors((current) =>
+                  nextPage < current.length
+                    ? current.slice(0, -1)
+                    : [...current, metadata.data!.next_after],
+                )
+              }
+              label={t('sdlc.metadataPages', { defaultValue: 'Страницы метаданных SDLC' })}
+              previousLabel={t('sdlc.previous')}
+              nextLabel={t('sdlc.next')}
+              pending={metadata.isFetching}
+              compact
+              className="mt-3"
+            />
           </>
         ) : null}
       </section>

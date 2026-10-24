@@ -7,6 +7,7 @@ import {
   ProjectCardState,
 } from '@/widgets/project-actions'
 import {
+  PageNavigation,
   EmptyState,
   PageHeader,
   ProjectAvatar,
@@ -70,22 +71,16 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          disabled={offset === 0}
-          onClick={() => setOffset(Math.max(0, offset - 50))}
-        >
-          Назад
-        </Button>
-        <Button
-          variant="outline"
-          disabled={spaceEnabled ? !catalog?.has_more : unfilteredCount < 50}
-          onClick={() => setOffset(offset + 50)}
-        >
-          Далее
-        </Button>
-      </div>
+      <PageNavigation
+        page={Math.ceil(offset / 50) + 1}
+        hasNext={spaceEnabled ? !!catalog?.has_more : unfilteredCount >= 50}
+        onPageChange={(nextPage) =>
+          setOffset(nextPage < Math.ceil(offset / 50) + 1 ? Math.max(0, offset - 50) : offset + 50)
+        }
+        label="Страницы проектов"
+        previousLabel="Назад"
+        nextLabel="Далее"
+      />
       {canAdmin &&
         (import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true' ? (
           <CreateProjectInSpacesDialog open={formOpen} onOpenChange={setFormOpen} />
@@ -183,72 +178,72 @@ export function ProjectsPage() {
         <ResourceList asChild variant="bordered">
           <ul>
             {filteredProjects?.map((project) => (
-              <ResourceListRow asChild key={project.id}>
-                <li className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]">
-                  <ProjectCardLink
-                    project={project}
-                    className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                  >
-                    <ProjectAvatar projectKey={project.key} size="md" />
-                    <span className="min-w-0">
-                      <span
-                        className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
-                        title={project.name}
-                      >
-                        {project.name}
-                      </span>
-                      <span className="block truncate text-xs text-text-muted">
-                        {project.key} · {t('projects.lead')}:{' '}
-                        {project.owner_name || project.owner_id}
-                      </span>
-                      <ProjectCardState projectId={project.id} />
+              <li
+                key={project.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch sm:grid-cols-[minmax(0,1fr)_16rem_auto]"
+              >
+                <ProjectCardLink
+                  project={project}
+                  className="row-start-1 flex min-w-0 items-center gap-3"
+                >
+                  <ProjectAvatar projectKey={project.key} size="md" />
+                  <span className="min-w-0">
+                    <span
+                      className="line-clamp-2 font-semibold sm:line-clamp-1"
+                      title={project.name}
+                    >
+                      {project.name}
                     </span>
-                  </ProjectCardLink>
-                  <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
-                    <div className="min-w-0">
-                      <span className="block truncate text-text-muted">{t('projects.todo')}</span>
-                      <span className="font-medium">{project.todo_count}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="block truncate text-text-muted">
-                        {t('projects.inProgress')}
-                      </span>
-                      <span className="font-medium">{project.in_progress_count}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="block truncate text-text-muted">{t('projects.done')}</span>
-                      <span className="font-medium">{project.done_count}</span>
-                    </div>
+                    <span className="block truncate text-xs text-text-muted">
+                      {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
+                    </span>
+                    <ProjectCardState projectId={project.id} />
+                  </span>
+                </ProjectCardLink>
+                <ResourceListRow className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 items-center gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                  <div className="min-w-0">
+                    <span className="block truncate text-text-muted">{t('projects.todo')}</span>
+                    <span className="font-medium">{project.todo_count}</span>
                   </div>
-                  <div className="col-start-2 row-start-1 sm:col-start-3">
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
+                  <div className="min-w-0">
+                    <span className="block truncate text-text-muted">
+                      {t('projects.inProgress')}
+                    </span>
+                    <span className="font-medium">{project.in_progress_count}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block truncate text-text-muted">{t('projects.done')}</span>
+                    <span className="font-medium">{project.done_count}</span>
+                  </div>
+                </ResourceListRow>
+                <ResourceListRow className="col-start-2 row-start-1 flex items-center sm:col-start-3">
+                  <DropdownMenu modal={false}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
 
-                          aria-label={t('projects.moreActionsFor', { name: project.name })}
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <ProjectCardActionItems
-                          project={project}
-                          onDelete={
-                            canAdmin
-                              ? () => {
-                                  remove.reset()
-                                  setDeletingProject(project)
-                                }
-                              : undefined
-                          }
-                        />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </li>
-              </ResourceListRow>
+                        aria-label={t('projects.moreActionsFor', { name: project.name })}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <ProjectCardActionItems
+                        project={project}
+                        onDelete={
+                          canAdmin
+                            ? () => {
+                                remove.reset()
+                                setDeletingProject(project)
+                              }
+                            : undefined
+                        }
+                      />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </ResourceListRow>
+              </li>
             ))}
           </ul>
         </ResourceList>

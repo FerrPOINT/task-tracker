@@ -111,6 +111,41 @@ describe('ProjectsPage', () => {
       screen.getByRole('button', { name: 'Действия с проектом Knowledge Base' }),
     ).toBeInTheDocument()
     expect(screen.getAllByText('К выполнению')).toHaveLength(2)
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.querySelector('button')).toBeNull()
+    }
+  })
+
+  it('keeps offset admission based on the unfiltered response rather than the visible names', () => {
+    useProjects.mockReturnValue({
+      data: Array.from({ length: 50 }, (_, index) => ({
+        ...projects[0],
+        id: `project-${index}`,
+        key: `KEY-${index}`,
+      })),
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(useProjects.mock.calls.every(([offset]) => offset === 0)).toBe(true)
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeDisabled()
+    fireEvent.change(screen.getByRole('searchbox', { name: i18n.t('projects.search') }), {
+      target: { value: 'no matching name' },
+    })
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled()
+    useProjects.mockReturnValue({
+      data: [projects[1]],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
+    expect(useProjects).toHaveBeenLastCalledWith(50, 50, '', true)
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(useProjects).toHaveBeenLastCalledWith(0, 50, '', true)
   })
 
   it('shows a localized no-match state after filtering', async () => {

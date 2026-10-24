@@ -183,3 +183,12 @@ Cached frozen refresh обновил UI без downloads и сторонних d
 React singleton и независимые SDK/skills pins сохранены. Настоящий UI-архив
 проверен отдельно. Общий integrated gate, source publication и hosted evidence
 остаются открытыми; установленный runtime этим изменением не обновляется.
+
+
+## Списки и пагинация — 24 октября 2026
+
+Два пагинатора используют PageNavigation: offset каталога и курсор SDLC. Строка проекта оформляет сам anchor через ResourceListRow interactive, отдельные действия остаются соседями. Pending/error не становятся ссылками. Проверены 80 scoped cases, TypeScript, lint и IAB композиции каталога.
+
+UI producer `ff303ac5a273dc6b265292465b8b9db9a9476f9f`, fingerprint `206bf4889e50889e8c7bfab9aec36ef52df2e1e76dfcaa94a3ac756a7b80e2bf`.
+Проверки относятся к исходникам собственных checkout; установка, hosted CI и общий
+интеграционный gate сохраняют отдельный статус. SDK/skills pins не изменены.

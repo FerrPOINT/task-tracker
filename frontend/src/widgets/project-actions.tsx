@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
-import { Button, DropdownMenuItem, Notice, usePlatformServices } from '@pdlc/ui/ui'
+import { Button, DropdownMenuItem, Notice, ResourceListRow, usePlatformServices } from '@pdlc/ui/ui'
 import { useNamespaceCatalog } from './namespace-context'
 
 type Project = { key: string; name: string; namespace?: NamespaceLocation }
@@ -116,9 +116,11 @@ export function ProjectCardLink({
       {children}
     </BoundCardLink>
   ) : (
-    <ProjectLink to={`/projects/${encodeURIComponent(project.key)}/board`} className={className}>
-      {children}
-    </ProjectLink>
+    <ResourceListRow asChild interactive>
+      <ProjectLink to={`/projects/${encodeURIComponent(project.key)}/board`} className={className}>
+        {children}
+      </ProjectLink>
+    </ResourceListRow>
   )
 }
 function BoundCardLink({
@@ -136,32 +138,34 @@ function BoundCardLink({
     catalog.data?.filter((context) => context.binding.resource.resource_id === project.id) ?? []
   if (catalog.isPending)
     return (
-      <div className={className} aria-busy="true">
+      <ResourceListRow className={className} aria-busy="true">
         {children}
-      </div>
+      </ResourceListRow>
     )
   if (catalog.isError || matches.length > 1)
     return (
-      <div className={className}>
+      <ResourceListRow className={className}>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex min-w-0 items-center gap-3">{children}</div>
           <Notice role="alert" tone="danger" appearance="inline">
             Контекст проекта недоступен
           </Notice>
         </div>
-      </div>
+      </ResourceListRow>
     )
   return (
-    <Link
-      to={withNamespaceLocation(
-        `/projects/${encodeURIComponent(project.key)}/board`,
-        matches[0]?.binding.namespace ?? null,
-        search,
-      )}
-      className={className}
-    >
-      {children}
-    </Link>
+    <ResourceListRow asChild interactive>
+      <Link
+        to={withNamespaceLocation(
+          `/projects/${encodeURIComponent(project.key)}/board`,
+          matches[0]?.binding.namespace ?? null,
+          search,
+        )}
+        className={className}
+      >
+        {children}
+      </Link>
+    </ResourceListRow>
   )
 }
 function BoundCardActionItems({

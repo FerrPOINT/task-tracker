@@ -46,6 +46,7 @@ it.each(['pending', 'failed', 'ambiguous'] as const)(
     )
     expect(screen.getByText('Same name · SECOND')).toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getByText('Same name · SECOND').closest('[data-interactive="true"]')).toBeNull()
     if (state === 'pending') {
       expect(screen.getByText('Same name · SECOND').closest('[aria-busy="true"]')).not.toBeNull()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
