@@ -146,7 +146,6 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           type="button"
           variant="ghost"
           size="sm"
-          className="px-2 text-xs"
           onClick={() => setAdding(true)}
         >
           <Plus className="mr-1 h-3 w-3" aria-hidden />

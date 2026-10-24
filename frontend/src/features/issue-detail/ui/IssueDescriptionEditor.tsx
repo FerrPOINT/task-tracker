@@ -103,7 +103,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="mt-1 px-0 lg:hidden"
+                className="mt-1 lg:hidden"
                 aria-controls={descriptionId}
                 aria-expanded={descriptionExpanded}
                 onClick={(event) => {
