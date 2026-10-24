@@ -225,6 +225,20 @@ async fn terminal_idle_permit_is_only_metadata_replay_does_not_renew_and_unknown
     assert!(!replayed);
     assert_eq!(protected_state(&db, task).await, before);
     let core = serde_json::to_value(&first.permit).unwrap();
+    let mut scheduler_reader = scheduler.clone();
+    scheduler_reader.scopes = ["task-tracker:read".into()].into_iter().collect();
+    let readback = repo
+        .pm_terminal_idle_checkpoint_operation(task, &scheduler_reader, &c.idempotency_key)
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(&readback.permit).unwrap(), core);
+    assert!(readback.observed_at >= first.observed_at);
+    assert!(matches!(
+        repo.permit_terminal_idle(task, &scheduler_reader, c.clone(), w.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(protected_state(&db, task).await, before);
     let replay = repo
         .preflight_terminal_idle(task, &scheduler, &c)
         .await

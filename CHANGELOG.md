@@ -2,6 +2,10 @@
 
 ## 2026-10-24: Terminal-Idle Checkpoint Permit Source
 
+- Independent source review found the new original-key GET required writer
+  authority despite Fleet's read-only scheduler credential. It now uses the
+  existing scheduler_read guard; PG coverage asserts read succeeds while the
+  same principal cannot issue a permit. Execution of this regression is pending.
 - Added a closed Feedback-only branch to the existing PM lease resume API.
   Trusted Fleet readback and current locked custody permit one exact checkpoint;
   the canonical expired lease, task state and owner consent do not change.

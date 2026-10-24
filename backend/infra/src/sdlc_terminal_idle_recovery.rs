@@ -240,7 +240,7 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<PermitPmIdleCheckpointResponse, AppError> {
-        app::sdlc_reservation::scheduler(actor, &self.config)?;
+        app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
