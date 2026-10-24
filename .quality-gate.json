@@ -3,6 +3,7 @@
   "product": "task-tracker",
   "components": {
     "docs": [
+      "scripts/verify_readme.py",
       "docs/**",
       "*.md",
       "LICENSE"
@@ -23,6 +24,8 @@
       "openapi/**"
     ],
     "tooling": [
+      "scripts/verify_readme.py",
+      "scripts/tests/test_verify_readme.py",
       "scripts/tests/test_quality_routes.py",
       "scripts/tests/test_ci_contract_checks.py",
       "scripts/vendor/**",
@@ -59,9 +62,12 @@
         "scripts.tests.test_quality_routes",
         "scripts.tests.test_ci_contract_checks",
         "scripts.tests.test_backend_dependency_layers",
+        "scripts.tests.test_verify_readme",
         "-q"
       ],
       "inputs": [
+        "scripts/verify_readme.py",
+        "scripts/tests/test_verify_readme.py",
         "scripts/tests/test_quality_routes.py",
         "scripts/tests/test_ci_contract_checks.py",
         "scripts/vendor/**",

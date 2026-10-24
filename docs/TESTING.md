@@ -200,3 +200,11 @@ Lefthook (`lefthook.yml`):
 ## Общая база
 
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
+
+## Точный маршрут documentation validator
+
+`scripts/verify_readme.py` и `scripts/tests/test_verify_readme.py` выбирают `tooling:quality-routes`.
+Fast для source validator также сохраняет `docs:readme`; Unit/Build не выбирают application producers.
+Source command: `python -B -m unittest scripts.tests.test_verify_readme`.
+Mixed backend и неизвестные source paths сохраняют своих consumers; actual CI
+и ручные release gates остаются прежними.
