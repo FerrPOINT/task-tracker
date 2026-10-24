@@ -19,6 +19,7 @@ import {
   Textarea,
   QueryState,
   Notice,
+  FormField,
 } from '@pdlc/ui/ui'
 
 type TabValue = 'settings' | 'audit'
@@ -210,22 +211,23 @@ export function AdminPage() {
                     ))}
                   </datalist>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="setting-value">{t('admin.settings.jsonValue')}</Label>
-                  <Textarea
-                    id="setting-value"
-                    value={settingValue}
-                    onChange={(event) => {
-                      setSettingValue(event.target.value)
-                      setSettingError(null)
-                      setSaveError(false)
-                      setSavedKey(null)
-                    }}
-                    className="min-h-36 font-mono"
-                    disabled={updateSetting.isPending}
-                    required
-                  />
-                </div>
+                <FormField id="setting-value" label={t('admin.settings.jsonValue')}>
+                  {(baseFieldAttrs) => (
+                    <Textarea
+                      {...baseFieldAttrs}
+                      value={settingValue}
+                      onChange={(event) => {
+                        setSettingValue(event.target.value)
+                        setSettingError(null)
+                        setSaveError(false)
+                        setSavedKey(null)
+                      }}
+                      className="min-h-36 font-mono"
+                      disabled={updateSetting.isPending}
+                      required
+                    />
+                  )}
+                </FormField>
                 {settingError && (
                   <Notice role="alert" tone="danger" appearance="inline">
                     {settingError}

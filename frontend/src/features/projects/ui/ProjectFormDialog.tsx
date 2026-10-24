@@ -1,5 +1,4 @@
 import {
-  Label,
   Fieldset,
   ProjectAvatar,
   Button,
@@ -10,6 +9,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  FormField,
 } from '@pdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -80,39 +80,42 @@ export function ProjectFormDialog({
             aria-busy={isPending || undefined}
           >
             {error && <ErrorState message={error.message} />}
-            <div className="space-y-2">
-              <Label htmlFor="project-form-key">{t('projects.key')} *</Label>
-              <Input
-                id="project-form-key"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                pattern="[A-Za-z0-9\x2D]{1,10}"
-                maxLength={10}
-                placeholder={t('projects.keyPlaceholder')}
-                disabled={isEdit}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-form-name">{t('projects.name')} *</Label>
-              <Input
-                id="project-form-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t('projects.namePlaceholder')}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-form-description">{t('projects.description')}</Label>
-              <Textarea
-                id="project-form-description"
-                className="min-h-[100px]"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t('projects.descriptionPlaceholder')}
-              />
-            </div>
+            <FormField id="project-form-key" label={t('projects.key') + ' *'}>
+              {(baseFieldAttrs) => (
+                <Input
+                  {...baseFieldAttrs}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  pattern="[A-Za-z0-9\x2D]{1,10}"
+                  maxLength={10}
+                  placeholder={t('projects.keyPlaceholder')}
+                  disabled={isEdit}
+                  required
+                />
+              )}
+            </FormField>
+            <FormField id="project-form-name" label={t('projects.name') + ' *'}>
+              {(baseFieldAttrs) => (
+                <Input
+                  {...baseFieldAttrs}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t('projects.namePlaceholder')}
+                  required
+                />
+              )}
+            </FormField>
+            <FormField id="project-form-description" label={t('projects.description')}>
+              {(baseFieldAttrs) => (
+                <Textarea
+                  {...baseFieldAttrs}
+                  className="min-h-[100px]"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={t('projects.descriptionPlaceholder')}
+                />
+              )}
+            </FormField>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
                 {t('common.cancel')}

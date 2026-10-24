@@ -31,9 +31,9 @@ import {
   ErrorState,
   EmptyState,
   LoadingState,
-  Label,
   Notice,
   PageNavigation,
+  FormField,
 } from '@pdlc/ui/ui'
 
 import { Check } from 'lucide-react'
@@ -375,26 +375,30 @@ export function NotificationsPage() {
                   saveSettings()
                 }}
               >
-                <div className="space-y-2">
-                  <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
-                  <Select
-                    id="notification-frequency"
-                    className="w-full"
-                    value={displayedSettings.email_frequency}
-                    onValueChange={(nextValue) =>
-                      updatePreference({
-                        email_frequency: nextValue,
-                      })
-                    }
-                    disabled={updateSettings.isPending}
-                    options={[
-                      { value: 'immediate', label: String(t('notifications.frequencyImmediate')) },
-                      { value: 'hourly', label: String(t('notifications.frequencyHourly')) },
-                      { value: 'daily', label: String(t('notifications.frequencyDaily')) },
-                      { value: 'never', label: String(t('notifications.frequencyNone')) },
-                    ]}
-                  />
-                </div>
+                <FormField id="notification-frequency" label={t('notifications.frequency')}>
+                  {(baseFieldAttrs) => (
+                    <Select
+                      {...baseFieldAttrs}
+                      className="w-full"
+                      value={displayedSettings.email_frequency}
+                      onValueChange={(nextValue) =>
+                        updatePreference({
+                          email_frequency: nextValue,
+                        })
+                      }
+                      disabled={updateSettings.isPending}
+                      options={[
+                        {
+                          value: 'immediate',
+                          label: String(t('notifications.frequencyImmediate')),
+                        },
+                        { value: 'hourly', label: String(t('notifications.frequencyHourly')) },
+                        { value: 'daily', label: String(t('notifications.frequencyDaily')) },
+                        { value: 'never', label: String(t('notifications.frequencyNone')) },
+                      ]}
+                    />
+                  )}
+                </FormField>
                 <Switch
                   label={t('notifications.ownChanges')}
                   checked={displayedSettings.notify_own_changes}

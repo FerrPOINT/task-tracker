@@ -2,7 +2,6 @@ import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
   FormField,
-  Label,
   Fieldset,
   PageHeader,
   SectionHeader,
@@ -271,115 +270,121 @@ export function IssueCreatePage() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="issue-project">{t('issueCreate.project')} *</Label>
-            <ProjectPicker
-              id="issue-project"
-              className="w-full"
-              value={selectedProjectKey}
-              options={projects.map((p) => ({
-                value: p.key,
-                label: `${p.name} (${p.key})`,
-                projectKey: p.key,
-              }))}
-              placeholder={t('issueCreate.selectProject')}
-              allowEmpty={false}
-              onChange={updateProjectKey}
-              disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="issue-type">{t('issueCreate.type')} *</Label>
-            <Select
-              id="issue-type"
-              className="w-full"
-              value={selectedType}
-              onValueChange={(nextValue) => setType(nextValue)}
-              disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
+          <FormField id="issue-project" label={t('issueCreate.project') + ' *'}>
+            {(baseFieldAttrs) => (
+              <ProjectPicker
+                {...baseFieldAttrs}
+                className="w-full"
+                value={selectedProjectKey}
+                options={projects.map((p) => ({
+                  value: p.key,
+                  label: `${p.name} (${p.key})`,
+                  projectKey: p.key,
+                }))}
+                placeholder={t('issueCreate.selectProject')}
+                allowEmpty={false}
+                onChange={updateProjectKey}
+                disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
+              />
+            )}
+          </FormField>
+          <FormField id="issue-type" label={t('issueCreate.type') + ' *'}>
+            {(baseFieldAttrs) => (
+              <Select
+                {...baseFieldAttrs}
+                className="w-full"
+                value={selectedType}
+                onValueChange={(nextValue) => setType(nextValue)}
+                disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
+                required
+                options={[
+                  ...(issueTypes.map((issueType) => ({
+                    value: String(issueType.name),
+                    label: String(
+                      t(`issueType.${issueType.name.toLowerCase()}`, {
+                        defaultValue: issueType.name,
+                      }),
+                    ),
+                  })) ?? []),
+                ]}
+              />
+            )}
+          </FormField>
+        </div>
+
+        <FormField id="issue-summary" label={t('issueCreate.summary') + ' *'}>
+          {(baseFieldAttrs) => (
+            <Input
+              {...baseFieldAttrs}
+              type="text"
+              placeholder={t('issueCreate.summaryPlaceholder')}
+              value={summary}
+              onChange={(e) => {
+                setSummary(e.target.value)
+                setValidationError(null)
+              }}
               required
-              options={[
-                ...(issueTypes.map((issueType) => ({
-                  value: String(issueType.name),
-                  label: String(
-                    t(`issueType.${issueType.name.toLowerCase()}`, {
-                      defaultValue: issueType.name,
-                    }),
-                  ),
-                })) ?? []),
-              ]}
+
+              disabled={isPending}
             />
-          </div>
-        </div>
+          )}
+        </FormField>
 
-        <div className="space-y-2">
-          <Label htmlFor="issue-summary">{t('issueCreate.summary')} *</Label>
-          <Input
-            id="issue-summary"
-            type="text"
-            placeholder={t('issueCreate.summaryPlaceholder')}
-            value={summary}
-            onChange={(e) => {
-              setSummary(e.target.value)
-              setValidationError(null)
-            }}
-            required
-
-            disabled={isPending}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="issue-description">{t('issueCreate.description')}</Label>
-          <Textarea
-            id="issue-description"
-            className="w-full min-h-[120px]"
-            placeholder={t('issueCreate.descriptionPlaceholder')}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={isPending}
-          />
-        </div>
+        <FormField id="issue-description" label={t('issueCreate.description')}>
+          {(baseFieldAttrs) => (
+            <Textarea
+              {...baseFieldAttrs}
+              className="w-full min-h-[120px]"
+              placeholder={t('issueCreate.descriptionPlaceholder')}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={isPending}
+            />
+          )}
+        </FormField>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="issue-priority">{t('issueCreate.priority')}</Label>
-            <Select
-              id="issue-priority"
-              className="w-full"
-              value={priority}
-              onValueChange={(nextValue) => setPriority(nextValue)}
-              disabled={isPending}
-              options={[
-                { value: 'Medium', label: String(t('priority.medium')) },
-                { value: 'Highest', label: String(t('priority.highest')) },
-                { value: 'High', label: String(t('priority.high')) },
-                { value: 'Low', label: String(t('priority.low')) },
-                { value: 'Lowest', label: String(t('priority.lowest')) },
-              ]}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="issue-assignee">{t('issueCreate.assignee')}</Label>
-            <Select
-              id="issue-assignee"
-              className="w-full"
-              value={assignee_id}
-              onValueChange={(nextValue) => setAssigneeId(nextValue)}
-              disabled={
-                isPending ||
-                usersQuery.isLoading ||
-                projectMembersQuery.isLoading ||
-                Boolean(usersQuery.error || projectMembersQuery.error)
-              }
-              options={[
-                { value: '', label: String(t('issueCreate.unassigned')) },
-                ...(assignableUsers.map((u) => ({
-                  value: String(u.id),
-                  label: String(u.display_name || u.username),
-                })) ?? []),
-              ]}
-            />
-          </div>
+          <FormField id="issue-priority" label={t('issueCreate.priority')}>
+            {(baseFieldAttrs) => (
+              <Select
+                {...baseFieldAttrs}
+                className="w-full"
+                value={priority}
+                onValueChange={(nextValue) => setPriority(nextValue)}
+                disabled={isPending}
+                options={[
+                  { value: 'Medium', label: String(t('priority.medium')) },
+                  { value: 'Highest', label: String(t('priority.highest')) },
+                  { value: 'High', label: String(t('priority.high')) },
+                  { value: 'Low', label: String(t('priority.low')) },
+                  { value: 'Lowest', label: String(t('priority.lowest')) },
+                ]}
+              />
+            )}
+          </FormField>
+          <FormField id="issue-assignee" label={t('issueCreate.assignee')}>
+            {(baseFieldAttrs) => (
+              <Select
+                {...baseFieldAttrs}
+                className="w-full"
+                value={assignee_id}
+                onValueChange={(nextValue) => setAssigneeId(nextValue)}
+                disabled={
+                  isPending ||
+                  usersQuery.isLoading ||
+                  projectMembersQuery.isLoading ||
+                  Boolean(usersQuery.error || projectMembersQuery.error)
+                }
+                options={[
+                  { value: '', label: String(t('issueCreate.unassigned')) },
+                  ...(assignableUsers.map((u) => ({
+                    value: String(u.id),
+                    label: String(u.display_name || u.username),
+                  })) ?? []),
+                ]}
+              />
+            )}
+          </FormField>
         </div>
 
         {customFields.length > 0 && (
