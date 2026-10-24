@@ -1,4 +1,6 @@
-import { Fieldset,
+import {
+  Label,
+  Fieldset,
   ProjectAvatar,
   Button,
   Input,
@@ -79,9 +81,7 @@ export function ProjectFormDialog({
           >
             {error && <ErrorState message={error.message} />}
             <div className="space-y-2">
-              <label htmlFor="project-form-key" className="text-sm font-medium">
-                {t('projects.key')} *
-              </label>
+              <Label htmlFor="project-form-key">{t('projects.key')} *</Label>
               <Input
                 id="project-form-key"
                 value={key}
@@ -94,9 +94,7 @@ export function ProjectFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="project-form-name" className="text-sm font-medium">
-                {t('projects.name')} *
-              </label>
+              <Label htmlFor="project-form-name">{t('projects.name')} *</Label>
               <Input
                 id="project-form-name"
                 value={name}
@@ -106,9 +104,7 @@ export function ProjectFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="project-form-description" className="text-sm font-medium">
-                {t('projects.description')}
-              </label>
+              <Label htmlFor="project-form-description">{t('projects.description')}</Label>
               <Textarea
                 id="project-form-description"
                 className="min-h-[100px]"

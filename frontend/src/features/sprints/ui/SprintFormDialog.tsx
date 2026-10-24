@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  Label,
   Textarea,
   Button,
   Input,
@@ -79,9 +80,7 @@ export function SprintFormDialog({
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <div className="space-y-2">
-            <label htmlFor="sprint-form-name" className="text-sm font-medium">
-              {t('sprints.name')} *
-            </label>
+            <Label htmlFor="sprint-form-name">{t('sprints.name')} *</Label>
             <Input
               id="sprint-form-name"
               value={name}
@@ -91,9 +90,7 @@ export function SprintFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="sprint-form-goal" className="text-sm font-medium">
-              {t('sprints.goal')}
-            </label>
+            <Label htmlFor="sprint-form-goal">{t('sprints.goal')}</Label>
             <Textarea
               id="sprint-form-goal"
               className="w-full"
@@ -104,9 +101,7 @@ export function SprintFormDialog({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
-                {t('sprints.startDate')}
-              </label>
+              <Label htmlFor="sprint-form-startdate">{t('sprints.startDate')}</Label>
               <Input
                 id="sprint-form-startdate"
                 type="date"
@@ -115,9 +110,7 @@ export function SprintFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
-                {t('sprints.endDate')}
-              </label>
+              <Label htmlFor="sprint-form-enddate">{t('sprints.endDate')}</Label>
               <Input
                 id="sprint-form-enddate"
                 type="date"

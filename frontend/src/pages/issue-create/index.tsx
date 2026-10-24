@@ -1,6 +1,8 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { Fieldset,
+import {
+  Label,
+  Fieldset,
   PageHeader,
   SectionHeader,
   Select,
@@ -268,9 +270,7 @@ export function IssueCreatePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label htmlFor="issue-project" className="text-sm font-medium">
-              {t('issueCreate.project')} *
-            </label>
+            <Label htmlFor="issue-project">{t('issueCreate.project')} *</Label>
             <ProjectPicker
               id="issue-project"
               className="w-full"
@@ -287,9 +287,7 @@ export function IssueCreatePage() {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="issue-type" className="text-sm font-medium">
-              {t('issueCreate.type')} *
-            </label>
+            <Label htmlFor="issue-type">{t('issueCreate.type')} *</Label>
             <Select
               id="issue-type"
               className="w-full"
@@ -312,9 +310,7 @@ export function IssueCreatePage() {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="issue-summary" className="text-sm font-medium">
-            {t('issueCreate.summary')} *
-          </label>
+          <Label htmlFor="issue-summary">{t('issueCreate.summary')} *</Label>
           <Input
             id="issue-summary"
             type="text"
@@ -331,9 +327,7 @@ export function IssueCreatePage() {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="issue-description" className="text-sm font-medium">
-            {t('issueCreate.description')}
-          </label>
+          <Label htmlFor="issue-description">{t('issueCreate.description')}</Label>
           <Textarea
             id="issue-description"
             className="w-full min-h-[120px]"
@@ -346,9 +340,7 @@ export function IssueCreatePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label htmlFor="issue-priority" className="text-sm font-medium">
-              {t('issueCreate.priority')}
-            </label>
+            <Label htmlFor="issue-priority">{t('issueCreate.priority')}</Label>
             <Select
               id="issue-priority"
               className="w-full"
@@ -365,9 +357,7 @@ export function IssueCreatePage() {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="issue-assignee" className="text-sm font-medium">
-              {t('issueCreate.assignee')}
-            </label>
+            <Label htmlFor="issue-assignee">{t('issueCreate.assignee')}</Label>
             <Select
               id="issue-assignee"
               className="w-full"

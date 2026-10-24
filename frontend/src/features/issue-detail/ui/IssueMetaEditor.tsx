@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
-import { Select, Button, Notice } from '@pdlc/ui/ui'
+import { Label, Select, Button, Notice } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -76,9 +76,9 @@ export function IssueMetaEditor({
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-1.5">
-        <label htmlFor="issue-status" className="block text-text-muted">
+        <Label htmlFor="issue-status" className="block">
           {t('issue.status')}
-        </label>
+        </Label>
         <Select
           id="issue-status"
           value={issue.status_id}
@@ -95,9 +95,9 @@ export function IssueMetaEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="issue-priority" className="block text-text-muted">
+        <Label htmlFor="issue-priority" className="block">
           {t('issue.priority')}
-        </label>
+        </Label>
         <Select
           id="issue-priority"
           value={issue.priority}
@@ -114,9 +114,9 @@ export function IssueMetaEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="issue-assignee" className="block text-text-muted">
+        <Label htmlFor="issue-assignee" className="block">
           {t('issue.assignee')}
-        </label>
+        </Label>
         <Select
           id="issue-assignee"
           value={issue.assignee_id ?? ''}
@@ -159,9 +159,9 @@ export function IssueMetaEditor({
 
       {sprints && (
         <div className="space-y-1.5">
-          <label htmlFor="issue-sprint" className="block text-text-muted">
+          <Label htmlFor="issue-sprint" className="block">
             {t('issue.sprint')}
-          </label>
+          </Label>
           <Select
             id="issue-sprint"
             value={issue.sprint_id ?? ''}
