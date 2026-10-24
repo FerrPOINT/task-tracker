@@ -20,6 +20,16 @@ use shared::{
 
 #[async_trait]
 pub trait AuditLogRepository: Send + Sync {
+    /// Project events are filtered before pagination; only explicitly classified
+    /// global audit categories retain their existing global read policy.
+    async fn list_space_visible(
+        &self,
+        _spaces: &[shared::space_access::SpaceRef],
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
+        Err(AppError::Unavailable("scoped_audit_not_supported".into()))
+    }
     async fn save(&self, entry: &AuditLog) -> Result<(), AppError>;
     async fn list(
         &self,
@@ -85,6 +95,12 @@ pub trait OidcRepository: Send + Sync {
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    /// Exact stored binding for an active profile. No identity is inferred from email/ID.
+    async fn central_subject(&self, _user: UserId) -> Result<Option<String>, AppError> {
+        Err(AppError::Unavailable(
+            "central_subject_lookup_not_supported".into(),
+        ))
+    }
     /// Read existing subject bindings, including inactive historical profiles.
     async fn central_profiles(
         &self,
@@ -129,6 +145,134 @@ pub struct IssueCreationTicket {
 
 #[async_trait]
 pub trait ProjectRepository: Send + Sync {
+    async fn project_lifecycle(
+        &self,
+        _project: ProjectId,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        Err(AppError::Unavailable(
+            "project_lifecycle_not_supported".into(),
+        ))
+    }
+    async fn change_project_lifecycle(
+        &self,
+        _project: ProjectId,
+        _change: &crate::project_spaces::ChangeProjectLifecycle,
+        _permit: &crate::project_spaces::SpaceWritePermit,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError> {
+        Err(AppError::Unavailable(
+            "project_lifecycle_not_supported".into(),
+        ))
+    }
+    async fn apply_space_owner_v2(
+        &self,
+        _command: &shared::space_lifecycle::SpaceOwnerCommandV2,
+        _authority: &shared::space_lifecycle::SpaceOwnerAuthority,
+    ) -> Result<shared::space_lifecycle::SpaceOwnerReadbackV2, AppError> {
+        Err(AppError::Unavailable("space_owner_v2_not_supported".into()))
+    }
+    async fn space_admission_enabled(&self) -> Result<bool, AppError> {
+        Ok(false)
+    }
+    async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
+        Err(AppError::Unavailable("space_catalog_not_supported".into()))
+    }
+    async fn admitted_project_ids(
+        &self,
+        _readable: &[shared::space_access::SpaceRef],
+        _active: &[shared::space_access::SpaceRef],
+    ) -> Result<(Vec<uuid::Uuid>, Vec<uuid::Uuid>), AppError> {
+        Err(AppError::Unavailable(
+            "project_admission_snapshot_not_supported".into(),
+        ))
+    }
+    async fn list_space_accessible_catalog(
+        &self,
+        _spaces: &[shared::space_access::SpaceRef],
+        _query: &crate::project_spaces::ProjectCatalogQuery,
+    ) -> Result<crate::project_spaces::VisibleProjectPage, AppError> {
+        Err(AppError::Unavailable(
+            "space_project_catalog_not_supported".into(),
+        ))
+    }
+    async fn list_space_accessible_page(
+        &self,
+        _spaces: &[shared::space_access::SpaceRef],
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        Err(AppError::Unavailable(
+            "space_project_filter_not_supported".into(),
+        ))
+    }
+    async fn project_spaces(
+        &self,
+        _project: ProjectId,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
+    async fn project_space_operation(
+        &self,
+        _project: ProjectId,
+        _operation: uuid::Uuid,
+        _actor: &shared::space_access::CentralIdentity,
+    ) -> Result<Option<crate::project_spaces::StoredProjectSpaceOperation>, AppError> {
+        Err(AppError::Unavailable(
+            "project_space_receipts_not_supported".into(),
+        ))
+    }
+    async fn replace_project_spaces(
+        &self,
+        _project: ProjectId,
+        _change: &crate::project_spaces::ReplaceProjectSpaces,
+        _permit: &crate::project_spaces::SpaceWritePermit,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
+    /// Canonical batch metadata only. The API owner filters by original admission before responding.
+    async fn project_space_contexts(
+        &self,
+        _projects: &[shared::space_access::ProjectRef],
+    ) -> Result<Vec<shared::project_spaces::ProjectSpaceReadContext>, AppError> {
+        Err(AppError::Unavailable(
+            "project_contexts_not_supported".into(),
+        ))
+    }
+    async fn project_space_context_page(
+        &self,
+        _space: &shared::space_access::SpaceRef,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<crate::project_spaces::CanonicalProjectContextPage, AppError> {
+        Err(AppError::Unavailable(
+            "project_contexts_not_supported".into(),
+        ))
+    }
+    async fn project_space_projection_status(
+        &self,
+        _project: ProjectId,
+    ) -> Result<crate::project_spaces::ProjectSpaceProjectionStatus, AppError> {
+        Err(AppError::Unavailable(
+            "project_projection_not_supported".into(),
+        ))
+    }
+    async fn reconcile_project_spaces(
+        &self,
+        _project: ProjectId,
+        _permit: &crate::project_spaces::SpaceWritePermit,
+    ) -> Result<crate::project_spaces::ProjectSpaceProjectionStatus, AppError> {
+        Err(AppError::Unavailable(
+            "project_projection_not_supported".into(),
+        ))
+    }
+    async fn save_with_board_and_spaces(
+        &self,
+        _project: &Project,
+        _board: &crate::Board,
+        _spaces: &[shared::space_access::SpaceRef],
+        _permit: &crate::project_spaces::SpaceWritePermit,
+    ) -> Result<ProjectId, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
     async fn namespace_task_catalog(
         &self,
         _namespace: &shared::resource_context::NamespaceRef,
@@ -1264,6 +1408,19 @@ impl SystemSettingRepository for StubSystemSettingRepository {
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    /// Recipient ownership alone does not retain access to task text after revocation.
+    async fn list_space_visible(
+        &self,
+        _recipient: UserId,
+        _spaces: &[shared::space_access::SpaceRef],
+        _include_read: bool,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<(Vec<Notification>, u64), AppError> {
+        Err(AppError::Unavailable(
+            "scoped_notifications_not_supported".into(),
+        ))
+    }
     /// Mark exactly these notifications read (idempotent, ignores others).
     async fn mark_read_batch(&self, ids: &[shared::NotificationId]) -> Result<(), AppError>;
     async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;

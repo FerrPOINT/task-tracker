@@ -142,3 +142,18 @@ this mapping or enroll Workflow. Pending/unknown work must reconcile first.
 
 Registration is authored locally. Main reviews migration order and generates the
 OpenAPI/client snapshots; generated files are deliberately not fabricated here.
+
+## Integrated source checkpoint — 23 October 2026
+
+The candidate includes current main and its pinned SDK and request-commit guards.
+All 13 Fleet configuration reader tests pass, including the request-local 180s
+budget and unchanged ordinary 10s reads. The exact rebuilt SDLC PostgreSQL HTTP
+case covers clarification ownership, replay and restart on an isolated database.
+Source bytes remained stable; no installed runtime was changed.
+
+The original-authority expiry/no-effects and same-key recovery matrix still
+requires fresh qualification with the combined Fleet caller. A separate native
+request-clock target has not run: the 3.5 GiB disk admission guard refused it.
+The protocol's 60s authority lifetime is unchanged. Business PM acceptance and
+the linked Fleet/Base installation remain open; this checkpoint does not mark
+the package release-ready.

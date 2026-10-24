@@ -8,6 +8,7 @@ import { RouterProvider } from 'react-router'
 import { router } from './app/router'
 import { ThemeProvider, PlatformProvider, PlatformServicesProvider } from '@pdlc/ui/lib'
 import './index.css'
+import { SpaceSessionBoundary } from './shared/auth/space-session-boundary'
 import { relaySsoCallback, ssoNamespace } from '@pdlc/ui/sso'
 import {
   capturePlatformReturn,
@@ -56,7 +57,9 @@ function Boot() {
             <PlatformServicesProvider
               catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}
             >
-              <RouterProvider router={router} />
+              <SpaceSessionBoundary>
+                <RouterProvider router={router} />
+              </SpaceSessionBoundary>
             </PlatformServicesProvider>
           </PlatformProvider>
           <Toaster />

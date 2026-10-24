@@ -60,7 +60,7 @@ pub(super) async fn before(
     let url = format!("{base}/api/v1/projects/{project}/sdlc/routing-policy");
     let body = command();
     for token in [
-        operator,
+        owner,
         foreign,
         "sdlc_pat_owner",
         "sdlc_pat_fleet",
@@ -76,7 +76,7 @@ pub(super) async fn before(
         .await;
     }
     assert_eq!(count(db, "sdlc_project_routing_revisions").await, 0);
-    let initial = post(client, &url, owner, &body, 201).await;
+    let initial = post(client, &url, operator, &body, 201).await;
     assert_eq!(initial["version"], 1);
     assert_eq!(initial["verification"], "declared");
     assert_eq!(initial["native_ready"], false);
@@ -90,31 +90,31 @@ pub(super) async fn before(
         read(
             client,
             &format!("{url}/operations/routing-initial"),
-            owner,
+            operator,
             200
         )
         .await
     );
     let (a, b) = tokio::join!(
-        post(client, &url, owner, &body, 200),
-        post(client, &url, owner, &body, 200)
+        post(client, &url, operator, &body, 200),
+        post(client, &url, operator, &body, 200)
     );
     assert_eq!(a, b);
     assert_eq!(a, initial);
     let mut changed = body.clone();
     changed["routes"]["analyst"]["fleet_config_revision"] = json!(2);
-    post(client, &url, owner, &changed, 409).await;
+    post(client, &url, operator, &changed, 409).await;
     changed["idempotency_key"] = json!("stale-create");
-    post(client, &url, owner, &changed, 409).await;
+    post(client, &url, operator, &changed, 409).await;
     let mut invalid = body.clone();
     invalid["expected_version"] = json!(1);
     invalid["idempotency_key"] = json!("invalid-agent");
     invalid["routes"]["analyst"]["agent_id"] =
         invalid["routes"]["project_manager"]["agent_id"].clone();
-    post(client, &url, owner, &invalid, 422).await;
+    post(client, &url, operator, &invalid, 422).await;
     invalid["routes"]["analyst"]["agent_id"] = json!(Uuid::new_v4());
     invalid["routes"]["analyst"]["runtime_ready"] = json!(true);
-    post(client, &url, owner, &invalid, 422).await;
+    post(client, &url, operator, &invalid, 422).await;
     let mut left = body.clone();
     left["expected_version"] = json!(1);
     left["idempotency_key"] = json!("left-update");
@@ -123,8 +123,8 @@ pub(super) async fn before(
     right["idempotency_key"] = json!("right-update");
     right["routes"]["analyst"]["fleet_config_revision"] = json!(3);
     let (left, right) = tokio::join!(
-        client.post(&url).bearer_auth(owner).json(&left).send(),
-        client.post(&url).bearer_auth(owner).json(&right).send()
+        client.post(&url).bearer_auth(operator).json(&left).send(),
+        client.post(&url).bearer_auth(operator).json(&right).send()
     );
     let left = left.unwrap();
     let right = right.unwrap();
@@ -134,7 +134,7 @@ pub(super) async fn before(
     ));
     let current = read(client, &url, owner, 200).await;
     assert_eq!(current["version"], 2);
-    assert_eq!(initial, post(client, &url, owner, &body, 200).await);
+    assert_eq!(initial, post(client, &url, operator, &body, 200).await);
     assert_eq!(
         initial,
         read(client, &format!("{url}/versions/1"), owner, 200).await
@@ -152,21 +152,21 @@ pub(super) async fn before(
     read(client, &url, "sdlc_pat_pm", 403).await;
     sql(
         db,
-        "UPDATE users SET is_active=false WHERE central_sub='owner'",
+        "UPDATE users SET is_active=false WHERE central_sub='operator'",
         vec![],
     )
     .await;
-    post(client, &url, owner, &body, 403).await;
+    post(client, &url, operator, &body, 403).await;
     read(
         client,
         &format!("{url}/operations/routing-initial"),
-        owner,
+        operator,
         403,
     )
     .await;
     sql(
         db,
-        "UPDATE users SET is_active=true WHERE central_sub='owner'",
+        "UPDATE users SET is_active=true WHERE central_sub='operator'",
         vec![],
     )
     .await;
@@ -187,7 +187,7 @@ pub(super) async fn before(
     )
     .unwrap();
     println!(
-        "ROUTING_POLICY owner/central/session/ACL/replay/concurrent CAS/strict pins/no automatic enrollment passed"
+        "ROUTING_POLICY administrator/central/session/ACL/replay/concurrent CAS/strict pins/no automatic enrollment passed"
     );
     (current, state)
 }
@@ -231,12 +231,13 @@ pub(super) async fn after(
     let project = ready.project_id;
     let owner = actors.owner;
     let foreign = actors.foreign;
+    let operator = actors.operator;
     assert_eq!(old, &snapshot(client, base, task, owner).await);
     let url = format!("{base}/api/v1/projects/{project}/sdlc/routing-policy");
     let mut update = json!({"expected_version":2,"routes":old["policy"]["routes"],"idempotency_key":"next-policy"});
     update["routes"]["analyst"]["fleet_config_revision"] = json!(4);
     update["routes"]["analyst"]["agent_id"] = json!(Uuid::new_v4());
-    let next = post(client, &url, owner, &update, 201).await;
+    let next = post(client, &url, operator, &update, 201).await;
     assert_eq!(next["version"], 3);
     assert_eq!(old, &snapshot(client, base, task, owner).await);
     let mut replay = json!({"content_hash":old["content_hash"],"idempotency_key":"confirm-final","expected_routing_policy_version":2});
@@ -311,7 +312,7 @@ pub(super) async fn after(
     )
     .await;
     let snapshot_url = format!("{base}/api/v1/issues/{task}/sdlc/routing-snapshot");
-    // Global admin hints do not grant access; an explicit member may read the frozen snapshot.
+    // Legacy local admin hints do not grant access; an explicit member may read the frozen snapshot.
     read(client, &snapshot_url, foreign, 403).await;
     sql(
         db,

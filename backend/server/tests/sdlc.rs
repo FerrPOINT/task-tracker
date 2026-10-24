@@ -110,6 +110,17 @@ async fn introspect(
         // This rejection fixture must corrupt required identity instead.
         value["sub"] = json!("");
     }
+    let now = shared::now();
+    value["observed_at"] = json!(now);
+    value["expires_at"] = json!(now + std::time::Duration::from_secs(3600));
+    value["subject_role"] = json!(if matches!(
+        value["sub"].as_str(),
+        Some("owner" | "operator" | "foreign")
+    ) {
+        "member"
+    } else {
+        "service_account"
+    });
     Ok(Json(value))
 }
 
@@ -140,7 +151,11 @@ async fn session(
     } else {
         subject
     };
-    Ok(Json(json!({"id":id,"display_name":subject})))
+    Ok(Json(
+        json!({"id":id,"display_name":subject,"status":"active",
+        "role":if subject=="operator"{"admin"}else{"member"},
+        "email":format!("{subject}@example.test")}),
+    ))
 }
 
 async fn sql(db: &DatabaseConnection, query: &str, values: Vec<sea_orm::Value>) {
@@ -473,16 +488,16 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         },
     )
     .await;
-    namespace_catalog::verify(&client, &base, &db, project, &owner).await;
+    namespace_catalog::verify(&client, &base, &db, project, &owner, &operator).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);
-    // A mismatched optional profile cannot replace the verified JWT subject.
-    // The existing exact-subject profile remains usable; the unbound SDLC
-    // context is absent. Corrupt required PAT identity still fails closed.
+    // Fresh profile identity is authoritative: a signed JWT cannot reuse a
+    // historical local profile when the current Auth response names somebody else.
+    // Required PAT identity corruption also remains fail-closed.
     for (path, owner_status) in [
-        (format!("{url}/context"), 404),
-        (format!("{base}/api/v1/issues/{task}"), 200),
+        (format!("{url}/context"), 401),
+        (format!("{base}/api/v1/issues/{task}"), 401),
     ] {
         for (token, expected) in [(&owner[..], owner_status), ("sdlc_pat_owner", 401)] {
             assert_eq!(
@@ -539,7 +554,19 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(count(&db, "sdlc_tasks").await, 1);
-    source_policy::verify(&client, &base, &db, project, task, &owner, &foreign).await;
+    source_policy::verify(
+        &client,
+        &base,
+        &db,
+        project,
+        task,
+        &routing_policy::Actors {
+            owner: &owner,
+            operator: &operator,
+            foreign: &foreign,
+        },
+    )
+    .await;
     lifecycle_guard::reject_child_row(&db, task, unbound).await;
     assert_eq!(
         client
@@ -1179,7 +1206,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &client,
         &restarted,
         task,
-        &owner,
+        &routing_actors,
         &routing_ready,
         &fleet_stub,
     )

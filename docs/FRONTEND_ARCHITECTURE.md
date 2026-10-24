@@ -371,3 +371,12 @@ const ProjectPage = lazy(() => import("./pages/project"))
 - `docs/LIBRARIES.md`
 - `docs/FRONTEND_STANDARDS.md`
 - `docs/CODE_STYLE.md`
+
+## Lifetime общего пространства
+
+Content mutations используют [исходный scope операции](PROJECT_SPACES_UI_V2.md#императивные-операции-и-смена-контекста)
+через shared/api/useScopedMutation. TanStack Query сохраняет ownership статуса;
+адаптер не меняет RPC DTO, серверные роли, owner journal или механизмы retry.
+Identity mutations остаются вне space admission. Guard обязан предшествовать
+private cache write/download/navigation; произвольный async callback проверяет
+scope после своего await. Server authorization остаётся независимой.

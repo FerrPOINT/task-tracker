@@ -3,10 +3,10 @@
 //! All JWKS/login mechanics live in `pdlc_auth_core::service_bridge`;
 //! this file only maps bridge outcomes to task-tracker types.
 
-use pdlc_auth_core::service_bridge::{BridgeOutcome, ServiceBridge};
+use pdlc_auth_core::service_bridge::BridgeOutcome;
 
 /// Env prefix: TT_AUTH__CENTRAL_{JWKS_URI,ISSUER,LOGIN_URL,TIMEOUT_SECS}.
-pub static BRIDGE: ServiceBridge = ServiceBridge::new("TT_AUTH__CENTRAL");
+pub use app::space_access::CENTRAL_BRIDGE as BRIDGE;
 
 /// Central-first bearer validation result, flattened for the middleware.
 pub enum CentralCheck {
@@ -17,11 +17,20 @@ pub enum CentralCheck {
     /// Central token, expired.
     Expired,
     Unavailable,
+    Forbidden,
 }
 
 pub async fn check_token(token: &str) -> CentralCheck {
-    let (outcome, name) = BRIDGE.try_token_with_name(token).await;
-    classify(outcome, name)
+    check_token_with_policy(token).await.0
+}
+pub async fn check_token_with_policy(
+    token: &str,
+) -> (
+    CentralCheck,
+    Option<pdlc_auth_core::application_access::VerifiedApplicationAccess>,
+) {
+    let (outcome, name, proof) = BRIDGE.try_token_with_policy(token).await;
+    (classify(outcome, name), proof)
 }
 
 fn classify(outcome: BridgeOutcome, name: Option<String>) -> CentralCheck {
@@ -34,6 +43,7 @@ fn classify(outcome: BridgeOutcome, name: Option<String>) -> CentralCheck {
             CentralCheck::Expired
         }
         BridgeOutcome::Unavailable => CentralCheck::Unavailable,
+        BridgeOutcome::Forbidden => CentralCheck::Forbidden,
     }
 }
 

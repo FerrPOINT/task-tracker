@@ -122,7 +122,61 @@ pub trait WorklogService: Send + Sync {
 
 #[async_trait]
 pub trait ProjectService: Send + Sync {
+    async fn lifecycle(
+        &self,
+        key: &ProjectKey,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError>;
+    async fn change_lifecycle(
+        &self,
+        key: &ProjectKey,
+        change: domain::project_spaces::ChangeProjectLifecycle,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::project_spaces::ProjectLifecycle, AppError>;
     async fn create(&self, cmd: CreateProjectCommand) -> Result<ProjectDto, AppError>;
+    async fn create_in_spaces(
+        &self,
+        _cmd: CreateProjectCommand,
+        _spaces: Vec<shared::space_access::SpaceRef>,
+        _actor: crate::space_access::SpaceActor,
+    ) -> Result<ProjectDto, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
+    async fn spaces(
+        &self,
+        _key: &ProjectKey,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
+    async fn space_operation(
+        &self,
+        _key: &ProjectKey,
+        _operation: uuid::Uuid,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<domain::project_spaces::ProjectSpaceOperationReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "project_space_receipts_not_supported".into(),
+        ))
+    }
+    async fn replace_spaces(
+        &self,
+        _key: &ProjectKey,
+        _change: domain::project_spaces::ReplaceProjectSpaces,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
+        Err(AppError::Unavailable("project_spaces_not_supported".into()))
+    }
+    async fn visible_catalog(
+        &self,
+        _query: domain::project_spaces::ProjectCatalogQuery,
+        _space: Option<&shared::space_access::SpaceRef>,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<(Vec<ProjectDto>, u64), AppError> {
+        Err(AppError::Unavailable(
+            "project_catalog_not_supported".into(),
+        ))
+    }
     async fn list(
         &self,
         query: ProjectQueryDto,

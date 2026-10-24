@@ -26,6 +26,7 @@ pub mod sdlc_routing;
 pub mod sdlc_source;
 pub mod sdlc_terminal_idle_recovery;
 pub mod services;
+pub mod space_access;
 pub mod totp;
 
 pub use auth::*;
@@ -33,3 +34,5 @@ pub use commands::*;
 pub use context::*;
 pub use dto::*;
 pub use services::*;
+
+pub mod native_space_access;

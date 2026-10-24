@@ -37,11 +37,13 @@ mod routing;
 mod settled_input_recovery;
 #[path = "sdlc_source.rs"]
 mod source;
+#[path = "sdlc_spaces.rs"]
+mod spaces;
 #[path = "sdlc_terminal_idle_recovery.rs"]
 mod terminal_idle_recovery;
 
 pub struct PostgresSdlcRepository {
-    db: DatabaseConnection,
+    db: crate::guarded_db::GuardedDb,
     config: SdlcConfig,
     file_storage: Option<Arc<dyn domain::FileStorage>>,
 }
@@ -183,7 +185,7 @@ impl PostgresSdlcRepository {
             ));
         }
         Ok(Self {
-            db,
+            db: crate::guarded_db::GuardedDb::new(db),
             config,
             file_storage: None,
         })
@@ -211,6 +213,9 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("project", project))?;
+        if spaces::require_project(tx, project, user_id, actor).await? {
+            return Ok((user_id, row.try_get("", "key").map_err(map_db)?));
+        }
         if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
             // Current Tracker project policy grants write to explicit members.
             // Central/global-admin hints never substitute for this row.
@@ -273,6 +278,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("SDLC binding mismatch"));
         }
         state.require_root()?;
+        spaces::bind_task(tx, config, &state, actor).await?;
         Ok(state)
     }
 
@@ -1329,6 +1335,9 @@ impl SdlcRepository for PostgresSdlcRepository {
     }
 
     async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
+        if let Some(frame) = spaces::request_scope(&self.db, actor).await? {
+            return spaces::access(&self.db, actor, &frame, &self.config.instance_id).await;
+        }
         // One snapshot: identity is never inferred from email, role, public access or service grants.
         let row = self.db.query_one(statement(
             "WITH active AS MATERIALIZED (
@@ -1363,6 +1372,17 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<ProjectDirectory, AppError> {
         if !(1..=100).contains(&limit) || after.is_some_and(|id| id.is_nil()) {
             return Err(AppError::validation("invalid project directory query"));
+        }
+        if let Some(frame) = spaces::request_scope(&self.db, actor).await? {
+            return spaces::directory(
+                &self.db,
+                actor,
+                &frame,
+                &self.config.instance_id,
+                after,
+                limit,
+            )
+            .await;
         }
         // Identity, explicit ACL and keyset page share one statement snapshot, including empty pages.
         let row = self.db.query_one(statement(

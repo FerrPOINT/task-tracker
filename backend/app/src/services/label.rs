@@ -94,7 +94,7 @@ impl crate::context::LabelService for LabelServiceImpl {
     ) -> Result<crate::context::LabelDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(project.id, requester)
+            .require_configuration_edit(project.id, requester)
             .await?;
         let name = Self::normalize_name(name)?;
         let color = Self::normalize_color(color)?;
@@ -130,7 +130,7 @@ impl crate::context::LabelService for LabelServiceImpl {
     ) -> Result<crate::context::LabelDto, AppError> {
         let label = self.labels.get_by_id(label_id).await?;
         self.authz
-            .require_project_edit(label.project_id, requester)
+            .require_configuration_edit(label.project_id, requester)
             .await?;
         let name = Self::normalize_name(name)?;
         let color = Self::normalize_color(color)?;
@@ -146,7 +146,7 @@ impl crate::context::LabelService for LabelServiceImpl {
     async fn delete(&self, label_id: shared::LabelId, requester: UserId) -> Result<(), AppError> {
         let label = self.labels.get_by_id(label_id).await?;
         self.authz
-            .require_project_edit(label.project_id, requester)
+            .require_configuration_edit(label.project_id, requester)
             .await?;
         let issue_ids = self.labels.list_issue_ids_by_label(label_id).await?;
         self.labels.delete(label_id).await?;

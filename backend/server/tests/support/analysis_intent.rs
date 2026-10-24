@@ -147,7 +147,7 @@ pub async fn confirm_and_seed_analysis_fixture(
     (first, intent)
 }
 
-async fn seed_historical_analysis(db: &DatabaseConnection, task: Uuid) {
+pub(super) async fn seed_historical_analysis(db: &DatabaseConnection, task: Uuid) {
     let tx = db.begin().await.unwrap();
     let row = tx.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
         "SELECT state,pm_execution_id IS NULL AS unreserved FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE", [task.into()])).await.unwrap().unwrap();
@@ -164,17 +164,18 @@ async fn seed_historical_analysis(db: &DatabaseConnection, task: Uuid) {
             [task.into()],
         ))
         .await
-        .unwrap()
         .unwrap();
-    let snapshot: domain::sdlc_routing::TaskRoutingSnapshot =
-        serde_json::from_value(row.try_get("", "payload").unwrap()).unwrap();
+    let snapshot: Option<domain::sdlc_routing::TaskRoutingSnapshot> =
+        row.map(|row| serde_json::from_value(row.try_get("", "payload").unwrap()).unwrap());
     let mut intent =
         app::sdlc::analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4())
             .unwrap();
-    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
+    if let Some(snapshot) = &snapshot {
+        intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
+    }
     tx.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
         "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-        [intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json!(intent).into(),snapshot.snapshot_id.into()])).await.unwrap();
+        [intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json!(intent).into(),snapshot.map(|snapshot| snapshot.snapshot_id).into()])).await.unwrap();
     tx.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
