@@ -4,13 +4,14 @@ import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
-import { ResourceListDescription,
+import {
+  AutocompleteInput,
+  ResourceListDescription,
   PageHeader,
   SectionHeader,
   Button,
   ResourceList,
   ResourceListRow,
-  Input,
   Label,
   Tabs,
   TabsContent,
@@ -191,25 +192,26 @@ export function AdminPage() {
               >
                 <div className="space-y-1.5">
                   <Label htmlFor="setting-key">{t('admin.settings.key')}</Label>
-                  <Input
+                  <AutocompleteInput
                     id="setting-key"
 
                     value={settingKey}
-                    onChange={(event) => {
-                      setSettingKey(event.target.value)
+                    onValueChange={(nextValue) => {
+                      setSettingKey(nextValue)
                       setSettingError(null)
                       setSaveError(false)
                       setSavedKey(null)
                     }}
                     disabled={updateSetting.isPending}
                     required
-                    list="known-setting-keys"
+                    options={
+                      settings.data?.map((setting) => ({
+                        value: setting.key,
+                        label: setting.key,
+                      })) ?? []
+                    }
                   />
-                  <datalist id="known-setting-keys">
-                    {settings.data?.map((setting) => (
-                      <option key={setting.key} value={setting.key} />
-                    ))}
-                  </datalist>
+
                 </div>
                 <FormField id="setting-value" label={t('admin.settings.jsonValue')}>
                   {(baseFieldAttrs) => (
