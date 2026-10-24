@@ -20,6 +20,7 @@ pub mod admin;
 pub mod attachments;
 pub mod events;
 pub mod exports;
+pub mod identity_memberships;
 pub mod labels;
 pub mod links;
 pub mod notifications;
@@ -43,3 +44,5 @@ pub mod project_lifecycle;
 pub mod space_catalog;
 
 pub mod project_access;
+
+pub mod identity_deletion;

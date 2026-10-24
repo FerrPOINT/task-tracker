@@ -95,6 +95,34 @@ pub trait OidcRepository: Send + Sync {
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    async fn identity_deletion_check(
+        &self,
+        _request: &shared::identity_deletion::DeletionRequest,
+        _window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerReferenceSummary, AppError> {
+        Err(AppError::Unavailable(
+            "identity_deletion_owner_not_supported".into(),
+        ))
+    }
+    async fn identity_deletion_freeze(
+        &self,
+        _request: &shared::identity_deletion::DeletionRequest,
+        _window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerFreezeReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "identity_deletion_owner_not_supported".into(),
+        ))
+    }
+    async fn identity_deletion_release(
+        &self,
+        _request: &shared::identity_deletion::DeletionRequest,
+        _window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerReleaseReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "identity_deletion_owner_not_supported".into(),
+        ))
+    }
+
     /// Exact stored binding for an active profile. No identity is inferred from email/ID.
     async fn central_subject(&self, _user: UserId) -> Result<Option<String>, AppError> {
         Err(AppError::Unavailable(
@@ -1264,6 +1292,18 @@ impl EventBus for StubEventBus {
 
 #[async_trait]
 pub trait ProjectMemberRepository: Send + Sync {
+    /// Identity administration is separate from content visibility. Unsupported
+    /// owners must return unavailable, never fabricate an empty membership set.
+    async fn identity_memberships(
+        &self,
+        _subject: uuid::Uuid,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<crate::identity_memberships::IdentityMembershipPage, AppError> {
+        Err(AppError::Unavailable(
+            "identity_memberships_not_supported".into(),
+        ))
+    }
     async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError>;
     async fn list_by_user(&self, user_id: UserId) -> Result<Vec<ProjectMember>, AppError>;
     async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError>;

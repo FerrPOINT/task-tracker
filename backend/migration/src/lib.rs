@@ -38,6 +38,7 @@ mod m20261019_0000099_unified_spaces;
 mod m20261021_0000100_human_sdlc_spaces;
 mod m20261021_0000101_native_sdlc_spaces;
 mod m20261022_0000102_request_commit_clock;
+mod m20261022_0000103_identity_deletion;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -126,6 +127,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261021_0000100_human_sdlc_spaces::Migration),
             Box::new(m20261021_0000101_native_sdlc_spaces::Migration),
             Box::new(m20261022_0000102_request_commit_clock::Migration),
+            Box::new(m20261022_0000103_identity_deletion::Migration),
         ]
     }
 }

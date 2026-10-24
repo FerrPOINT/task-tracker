@@ -2275,3 +2275,5 @@ transaction-local native caller/task scope, проверки фактическ�
 Начальный execution grant сохраняет original actor и реальный footprint;
 проверенный Forge NamespaceRef не используется как предполагаемый Wiki SpaceRef.
 Rollback требует совместимого защищённого cohort с сохранением каталогов и grants.
+
+Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
