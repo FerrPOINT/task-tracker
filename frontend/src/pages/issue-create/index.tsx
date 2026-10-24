@@ -14,6 +14,7 @@ import {
   ErrorState,
   Input,
   Notice,
+  LoadingState,
 } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
@@ -220,7 +221,7 @@ export function IssueCreatePage() {
         )}
         {validationError && <ErrorState message={validationError} />}
         {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
-        {setupLoading && <p className="text-sm text-text-muted">{t('issueCreate.loading')}</p>}
+        {setupLoading && <LoadingState scope="local" message={t('issueCreate.loading')} />}
         {projectsQuery.error && (
           <ErrorState
             message={t('issueCreate.projectsError')}

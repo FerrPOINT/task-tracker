@@ -80,3 +80,27 @@ mobile large-показ Dialog Portal даёт Label 16 px. Исправлени
 UI pin, SDK/skills, HTTP API и зависимости в этом срезе не меняются. Повторная
 сборка неизменного Base и Storybook не выполнялась. Итоговый frontend gate и
 публикация кандидата остаются отдельными незавершёнными стадиями.
+
+## Локальное чтение и вложения
+
+Три локальных загрузки используют Base scope="local". AttachmentPanel строит
+состояние через ResourceStateView/resourceErrorState: undefined не означает
+пустоту, 503 не превращается в «нет файлов», явный retry остаётся чтением.
+Подтверждённые файлы сохраняются с пояснением при временном отказе. После 401/403
+старые строки, действия и счётчик скрываются. Файлы не удаляются и не переписываются;
+отображение выбирается по состоянию доступа. Upload/delete и их callbacks сохранены.
+
+Пять новых cases сначала падали на прежнем поведении. После исправления прошли
+36 cases вложений, создания задачи и custom fields; TypeScript, scoped ESLint
+и primitive/choice guard прошли. IAB настоящего AttachmentPanel дал 72 сочетания:
+loading/empty/error/denied/partial/ready × три темы × четыре ширины. Проверены
+явный retry, отсутствие raw server details, сохранность подтверждённых файлов,
+скрытие после потери доступа и отсутствие overflow. Transport синтетический,
+внешних запросов и продуктовых записей нет; сервер/вкладка закрыты.
+
+UI pin — 2e29b403b3987905494ed40fe812608cf998cc3a; fingerprint
+`e5cad6ebab4369dbd56831f566ab94141ca4de050b253f9b93191ddbcb75c23a`.
+Frozen offline refresh обновил один reused UI package без downloads; lockfile,
+React singleton 19.2.7 и независимые SDK/skills pins сохранены. Installed CLI
+check прошёл. Новый frontend bundle, полный интеграционный gate и установленная
+платформа этой проверкой не квалифицированы.

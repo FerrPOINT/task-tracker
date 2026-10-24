@@ -10,6 +10,7 @@ import {
   Button,
   ConfirmDialog,
   ErrorState,
+  LoadingState,
   ResourceList,
   ResourceListRow,
   Checkbox,
@@ -188,7 +189,7 @@ export function ProjectCustomFieldsPage() {
           />
           <div>
             {fields.isLoading ? (
-              <p className="text-sm text-text-muted">{t('customFields.loading')}</p>
+              <LoadingState scope="local" message={t('customFields.loading')} />
             ) : fields.error ? (
               <ErrorState
                 message={t('customFields.loadError')}

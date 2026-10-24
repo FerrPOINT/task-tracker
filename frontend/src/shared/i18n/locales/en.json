@@ -486,6 +486,7 @@
     "sub-task": "Sub-task"
   },
   "attachments": {
+    "loadFailed": "Could not load attachments",
     "title": "Attachments",
     "upload": "Attach file",
     "uploading": "Uploading…",
