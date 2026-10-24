@@ -438,6 +438,20 @@ Lockfile, backward compatibility и backend OpenAPI drift gates сохраняю
 Самостоятельный `pnpm openapi:check` остаётся проверкой для окружения, в котором
 generation ещё не выполнялась; его не добавляют повторно после postinstall.
 
+## POSIX unit обёрток обслуживания
+
+`maintenance:wrapper-unit` проверяет передачу аргументов `backup.sh`/`restore.sh`
+через временные Python/Docker заглушки. Это быстрый Linux unit без обращения к
+Base backup executor, данным или Docker daemon; настоящий backup/restore остаётся
+отдельной проверкой. Команда: `python3 -B -m unittest scripts.tests.test_base_maintenance -q`.
+Ubuntu CI включает модуль один раз в существующий Python tooling шаг.
+
+Изменение только `scripts/tests/test_base_maintenance.py` в Fast/Unit/Build
+выбирает этот gate без Rust/frontend preparation и artifact producers. На Windows
+gate требует Linux и не выдаёт skipped тело за выполненную проверку. PlanOnly
+доступен без подготовки Linux-окружения. Явный компонент `tooling` сохраняет
+прежние переносимые проверки; неизвестные scripts по-прежнему расширяют scope.
+
 ## Точные Rust artifacts обычной сборки
 
 Project-directory units модуля `sdlc` находятся в

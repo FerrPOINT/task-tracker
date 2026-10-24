@@ -2,6 +2,9 @@
   "schema": "base-quality-product/v1",
   "product": "task-tracker",
   "components": {
+    "maintenance": [
+      "scripts/tests/test_base_maintenance.py"
+    ],
     "tooling": [
       "scripts/tests/test_build_pin.py",
       "scripts/tests/test_verify_readme.py",
@@ -37,6 +40,24 @@
     ]
   },
   "gates": [
+    {
+      "id": "maintenance:wrapper-unit",
+      "component": "maintenance",
+      "profiles": ["fast", "unit", "build", "integrated", "release"],
+      "argv": ["{python}", "-B", "-m", "unittest", "scripts.tests.test_base_maintenance", "-q"],
+      "cwd": ".",
+      "inputs": [
+        "scripts/tests/test_base_maintenance.py",
+        "scripts/backup.sh",
+        "scripts/restore.sh",
+        ".quality-gate.json",
+        ".github/workflows/ci.yml"
+      ],
+      "platforms": ["linux"],
+      "cacheable": false,
+      "execution_slot": "none",
+      "test_tier": "unit"
+    },
     {
       "id": "tooling:python-helpers",
       "component": "tooling",

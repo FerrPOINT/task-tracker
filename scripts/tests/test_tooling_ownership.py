@@ -2,6 +2,7 @@
 import shlex
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from scripts.vendor import base_quality_selection as selection
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -9,6 +10,36 @@ TESTS = ('test_build_pin', 'test_verify_readme', 'test_ci_change_classifier', 't
 
 
 class PythonToolingOwnershipTests(unittest.TestCase):
+    def test_posix_wrapper_test_selects_only_its_linux_unit(self):
+        manifest = selection.load(ROOT)
+        # Freeze only HEAD, not the selector's source/ownership logic. Planning
+        # must never prepare a compiler or infer an application from this test.
+        head = selection.git(ROOT, 'rev-parse', 'HEAD')
+        with patch.object(selection, 'git', return_value=head):
+            for profile in ('fast', 'unit', 'build'):
+                for platform in ('win32', 'linux'):
+                    with self.subTest(profile=profile, platform=platform):
+                        candidate = selection.plan(ROOT, profile=profile,
+                            changed=['scripts/tests/test_base_maintenance.py'],
+                            manifest=manifest, execution_platform=platform)
+                        self.assertEqual(candidate['components'], ['maintenance'])
+                        self.assertEqual([g['id'] for g in candidate['gates']], ['maintenance:wrapper-unit'])
+                        gate = candidate['gates'][0]
+                        self.assertEqual(gate['platforms'], ['linux'])
+                        self.assertEqual(gate['test_tier'], 'unit')
+                        self.assertEqual(gate['execution_slot'], 'none')
+                        self.assertFalse(gate.get('kind') == 'artifact')
+                        self.assertFalse(gate.get('prepare_frontend'))
+                        self.assertIn('scripts.tests.test_base_maintenance', gate['argv'])
+
+    def test_posix_wrapper_unit_does_not_schedule_ci_app_jobs(self):
+        with patch.object(selection, 'git', return_value='scripts/tests/test_base_maintenance.py\n'):
+            for event in ('push', 'pull_request'):
+                with self.subTest(event=event):
+                    values = selection.ci_outputs(event, 'a' * 40, 'b' * 40, repo=ROOT)
+                    self.assertEqual(values, {'backend': 'false', 'frontend': 'false',
+                                              'backend_build': 'false', 'frontend_build': 'false'})
+
     def test_known_tests_select_only_python_helpers(self):
         manifest = selection.load(ROOT)
         for profile in ('fast', 'unit', 'build'):
@@ -40,7 +71,7 @@ class PythonToolingOwnershipTests(unittest.TestCase):
         ci = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
         commands = [shlex.split(line.strip().removeprefix('run: ')) for line in ci.splitlines()
                     if line.strip().removeprefix('run: ').startswith('python3 -m unittest ')]
-        for name in (*TESTS, 'test_ci_contract_checks'):
+        for name in (*TESTS, 'test_ci_contract_checks', 'test_base_maintenance'):
             with self.subTest(module=name):
                 self.assertEqual(sum(c.count('scripts.tests.' + name) for c in commands), 1)
         self.assertIn('run: python3 scripts/verify_readme.py', ci)
