@@ -1,0 +1,110 @@
+diff --git a/backend/domain/src/lib.rs b/backend/domain/src/lib.rs
+--- a/backend/domain/src/lib.rs
++++ b/backend/domain/src/lib.rs
+@@ -13,1 +13,2 @@
+ pub mod sdlc_execution_lease;
++pub mod sdlc_terminal_idle_recovery;
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -22,1 +22,2 @@
+ pub mod sdlc_pm_resume;
++pub mod sdlc_terminal_idle_recovery;
+diff --git a/backend/domain/src/sdlc.rs b/backend/domain/src/sdlc.rs
+--- a/backend/domain/src/sdlc.rs
++++ b/backend/domain/src/sdlc.rs
+@@ -834,1 +834,30 @@
++    async fn preflight_terminal_idle_checkpoint(
++        &self,
++        _task: Uuid,
++        _actor: &Principal,
++        _command: &crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
++    ) -> Result<Option<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError> {
++        Err(AppError::Unavailable("terminal-idle PM recovery is unavailable".into()))
++    }
++    async fn permit_terminal_idle_checkpoint(
++        &self,
++        _task: Uuid,
++        _actor: &Principal,
++        _command: crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
++        _witness: crate::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
++    ) -> Result<(crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, bool), AppError> {
++        Err(AppError::Unavailable("terminal-idle PM recovery is unavailable".into()))
++    }
++    async fn pm_terminal_idle_checkpoint_operation(
++        &self,
++        _task: Uuid,
++        _actor: &Principal,
++        _key: &str,
++    ) -> Result<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
++        Err(AppError::Unavailable("terminal-idle PM recovery is unavailable".into()))
++    }
+     async fn preflight_settled_pm_recovery(
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -28,2 +28,4 @@
+ #[path = "sdlc_pm_resume.rs"]
+ mod pm_resume;
++#[path = "sdlc_terminal_idle_recovery.rs"]
++mod terminal_idle_recovery;
+@@ -978,1 +978,27 @@
++    async fn preflight_terminal_idle_checkpoint(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: &domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
++    ) -> Result<Option<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError> {
++        self.preflight_terminal_idle(task, actor, command).await
++    }
++    async fn permit_terminal_idle_checkpoint(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
++        witness: domain::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
++    ) -> Result<(domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, bool), AppError> {
++        self.permit_terminal_idle(task, actor, command, witness).await
++    }
++    async fn pm_terminal_idle_checkpoint_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
++        self.terminal_idle_operation(task, actor, key).await
++    }
+     async fn preflight_settled_pm_recovery(
+diff --git a/backend/infra/src/sdlc_lifecycle_pg_tests.rs b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+--- a/backend/infra/src/sdlc_lifecycle_pg_tests.rs
++++ b/backend/infra/src/sdlc_lifecycle_pg_tests.rs
+@@ -11,2 +11,4 @@
+ #[path = "sdlc_pm_resume_pg_tests.rs"]
+ mod pm_resume_tests;
++#[path = "sdlc_terminal_idle_recovery_pg_tests.rs"]
++mod terminal_idle_recovery_tests;
+diff --git a/backend/api/src/routes/sdlc.rs b/backend/api/src/routes/sdlc.rs
+--- a/backend/api/src/routes/sdlc.rs
++++ b/backend/api/src/routes/sdlc.rs
+@@ -12,1 +12,2 @@
+ use domain::sdlc_pm_draft::*;
++use domain::sdlc_terminal_idle_recovery::*;
+@@ -457,3 +457,3 @@
+ #[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",tag="sdlc",
+-    params(("id"=Uuid,Path)),request_body=ResumePmExecutionLease,
+-    responses((status=201,body=ExecutionLeaseReceipt),(status=200,body=ExecutionLeaseReceipt),
++    params(("id"=Uuid,Path)),request_body=PmLeaseResumeRequest,
++    responses((status=201,body=PmLeaseResumeResponse),(status=200,body=PmLeaseResumeResponse),
+@@ -465,4 +465,4 @@
+-    Json(command): Json<ResumePmExecutionLease>,
++    Json(command): Json<PmLeaseResumeRequest>,
+ ) -> Result<Response, AppError> {
+     let (receipt, replayed) = service(&ctx)?
+-        .resume_pm_execution_lease(id, &actor, command)
++        .resume_pm_execution_request(id, &actor, command)
+@@ -484,1 +484,1 @@
+-    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
++    responses((status=200,body=PmLeaseResumeOperationResponse),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+@@ -491,1 +491,1 @@
+-    let receipt = service(&ctx)?.pm_resume_operation(id, &actor, &key).await?;
++    let receipt = service(&ctx)?.pm_resume_request_operation(id, &actor, &key).await?;
