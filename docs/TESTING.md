@@ -12,6 +12,20 @@ CI-contract test сохраняет свой `tooling:build-contracts`, неиз
 POSIX maintenance и live checks этим Python gate не подменяются.
 Результаты — [в плане](plans/python-tooling-test-selection-20261024.md).
 
+## Frontend production inputs
+
+Tailwind сканирует только src, index.html и src закреплённого Base UI. Unit/spec
+и src/test исключены; e2e и tooling вне этих roots не попадают в production CSS.
+Исключения production artifact согласованы с frontend_unit_inputs descriptor.
+`pnpm test:unit` включает два быстрых Node tests scanner/compiler перед Vitest;
+при установленной frozen среде отдельно: `node --test scripts/tailwind-source-inputs.test.mjs`.
+Fixture проверяет неизменность CSS после test/tool-only edits и сохранение
+легитимных application/index/UI классов. Это не full Vite или release proof.
+
+Frontend build явно подключён к Base prepared-frontend-v1/git-source-v1.
+Обновлённые source maps не дают grant прежним receipts; текущий candidate
+проверяется отдельно. Node22.20.0, pnpm10.28.1, lockfile и UI pin сохранены.
+
 ## Backend unit dependency graph
 
 Обе backend recipes выбирают для unit только domain: цепочка

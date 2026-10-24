@@ -10,6 +10,26 @@ TESTS = ('test_build_pin', 'test_verify_readme', 'test_ci_change_classifier', 't
 
 
 class PythonToolingOwnershipTests(unittest.TestCase):
+    def test_css_scanner_test_selects_units_without_application_builds(self):
+        manifest = selection.load(ROOT)
+        path = 'frontend/scripts/tailwind-source-inputs.test.mjs'
+        for profile in ('fast', 'unit', 'build'):
+            with self.subTest(profile=profile):
+                candidate = selection.plan(ROOT, profile=profile, changed=[path], manifest=manifest)
+                self.assertIn('frontend:tests', [g['id'] for g in candidate['gates']])
+                self.assertFalse(any(g.get('kind') == 'artifact' for g in candidate['gates']))
+        mixed = selection.plan(ROOT, profile='build', changed=[path, 'frontend/src/index.css'], manifest=manifest)
+        self.assertIn('frontend:build', [g['id'] for g in mixed['gates']])
+        self.assertFalse(any(g['component'] == 'backend' for g in mixed['gates']))
+
+    def test_ci_css_unit_source_preserves_real_application_build_selection(self):
+        for paths, build in (('frontend/scripts/tailwind-source-inputs.test.mjs\n', 'false'),
+                             ('frontend/scripts/tailwind-source-inputs.test.mjs\nfrontend/src/index.css\n', 'true')):
+            with patch.object(selection, 'git', return_value=paths):
+                values = selection.ci_outputs('push', 'a' * 40, 'b' * 40, repo=ROOT)
+            self.assertEqual(values, {'backend': 'false', 'frontend': 'true',
+                                      'backend_build': 'false', 'frontend_build': build})
+
     def test_posix_wrapper_test_selects_only_its_linux_unit(self):
         manifest = selection.load(ROOT)
         # Freeze only HEAD, not the selector's source/ownership logic. Planning
