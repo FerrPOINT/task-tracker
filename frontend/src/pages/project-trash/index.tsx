@@ -1,4 +1,7 @@
 import {
+  ResourceStateView,
+  LoadingState,
+  EmptyState,
   PageNavigation,
   ResourceListRow,
   ResourceList,
@@ -81,7 +84,12 @@ export function ProjectTrashPage() {
   }, [error, isLoading, trashedIssues.length, trashOffset, updatePage])
 
   if (!projectKey) {
-    return <div className="text-text-muted">{t('trash.noProject')}</div>
+    return (
+        <ResourceStateView
+          scope="local"
+          state={{ kind: 'not-found', title: t('trash.noProject'), headingLevel: 1 }}
+        />
+      )
   }
 
   const hasPrev = trashOffset > 0
@@ -107,15 +115,13 @@ export function ProjectTrashPage() {
       />
 
       {isLoading && (
-        <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
+        <LoadingState scope="local" message={t('trash.loading')} />
       )}
 
       {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
 
       {!error && !isLoading && trashedIssues.length === 0 && (
-        <div className="py-16 text-center text-sm text-text-muted">
-          {hasPrev ? t('trash.emptyPage') : t('trash.noIssues')}
-        </div>
+        <EmptyState message={hasPrev ? t('trash.emptyPage') : t('trash.noIssues')} />
       )}
 
       {trashedIssues.length > 0 && (

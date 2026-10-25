@@ -1,4 +1,4 @@
-import { Card, CardContent, IconMark } from '@pdlc/ui/ui'
+import { EmptyState, Card, CardContent, IconMark } from '@pdlc/ui/ui'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Clock } from 'lucide-react'
@@ -30,7 +30,7 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
   const activity = buildActivity(comments, worklogs)
 
   if (activity.length === 0) {
-    return <p className="text-sm text-text-muted">{t('issue.noActivity')}</p>
+    return <EmptyState message={t('issue.noActivity')} />
   }
 
   return (

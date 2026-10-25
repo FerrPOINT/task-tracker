@@ -304,7 +304,7 @@ export function IssueDetailPage() {
                     />
                   )}
                   {activityLoading ? (
-                    <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+                    <LoadingState scope="local" message={t('issue.loadingActivity')} />
                   ) : hasActivityData || !activityError ? (
                     <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
                   ) : null}
@@ -319,7 +319,7 @@ export function IssueDetailPage() {
                       onRetry={() => void worklogsQuery.refetch()}
                     />
                   ) : worklogsQuery.isLoading ? (
-                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+                    <LoadingState scope="local" message={t('common.loading')} />
                   ) : (
                     <WorklogTab
                       worklogs={worklogs}

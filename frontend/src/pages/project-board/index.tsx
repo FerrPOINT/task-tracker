@@ -1,6 +1,7 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
+  EmptyState,
   RadioGroup,
   TextLink,
   Card,
@@ -333,9 +334,7 @@ export function ProjectBoardPage() {
                   />
                 ))}
                 {colIssues.length === 0 && (
-                  <p className="px-2 py-6 text-center text-sm text-text-muted">
-                    {t('board.emptyStatus')}
-                  </p>
+                  <EmptyState message={t('board.emptyStatus')} />
                 )}
               </CardContent>
 

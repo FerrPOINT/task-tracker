@@ -1,4 +1,5 @@
 import {
+  EmptyState,
   TextLink,
   Select,
   ResourceList,
@@ -246,9 +247,7 @@ export function TaskRepositoriesPanel({
                 Свидетельства Forge недоступны.
               </Notice>
             ) : evidence.data?.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.
-              </p>
+              <EmptyState message={'Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.'} />
             ) : (
               evidence.data?.map((item) => (
                 <Card asChild key={item.pull_request_id}>

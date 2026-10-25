@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ResourceListTitle,
+import {
+  EmptyState,
+  ResourceListTitle,
   SectionHeader,
   FormField,
   toast,
@@ -230,7 +232,7 @@ export function ProjectCustomFieldsPage() {
                 </div>
               </ResourceList>
             ) : (
-              <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
+              <EmptyState message={t('customFields.noFields')} />
             )}
           </div>
         </section>

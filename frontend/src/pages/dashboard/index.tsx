@@ -1,6 +1,7 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
+  LoadingState,
   Badge,
   Button,
   PageHeader,
@@ -66,14 +67,14 @@ export function DashboardPage() {
             }
           />
           {dashboardLoading ? (
-            <p className="text-sm text-text-muted">{t('dashboard.loadingAssigned')}</p>
+            <LoadingState scope="local" message={t('dashboard.loadingAssigned')} />
           ) : dashboardError ? (
             <ErrorState
               message={t('dashboard.loadError')}
               onRetry={() => void refetchDashboard()}
             />
           ) : assigned.length === 0 ? (
-            <p className="text-sm text-text-muted">{t('dashboard.noAssigned')}</p>
+            <EmptyState message={t('dashboard.noAssigned')} />
           ) : (
             <ResourceList asChild variant="bordered">
               <div>
@@ -123,7 +124,7 @@ export function DashboardPage() {
             }
           />
           {projectsLoading ? (
-            <p className="text-sm text-text-muted">{t('dashboard.loadingProjects')}</p>
+            <LoadingState scope="local" message={t('dashboard.loadingProjects')} />
           ) : projectsError ? (
             <ErrorState
               message={t('dashboard.projectsError')}

@@ -1,6 +1,8 @@
 import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { useDebouncedValue } from '@pdlc/ui/lib'
 import {
+  EmptyState,
+  LoadingState,
   RadioGroup,
   TextLink,
   PageNavigation,
@@ -409,17 +411,13 @@ export default function SearchPage() {
       ) : null}
 
       {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-16 w-full animate-pulse rounded-md bg-surface-raised" />
-          ))}
-        </div>
+        <LoadingState scope="local" message={t('common.loading')} />
       ) : error ? (
         invalidJql ? null : (
           <ErrorState message={t('search.loadError')} onRetry={() => void refetch()} />
         )
       ) : visibleIssues.length === 0 ? (
-        <div className="py-12 text-center text-text-muted">{t('search.noResults')}</div>
+        <EmptyState message={t('search.noResults')} />
       ) : (
         <ResourceList asChild variant="bordered">
           <ul>

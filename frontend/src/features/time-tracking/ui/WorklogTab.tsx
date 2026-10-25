@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 import {
+  EmptyState,
   Table,
   TableHeader,
   TableBody,
@@ -84,7 +85,7 @@ export function WorklogTab({
     <>
       {deleteDialog}
       {worklogs.length === 0 ? (
-        <p className="text-sm text-text-muted">{t('timeTracking.worklog.empty')}</p>
+        <EmptyState message={t('timeTracking.worklog.empty')} />
       ) : (
         <div className="space-y-4">
           <Card data-testid="worklog-table" className="hidden 2xl:block">

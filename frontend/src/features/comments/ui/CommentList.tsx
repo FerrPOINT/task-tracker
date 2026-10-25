@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
+  EmptyState,
+  LoadingState,
   ConfirmDialog,
   Button,
   ErrorState,
@@ -151,7 +153,7 @@ interface CommentListProps {
 export function CommentList({ comments, currentUserId, onEdit, onDelete }: CommentListProps) {
   const { t } = useTranslation()
   if (comments.length === 0) {
-    return <p className="text-sm text-text-muted">{t('comments.empty')}</p>
+    return <EmptyState message={t('comments.empty')} />
   }
   return (
     <div className="space-y-4">
@@ -186,7 +188,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const remove = useDeleteComment(issueId)
 
   if (isLoading) {
-    return <p className="text-sm text-text-muted">{t('common.loading')}</p>
+    return <LoadingState scope="local" message={t('common.loading')} />
   }
 
   if (commentsQuery.error && !comments) {

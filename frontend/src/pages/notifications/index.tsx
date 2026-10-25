@@ -370,7 +370,7 @@ export function NotificationsPage() {
           </CardHeader>
           <CardContent>
             {settingsLoading ? (
-              <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
+              <LoadingState scope="local" message={t('notifications.loading')} />
             ) : !displayedSettings ? (
               <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
             ) : (
