@@ -118,3 +118,25 @@ IAB проверяет реальные UI-фрагменты с синтети�
 backend или установленного runtime. UI pin 430ef57512bca547e44f1a6d4c5878d52ee978ce
 переиспользован; SDK/skills не менялись. Следующая отдельная работа — состояния
 чтения LabelEditor и LinkEditor: pending/error ещё нельзя трактовать как пустоту.
+
+## Метки и связи: подтверждённое чтение — 26 октября 2026
+
+LabelEditor и LinkEditor используют ResourceStateView, EmptyState и Fieldset
+Base. Три GET сохраняют HTTP status через ApiError; отсутствие массива в успешном
+ответе — InvalidResponseError, не подтверждённая пустота. Labels ждёт оба чтения,
+чтобы не предлагать уже прикреплённую метку. Повтор чтения не вызывает writer.
+Последний полный snapshot при временном сбое сохраняется readonly вместе с
+черновиком; 401/403/404 скрывают данные. Новый issue/project сбрасывает только
+его локальную форму. Существующие API writers, DTO, paths и mutation payloads
+сохранены; их семантическая сверка дополнена API/editor tests.
+
+32 distinct scoped cases в четырёх файлах, TypeScript, scoped ESLint, format и
+UI contract PASS. 21 причинный regression воспроизведён до исправления; две
+первоначальные ошибки CSS-утверждений теста исправлены отдельно и не считаются
+регрессиями продукта. IAB: 48 ready-контекстов, состояния чтения, keyboard,
+readonly draft, retry только GET и однократные callbacks на настоящих редакторах
+с синтетическими hooks. Backend и установленный runtime не проверялись.
+
+Обнаружен отдельный прежний дефект ширины Base Select: width:100% перекрывает
+caller w-auto. Локальный CSS workaround не добавлен; широкая компоновка формы
+остаётся открытой до исправления Base и принятия нового UI producer.
