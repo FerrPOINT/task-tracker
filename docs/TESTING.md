@@ -28,6 +28,9 @@ POSIX maintenance и live checks этим Python gate не подменяютс�
 
 ## Frontend production inputs
 
+Ручной `pnpm test:all` также включает оба scanner/compiler controls перед одним
+прежним полным Vitest-набором. Integration/slow/e2e не переносятся в test:unit.
+
 Tailwind сканирует только src, index.html и src закреплённого Base UI. Unit/spec
 и src/test исключены; e2e и tooling вне этих roots не попадают в production CSS.
 Исключения production artifact согласованы с frontend_unit_inputs descriptor.

@@ -10,6 +10,14 @@ TESTS = ('test_build_pin', 'test_verify_readme', 'test_ci_change_classifier', 't
 
 
 class PythonToolingOwnershipTests(unittest.TestCase):
+    def test_manual_css_controls_keep_one_existing_vitest_run(self):
+        import json
+        scripts = json.loads((ROOT / 'frontend/package.json').read_text(encoding='utf-8'))['scripts']
+        prefix = 'node --test scripts/tailwind-source-inputs.test.mjs && '
+        self.assertEqual(scripts['test:all'], prefix + 'vitest run')
+        self.assertTrue(scripts['test:unit'].startswith(prefix + 'vitest run --exclude '))
+        self.assertEqual(scripts['build'].count('pnpm run test:unit'), 1)
+
     def test_css_scanner_test_selects_units_without_application_builds(self):
         manifest = selection.load(ROOT)
         path = 'frontend/scripts/tailwind-source-inputs.test.mjs'
