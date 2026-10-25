@@ -56,3 +56,21 @@ Browser fixture задаёт согласованный каталог Namespace
 после последующего отказа валидации; восстановленный из session journal запрос
 также не считается первым. Для неопределённого исхода автоматический сброс
 не выполняется. Backend и HTTP-контракт не меняются.
+
+## Общие описания записей времени — 2026-10-26
+
+Мобильные записи времени используют ResourceListTitle и DescriptionItem Base:
+дата, длительность, остаток и необязательный комментарий представлены term/value
+парами внутри dl. Локальные стили этих подписей удалены. Форматирование, ноль,
+условие комментария, ACL, callbacks и desktop Table остаются у Tracker.
+UI pin 6dca218, SDK/skills pins и lockfile не меняются.
+
+Два regression cases сначала дали RED на прежней реализации; затем все десять
+выбранных Worklog cases, TypeScript, scoped lint и UI contract PASS. В IAB
+проверены 24 контекста трёх тем, viewport 320/375/1920/2560 и двух typography
+presets; дополнительно границы 639/640 и 1535/1536, zero/foreign/empty на
+375/1920, callbacks edit/delete, отказ удаления и восстановление фокуса.
+Использован настоящий WorklogTab с синтетическими DTO и обработчиками, без
+продуктовых записей или backend/Auth/runtime приёмки. Whole-module proof
+проверяет четыре пары и остальную логику; evidence: private
+wiki-worklog-compositions-20261026.

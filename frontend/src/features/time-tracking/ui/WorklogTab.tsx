@@ -14,6 +14,8 @@ import {
   ConfirmDialog,
   Card,
   CardContent,
+  DescriptionItem,
+  ResourceListTitle,
 } from '@pdlc/ui/ui'
 
 import { formatDuration } from '@/shared/lib/time'
@@ -161,9 +163,9 @@ export function WorklogTab({
               <Card key={w.id}>
                 <CardContent className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 break-words font-medium text-text-primary">
-                      {w.userDisplayName}
-                    </div>
+                    <ResourceListTitle asChild>
+                      <div className="min-w-0 break-words">{w.userDisplayName}</div>
+                    </ResourceListTitle>
                     {w.userId === currentUserId && (
                       <div className="flex items-center gap-1">
                         <Button
@@ -187,22 +189,22 @@ export function WorklogTab({
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                    <span className="text-text-muted">{t('timeTracking.worklog.started')}</span>
-                    <span className="text-text-primary">
+                  <dl className="grid gap-1">
+                    <DescriptionItem label={t('timeTracking.worklog.started')} layout="inline">
                       {format(new Date(w.startedAt), 'yyyy-MM-dd')}
-                    </span>
-                    <span className="text-text-muted">{t('timeTracking.worklog.timeSpent')}</span>
-                    <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
-                    <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
-                    <span className="text-text-primary">-</span>
+                    </DescriptionItem>
+                    <DescriptionItem label={t('timeTracking.worklog.timeSpent')} layout="inline">
+                      {formatDuration(w.timeSpentSeconds)}
+                    </DescriptionItem>
+                    <DescriptionItem label={t('timeTracking.worklog.remaining')} layout="inline">
+                      -
+                    </DescriptionItem>
                     {w.comment && (
-                      <>
-                        <span className="text-text-muted">{t('timeTracking.worklog.comment')}</span>
-                        <span className="min-w-0 break-words text-text-primary">{w.comment}</span>
-                      </>
+                      <DescriptionItem label={t('timeTracking.worklog.comment')} layout="inline">
+                        {w.comment}
+                      </DescriptionItem>
                     )}
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
             ))}
