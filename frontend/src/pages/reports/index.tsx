@@ -16,6 +16,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
   Button,
   ErrorState,
@@ -94,7 +95,7 @@ function ReportPanel({
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <p className="text-sm text-text-muted">{subtitle}</p>
+        <CardDescription tone="muted">{subtitle}</CardDescription>
       </CardHeader>
       <CardContent className="min-w-0 overflow-x-clip">
         {isLoading && !hasData ? (

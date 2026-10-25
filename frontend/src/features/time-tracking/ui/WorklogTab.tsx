@@ -158,7 +158,7 @@ export function WorklogTab({
           <div className="space-y-3 2xl:hidden">
             {worklogs.map((w) => (
               <Card key={w.id}>
-                <CardContent className="space-y-2 p-3">
+                <CardContent className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 break-words font-medium text-text-primary">
                       {w.userDisplayName}

@@ -340,7 +340,7 @@ export function IssueDetailPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                  <CardContent className="pt-5">
+                  <CardContent>
                     <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
@@ -353,7 +353,7 @@ export function IssueDetailPage() {
                   </CardContent>
                 </Card>
                 <Card className="md:col-span-2">
-                  <CardContent className="pt-5">
+                  <CardContent>
                     <LinkEditor issueId={issue.id} currentKey={issue.key} />
                     {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                       <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />

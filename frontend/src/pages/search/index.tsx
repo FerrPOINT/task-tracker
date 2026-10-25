@@ -237,7 +237,7 @@ export default function SearchPage() {
 
       {mode === 'simple' ? (
         <Card className="mb-6">
-          <CardContent className="space-y-3 pt-6">
+          <CardContent className="space-y-3">
             <div className="min-w-0">
               <SearchInput
                 aria-label={t('search.placeholder')}
@@ -381,7 +381,7 @@ export default function SearchPage() {
 
       {mode === 'jql' ? (
         <Card className="mb-6">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-text-muted" />
               <span className="text-sm font-medium">{t('jql.title')}</span>
