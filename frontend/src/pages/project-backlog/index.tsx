@@ -17,6 +17,7 @@ import { ResourceListDescription, ResourceListTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   UserAvatar,
@@ -113,10 +114,10 @@ function MoveIssueAction({
         {(activeSprint || futureSprints.length > 0) && (
           <>
             {removeFromSprintId && <DropdownMenuSeparator />}
-            <DropdownMenuItem disabled className="text-text-muted">
-              <ArrowRightLeft className="mr-2 h-4 w-4" />
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4" />
               {t('backlog.moveToSprint')}
-            </DropdownMenuItem>
+            </DropdownMenuLabel>
             {activeSprint && issue.sprint_id !== activeSprint.id && (
               <DropdownMenuItem
                 disabled={isLoading}
