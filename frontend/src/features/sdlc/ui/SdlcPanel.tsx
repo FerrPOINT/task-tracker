@@ -523,7 +523,8 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                           </dl>
                         )}
                         <Disclosure
-                          className="min-w-0 text-text-muted"
+                          className="min-w-0"
+                          tone="muted"
                           summary={<>{t('sdlc.eventPin')}</>}
                         >
                           <dl>

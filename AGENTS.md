@@ -226,3 +226,8 @@ URL, курсоры, проверка допустимости страницы 
 сам anchor через interactive ResourceListRow, а независимое действие — рядом.
 Сначала сверять наличие API по точному UI pin; локальные hover/focus/размеры
 вместо общего контракта не добавлять.
+
+Границу перед группой полей задаёт Fieldset separated; native legend/disabled/FormData
+и данные остаются у владельца. Для Disclosure используйте appearance, tone=muted/danger
+и size=sm вместо локальных border/padding, цветов и типографики. Внешние margin,
+ширина и предметное содержимое остаются у продукта; наличие props сверять по UI pin.

@@ -392,7 +392,7 @@ export function IssueCreatePage() {
         </div>
 
         {customFields.length > 0 && (
-          <Fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
+          <Fieldset disabled={isPending} separated className="space-y-3">
             <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
             <div className="grid gap-4 sm:grid-cols-2">
               {customFields.map((field) => (
