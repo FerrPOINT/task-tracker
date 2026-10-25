@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReportsPage } from './index'
 import { fetchIssueExport } from '@/api/export'
 import { getProject } from '@/api/project'
+import { ApiError } from '@pdlc/ui/lib'
 
 // --- Mock hooks (NOT backend) -------------------------------------------------
 const useProjects = vi.hoisted(() => vi.fn())
@@ -722,10 +723,68 @@ describe('ReportsPage', () => {
     renderPage()
     await selectProject(user)
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      /показаны ранее загруженные данные|previously loaded data/i,
-    )
+    expect(
+      screen
+        .getByText(/показаны ранее загруженные данные|previously loaded data/i)
+        .closest('[role="status"]'),
+    ).toBeInTheDocument()
     expect(within(screen.getByTestId('chart')).getByText('Sprint 1')).toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      'velocity',
+      useVelocityReport,
+      { sprints: [{ name: 'Private sprint', committed: 30, completed: 25 }] },
+    ],
+    [
+      'burndown',
+      useBurndownReport,
+      { sprint_name: 'Private sprint', points: [{ date: '2026-08-01', remaining: 5, ideal: 4 }] },
+    ],
+    [
+      'cumulative-flow',
+      useCumulativeFlowReport,
+      { points: [{ date: '2026-08-01', todo: 5, in_progress: 2, done: 1 }] },
+    ],
+    [
+      'control-chart',
+      useControlChartReport,
+      { points: [{ issue_key: 'TT-PRIVATE', cycle_time_days: 2.5 }] },
+    ],
+  ] as const)('uses the Base resource boundary for cached %s reports', async (tab, hook, data) => {
+    const user = userEvent.setup()
+    const retry = vi.fn()
+    for (const status of [401, 403, 404, 422, 503]) {
+      hook.mockReturnValue({
+        data,
+        isLoading: false,
+        error: new ApiError(status, 'report unavailable'),
+        refetch: retry,
+      })
+      const view = renderPage(`/reports?project_key=TT&tab=${tab}&sprint_id=sprint-1`)
+      if (status === 503) {
+        expect(screen.getByTestId('chart')).toBeInTheDocument()
+        expect(screen.getByRole('table')).toBeInTheDocument()
+        expect(
+          screen
+            .getByText(/показаны ранее загруженные данные|previously loaded data/i)
+            .closest('[role="status"]'),
+        ).toBeInTheDocument()
+        expect(retry).not.toHaveBeenCalled()
+        await user.click(screen.getByRole('button', { name: /повторить|retry/i }))
+        expect(retry).toHaveBeenCalledOnce()
+      } else {
+        expect(screen.queryByTestId('chart')).not.toBeInTheDocument()
+        expect(screen.queryByRole('table')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
+        expect(
+          screen.queryByText(/показаны ранее загруженные данные|previously loaded data/i),
+        ).not.toBeInTheDocument()
+        expect(retry).not.toHaveBeenCalled()
+      }
+      view.unmount()
+    }
   })
 
   it('provides readable control-chart data for assistive technology', () => {

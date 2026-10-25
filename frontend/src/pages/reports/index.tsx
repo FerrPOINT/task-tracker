@@ -24,6 +24,9 @@ import {
   PageHeader,
   LoadingState,
   EmptyState,
+  ResourceStateView,
+  resourceErrorState,
+  type ResourceState,
 } from '@pdlc/ui/ui'
 
 import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
@@ -74,7 +77,7 @@ function ReportPanel({
   isLoading,
   hasData,
   isEmpty,
-  hasError,
+  error,
   emptyMessage,
   onRetry,
   children,
@@ -84,12 +87,27 @@ function ReportPanel({
   isLoading: boolean
   hasData: boolean
   isEmpty: boolean
-  hasError: boolean
+  error: unknown
   emptyMessage: string
   onRetry: () => void
   children: ReactNode
 }) {
   const { t } = useTranslation()
+  let state: ResourceState
+  if (isLoading && !hasData) {
+    state = { kind: 'loading', message: t('reports.loading') }
+  } else if (error) {
+    state = resourceErrorState(error, onRetry, { hasData })
+    if (state.kind === 'error' || state.kind === 'partial-error') {
+      state = {
+        ...state,
+        message: t(state.kind === 'partial-error' ? 'reports.refreshError' : 'reports.loadError'),
+      }
+    }
+  } else {
+    // An unselected sprint has a product-owned prompt, not an implicit loading state.
+    state = !hasData || isEmpty ? { kind: 'empty', message: emptyMessage } : { kind: 'ready' }
+  }
 
   return (
     <Card>
@@ -98,27 +116,9 @@ function ReportPanel({
         <CardDescription tone="muted">{subtitle}</CardDescription>
       </CardHeader>
       <CardContent className="min-w-0 overflow-x-clip">
-        {isLoading && !hasData ? (
-          <LoadingState message={t('reports.loading')} />
-        ) : (
-          <>
-            {hasError && (
-              <ErrorState
-                message={t(hasData ? 'reports.refreshError' : 'reports.loadError')}
-                onRetry={onRetry}
-              />
-            )}
-            {hasData ? (
-              isEmpty ? (
-                <EmptyState message={emptyMessage} />
-              ) : (
-                children
-              )
-            ) : !hasError ? (
-              <EmptyState message={emptyMessage} />
-            ) : null}
-          </>
-        )}
+        <ResourceStateView state={state} scope="local">
+          {isEmpty ? <EmptyState message={emptyMessage} /> : children}
+        </ResourceStateView>
       </CardContent>
     </Card>
   )
@@ -428,7 +428,7 @@ export function ReportsPage() {
               isLoading={velocity.isLoading}
               hasData={Boolean(velocity.data)}
               isEmpty={velocity.data?.sprints.length === 0}
-              hasError={Boolean(velocity.error)}
+              error={velocity.error}
               emptyMessage={t('reports.velocity.empty')}
               onRetry={() => void velocity.refetch()}
             >
@@ -485,7 +485,7 @@ export function ReportsPage() {
               isLoading={burndown.isLoading}
               hasData={Boolean(burndown.data)}
               isEmpty={burndown.data?.points.length === 0}
-              hasError={Boolean(burndown.error)}
+              error={burndown.error}
               emptyMessage={t(
                 selectedSprintId
                   ? 'reports.burndown.empty'
@@ -544,7 +544,7 @@ export function ReportsPage() {
               isLoading={cumulativeFlow.isLoading}
               hasData={Boolean(cumulativeFlow.data)}
               isEmpty={cumulativeFlow.data?.points.length === 0}
-              hasError={Boolean(cumulativeFlow.error)}
+              error={cumulativeFlow.error}
               emptyMessage={t('reports.cumulativeFlow.empty')}
               onRetry={() => void cumulativeFlow.refetch()}
             >
@@ -618,7 +618,7 @@ export function ReportsPage() {
               isLoading={controlChart.isLoading}
               hasData={Boolean(controlChart.data)}
               isEmpty={controlChart.data?.points.length === 0}
-              hasError={Boolean(controlChart.error)}
+              error={controlChart.error}
               emptyMessage={t('reports.controlChart.empty')}
               onRetry={() => void controlChart.refetch()}
             >
