@@ -1,4 +1,4 @@
-import { Card, CardContent } from '@pdlc/ui/ui'
+import { Card, CardContent, IconMark } from '@pdlc/ui/ui'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Clock } from 'lucide-react'
@@ -41,9 +41,9 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
           return (
             <Card key={item.id}>
               <CardContent className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20">
-                  <MessageSquare className="h-4 w-4 text-accent" />
-                </div>
+                <IconMark size="sm">
+                  <MessageSquare aria-hidden />
+                </IconMark>
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium text-text-primary">
@@ -65,9 +65,9 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
         return (
           <Card key={item.id}>
             <CardContent className="flex gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-                <Clock className="h-4 w-4 text-emerald-500" />
-              </div>
+              <IconMark size="sm">
+                <Clock aria-hidden />
+              </IconMark>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium text-text-primary">{w.userDisplayName}</span>

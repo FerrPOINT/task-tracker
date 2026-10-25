@@ -73,4 +73,29 @@ describe('ActivityFeed', () => {
     render(wrapper(<ActivityFeed comments={[]} worklogs={[]} />))
     expect(screen.getByText(/no activity yet/i)).toBeInTheDocument()
   })
+
+  it('orders activity by time and keeps event kinds in text rather than color', () => {
+    const { container } = render(wrapper(
+      <ActivityFeed comments={[{ ...comment, id: 'same-id' }]} worklogs={[{ ...worklog, id: 'same-id' }]} />,
+    ))
+    const bob = screen.getByText('Bob')
+    const alice = screen.getByText('Alice')
+    expect(bob.compareDocumentPosition(alice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('commented')).toBeVisible()
+    expect(screen.getByText(i18n.t('issue.loggedTime', { duration: '1h' }))).toBeVisible()
+    expect(container.querySelectorAll('[tabindex],button,a')).toHaveLength(0)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('keeps fallback authors and plain worklog content on rerender', () => {
+    const withoutAuthor = { ...comment, authorName: null }
+    const view = render(wrapper(<ActivityFeed comments={[withoutAuthor]} worklogs={[]} />))
+    expect(screen.getByText('Unknown user')).toBeVisible()
+    view.rerender(wrapper(
+      <ActivityFeed comments={[]} worklogs={[{ ...worklog, comment: '<script>plain text</script>' }]} />,
+    ))
+    expect(screen.queryByText('Unknown user')).not.toBeInTheDocument()
+    expect(screen.getByText('<script>plain text</script>')).toBeVisible()
+    expect(view.container.querySelector('script')).toBeNull()
+  })
 })
