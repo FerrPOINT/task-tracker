@@ -3,12 +3,12 @@ import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
 import { isUnarchivedProject } from './namespace-context'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
+  AccountMenu,
   AppShell as BaseAppShell,
   Badge,
   Button,
   DropdownMenuGroup,
   DropdownMenuLabel,
-  ResourceListDescription,
   EmptyState,
   DropdownMenuSeparator,
   ProjectAvatar,
@@ -17,7 +17,6 @@ import {
   useSidebarDisclosure,
   SidebarItem,
   PlatformMark,
-  ThemeMenuItems,
   PlatformHeader,
   DropdownMenu,
   DropdownMenuContent,
@@ -48,9 +47,7 @@ import {
   List,
   Columns2,
   Bell,
-  User,
   ChevronDown,
-  LogOut,
   BarChart3,
   ShieldCheck,
   Check,
@@ -564,40 +561,24 @@ export function AppShell() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label={t('navigation.account')}>
-                    <User className="h-[18px] w-[18px]" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    {user?.display_name ?? user?.email ?? t('navigation.user')}
-                    {user?.display_name && user.display_name !== user.email && (
-                      <ResourceListDescription className="block">
-                        {user?.email}
-                      </ResourceListDescription>
-                    )}
-                  </DropdownMenuLabel>
-                  <ThemeMenuItems />
-                  {canAdmin && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/admin" className="gap-2">
-                        <ShieldCheck className="h-4 w-4" />
-                        <span>{t('navigation.admin')}</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem
-                    onSelect={() => logout.mutate()}
-                    disabled={logout.isPending}
-                    className="gap-2"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>{t('navigation.logout')}</span>
+              <AccountMenu
+                modal={false}
+                account={{
+                  label: user?.display_name ?? user?.email ?? t('navigation.user'),
+                  secondary: user?.display_name && user.display_name !== user.email ? user?.email : undefined,
+                  onLogout: () => logout.mutate(),
+                  pending: logout.isPending,
+                }}
+              >
+                {canAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin" className="gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>{t('navigation.admin')}</span>
+                    </Link>
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                )}
+              </AccountMenu>
             </>
           }
         />
