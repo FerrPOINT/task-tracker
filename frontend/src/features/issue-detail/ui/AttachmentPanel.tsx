@@ -4,6 +4,7 @@ import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
 import { ResourceListTitle,
+  ResourceListDescription,
   Button,
   ConfirmDialog,
   ResourceList,
@@ -172,7 +173,9 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                       <ResourceListTitle asChild className="truncate"><p  title={a.file_name}>
                         {a.file_name}
                       </p></ResourceListTitle>
-                      <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
+                      <ResourceListDescription asChild>
+                        <p>{formatSize(a.size_bytes)}</p>
+                      </ResourceListDescription>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">

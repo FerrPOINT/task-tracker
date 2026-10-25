@@ -1,5 +1,17 @@
 # Общие подписи полей Base
 
+## Подпись размера вложения — 25 октября 2026
+
+AttachmentPanel использует ResourceListDescription с native p вместо локальных
+text-xs/text-muted-foreground. Формат bytes, issue/attachment IDs, upload
+settlement/progress, скачивание, read-state и удаление не менялись. Полный модуль
+и типы сверены с baseline; scoped types/lint/shell:check и 10 cases PASS.
+IAB проверил точный компонент с синтетическим транспортом вместе с Wiki/AI:
+24 контекста, десять read-состояний, keyboard/download/retry и отмену удаления
+с возвратом focus. Это source proof, не backend acceptance. UI producer
+403e5002 и pins сохранены; зависимости и неизменные артефакты переиспользованы.
+Evidence: private evidence/attachment-captions-20261025/.
+
 ## Текущий UI кандидат: Breadcrumbs — 25 октября 2026
 
 UI producer `403e5002b37621a1c7c67767dece8fa712eb16c0`, версия 0.3.2, reference
