@@ -1,11 +1,11 @@
-import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
+import { useDebouncedValue } from '@pdlc/ui/lib'
 import {
   RadioGroup,
   TextLink,
   PageNavigation,
   Badge,
   PageHeader,
-  ProjectAvatar,
   ResourceList,
   ResourceListRow,
   Button,
@@ -13,16 +13,14 @@ import {
   Card,
   CardContent,
   ErrorState,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   SearchInput,
+  SearchableSelect,
+  Select,
   Notice,
 } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
-import { X, ArrowUpDown, Filter } from 'lucide-react'
+import { X, Filter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
 
@@ -96,8 +94,27 @@ export default function SearchPage() {
   )
 
   const { data: issues, isLoading, error, refetch } = useIssues(filters)
-  const { data: projects } = useProjects()
-  const { data: users } = useUsers()
+  const [projectQuery, setProjectQuery] = useState({ q: '', offset: 0 })
+  const [assigneeQuery, setAssigneeQuery] = useState({ q: '', offset: 0 })
+  const projectSearch = useDebouncedValue(projectQuery.q, 200)
+  const projectChoices = useProjectChoiceCatalog(
+    projectKey ?? '',
+    projectQuery.offset,
+    projectSearch,
+  )
+  const users = useUsers()
+  const userLabel = (user: NonNullable<typeof users.data>[number]) =>
+    user.username && user.username !== user.display_name
+      ? `${user.display_name} · ${user.username}`
+      : user.display_name
+  const matchingUsers = (users.isError ? [] : (users.data ?? [])).filter((user) =>
+    `${user.display_name} ${user.username}`
+      .toLowerCase()
+      .includes(assigneeQuery.q.trim().toLowerCase()),
+  )
+  const selectedUser = users.isError
+    ? undefined
+    : users.data?.find((user) => user.id === assigneeId)
 
   const visibleIssues = issues?.slice(0, PAGE_SIZE) ?? []
   const hasNext = (issues?.length ?? 0) > PAGE_SIZE
@@ -193,16 +210,6 @@ export default function SearchPage() {
     [projectKey, status, assigneeId, priority].filter(Boolean).length +
     Number(sort !== 'created_desc')
 
-  const projectName =
-    projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
-  const statusLabel = status ? t(`status.${status}`) : t('search.status')
-  const priorityLabel = priority ? t(`priority.${priority.toLowerCase()}`) : t('search.priority')
-  const assigneeName =
-    users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
-  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)
-    ? t(SORT_OPTIONS.find((o) => o.value === sort)!.labelKey)
-    : t('search.sort')
-
   return (
     <div className="py-6">
       <div className="mb-6">
@@ -256,123 +263,104 @@ export default function SearchPage() {
               id="search-filters"
               className={`${showMobileFilters ? 'grid' : 'hidden'} gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-6`}
             >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    <span className="flex min-w-0 items-center gap-2">
-                      {projectKey && <ProjectAvatar projectKey={projectKey} size="xs" />}
-                      <span className="truncate">{projectName}</span>
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem
-                    onClick={() => setFilter('project_key', undefined)}
-                  >
-                    {t('search.allProjects')}
-                  </DropdownMenuItem>
-                  {projects?.map((p) => (
-                    <DropdownMenuItem
-                      className="gap-2"
-                      key={p.key}
-                      onClick={() => setFilter('project_key', p.key)}
-                    >
-                      <ProjectAvatar projectKey={p.key} size="xs" />
-                      <span>
-                        {p.key} — {p.name}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    {statusLabel}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onClick={() => setFilter('status', undefined)}
-                  >
-                    {t('search.allStatuses')}
-                  </DropdownMenuItem>
-                  {STATUS_OPTIONS.map((s) => (
-                    <DropdownMenuItem
-                      key={s}
-                      onClick={() => setFilter('status', s)}
-                    >
-                      {t(`status.${s}`)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    {priorityLabel}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onClick={() => setFilter('priority', undefined)}
-                  >
-                    {t('search.allPriorities')}
-                  </DropdownMenuItem>
-                  {PRIORITY_OPTIONS.map((p) => (
-                    <DropdownMenuItem
-                      key={p}
-                      onClick={() => setFilter('priority', titleCasePriority(p))}
-                    >
-                      {t(`priority.${p}`)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    {assigneeName}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem
-                    onClick={() => setFilter('assignee_id', undefined)}
-                  >
-                    {t('search.allAssignees')}
-                  </DropdownMenuItem>
-                  {users?.map((u) => (
-                    <DropdownMenuItem
-                      key={u.id}
-                      onClick={() => setFilter('assignee_id', u.id)}
-                    >
-                      {u.display_name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
-                    <ArrowUpDown className="mr-2 h-4 w-4" />
-                    {sortLabel}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {SORT_OPTIONS.map((o) => (
-                    <DropdownMenuItem
-                      key={o.value}
-                      onClick={() => setFilter('sort', o.value)}
-                    >
-                      {t(o.labelKey)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="min-w-0">
+                <SearchableSelect
+                  id="search-project"
+                  label={t('search.project')}
+                  value={projectKey ?? ''}
+                  selectedLabel={
+                    projectChoices.selectedPending
+                      ? t('search.checkingProject')
+                      : projectChoices.selected
+                        ? `${projectChoices.selected.name} · ${projectChoices.selected.key}`
+                        : undefined
+                  }
+                  placeholder={t('search.allProjects')}
+                  options={(projectChoices.data ?? []).map((project) => ({
+                    value: project.key,
+                    label: `${project.name} · ${project.key}`,
+                  }))}
+                  search={projectQuery.q}
+                  onSearch={
+                    projectChoices.searchable
+                      ? (q) =>
+                          setProjectQuery({ q: Array.from(q).slice(0, 200).join(''), offset: 0 })
+                      : undefined
+                  }
+                  offset={projectQuery.offset}
+                  pageSize={PROJECT_CHOICE_PAGE_SIZE}
+                  total={projectChoices.catalog?.total}
+                  hasNext={projectChoices.hasMore}
+                  onPage={(offset) => setProjectQuery((previous) => ({ ...previous, offset }))}
+                  loading={projectChoices.isPending || projectQuery.q !== projectSearch}
+                  error={projectChoices.isError ? t('search.projectsError') : undefined}
+                  onRetry={() => void projectChoices.refetch()}
+                  aria-invalid={projectChoices.selectedUnavailable || undefined}
+                  aria-describedby={
+                    projectChoices.selectedUnavailable ? 'search-project-error' : undefined
+                  }
+                  onChange={(value) => setFilter('project_key', value || undefined)}
+                />
+                {projectChoices.selectedUnavailable && (
+                  <div id="search-project-error">
+                    <ErrorState
+                      scope="local"
+                      message={t('search.projectUnavailable')}
+                      onRetry={() => void projectChoices.retrySelected()}
+                    />
+                  </div>
+                )}
+              </div>
+              <Select
+                aria-label={t('search.status')}
+                value={status ?? ''}
+                options={[
+                  { value: '', label: t('search.allStatuses') },
+                  ...STATUS_OPTIONS.map((value) => ({ value, label: t(`status.${value}`) })),
+                ]}
+                onValueChange={(value) => setFilter('status', value || undefined)}
+              />
+              <Select
+                aria-label={t('search.priority')}
+                value={priority ?? ''}
+                options={[
+                  { value: '', label: t('search.allPriorities') },
+                  ...PRIORITY_OPTIONS.map((value) => ({
+                    value: titleCasePriority(value),
+                    label: t(`priority.${value}`),
+                  })),
+                ]}
+                onValueChange={(value) => setFilter('priority', value || undefined)}
+              />
+              <SearchableSelect
+                id="search-assignee"
+                label={t('search.assignee')}
+                value={assigneeId ?? ''}
+                selectedLabel={selectedUser ? userLabel(selectedUser) : undefined}
+                placeholder={t('search.allAssignees')}
+                options={matchingUsers
+                  .slice(assigneeQuery.offset, assigneeQuery.offset + 20)
+                  .map((user) => ({ value: user.id, label: userLabel(user) }))}
+                search={assigneeQuery.q}
+                onSearch={(q) => setAssigneeQuery({ q, offset: 0 })}
+                offset={assigneeQuery.offset}
+                pageSize={20}
+                total={matchingUsers.length}
+                onPage={(offset) => setAssigneeQuery((previous) => ({ ...previous, offset }))}
+                loading={users.isPending}
+                error={users.isError ? t('search.usersError') : undefined}
+                onRetry={() => void users.refetch()}
+                onChange={(value) => setFilter('assignee_id', value || undefined)}
+              />
+              <Select
+                aria-label={t('search.sort')}
+                value={sort}
+                options={SORT_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: t(option.labelKey),
+                }))}
+                onValueChange={(value) => setFilter('sort', value)}
+              />
 
               {hasFilters && mode === 'simple' && (
                 <Button
