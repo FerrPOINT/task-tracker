@@ -357,7 +357,7 @@ export function NotificationsPage() {
                   nextLabel={t('notifications.nextPage')}
                   summary={t('notifications.page', { page: page + 1 })}
                   onPageChange={(next) => updateListParams(showUnread, next - 1)}
-                  className="justify-center pt-1"
+                  className="justify-center mt-1"
                 />
               )}
             </>
