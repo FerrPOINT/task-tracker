@@ -156,4 +156,22 @@ describe('project choice catalog', () => {
     expect(result.current.selected).toBeUndefined()
     expect(result.current.selectedUnavailable).toBe(true)
   })
+
+  it('reports an inactive v2 exact read as unavailable instead of waiting for a disabled query', () => {
+    vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'true')
+    exact.mockReturnValue({ data: undefined, unavailable: true, isPending: true, isError: false })
+    const { result } = mount('P350')
+    expect(result.current.selected).toBeUndefined()
+    expect(result.current.selectedPending).toBe(false)
+    expect(result.current.selectedUnavailable).toBe(true)
+  })
+
+  it('keeps an active exact read pending while its current result is being loaded', () => {
+    vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'true')
+    exact.mockReturnValue({ data: undefined, unavailable: false, isPending: true, isError: false })
+    const { result } = mount('P350')
+    expect(result.current.selected).toBeUndefined()
+    expect(result.current.selectedPending).toBe(true)
+    expect(result.current.selectedUnavailable).toBe(false)
+  })
 })

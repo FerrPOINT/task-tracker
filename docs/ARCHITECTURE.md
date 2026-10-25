@@ -468,9 +468,17 @@ CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию исп
 
 - **Pages** — экраны: login, register, dashboard, projects, project-board, project-backlog, search, issue-create, issue-detail
 - **Features** — time-tracking, owner SDLC intent/readback и будущие бизнес-модули
-- **Shared** — ui-kit, i18n, auth store, theme, API hooks
+- **Shared** — продуктовые i18n/auth/API hooks; общие UI и theme берутся из публичного Base
 - **App** — роутер (`react-router`), провайдеры QueryClient + ThemeProvider
-- **Widgets** — `AppShell` с sidebar + header, адаптивный под mobile
+- **Widgets** — продуктовая навигация поверх `AppShell` Base и адаптеры ресурсов
+
+Поиск, issue-create и reports выбирают проекты через SearchableSelect Base и
+один `widgets/project-choice-catalog` Tracker. Он сохраняет Namespace/Space
+admission, exact lookup выбранного ключа вне страницы, legacy sentinel и V2 q/total.
+Страница выдачи не определяет доступность выбранного проекта и не является всем
+каталогом. Неактивный exact query означает unavailable, а не pending. Paging
+не меняет проект, черновик или исполнителя; изменение назначения допускается
+после подтверждения membership. В Base не переносятся Tracker DTO и запросы.
 
 `issue-detail?tab=sdlc -> features/sdlc -> api/sdlc` читает strict SDLC API через
 существующий Central bearer client. Generated DTOs и metadata union остаются

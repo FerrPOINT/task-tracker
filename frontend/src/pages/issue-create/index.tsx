@@ -1,4 +1,4 @@
-import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
   FormField,
@@ -7,7 +7,7 @@ import {
   SectionHeader,
   Select,
   Textarea,
-  ProjectPicker,
+  SearchableSelect,
   EmptyState,
   Button,
   ErrorState,
@@ -15,9 +15,7 @@ import {
   Notice,
   LoadingState,
 } from '@pdlc/ui/ui'
-import { useQuery } from '@tanstack/react-query'
-import { getProject } from '@/api/project'
-import { useSessionCommand } from '@pdlc/ui/lib'
+import { useDebouncedValue, useSessionCommand } from '@pdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 import type { CreateIssueInput } from '@/api/issue-create'
 import { IssueCreationValidationError } from '@/api/issue-create'
@@ -47,7 +45,6 @@ export function IssueCreatePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
-  const projectsQuery = useProjects()
   const usersQuery = useUsers()
   const issueTypesQuery = useIssueTypes()
 
@@ -59,24 +56,31 @@ export function IssueCreatePage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const selected = useQuery({
-    queryKey: [
-      'namespace-project',
-      namespace.ref?.registry_instance_id,
-      namespace.ref?.namespace_id,
-      namespace.query.data?.resource_key,
-    ],
-    enabled: Boolean(namespace.query.data),
-    queryFn: ({ signal }) => getProject(namespace.query.data!.resource_key, signal),
-  })
+  const [projectQuery, setProjectQuery] = useState({ q: '', offset: 0 })
+  const projectSearch = useDebouncedValue(projectQuery.q, 200)
+  const queryProjectKey = searchParams.get('project_key') ?? ''
+  const requestedProjectKey = namespace.ref
+    ? !namespace.query.isError
+      ? (namespace.query.data?.resource_key ?? '')
+      : ''
+    : queryProjectKey
+  const projectsQuery = useProjectChoiceCatalog(
+    requestedProjectKey,
+    projectQuery.offset,
+    projectSearch,
+  )
   const projects = useMemo(
-    () => (selected.data ? [selected.data] : namespace.ref ? [] : (projectsQuery.data ?? [])),
-    [projectsQuery.data, selected.data, namespace.ref],
+    () =>
+      namespace.ref
+        ? projectsQuery.selected
+          ? [projectsQuery.selected]
+          : []
+        : (projectsQuery.data ?? []),
+    [projectsQuery.data, projectsQuery.selected, namespace.ref],
   )
   // A legacy blank URL retains its default. Invalid explicit context never falls back.
-  const queryProjectKey = searchParams.get('project_key') ?? ''
   const project_key = namespace.ref
-    ? (namespace.query.data?.resource_key ?? '')
+    ? requestedProjectKey
     : queryProjectKey || (!namespace.malformed ? (projects[0]?.key ?? '') : '')
   const pendingRef = useSessionCommand<CreateIssueInput>(
     `tracker:issue-create:${userId}:${namespace.ref?.registry_instance_id}:${namespace.ref?.namespace_id}:${project_key}`,
@@ -86,8 +90,10 @@ export function IssueCreatePage() {
     [issueTypesQuery.data],
   )
   const currentProject = useMemo(
-    () => projects.find((project) => project.key === project_key),
-    [projects, project_key],
+    () =>
+      projectsQuery.selected ??
+      (!requestedProjectKey && !namespace.ref && !namespace.malformed ? projects[0] : undefined),
+    [projectsQuery.selected, requestedProjectKey, namespace.ref, namespace.malformed, projects],
   )
   const selectedProjectKey = currentProject?.key ?? ''
   const projectMembersQuery = useProjectMembers(selectedProjectKey)
@@ -98,16 +104,24 @@ export function IssueCreatePage() {
     : (issueTypes[0]?.name ?? '')
   const setupLoading =
     projectsQuery.isLoading ||
+    projectsQuery.selectedPending ||
+    (Boolean(namespace.ref) && namespace.query.isPending) ||
     issueTypesQuery.isLoading ||
     (Boolean(currentProject) && customFieldsQuery.isLoading)
   const setupError =
     Boolean(projectsQuery.error) ||
+    (Boolean(namespace.ref) && namespace.query.isError) ||
     Boolean(issueTypesQuery.error) ||
     Boolean(customFieldsQuery.error)
   const canSubmit =
     !isPending &&
     !setupLoading &&
     !setupError &&
+    (!assignee_id ||
+      (!usersQuery.isLoading &&
+        !projectMembersQuery.isLoading &&
+        !usersQuery.error &&
+        !projectMembersQuery.error)) &&
     !namespace.malformed &&
     (!namespace.ref || namespace.query.data?.binding.state === 'active') &&
     Boolean(userId && currentProject && selectedType && summary.trim())
@@ -143,10 +157,18 @@ export function IssueCreatePage() {
   }, [selectedType, type])
 
   useEffect(() => {
+    // Paging can temporarily require an exact project read; that is not a membership change.
+    if (!currentProject || usersQuery.isLoading || projectMembersQuery.isLoading) return
     if (assignee_id && !assignableUsers.some((user) => user.id === assignee_id)) {
       setAssigneeId('')
     }
-  }, [assignableUsers, assignee_id])
+  }, [
+    currentProject,
+    usersQuery.isLoading,
+    projectMembersQuery.isLoading,
+    assignableUsers,
+    assignee_id,
+  ])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -231,22 +253,33 @@ export function IssueCreatePage() {
             onRetry={() => void projectsQuery.refetch()}
           />
         )}
-        {!projectsQuery.isLoading && !projectsQuery.error && projects.length === 0 && (
-          <EmptyState
-            message={t('issueCreate.noProjects')}
-            action={
-              !namespace.ref && !namespace.malformed ? (
-                <CreateProjectAction
-                  onCreated={(project) => {
-                    updateProjectKey(project.key)
-                  }}
-                />
-              ) : undefined
-            }
+        {!namespace.ref &&
+          !namespace.malformed &&
+          !setupLoading &&
+          !setupError &&
+          projectQuery.offset === 0 &&
+          !projectQuery.q &&
+          !projectsQuery.hasMore &&
+          projects.length === 0 &&
+          !currentProject && (
+            <EmptyState
+              message={t('issueCreate.noProjects')}
+              action={
+                !namespace.ref && !namespace.malformed ? (
+                  <CreateProjectAction
+                    onCreated={(project) => {
+                      updateProjectKey(project.key)
+                    }}
+                  />
+                ) : undefined
+              }
+            />
+          )}
+        {!setupLoading && !projectsQuery.error && project_key && !currentProject && (
+          <ErrorState
+            message={t('issueCreate.projectUnavailable')}
+            onRetry={() => void projectsQuery.retrySelected()}
           />
-        )}
-        {!projectsQuery.isLoading && !projectsQuery.error && project_key && !currentProject && (
-          <ErrorState message={t('issueCreate.projectUnavailable')} />
         )}
         {issueTypesQuery.error && (
           <ErrorState
@@ -276,19 +309,39 @@ export function IssueCreatePage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField id="issue-project" label={t('issueCreate.project') + ' *'}>
             {(baseFieldAttrs) => (
-              <ProjectPicker
+              <SearchableSelect
                 {...baseFieldAttrs}
-                className="w-full"
-                value={selectedProjectKey}
+                label={t('issueCreate.project')}
+                value={project_key}
+                selectedLabel={
+                  projectsQuery.selectedPending
+                    ? t('search.checkingProject')
+                    : currentProject
+                      ? `${currentProject.name} (${currentProject.key})`
+                      : undefined
+                }
                 options={projects.map((p) => ({
                   value: p.key,
                   label: `${p.name} (${p.key})`,
-                  projectKey: p.key,
                 }))}
                 placeholder={t('issueCreate.selectProject')}
                 allowEmpty={false}
                 onChange={updateProjectKey}
-                disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
+                search={projectQuery.q}
+                onSearch={
+                  projectsQuery.searchable
+                    ? (q) => setProjectQuery({ q: Array.from(q).slice(0, 200).join(''), offset: 0 })
+                    : undefined
+                }
+                offset={projectQuery.offset}
+                pageSize={PROJECT_CHOICE_PAGE_SIZE}
+                total={projectsQuery.catalog?.total}
+                hasNext={projectsQuery.hasMore}
+                onPage={(offset) => setProjectQuery((previous) => ({ ...previous, offset }))}
+                loading={projectsQuery.isLoading || projectQuery.q !== projectSearch}
+                error={projectsQuery.isError ? t('issueCreate.projectsError') : undefined}
+                onRetry={() => void projectsQuery.refetch()}
+                disabled={isPending || Boolean(namespace.ref) || namespace.malformed}
               />
             )}
           </FormField>

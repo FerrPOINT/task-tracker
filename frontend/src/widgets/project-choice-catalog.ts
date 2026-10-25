@@ -36,7 +36,7 @@ export function useProjectChoiceCatalog(selectedKey: string, offset: number, sea
   const selectedPending =
     needsExact &&
     !projects.isError &&
-    (!v2 || !context.invalid) &&
+    (!v2 || (!context.invalid && !exact.unavailable)) &&
     (projects.isPending || (v2 ? exact.isPending : legacy.isPending))
   const selectedUnavailable = Boolean(selectedKey && !selected && !selectedPending)
   return {

@@ -1,6 +1,42 @@
 # Общие подписи полей Base
 
-## Текущий кандидат: фокус каталога и прямой LoadingState — 25 октября 2026
+## Текущий кандидат: общий выбор проектов — 25 октября 2026
+
+Issue-create и reports используют SearchableSelect Base и существующий
+useProjectChoiceCatalog Tracker вместо передачи первых100 проектов в ProjectPicker
+как полного каталога. Общие панель, состояния, focus и пагинация принадлежат Base;
+API/DTO, Namespace/Space admission, exact lookup и запись URL остаются в Tracker.
+Новых UI exports, зависимостей, SDK/skills/UI pins или backend-изменений нет.
+Принятый UI producer остаётся `5f1271e387a1ae2dc933d7e14d5397df446092b4`.
+
+Legacy читает21 запись, показывает20 и определяет следующую страницу по sentinel
+без выдуманного total/поиска. V2 передаёт server q/total; debounce200мс сбрасывает
+offset. Выбранный доступный ключ разрешается отдельно от текущей страницы.
+Недоступная явная ссылка не заменяется первым проектом; привязка Namespace
+авторитетна, archived/malformed/error не разрешают отправку. Пустая промежуточная
+страница после фильтрации архивов не означает пустой каталог. Legacy blank URL
+сохраняет прежний default, inline-создание проекта — readback и черновик.
+
+Проверка задержанного exact read воспроизвела сброс исполнителя при paging.
+Форма теперь ждёт подтверждённый проект/состав участников перед изменением
+назначения. При настоящей смене проекта недопустимое назначение сбрасывается;
+неподтверждённое назначение блокирует submit. Summary/custom values сохраняются
+при paging, custom values сбрасываются при смене проекта, как прежде.
+Неактивный V2 exact query распознаётся как unavailable, а не вечный pending.
+
+Scoped gate:129 тестов в8 файлах, TypeScript, lint/format, UI contract guard,
+semantic CSS и diff-check — PASS. RED для missing exact lookup, inactive query
+и задержанного назначения сохранены отдельно; повторы не складываются в счётчик.
+IAB:24 контекста (две страницы, light/dark/gray,320/375/1920/2560),40/44px,
+без overflow; переход за сотый проект, сохранность черновика/назначения, URL,
+Back/Forward/reload, недоступный ключ, Enter/Escape и возврат focus подтверждены.
+Это source QA реальных страниц с синтетическими GET-only ответами и подготовленным
+каталогом пользователей без credentials. Не authenticated/installed acceptance.
+QA закрыт; source hashes стабильны, записей нет. Доказательства:
+private evidence/tracker-project-choices-20261025/. Полный integrated gate,
+built Storybook, real zoom200, hosted CI и публикация этим scoped gate не заменяются.
+
+## Предыдущий кандидат: фокус каталога и прямой LoadingState — 25 октября 2026
 
 UI pin `5f1271e387a1ae2dc933d7e14d5397df446092b4`, reference
 `c33652802684ecea5e4dfd1fef4e14cf59daa8aa43710ebae4f02297469ac9f4`, версия0.3.2.

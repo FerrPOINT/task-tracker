@@ -2,7 +2,7 @@ import { chooseValue } from '../../test/choice'
 
 import { acceptSpaceSession, useSpaceSession } from '@/shared/auth/space-session'
 import { useAuthStore } from '@/shared/auth/store'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { ReportsPage } from './index'
 import { fetchIssueExport } from '@/api/export'
+import { getProject } from '@/api/project'
 
 // --- Mock hooks (NOT backend) -------------------------------------------------
 const useProjects = vi.hoisted(() => vi.fn())
@@ -34,6 +35,10 @@ vi.mock('@/shared/api/hooks', async () => {
 })
 
 vi.mock('@/api/export', () => ({ fetchIssueExport: vi.fn() }))
+vi.mock('@/api/project', async (original) => ({
+  ...(await original<object>()),
+  getProject: vi.fn(),
+}))
 
 // recharts renders SVG in jsdom; stub chart + container to render data as text
 vi.mock('recharts', () => ({
@@ -185,7 +190,9 @@ function setLoadedProject() {
 async function selectProject(user: ReturnType<typeof userEvent.setup>) {
   const select = screen.getByRole('button', { name: /проект|project/i })
   await user.click(select)
-  await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
+  await user.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Task Tracker (TT)' }),
+  )
 }
 
 async function selectSprint() {
@@ -196,8 +203,13 @@ async function selectSprint() {
 // --- Tests --------------------------------------------------------------------
 
 describe('ReportsPage', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getProject).mockRejectedValue(new Error('Project unavailable'))
     useProjects.mockReturnValue({ data: projects, isLoading: false })
     useVelocityReport.mockReturnValue({ data: undefined, isLoading: true })
     useBurndownReport.mockReturnValue({ data: undefined, isLoading: true })
@@ -207,6 +219,121 @@ describe('ReportsPage', () => {
       data: [{ id: 'sprint-1', name: 'Sprint 1' }],
       isLoading: false,
     })
+  })
+
+  it('resolves an accessible project beyond the page without falling back or discarding its URL', async () => {
+    vi.mocked(getProject).mockResolvedValue({
+      ...projects[0]!,
+      id: 'proj-150',
+      key: 'P150',
+      name: 'Beyond the first page',
+      description: '',
+      owner_name: 'Fixture owner',
+    })
+    renderPage('/reports?project_key=P150&source=deep-link')
+    await waitFor(() => expect(useVelocityReport).toHaveBeenLastCalledWith('proj-150'))
+    expect(getProject).toHaveBeenCalledWith('P150', expect.any(AbortSignal))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/reports?project_key=P150&source=deep-link',
+    )
+    expect(screen.queryByText(/Проект из ссылки недоступен/)).not.toBeInTheDocument()
+  })
+
+  it('pages the catalog without changing the report and confirms a choice by its key', async () => {
+    useProjects.mockImplementation((offset: number) => ({
+      data: Array.from({ length: 21 }, (_, index) => ({
+        ...projects[0]!,
+        id: `id-${offset + index}`,
+        key: `P${offset + index}`,
+        name: `Project ${offset + index}`,
+      })),
+      isLoading: false,
+    }))
+    vi.mocked(getProject).mockResolvedValue({
+      ...projects[0]!,
+      description: '',
+      owner_name: 'Fixture owner',
+    })
+    const user = userEvent.setup()
+    renderPage('/reports?project_key=TT&source=catalog')
+    await waitFor(() => expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1'))
+    await user.click(screen.getByRole('button', { name: /проект|project/i }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.click(dialog.getByRole('button', { name: 'Далее' }))
+    await dialog.findByRole('button', { name: 'Project 20 (P20)' })
+    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true)
+    expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1')
+    await user.click(dialog.getByRole('button', { name: 'Project 20 (P20)' }))
+    expect(useVelocityReport).toHaveBeenLastCalledWith('id-20')
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/reports?project_key=P20&source=catalog',
+    )
+  })
+
+  it('keeps an inaccessible explicit project distinct from an empty catalog', async () => {
+    renderPage('/reports?project_key=OLD&source=deep-link')
+    await screen.findByText(/Проект из ссылки недоступен/)
+    expect(useVelocityReport).toHaveBeenLastCalledWith(undefined)
+    expect(screen.getByRole('button', { name: /CSV/i })).toBeDisabled()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/reports?project_key=OLD&source=deep-link',
+    )
+    expect(screen.queryByText('Нет проектов')).not.toBeInTheDocument()
+  })
+
+  it('passes debounced v2 search to the counted catalog and resets its page without changing the URL', async () => {
+    vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'true')
+    useProjects.mockReturnValue({ data: projects, catalog: { total: 45 }, isLoading: false })
+    const user = userEvent.setup()
+    renderPage('/reports?source=search')
+    await user.click(screen.getByRole('button', { name: /проект|project/i }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.click(dialog.getByRole('button', { name: 'Далее' }))
+    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true)
+    await user.type(dialog.getByRole('searchbox'), 'team')
+    await waitFor(() => expect(useProjects).toHaveBeenLastCalledWith(0, 21, 'team', true))
+    await user.click(dialog.getByRole('button', { name: 'Закрыть' }))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/reports?source=search',
+    )
+    expect(useVelocityReport).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('does not call an archive-filtered empty page an empty catalog while a next page exists', async () => {
+    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+    const rows = Array.from({ length: 21 }, (_, index) => ({
+      ...projects[0]!,
+      id: `id-${index}`,
+      key: `P${index}`,
+    }))
+    useProjects.mockReturnValue({ data: rows, isLoading: false })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify(
+              rows.slice(0, 20).map((project) => ({
+                label: project.key,
+                resource_key: project.key,
+                binding: {
+                  state: 'archived',
+                  resource: { resource_id: project.id },
+                  namespace: { registry_instance_id: 'registry', namespace_id: project.id },
+                },
+              })),
+            ),
+            { status: 200 },
+          ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage('/reports?source=archive')
+    await screen.findByText('Выберите проект для просмотра отчётов.')
+    expect(screen.queryByText('Нет доступных проектов.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Проекты' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /проект|project/i }))
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Далее' })).toBeEnabled()
   })
 
   it('renders the page title and project selector', () => {
@@ -376,7 +503,9 @@ describe('ReportsPage', () => {
 
     const select = screen.getByRole('button', { name: /проект|project/i })
     await user.click(select)
-    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Task Tracker (TT)' }),
+    )
 
     expect(useVelocityReport).toHaveBeenCalled()
   })
@@ -385,7 +514,9 @@ describe('ReportsPage', () => {
     const user = userEvent.setup()
     renderPage('/reports?project_key=TT')
 
-    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveValue('proj-1')
+    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveTextContent(
+      'Task Tracker (TT)',
+    )
     expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1')
     expect(useCumulativeFlowReport).toHaveBeenLastCalledWith(undefined)
     expect(useControlChartReport).toHaveBeenLastCalledWith(undefined)
@@ -450,14 +581,18 @@ describe('ReportsPage', () => {
     renderPage('/reports?source=qa')
 
     await user.click(screen.getByRole('button', { name: /проект|project/i }))
-    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Task Tracker (TT)' }),
+    )
     expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
       '/reports?source=qa&project_key=TT',
     )
 
     await user.click(screen.getByRole('button', { name: 'Back in history' }))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /проект|project/i })).toHaveValue(''),
+      expect(screen.getByRole('button', { name: /проект|project/i })).toHaveTextContent(
+        'Выберите проект',
+      ),
     )
     expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
       '/reports?source=qa',
@@ -467,9 +602,7 @@ describe('ReportsPage', () => {
   it('uses shared Base sizing contracts for the primary report tabs', () => {
     renderPage('/reports?project_key=TT')
 
-    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveClass(
-      'base-project-picker',
-    )
+    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveClass('base-control')
     for (const tab of screen.getAllByRole('tab')) {
       expect(tab).toHaveClass('base-control', 'base-tabs-trigger')
     }
