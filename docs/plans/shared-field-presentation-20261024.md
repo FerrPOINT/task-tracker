@@ -1,5 +1,25 @@
 # Общие подписи полей Base
 
+## Текущий кандидат: подтверждение действия Base — 25 октября 2026
+
+UI producer `900b8dc531c33bfafe939623b6aa18c225f9a29d`, reference
+`b5ce47fe31e4a6ee67838e825c1acc0c743b2de0ad6e3956b01f2f3916c3a468`, версия 0.3.2.
+Две строки SDLC используют label готового Checkbox. Удалены локальные Label, min-height, gap и смещение индикатора; pin/revision, policy admission и callbacks сохранены полной AST-сверкой с негативным контролем. Нажатие подписи не выполняет подтверждение требований; существующий тест проверяет отдельный явный submit.
+
+Адресные продуктовые unit: 67 PASS; types и lint изменённых файлов PASS. Совместный scoped gate: 124 product cases, 49 Base confirmation,
+60 guard и 87 reference cases PASS. Настоящий UI-архив содержит новый компонент
+и offline CLI; шесть cached frozen refresh сохранили locks и React singleton.
+Семь UI pins согласованы; SDK/skills pins сохранены. Source guard из этого
+кандидата также включает прежнее исправление conditional const className.
+
+IAB общего компонента: 36 контекстов и восемь сценариев; отдельные точные
+Tracker fragments — 13 контекстов, label click, клавиатура и disabled. Оба QA
+закрыты, source hashes стабильны, HTTP-записей нет. Это source-проверка, не
+приёмка authenticated/установленного продукта. Исходные ошибки test setup и
+private verification helper сохранены отдельно, не считаются PASS; успешные
+install не повторялись. Полный milestone и общий семантический аудит продолжаются.
+Push, hosted CI, merge, runtime и production не выполнялись.
+
 ## Подтверждённый остаток: значки активности — 25 октября 2026
 
 Две подложки MessageSquare/Clock в ActivityFeed заменены готовым IconMark size=sm
@@ -20,7 +40,7 @@ Computed font-family проверен, загрузка FontFace этим пок
 Не понадобились новые Base API, UI pin, install или build. Это source-проверка;
 полный milestone и установленная приёмка остаются открытыми.
 
-## Текущий кандидат: текстовые ссылки Base — 25 октября 2026
+## Предыдущий кандидат: текстовые ссылки Base — 25 октября 2026
 
 UI producer `a27339a2efe253124770ff103a209e7212e2c11b`, reference `464b512a10dd44ec66aeeb09e791123e5a07e245346922898225f19db442fd35`, версия 0.3.2.
 Продукт использует TextLink вместо локального оформления inline-ссылок; URL, состояние Router и callbacks сохранены.

@@ -265,9 +265,12 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     const button = await screen.findByRole('button', { name: 'Confirm requirements' })
     expect(button).toBeDisabled()
     expect(screen.getByText(hash)).toBeInTheDocument()
-    fireEvent.click(
+    expect(confirmRequirements).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('I confirm the requirements of revision 2', { exact: true }))
+    expect(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
-    )
+    ).toBeChecked()
+    expect(confirmRequirements).not.toHaveBeenCalled()
     fireEvent.click(button)
     await waitFor(() => expect(confirmRequirements).toHaveBeenCalledOnce())
     expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {

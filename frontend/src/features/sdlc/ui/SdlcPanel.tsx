@@ -6,7 +6,6 @@ import {
   DescriptionItem,
   EmptyState,
   ErrorState,
-  Label,
   LoadingState,
   ResourceList,
   ResourceListRow,
@@ -318,17 +317,13 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               )}
               {context.permissions.can_confirm ? (
                 <>
-                  <Label className="mb-3 flex min-h-10 items-start gap-2">
-                    <Checkbox
-                      className="mt-1 shrink-0"
-                      checked={acknowledgedPin === pin}
-                      disabled={!canConfirm}
-                      onCheckedChange={(checked) =>
-                        setAcknowledgedPin(checked === true ? pin : null)
-                      }
-                    />
-                    <span>{t('sdlc.acknowledge', { revision: requirements.revision })}</span>
-                  </Label>
+                  <Checkbox
+                    className="mb-3"
+                    label={t('sdlc.acknowledge', { revision: requirements.revision })}
+                    checked={acknowledgedPin === pin}
+                    disabled={!canConfirm}
+                    onCheckedChange={(checked) => setAcknowledgedPin(checked === true ? pin : null)}
+                  />
                   <section aria-label={t('sdlc.publication.title')} className="mb-4 min-w-0">
                     <SectionHeader
                       level={4}
@@ -426,24 +421,21 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                 )
                               })}
                             </Disclosure>
-                            <Label className="flex min-h-10 items-start gap-2">
-                              <Checkbox
-                                className="mt-1 shrink-0"
-                                checked={Boolean(selected)}
-                                disabled={!canConfirm || (!selected && !policyReady)}
-                                onCheckedChange={(checked) => {
-                                  setPublication(
-                                    checked === true && pin && policyReady
-                                      ? { pin, policy: routingPolicy.data! }
-                                      : null,
-                                  )
-                                  setConflictedPublication(null)
-                                }}
-                              />
-                              <span>
-                                {t('sdlc.publication.select', { version: displayedPolicy.version })}
-                              </span>
-                            </Label>
+                            <Checkbox
+                              label={t('sdlc.publication.select', {
+                                version: displayedPolicy.version,
+                              })}
+                              checked={Boolean(selected)}
+                              disabled={!canConfirm || (!selected && !policyReady)}
+                              onCheckedChange={(checked) => {
+                                setPublication(
+                                  checked === true && pin && policyReady
+                                    ? { pin, policy: routingPolicy.data! }
+                                    : null,
+                                )
+                                setConflictedPublication(null)
+                              }}
+                            />
                             {selected && !publicationReady && (
                               <Notice role="status" tone="neutral" appearance="inline">
                                 {t('sdlc.publication.stale')}
@@ -506,9 +498,9 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                   {metadata.data.events.map((event) => (
                     <ResourceListRow asChild key={event.event_id}>
                       <li className="min-w-0">
-                        <ResourceListTitle asChild><p >
-                          {t(`sdlc.events.${eventLabels[event.event_type]}`)}
-                        </p></ResourceListTitle>
+                        <ResourceListTitle asChild>
+                          <p>{t(`sdlc.events.${eventLabels[event.event_type]}`)}</p>
+                        </ResourceListTitle>
                         <p className="text-text-muted">
                           #{event.sequence} · {new Date(event.created_at).toLocaleString()}
                         </p>
