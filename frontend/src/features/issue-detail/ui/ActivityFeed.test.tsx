@@ -42,6 +42,23 @@ const worklog: Worklog = {
 }
 
 describe('ActivityFeed', () => {
+  it.each([
+    { language: 'ru', seconds: 0, duration: '0m' },
+    { language: 'ru', seconds: 5400, duration: '1h 30m' },
+    { language: 'en', seconds: 0, duration: '0m' },
+    { language: 'en', seconds: 5400, duration: '1h 30m' },
+  ])('shows $duration of logged time in $language', async ({ language, seconds, duration }) => {
+    await i18n.changeLanguage(language)
+    try {
+      render(wrapper(
+        <ActivityFeed comments={[]} worklogs={[{ ...worklog, timeSpentSeconds: seconds, comment: null }]} />,
+      ))
+      expect(screen.getByText(duration, { exact: false })).toBeVisible()
+    } finally {
+      await i18n.changeLanguage('en')
+    }
+  })
+
   it('renders safe Markdown comments in activity', () => {
     const markdownComment = {
       ...comment,

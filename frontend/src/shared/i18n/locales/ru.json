@@ -417,7 +417,7 @@
     "deleteError": "Не удалось переместить задачу в корзину. Повторите попытку.",
     "commented": "прокомментировал(а)",
     "descriptionPlaceholder": "Добавьте описание…",
-    "loggedTime": "затрачено",
+    "loggedTime": "записал(а) {{duration}}",
     "noActivity": "Активности пока нет",
     "summaryRequired": "Укажите тему задачи",
     "unassigned": "Не назначен",

@@ -417,7 +417,7 @@
     "deleteError": "Could not move the issue to the trash. Please try again.",
     "commented": "commented",
     "descriptionPlaceholder": "Add a description…",
-    "loggedTime": "logged",
+    "loggedTime": "logged {{duration}}",
     "noActivity": "No activity yet",
     "summaryRequired": "Summary is required",
     "unassigned": "Unassigned",
