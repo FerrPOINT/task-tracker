@@ -74,3 +74,26 @@ presets; дополнительно границы 639/640 и 1535/1536, zero/fo
 продуктовых записей или backend/Auth/runtime приёмки. Whole-module proof
 проверяет четыре пары и остальную логику; evidence: private
 wiki-worklog-compositions-20261026.
+
+## Общие подписи автора и времени — 2026-10-26
+
+Шесть подписей CommentItem и ActivityFeed используют ResourceListTitle и
+ResourceListDescription Base. Сохранены p/span semantics, fallback автора,
+Markdown, сортировка, права и callbacks. Две предметные фразы событий остаются
+частями предложения; их контейнер наследует body typography Base.
+UI pin 6dca218 и lockfile прежние, новый API не требуется.
+
+Исходный scoped прогон: 16 cases, TypeScript/lint/UI contract PASS. После
+описанного ниже исправления ActivityFeed девять cases этого файла заменяют
+прежние пять: итог этого набора — 20 distinct cases, без двойного подсчёта.
+В IAB подтверждены 96 сочетаний CommentItem/ActivityFeed, три темы, настоящие
+viewport320/375/1920/2560, standard/large и обычное/длинное содержимое.
+Проверены неизвестный автор, чужие записи, пустота, edit/delete identity.
+Это source fixture без backend/Auth/installed acceptance.
+
+Отдельно исправлена прежняя потеря длительности события: ru/en loggedTime
+содержали только глагол, хотя ActivityFeed передавал duration. Теперь оба
+перевода включают {{duration}}. Четыре regression cases (ru/en, 0m/1h 30m)
+сначала дали RED, затем GREEN; повторены ActivityFeed, types и scoped lint.
+Остальные ключи переводов совпадают с baseline; IAB подтвердил оба языка.
+Evidence: private message-captions-20261026.
