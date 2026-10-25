@@ -21,8 +21,8 @@
     "openapi:compat": "node scripts/base-openapi-compat.mjs",
     "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
     "theme:check": "node ../../services-base/frontend/scripts/sdlc-effective-theme-check.mjs",
-    "test:unit": "vitest run --exclude \"**/*.integration.test.*\" --exclude \"**/*.slow.test.*\" --exclude \"**/*.e2e.test.*\"",
-    "test:all": "vitest run"
+    "test:unit": "node --test scripts/tailwind-source-inputs.test.mjs && vitest run --exclude \"**/*.integration.test.*\" --exclude \"**/*.slow.test.*\" --exclude \"**/*.e2e.test.*\"",
+    "test:all": "node --test scripts/tailwind-source-inputs.test.mjs && vitest run"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",
