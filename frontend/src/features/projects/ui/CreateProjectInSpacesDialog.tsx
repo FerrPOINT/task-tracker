@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 import {
+  TextLink,
   FormField,
   Fieldset,
   AlertDialog,
@@ -176,12 +177,11 @@ function CreateForm({
               <p>
                 Найден проект: {lookup.data.key} · {lookup.data.name}.
               </p>
-              <Link
-                className="text-accent underline"
+              <TextLink asChild><Link
                 to={'/projects/' + encodeURIComponent(lookup.data.key) + '/board'}
               >
                 Открыть найденный проект
-              </Link>
+              </Link></TextLink>
               <Button
                 type="button"
                 variant="outline"

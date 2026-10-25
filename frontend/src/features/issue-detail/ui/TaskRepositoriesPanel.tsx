@@ -1,4 +1,5 @@
 import {
+  TextLink,
   Select,
   ResourceList,
   ResourceListRow,
@@ -120,15 +121,14 @@ export function TaskRepositoriesPanel({
           <SectionHeader title="Репозитории проекта" />
           {fleet && (
             <p>
-              <a
-                className="text-accent"
+              <TextLink
                 href={withNamespaceLocation(
                   `${fleet}/chats?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
                   ref,
                 )}
               >
                 Чаты Fleet с контекстом задачи
-              </a>
+              </TextLink>
             </p>
           )}
           {linked.isPending ? (
@@ -147,8 +147,7 @@ export function TaskRepositoriesPanel({
                   >
                     <li>
                       {forge ? (
-                        <a
-                          className="text-accent"
+                        <TextLink
                           href={withNamespaceLocation(
                             `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
                             ref,
@@ -156,7 +155,7 @@ export function TaskRepositoriesPanel({
                           )}
                         >
                           {repository.public_name}
-                        </a>
+                        </TextLink>
                       ) : (
                         repository.public_name
                       )}
@@ -257,8 +256,7 @@ export function TaskRepositoriesPanel({
                     <CardContent className="space-y-2">
                       <p>
                         {forge ? (
-                          <a
-                            className="text-accent"
+                          <TextLink
                             href={withNamespaceLocation(
                               `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
                               ref,
@@ -266,7 +264,7 @@ export function TaskRepositoriesPanel({
                             )}
                           >
                             #{item.number} {item.title}
-                          </a>
+                          </TextLink>
                         ) : (
                           item.title
                         )}{' '}
@@ -279,8 +277,7 @@ export function TaskRepositoriesPanel({
                         {item.checks.map((check) => (
                           <li key={check.pipeline_id}>
                             {forge ? (
-                              <a
-                                className="text-accent"
+                              <TextLink
                                 href={withNamespaceLocation(
                                   `${forge}/pipelines/${check.pipeline_id}`,
                                   ref,
@@ -288,7 +285,7 @@ export function TaskRepositoriesPanel({
                                 )}
                               >
                                 CI · {check.status}
-                              </a>
+                              </TextLink>
                             ) : (
                               check.status
                             )}
