@@ -267,14 +267,13 @@ export default function SearchPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
                   <DropdownMenuItem
-                    className="min-h-10"
                     onClick={() => setFilter('project_key', undefined)}
                   >
                     {t('search.allProjects')}
                   </DropdownMenuItem>
                   {projects?.map((p) => (
                     <DropdownMenuItem
-                      className="min-h-10 gap-2"
+                      className="gap-2"
                       key={p.key}
                       onClick={() => setFilter('project_key', p.key)}
                     >
@@ -295,14 +294,12 @@ export default function SearchPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem
-                    className="min-h-10"
                     onClick={() => setFilter('status', undefined)}
                   >
                     {t('search.allStatuses')}
                   </DropdownMenuItem>
                   {STATUS_OPTIONS.map((s) => (
                     <DropdownMenuItem
-                      className="min-h-10"
                       key={s}
                       onClick={() => setFilter('status', s)}
                     >
@@ -320,14 +317,12 @@ export default function SearchPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem
-                    className="min-h-10"
                     onClick={() => setFilter('priority', undefined)}
                   >
                     {t('search.allPriorities')}
                   </DropdownMenuItem>
                   {PRIORITY_OPTIONS.map((p) => (
                     <DropdownMenuItem
-                      className="min-h-10"
                       key={p}
                       onClick={() => setFilter('priority', titleCasePriority(p))}
                     >
@@ -345,14 +340,12 @@ export default function SearchPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
                   <DropdownMenuItem
-                    className="min-h-10"
                     onClick={() => setFilter('assignee_id', undefined)}
                   >
                     {t('search.allAssignees')}
                   </DropdownMenuItem>
                   {users?.map((u) => (
                     <DropdownMenuItem
-                      className="min-h-10"
                       key={u.id}
                       onClick={() => setFilter('assignee_id', u.id)}
                     >
@@ -372,7 +365,6 @@ export default function SearchPage() {
                 <DropdownMenuContent align="start">
                   {SORT_OPTIONS.map((o) => (
                     <DropdownMenuItem
-                      className="min-h-10"
                       key={o.value}
                       onClick={() => setFilter('sort', o.value)}
                     >

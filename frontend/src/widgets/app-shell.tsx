@@ -8,6 +8,8 @@ import {
   Button,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  ResourceListDescription,
+  EmptyState,
   DropdownMenuSeparator,
   ProjectAvatar,
   ProjectNavigationGroup,
@@ -479,12 +481,11 @@ export function AppShell() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
-                  <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                    <DropdownMenuLabel className="text-sm font-semibold">
+                  <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border p-1">
+                    <DropdownMenuLabel>
                       {t('notifications.title')}
                     </DropdownMenuLabel>
                     <DropdownMenuItem
-                      className="min-h-11 px-2 text-xs"
                       onSelect={() => markAllNotificationsRead.mutate()}
                       disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
                     >
@@ -510,7 +511,7 @@ export function AppShell() {
                           {notification.action_url ? (
                             <DropdownMenuItem
                               asChild
-                              className="min-h-11 min-w-0 flex-1 items-start p-2"
+                              className="min-w-0 flex-1 items-start"
                             >
                               <Link
                                 to={notification.action_url}
@@ -524,7 +525,7 @@ export function AppShell() {
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
-                              className="min-h-11 min-w-0 flex-1 items-start p-2"
+                              className="min-w-0 flex-1 items-start"
                               onSelect={() => {
                                 if (!notification.is_read)
                                   markNotificationRead.mutate(notification.id)
@@ -535,25 +536,30 @@ export function AppShell() {
                           )}
                           {!notification.is_read && (
                             <DropdownMenuItem
-                              className="min-h-11 w-11 shrink-0 justify-center p-0"
-                              aria-label={`${t('notifications.markRead')}: ${notification.title}`}
-                              title={t('notifications.markRead')}
+                              asChild
                               onSelect={() => markNotificationRead.mutate(notification.id)}
                             >
-                              <Check className="h-4 w-4" aria-hidden="true" />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0"
+                                aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+                                title={t('notifications.markRead')}
+                              >
+                                <Check className="h-4 w-4" aria-hidden="true" />
+                              </Button>
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuGroup>
                       )
                     })}
                     {notifications.length === 0 && (
-                      <DropdownMenuLabel className="px-3 py-6 text-center text-sm text-text-muted">
-                        {t('notifications.empty')}
-                      </DropdownMenuLabel>
+                      <EmptyState message={t('notifications.empty')} />
                     )}
                   </DropdownMenuGroup>
-                  <DropdownMenuSeparator className="h-px bg-border" />
-                  <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="m-1 justify-center">
                     <Link to="/notifications">{t('notifications.viewAll')}</Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -565,14 +571,14 @@ export function AppShell() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <div className="break-words px-2 py-1.5 text-sm font-medium text-text-primary">
+                  <DropdownMenuLabel>
                     {user?.display_name ?? user?.email ?? t('navigation.user')}
-                  </div>
-                  {user?.display_name && user.display_name !== user.email && (
-                    <div className="break-words px-2 pb-2 text-xs text-text-muted">
-                      {user?.email}
-                    </div>
-                  )}
+                    {user?.display_name && user.display_name !== user.email && (
+                      <ResourceListDescription className="block">
+                        {user?.email}
+                      </ResourceListDescription>
+                    )}
+                  </DropdownMenuLabel>
                   <ThemeMenuItems />
                   {canAdmin && (
                     <DropdownMenuItem asChild>
