@@ -16,6 +16,8 @@ import {
   Card,
   CardContent,
   UserAvatar,
+  ResourceListTitle,
+  ResourceListDescription,
 } from '@pdlc/ui/ui'
 
 import {
@@ -120,10 +122,12 @@ export const CommentItem = memo(function CommentItem({
           <div className="flex min-w-0 items-center gap-2">
             <UserAvatar name={comment.authorName} userId={comment.authorId} size="md" />
             <div className="min-w-0 [overflow-wrap:anywhere]">
-              <p className="text-sm font-medium text-text-primary">
-                {comment.authorName ?? t('comments.unknown')}
-              </p>
-              <p className="text-xs text-text-muted">{date}</p>
+              <ResourceListTitle asChild>
+                <p>{comment.authorName ?? t('comments.unknown')}</p>
+              </ResourceListTitle>
+              <ResourceListDescription asChild>
+                <p>{date}</p>
+              </ResourceListDescription>
             </div>
           </div>
           {isAuthor && (

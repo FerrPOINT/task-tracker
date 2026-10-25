@@ -1,4 +1,11 @@
-import { EmptyState, Card, CardContent, IconMark } from '@pdlc/ui/ui'
+import {
+  EmptyState,
+  Card,
+  CardContent,
+  IconMark,
+  ResourceListTitle,
+  ResourceListDescription,
+} from '@pdlc/ui/ui'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Clock } from 'lucide-react'
@@ -45,14 +52,14 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
                   <MessageSquare aria-hidden />
                 </IconMark>
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-text-primary">
-                      {c.authorName ?? t('comments.unknown')}
-                    </span>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <ResourceListTitle asChild>
+                      <span>{c.authorName ?? t('comments.unknown')}</span>
+                    </ResourceListTitle>
                     <span className="text-text-muted">{t('issue.commented')}</span>
-                    <span className="text-xs text-text-muted">
-                      {format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}
-                    </span>
+                    <ResourceListDescription asChild>
+                      <span>{format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+                    </ResourceListDescription>
                   </div>
                   <CommentBody body={c.body} />
                 </div>
@@ -69,14 +76,16 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
                 <Clock aria-hidden />
               </IconMark>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium text-text-primary">{w.userDisplayName}</span>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <ResourceListTitle asChild>
+                    <span>{w.userDisplayName}</span>
+                  </ResourceListTitle>
                   <span className="text-text-muted">
                     {t('issue.loggedTime', { duration: formatDuration(w.timeSpentSeconds) })}
                   </span>
-                  <span className="text-xs text-text-muted">
-                    {format(new Date(w.createdAt), 'yyyy-MM-dd HH:mm')}
-                  </span>
+                  <ResourceListDescription asChild>
+                    <span>{format(new Date(w.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+                  </ResourceListDescription>
                 </div>
                 {w.comment && (
                   <div className="whitespace-pre-wrap text-sm text-text-secondary">{w.comment}</div>
