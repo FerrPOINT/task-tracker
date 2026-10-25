@@ -1,5 +1,56 @@
 # Общие панели пространств и состояния уведомлений
 
+## Кастомные поля Tracker: общий UI чтения — 25 октября 2026
+
+Панель использует ResourceStateView, Fieldset и EmptyState Base вместо локального
+текстового fallback. До первого ответа определения и значения не считаются
+пустыми; успешный пустой каталог не ждёт ненужных значений. Временный отказ с
+полным последним чтением оставляет данные и ввод, блокируя запись. 401/403/404
+скрывают прежние поля; отказ доступа приоритетнее временного сбоя второго
+ресурса. Продукт владеет этой зависимостью ресурсов; Base — отображением и
+сохранением экземпляра children при ready ↔ partial-error.
+
+Причина до переноса находилась в двух owner-границах: API reader терял status,
+панель проверяла только data.length. Два GET используют уже существующий
+generated контракт без устаревшего as-never, ApiError и InvalidResponseError.
+Запросы, пути, четыре writer-функции, DTO, преобразования field values,
+save payload и completion callbacks сохранены. Новые routes/API/DB отсутствуют.
+Readback выполняет только два GET; неизвестный результат записи этой волной
+не квалифицируется. Родительская форма создания сохраняет commit=change.
+
+Fieldset и явный disabled закрывают также popup-контролы; guard предотвращает
+запись поздним callback. Прочитанное значение обновляет только pristine text
+draft. Локальная правка сохраняется и при новом server value; смена issue/project
+пересоздаёт её в правильном контексте. Labels, поля и действия остаются продукту.
+
+До исправления 18 из 19 новых regression cases воспроизводили ошибки. Итог:
+60 distinct scoped cases в пяти файлах, включая реальный OpenAPI client с
+тестовым fetch, оба прежних field suites и создание задачи. TypeScript, lint и
+shell:check PASS. Повторные прогоны не складываются. Первый TypeScript FAIL
+сохранён: причиной был прежний as-never на существующих typed GET путях.
+Структурная сверка owner sources и шесть негативных контролей также PASS.
+
+IAB: 288 контекстов (12 состояний × три темы × четыре ширины × две шкалы),
+настоящие CustomFieldsPanel/ValueInput и переводы Tracker; resource hooks и
+callbacks синтетические. Живые read failure/recovery, изменение server value,
+сохранение blur, смена задачи, denial, закрытие disabled Select/MultiSelect,
+обычный выбор и полный массив значений проверены. Нет overflow, console
+warn/error и продуктовых HTTP requests. Все снимки 375×1100, 1920×1100,
+2560×1440 полностью вмещают документ и просмотрены. Оба временных сервера
+закрыты; final production hashes неизменны. Это не полный продуктовый backend,
+authenticated acceptance или zoom200.
+
+Первый QA resolver отдал CJS React без Vite-преобразования; диагностическая
+фикстура не засчитана. Финальный сервер использовал зависимости consumer и
+штатное разрешение модулей. Общий execution slot дважды отклонил busy запуск;
+после освобождения обязательные scoped stages выполнены без обхода admission.
+
+UI producer b50b7f53, reference e30f5c7e и семь pins прежние. Пакет, reference,
+SSR/Auth fingerprints и окружения переиспользованы без generation/install/build.
+SDK/skills не изменены. Evidence: private
+`evidence/custom-field-resource-state-20261025/`. Publication, hosted CI,
+установленный runtime и общий итоговый gate не заявляются.
+
 ## Общее меню аккаунта — 25 октября 2026
 
 Локальное identity/theme/logout menu заменено AccountMenu. Nullish fallback имени, условие secondary email, logout.mutate/pending, modal=false и ACL/admin item сохраняются у Tracker.

@@ -242,3 +242,11 @@ AccountMenu в actions общего PlatformHeader. Identity, permissions,
 logout/pending и предметные пункты beforeTheme/children остаются у продукта;
 не копировать trigger, popup или theme/logout layout. Контракт и пример
 сначала читать через pdlc-ui; custom API/SSO и установленный runtime не меняются.
+
+Состояния зависимых редакторов показывать через ResourceStateView Base;
+локальный регион использует scope="local". Пустота подтверждается успешным
+ответом. Reader сохраняет HTTP status через ApiError и отличает malformed
+success; общий error mapping не заменять текстовым Error без статуса.
+При временном сбое можно оставить подтверждённые данные и локальный ввод,
+блокируя запись через Fieldset/disabled и guard обработчика. Query keys,
+зависимости ресурсов и границы draft между задачами остаются у Tracker.

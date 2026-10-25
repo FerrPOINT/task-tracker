@@ -1,4 +1,5 @@
 import { api } from './client'
+import { ApiError, InvalidResponseError } from '@pdlc/ui/lib'
 
 export type CustomFieldType = 'text' | 'number' | 'select' | 'multi-select' | 'date'
 export interface CustomField {
@@ -22,11 +23,13 @@ export interface CustomFieldValue {
 }
 
 export async function listCustomFields(projectKey: string): Promise<CustomField[]> {
-  const { data, error } = await api.GET(
-    '/api/v1/projects/{project_key}/custom-fields' as never,
-    { params: { path: { project_key: projectKey } } } as never,
+  const { data, error, response } = await api.GET(
+    '/api/v1/projects/{project_key}/custom-fields',
+    { params: { path: { project_key: projectKey } } },
   )
-  if (error || !data) throw new Error('Failed to load custom fields')
+  if (error || !response.ok) throw new ApiError(response.status, 'Failed to load custom fields')
+  if (!data || !Array.isArray((data as { fields?: unknown }).fields))
+    throw new InvalidResponseError(response.status)
   return (data as { fields: CustomField[] }).fields
 }
 export async function createCustomField(
@@ -56,11 +59,14 @@ export async function deleteCustomField(id: string): Promise<void> {
   if (error) throw new Error('Failed to delete custom field')
 }
 export async function listIssueCustomFieldValues(issueId: string): Promise<CustomFieldValue[]> {
-  const { data, error } = await api.GET(
-    '/api/v1/issues/{issue_id}/custom-fields' as never,
-    { params: { path: { issue_id: issueId } } } as never,
+  const { data, error, response } = await api.GET(
+    '/api/v1/issues/{issue_id}/custom-fields',
+    { params: { path: { issue_id: issueId } } },
   )
-  if (error || !data) throw new Error('Failed to load custom field values')
+  if (error || !response.ok)
+    throw new ApiError(response.status, 'Failed to load custom field values')
+  if (!data || !Array.isArray((data as { values?: unknown }).values))
+    throw new InvalidResponseError(response.status)
   return (data as { values: CustomFieldValue[] }).values
 }
 export async function setIssueCustomFieldValue(

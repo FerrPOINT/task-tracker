@@ -716,6 +716,7 @@
     "noFields": "No custom fields configured.",
     "loading": "Loading...",
     "loadError": "Could not load fields. Please try again.",
+    "readOnly": "The data could not be confirmed. Showing the last confirmed values; local edits are retained and saving is unavailable until a successful read.",
     "createError": "Could not add the field. Check the details and try again.",
     "created": "Field added.",
     "deleteField": "Delete field {{name}}",
