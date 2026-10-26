@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-26: Bounded PM Producer Installed With History Preserved
+
+- Normal selected-service Build22889741/source1ee/backended445/SDKed61 produces
+  image79fcae57; receipt SHA
+  4d1a80475f376cf0ce9ebd80fe2f40f1d5555bdf3b2113a28741ad7e8cfb0a0b.
+- Actual disposable populated-copy migration preserves all97 original public
+  tables' original column/row projections and32 old ledger entries; target38
+  appends six. Copy result SHA
+  6b24ba213b8b53ae1f52c0b9b557465b1ff8656e8d606627ef5d214744911bb5.
+  This migration-only check executes zero tests and does not prove source ACLs,
+  HTTP behavior or background workers. Protected source dump is retained.
+- Normal Applyfe9457b9 is COMPLETE. Backend2cb481f4 runs79fcae57 healthy with
+  migration104. Old producer container19045 and all captured old PostgreSQL
+  pid/backend_start pairs are absent. The three old recovery receipts remain
+  unchanged and fourth4321 is absent. Post-Apply proof SHA
+  3cf5747a0c43bde5206061880a5ba537fa603f2bce599e4548bf8ddec5f12d3a.
+- Fleet witness rollout, the live fourth callback, useful PM requirements and
+  real owner-confirmed Backlog/Ready remain open. No recovery POST, fake ACK,
+  attempt reset, owner confirmation or Analyst assignment was performed here.
+
 ## 2026-10-26: Bounded PM Recovery Qualified At Source Level
 
 - Current main is integrated, retaining identity103, PM103 and forward104 without
