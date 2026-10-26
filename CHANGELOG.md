@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-26: Configured CLI PM — Source Verified, Tracker Installed
+
+- Problem: owner consent in Draft and ordinary preconfigured PM credentials did
+  not match the legacy native-runtime contract. Consent now stays in Draft;
+  only terminal Workflow plus PM completion publishes Backlog / Ready. No
+  Analysis intent is created. Legacy tasks and their saved history are retained.
+- Standard agent scopes and current assignment/owner/revision checks remain.
+  Project owners can explicitly add a verified active service account through
+  the member API; human directory selectors remain human-only. Central subjects
+  are resolved to local IDs rather than assumed equal.
+- Actual checks: configured PostgreSQL lifecycle/replay/no-Analysis test PASS;
+  app, CLI, metadata, migration and service-member checks PASS on their recorded
+  source revisions. Rust OpenAPI was regenerated, client/parity PASS on d5fca554.
+  A disposable copy of all111 existing tables preserves original rows under the
+  exact forward105 SQL;38 original ledger rows are retained. QA cleanup completed.
+- Normal Build371d42ef / Apply installed d5fca554 as image3f084e40; health200.
+  The new PM service identity has verified member access to the acceptance
+  project through the owner API. No direct business-state SQL writes were used.
+- Next: compatible Fleet installation and permanent CLI configuration, then a
+  real PM dialogue and human exact-revision confirmation. Live Backlog / Ready
+  and full release gates remain unaccepted; source tests are not that acceptance.
+
 ## 2026-10-26: Bounded PM Producer Installed With History Preserved
 
 - Normal selected-service Build22889741/source1ee/backended445/SDKed61 produces
