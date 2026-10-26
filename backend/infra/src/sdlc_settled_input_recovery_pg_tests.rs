@@ -585,8 +585,8 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
                      "AND NEW.idempotency_key<>predecessor_key AND sdlc_pm_settled_manual_budget_allows(w,c,attempts)")
             .replace("AND w-ARRAY['contract_version','session_run_id','barrier_id','identity','request_sha256','command']='{}'::jsonb",
                      "AND w-ARRAY['contract_version','session_run_id','barrier_id','identity','request_sha256','command','manual_budget']='{}'::jsonb"));
-    let raw_witness = json_value(&fourth_witness).unwrap();
-    let raw_command = json_value(&fourth).unwrap();
+    let raw_witness = serde_json::to_value(&fourth_witness).unwrap();
+    let raw_command = serde_json::to_value(&fourth).unwrap();
     for position in 0i64..7 {
         let row =
             f.db.query_one(statement(
@@ -782,6 +782,6 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
     assert_eq!(original_history(&f).await, history);
     assert_eq!(count(&f.db, "sdlc_pm_resume_inputs").await, 1);
     assert_eq!(count(&f.db, "sdlc_pm_lease_operations").await, 7);
-    f.repo.db.close().await.unwrap();
+    drop(f.repo);
     f.db.close().await.unwrap();
 }
