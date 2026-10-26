@@ -4,25 +4,30 @@ use super::*;
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn configured_cli_business_writes_need_current_assignment_but_no_native_lease() {
+    const MIGRATION: &str = "m20261026_0000105_configured_cli";
+    assert!(
+        migration::Migrator::migrations()
+            .iter()
+            .any(|m| m.name() == MIGRATION),
+        "integrated configured CLI QA requires registered 105; SQL leaf fallback is forbidden"
+    );
     let mut f = Fixture::new().await;
     f.repo.config.verifier_subject.clear();
     let installed =
         f.db.query_one(statement(
-            "SELECT to_regprocedure('sdlc_configured_cli_marker_gate()') IS NOT NULL AS installed",
-            vec![],
+            "SELECT to_regprocedure('sdlc_configured_cli_marker_gate()') IS NOT NULL
+                AND EXISTS(SELECT 1 FROM seaql_migrations WHERE version=$1) AS installed",
+            vec![MIGRATION.into()],
         ))
         .await
         .unwrap()
         .unwrap()
         .try_get::<bool>("", "installed")
         .unwrap();
-    // The integrator registers 105; this also permits scoped leaf qualification
-    // before the common registry edit, without fabricating a migration ledger row.
-    if !installed {
-        f.db.execute_unprepared(include_str!("../../migration/src/configured_cli.sql"))
-            .await
-            .unwrap();
-    }
+    assert!(
+        installed,
+        "ordinary Migrator must apply registered 105 and record its real ledger row"
+    );
     let subject = Uuid::new_v4().to_string();
     let local = Uuid::new_v4();
     exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",

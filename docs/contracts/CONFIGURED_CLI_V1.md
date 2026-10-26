@@ -162,6 +162,9 @@ immutability and no lease/native/evidence/routing/source/Analysis rows.
 It uses the existing candidates fixture and synthetic service/Workflow receipts,
 not live Central Auth/provider acceptance. The HTTP unit exercises the actual
 reader against a controlled server, not a real Workflow deployment.
+The PG case requires 105 in the real Migrator registry before fixture setup,
+then verifies its actual ledger row and installed function after ordinary up.
+There is no direct SQL leaf fallback or synthetic migration ledger insertion.
 The same PG case verifies empty delivery candidates and refusal of EnsureQueued/
 Reserve after completion without data changes or queue/hold/assignment rows.
 The pure `sdlc_candidates::tests::configured_cli_pm_never_opts_in_to_downstream_discovery`
