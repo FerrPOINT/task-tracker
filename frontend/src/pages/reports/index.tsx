@@ -1,4 +1,4 @@
-import { Notice } from '@pdlc/ui/ui'
+import { ActionGroup, Notice } from '@pdlc/ui/ui'
 import { downloadBlob, useDebouncedValue } from '@pdlc/ui/lib'
 import {
   Table,
@@ -295,11 +295,10 @@ export function ReportsPage() {
           </div>
         )}
 
-        <div
-          className="flex gap-2 sm:ml-auto"
+        <ActionGroup align="start"
+          className="sm:ml-auto"
           aria-label={t('reports.export')}
-          aria-busy={exporting !== null}
-        >
+          aria-busy={exporting !== null}>
           <Button
             variant="outline"
             size="sm"
@@ -320,7 +319,7 @@ export function ReportsPage() {
             <Download className="mr-1.5 h-4 w-4" />
             {exporting === 'json' ? t('reports.exporting') : t('reports.exportJson')}
           </Button>
-        </div>
+        </ActionGroup>
       </div>
 
       {projectsQuery.error && (

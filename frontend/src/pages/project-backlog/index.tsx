@@ -1,6 +1,6 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
-import { ResourceListDescription, ResourceListTitle,
+import { ActionGroup, ResourceListDescription, ResourceListTitle,
   ProjectAvatar,
   PageHeader,
   PageNavigation,
@@ -316,7 +316,7 @@ export function ProjectBacklogPage() {
         }
         action={
           activeFromList ? (
-            <div className="flex items-center gap-2">
+            <ActionGroup align="start">
               <Button
                 size="sm"
 
@@ -354,7 +354,7 @@ export function ProjectBacklogPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            </ActionGroup>
           ) : undefined
         }
         items={activeSprintIssues}
@@ -381,7 +381,7 @@ export function ProjectBacklogPage() {
           key={sprint.id}
           title={t('backlog.futureSprint', { name: sprint.name })}
           action={
-            <div className="flex items-center gap-2">
+            <ActionGroup align="start">
               <Button
                 size="sm"
 
@@ -408,7 +408,7 @@ export function ProjectBacklogPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            </ActionGroup>
           }
           items={sprint_issues.filter((issue) => issue.sprint_id === sprint.id)}
           renderItem={(issue) => (

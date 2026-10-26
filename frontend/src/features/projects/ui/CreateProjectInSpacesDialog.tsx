@@ -157,7 +157,7 @@ function CreateForm({
             Повтор использует тот же уникальный ключ проекта. Проверка найденного проекта сама по
             себе не подтверждает авторство исходного создания.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <ActionGroup align="start">
             <Button type="button" disabled={busy} onClick={() => lookup.mutate(original)}>
               Проверить проект по ключу
             </Button>
@@ -169,7 +169,7 @@ function CreateForm({
             >
               Повторить исходный запрос
             </Button>
-          </div>
+          </ActionGroup>
           {lookup.isError && (
             <ErrorState message="Найденный проект не подтверждён. Отсутствие ответа или 404 не отменяет исходный запрос; журнал сохранён." />
           )}

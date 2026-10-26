@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import { ResourceListTitle,
+import { ActionGroup, ResourceListTitle,
   ResourceListDescription,
   Button,
   ConfirmDialog,
@@ -178,7 +178,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                       </ResourceListDescription>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <ActionGroup align="start" className="shrink-0">
                     <Button
                       type="button"
                       variant="ghost"
@@ -198,7 +198,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </Button>
-                  </div>
+                  </ActionGroup>
                 </li>
               </ResourceListRow>
             ))}

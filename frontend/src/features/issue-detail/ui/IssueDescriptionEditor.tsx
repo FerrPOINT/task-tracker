@@ -1,4 +1,4 @@
-import { Input, Button, Textarea, Notice, FormField, PageHeader, Prose } from '@pdlc/ui/ui'
+import { ActionGroup, Input, Button, Textarea, Notice, FormField, PageHeader, Prose } from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -156,7 +156,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           {saveError}
         </Notice>
       )}
-      <div className="flex gap-2">
+      <ActionGroup align="start">
         <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
@@ -171,7 +171,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           <X className="mr-1 h-4 w-4" />
           {t('common.cancel')}
         </Button>
-      </div>
+      </ActionGroup>
     </form>
   )
 }

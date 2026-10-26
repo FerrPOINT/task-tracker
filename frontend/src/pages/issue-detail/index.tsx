@@ -1,5 +1,6 @@
 import { useClipboard } from '@pdlc/ui/lib'
 import {
+  ActionGroup,
   Badge,
   TextLink,
   ProjectAvatar,
@@ -193,7 +194,7 @@ export function IssueDetailPage() {
               {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
             </Badge>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ActionGroup align="start" className="ml-auto">
             <Button
               variant="secondary"
               size="sm"
@@ -244,7 +245,7 @@ export function IssueDetailPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </ActionGroup>
         </div>
 
         <IssueDetailLayout

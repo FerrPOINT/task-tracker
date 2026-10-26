@@ -132,14 +132,14 @@ export const CommentItem = memo(function CommentItem({
             </div>
           </div>
           {isAuthor && (
-            <div className="flex gap-2">
+            <ActionGroup align="start">
               <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
                 {t('common.edit')}
               </Button>
               <Button variant="destructive-outline" size="sm" onClick={() => onDelete(comment.id)}>
                 {t('common.delete')}
               </Button>
-            </div>
+            </ActionGroup>
           )}
         </div>
         <CommentBody body={comment.body} />

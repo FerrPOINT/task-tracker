@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  ActionGroup,
   ResourceListDescription,
   EmptyState,
   ResourceListTitle,
@@ -153,7 +154,7 @@ export function ProjectCustomFieldsPage() {
                 >
                   {t('customFields.required')}
                 </Checkbox>
-                <div className="flex gap-2">
+                <ActionGroup align="start">
                   <Button
                     type="submit"
                     className="justify-self-start"
@@ -178,7 +179,7 @@ export function ProjectCustomFieldsPage() {
                   >
                     {t('common.cancel')}
                   </Button>
-                </div>
+                </ActionGroup>
               </form>
             </CardContent>
           </Card>

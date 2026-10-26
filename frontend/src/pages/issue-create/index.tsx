@@ -1,6 +1,7 @@
 import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
+  ActionGroup,
   FormField,
   Fieldset,
   PageHeader,
@@ -472,7 +473,7 @@ export function IssueCreatePage() {
           </Fieldset>
         )}
 
-        <div className="flex gap-2 pt-2">
+        <div className="pt-2"><ActionGroup align="start">
           <Button type="submit" disabled={!canSubmit} className="gap-1">
             <Plus className="h-4 w-4" />
             {isPending ? t('common.creating') : t('issueCreate.submit')}
@@ -486,7 +487,7 @@ export function IssueCreatePage() {
           >
             {t('common.cancel')}
           </Button>
-        </div>
+        </ActionGroup></div>
       </form>
     </div>
   )

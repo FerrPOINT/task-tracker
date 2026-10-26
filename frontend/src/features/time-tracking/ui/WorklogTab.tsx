@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 import {
+  ActionGroup,
   EmptyState,
   Table,
   TableHeader,
@@ -130,7 +131,7 @@ export function WorklogTab({
                     <TableCell className="max-w-[200px] truncate">{w.comment ?? '-'}</TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       {w.userId === currentUserId && (
-                        <div className="flex items-center justify-end gap-1">
+                        <ActionGroup align="end">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -149,7 +150,7 @@ export function WorklogTab({
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </div>
+                        </ActionGroup>
                       )}
                     </TableCell>
                   </TableRow>
@@ -167,7 +168,7 @@ export function WorklogTab({
                       <div className="min-w-0 break-words">{w.userDisplayName}</div>
                     </ResourceListTitle>
                     {w.userId === currentUserId && (
-                      <div className="flex items-center gap-1">
+                      <ActionGroup align="start">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -186,7 +187,7 @@ export function WorklogTab({
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
-                      </div>
+                      </ActionGroup>
                     )}
                   </div>
                   <dl className="grid gap-1">
