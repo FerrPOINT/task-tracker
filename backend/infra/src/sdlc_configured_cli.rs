@@ -102,7 +102,9 @@ impl PostgresSdlcRepository {
         let saved=tx.query_one(statement("SELECT payload FROM sdlc_confirmations WHERE task_id=$1 AND id=$2 AND revision=$3 AND content_hash=$4",
             vec![task.into(),confirmation.id.into(),command.requirement_revision.into(),command.content_hash.clone().into()])).await.map_err(map_db)?
             .ok_or_else(||AppError::conflict("owner confirmation ledger missing"))?;
-        if saved.try_get::<Json>("", "payload").map_err(map_db)? != json_value(confirmation)? {
+        if saved.try_get::<Json>("", "payload").map_err(map_db)?
+            != serde_json::to_value(confirmation).map_err(AppError::internal)?
+        {
             return Err(AppError::conflict("owner confirmation ledger mismatch"));
         }
         let row = tx
