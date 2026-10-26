@@ -30,6 +30,7 @@ mod m20261018_0000098_pm_unsubmitted_recovery;
 mod m20261021_0000099_pm_bootstrap_retry;
 mod m20261023_0000103_pm_settled_input_recovery;
 mod m20261026_0000104_pm_manual_recovery_budget;
+mod m20261026_0000105_configured_cli;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -132,6 +133,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261022_0000103_identity_deletion::Migration),
             Box::new(m20261023_0000103_pm_settled_input_recovery::Migration),
             Box::new(m20261026_0000104_pm_manual_recovery_budget::Migration),
+            Box::new(m20261026_0000105_configured_cli::Migration),
         ]
     }
 }
