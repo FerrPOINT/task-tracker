@@ -707,7 +707,7 @@ fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_publishe
     };
     let checkpoint = PmFeedbackCheckpoint {
         fence: fence.clone(),
-        checkpoint_id: Some(Uuid::new_v4()),
+        checkpoint_id: Uuid::new_v4(),
         checkpoint_version: 1,
         previous_run_id: Uuid::new_v4(),
         previous_run_terminal: ArtifactReceipt {
