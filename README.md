@@ -243,6 +243,14 @@ Commercial, production, resale, redistribution, SaaS/hosting use require written
 
 Нормативные термины и зависимости: [PDLC и интеграция с Base](docs/PDLC_BASE_INTEGRATION.md).
 
+## Разработка UI со справочником Base
+
+[Порядок для разработчика и ИИ](https://github.com/FerrPOINT/services-base/blob/ae2b41291eee5af752daff89f760fba5aff41783/base-modules/ui/reference/guides/agent.md): версия UI → check → поиск/карточка
+→ один пример → интеграция → проверка поведения.
+Из корня подготовленного React-продукта: `pnpm --dir frontend exec pdlc-ui`.
+Полный каталог и запуск Storybook/API для offline-поиска не нужны. Общие
+компоненты и брендинг исправляются в Base, данные и правила остаются у продукта.
+
 ## Единое пространство PDLC
 
 [Согласованная M:N-модель и план](docs/plans/unified-spaces-20261019.md): реализация в работе. Source, tests,
@@ -265,3 +273,16 @@ integration/live/E2E приёмку. Перед относящейся к дан
 
 Полный workspace-набор тоже ручной: автоматический backend выполняет короткие
 SDK/domain unit tests; прежний полный набор сохранён с manual predicate.
+
+## Владелец identity references и Admin metadata
+
+Private `check/freeze/release` сохраняет durable fences и прежнюю identity-историю;
+unknown references не превращаются в zero. Настройки
+`TT_IDENTITY_LEGACY_ISSUER` и `TT_IDENTITY_DELETION_COORDINATOR_SUBJECTS` требуют
+операторской проверки deployment; примеры в `.env.example` закомментированы.
+Human Admin memberships по умолчанию недоступны: только явный
+`TT_USER_MANAGEMENT_READ_ENABLED=true` включает read-only проекцию.
+`TT_USER_MANAGEMENT_MACHINE_SUBJECTS` исключает subjects, не выдаёт полномочий.
+См. [deployment](docs/DEPLOYMENT.md#private-identity-deletion-owner) и
+[контракт](docs/IDENTITY_DELETION.md). Отдельный genuine owner curl не подтверждает
+полный cohort восьми owners, Kubernetes или установленный rollout.

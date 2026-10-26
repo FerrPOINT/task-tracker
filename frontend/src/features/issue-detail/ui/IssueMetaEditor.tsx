@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
-import { Select, Button } from '@pdlc/ui/ui'
+import { Select, Button, Notice } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -132,25 +132,28 @@ export function IssueMetaEditor({
           ]}
         />
         {usersQuery.isError && (
-          <div className="flex flex-wrap items-center gap-2">
-            <p role="alert" className="text-xs text-danger">
-              {t(
-                usersQuery.data
-                  ? 'issue.assigneeDirectoryRefreshError'
-                  : 'issue.assigneeDirectoryError',
-              )}
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-10"
-              disabled={usersQuery.isFetching}
-              onClick={() => void usersQuery.refetch()}
-            >
-              {t('common.retry')}
-            </Button>
-          </div>
+          <Notice
+            role="alert"
+            tone="danger"
+            appearance="inline"
+            actions={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={usersQuery.isFetching}
+                onClick={() => void usersQuery.refetch()}
+              >
+                {t('common.retry')}
+              </Button>
+            }
+          >
+            {t(
+              usersQuery.data
+                ? 'issue.assigneeDirectoryRefreshError'
+                : 'issue.assigneeDirectoryError',
+            )}
+          </Notice>
         )}
       </div>
 

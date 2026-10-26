@@ -1,4 +1,4 @@
-import { Input, Button, Textarea } from '@pdlc/ui/ui'
+import { Input, Button, Textarea, Notice, FormField, PageHeader } from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -72,24 +72,24 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
   if (!editing) {
     return (
       <div className="group min-w-0 cursor-pointer" onClick={startEdit}>
-        <div className="mb-2 flex items-start justify-between">
-          <h1 className="min-w-0 break-words text-2xl font-semibold text-text-primary">
-            {issue.summary}
-          </h1>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 opacity-100 xl:h-9 xl:w-9 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              startEdit()
-            }}
-            disabled={disabled}
-            aria-label={t('common.edit')}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        </div>
+        <PageHeader
+          title={issue.summary}
+          actions={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                startEdit()
+              }}
+              disabled={disabled}
+              aria-label={t('common.edit')}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          }
+        />
         {issue.description ? (
           hasLongDescription ? (
             <>
@@ -103,7 +103,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="mt-1 h-10 px-0 lg:hidden"
+                className="mt-1 px-0 lg:hidden"
                 aria-controls={descriptionId}
                 aria-expanded={descriptionExpanded}
                 onClick={(event) => {
@@ -126,29 +126,38 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <div>
-        <Input
-          {...register('summary')}
-          variant="heading"
-          aria-label={t('issueCreate.summary')}
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-2xl font-semibold text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-        {errors.summary && (
-          <p className="mt-1 text-xs text-red-500">{t('issue.summaryRequired')}</p>
+      <FormField
+        id={`${descriptionId}-summary`}
+        label={t('issueCreate.summary')}
+        error={errors.summary ? t('issue.summaryRequired') : undefined}
+      >
+        {(attrs) => (
+          <Input
+            {...attrs}
+            {...register('summary')}
+            variant="heading"
+            aria-label={t('issueCreate.summary')}
+            className="w-full"
+          />
         )}
-      </div>
-      <Textarea
-        {...register('description')}
-        rows={8}
-        placeholder={t('issue.descriptionPlaceholder')}
-      />
+      </FormField>
+      <FormField id={descriptionId} label={t('issueCreate.description')}>
+        {(attrs) => (
+          <Textarea
+            {...attrs}
+            {...register('description')}
+            rows={8}
+            placeholder={t('issue.descriptionPlaceholder')}
+          />
+        )}
+      </FormField>
       {saveError && (
-        <p role="alert" className="text-sm text-danger">
+        <Notice role="alert" tone="danger" appearance="inline">
           {saveError}
-        </p>
+        </Notice>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" className="h-10 xl:h-8" disabled={disabled || isSubmitting}>
+        <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
         </Button>
@@ -156,7 +165,6 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           type="button"
           variant="secondary"
           size="sm"
-          className="h-10 xl:h-8"
           onClick={cancel}
           disabled={disabled || isSubmitting}
         >

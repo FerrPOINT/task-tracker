@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useState } from 'react'
-import { Button, Checkbox, ErrorState, Input, LoadingState } from '@pdlc/ui/ui'
+import { Fieldset, Button, Checkbox, ErrorState, Input, LoadingState } from '@pdlc/ui/ui'
 import { spaceKey, type SpaceRef } from '@/api/space-catalog'
 import { useVisibleSpaces } from '@/shared/api/useVisibleSpaces'
 
@@ -44,8 +44,8 @@ export function SpaceSetField({
     }
   }
   return (
-    <fieldset className="space-y-3 border-0 p-0" aria-busy={catalog.isFetching || undefined}>
-      <legend className="text-sm font-medium">Пространства проекта</legend>
+    <Fieldset className="space-y-3" aria-busy={catalog.isFetching || undefined} legend={"Пространства проекта"}>
+
       <p className="text-sm text-text-muted">
         Проекту нужно хотя бы одно пространство. Новые связи добавляются с активными пространствами.
       </p>
@@ -148,6 +148,6 @@ export function SpaceSetField({
           )
         })}
       </div>
-    </fieldset>
+    </Fieldset>
   )
 }

@@ -2,13 +2,19 @@ import { useId, useState } from 'react'
 import { Outlet, useOutletContext, useParams, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  PageHeader,
+  SectionNavigation,
+  SectionNavigationItem,
+  SectionHeader,
   toast,
   Textarea,
   Button,
   ErrorState,
   Input,
+  FormField,
   LoadingState,
   ProjectAvatar,
+  Notice,
 } from '@pdlc/ui/ui'
 
 import { useProjectDetails, useUpdateProject } from '@/shared/api/hooks'
@@ -29,32 +35,21 @@ export function ProjectSettingsPage() {
   const base = `/projects/${encodeURIComponent(projectKey)}/settings`
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <p className="text-sm text-text-muted">{t('projectSettings.title')}</p>
-        <h1 className="flex min-w-0 items-center gap-3 text-xl font-semibold sm:text-2xl">
-          <ProjectAvatar projectKey={projectKey} />
-          <span className="break-words">{project.data.name}</span>
-          <span className="text-sm font-normal text-text-muted">{projectKey}</span>
-        </h1>
-      </header>
-      <nav
-        aria-label={t('projectSettings.title')}
-        className="flex flex-wrap gap-1 border-b border-border"
-      >
+      <PageHeader
+        title={`${project.data.name} ${projectKey}`}
+        leading={<ProjectAvatar projectKey={projectKey} />}
+        context={t('projectSettings.title')}
+      />
+      <SectionNavigation aria-label={t('projectSettings.title')}>
         {[
           { to: base, label: t('projectSettings.general') },
           { to: `${base}/custom-fields`, label: t('customFields.title') },
         ].map(({ to, label }) => (
-          <ProjectLink
-            key={to}
-            to={to}
-            aria-current={pathname === to ? 'page' : undefined}
-            className={`min-h-11 border-b-2 px-3 py-3 text-sm font-medium ${pathname === to ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text-primary'}`}
-          >
-            {label}
-          </ProjectLink>
+          <SectionNavigationItem key={to} asChild active={pathname === to}>
+            <ProjectLink to={to}>{label}</ProjectLink>
+          </SectionNavigationItem>
         ))}
-      </nav>
+      </SectionNavigation>
       <Outlet key={project.data.id} context={project.data} />
     </div>
   )
@@ -104,44 +99,48 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
         )
       }}
     >
-      <h2 className="text-base font-semibold">{t('projectSettings.general')}</h2>
-      <div className="space-y-2 text-sm">
-        <label htmlFor={`${id}-key`}>{t('projects.key')}</label>
-        <Input id={`${id}-key`} value={project.key} readOnly aria-describedby={`${id}-key-help`} />
-        <p id={`${id}-key-help`} className="text-xs text-text-muted">
-          {t('projectSettings.keyHelp')}
-        </p>
-      </div>
-      <div className="space-y-2 text-sm">
-        <label htmlFor={`${id}-name`}>{t('projects.name')}</label>
-        <Input
-          id={`${id}-name`}
-          value={name}
-          required
-          disabled={update.isPending}
-          onChange={(event) => {
-            update.reset()
-            setName(event.target.value)
-          }}
-        />
-      </div>
-      <div className="space-y-2 text-sm">
-        <label htmlFor={`${id}-description`}>{t('projects.description')}</label>
-        <Textarea
-          id={`${id}-description`}
-          className="w-full min-h-28"
-          value={description}
-          disabled={update.isPending}
-          onChange={(event) => {
-            update.reset()
-            setDescription(event.target.value)
-          }}
-        />
-      </div>
+      <SectionHeader level={2} title={<>{t('projectSettings.general')}</>} />
+      <FormField
+        id={`${id}-key`}
+        label={t('projects.key')}
+        hint={<span id={`${id}-key-help`}>{t('projectSettings.keyHelp')}</span>}
+      >
+        {(attrs) => (
+          <Input {...attrs} value={project.key} readOnly aria-describedby={`${id}-key-help`} />
+        )}
+      </FormField>
+      <FormField id={`${id}-name`} label={t('projects.name')} required>
+        {(attrs) => (
+          <Input
+            {...attrs}
+            value={name}
+            required
+            disabled={update.isPending}
+            onChange={(event) => {
+              update.reset()
+              setName(event.target.value)
+            }}
+          />
+        )}
+      </FormField>
+      <FormField id={`${id}-description`} label={t('projects.description')}>
+        {(attrs) => (
+          <Textarea
+            {...attrs}
+            className="w-full min-h-28"
+            value={description}
+            disabled={update.isPending}
+            onChange={(event) => {
+              update.reset()
+              setDescription(event.target.value)
+            }}
+          />
+        )}
+      </FormField>
       {update.isError && (
-        <p role="alert" className="text-sm text-danger">
+        <Notice role="alert" tone="danger" appearance="inline">
           {t('projectSettings.saveError')}
-        </p>
+        </Notice>
       )}
       <div className="flex gap-2">
         <Button type="submit" disabled={!dirty || !name.trim() || update.isPending}>

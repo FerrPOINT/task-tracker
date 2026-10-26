@@ -1,21 +1,19 @@
-import { memo, useState } from 'react'
+import { memo, useId, useState } from 'react'
 import { CommentBody } from '@/entities/comment/ui/CommentBody'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  ConfirmDialog,
   Button,
   ErrorState,
   Textarea,
-  Label,
+  FormField,
+  Notice,
+  Card,
+  CardContent,
+  UserAvatar,
 } from '@pdlc/ui/ui'
 
 import {
@@ -40,6 +38,7 @@ export function CommentForm({
   submitLabel,
 }: CommentFormProps) {
   const { t } = useTranslation()
+  const fieldId = useId()
   const schema = z.object({
     body: z.string().min(1, t('comments.validation.required')),
   })
@@ -62,23 +61,25 @@ export function CommentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="space-y-1">
-        <Label htmlFor="comment-body">{t('comments.body')}</Label>
-        <Textarea
-          id="comment-body"
-          {...form.register('body')}
-          placeholder={t('comments.placeholder')}
-          rows={4}
-        />
-        {form.formState.errors.body && (
-          <p className="text-xs text-danger">{form.formState.errors.body.message}</p>
+      <FormField
+        id={fieldId}
+        label={t('comments.body')}
+        error={form.formState.errors.body?.message}
+      >
+        {(attrs) => (
+          <Textarea
+            {...attrs}
+            {...form.register('body')}
+            placeholder={t('comments.placeholder')}
+            rows={4}
+          />
         )}
-        {submitError && (
-          <p role="alert" className="text-xs text-danger">
-            {submitError}
-          </p>
-        )}
-      </div>
+      </FormField>
+      {submitError && (
+        <Notice role="alert" tone="danger" appearance="inline">
+          {submitError}
+        </Notice>
+      )}
       <div className="flex justify-end gap-2">
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
@@ -111,37 +112,32 @@ export const CommentItem = memo(function CommentItem({
   const date = new Date(comment.createdAt).toLocaleString()
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="h-8 w-8 rounded-full bg-accent/20 text-center text-sm leading-8 text-accent">
-            {(comment.authorName ?? '?').charAt(0).toUpperCase()}
-          </span>
-          <div>
-            <p className="text-sm font-medium text-text-primary">
-              {comment.authorName ?? t('comments.unknown')}
-            </p>
-            <p className="text-xs text-text-muted">{date}</p>
+    <Card>
+      <CardContent>
+        <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <UserAvatar name={comment.authorName} userId={comment.authorId} size="md" />
+            <div className="min-w-0 [overflow-wrap:anywhere]">
+              <p className="text-sm font-medium text-text-primary">
+                {comment.authorName ?? t('comments.unknown')}
+              </p>
+              <p className="text-xs text-text-muted">{date}</p>
+            </div>
           </div>
+          {isAuthor && (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
+                {t('common.edit')}
+              </Button>
+              <Button variant="destructive-outline" size="sm" onClick={() => onDelete(comment.id)}>
+                {t('common.delete')}
+              </Button>
+            </div>
+          )}
         </div>
-        {isAuthor && (
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
-              {t('common.edit')}
-            </Button>
-            <Button
-              variant="destructive-outline"
-              size="sm"
-              className="text-danger"
-              onClick={() => onDelete(comment.id)}
-            >
-              {t('common.delete')}
-            </Button>
-          </div>
-        )}
-      </div>
-      <CommentBody body={comment.body} />
-    </div>
+        <CommentBody body={comment.body} />
+      </CardContent>
+    </Card>
   )
 })
 
@@ -241,38 +237,24 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
-      <AlertDialog
+      <ConfirmDialog
         open={deleteConfirmOpen}
         onOpenChange={(open) => !remove.isPending && setDeleteConfirmOpen(open)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.delete')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('comments.deleteConfirm')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && (
-            <p role="alert" className="text-sm text-danger">
-              {deleteError}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={remove.isPending}
-              onClick={(event) => {
-                event.preventDefault()
-                if (!pendingDeleteId) return
-                remove.mutate(pendingDeleteId, {
-                  onSuccess: () => setDeleteConfirmOpen(false),
-                  onError: (error) => setDeleteError(error.message),
-                })
-              }}
-            >
-              {remove.isPending ? t('common.loading') : t('common.confirm')}
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t('common.delete')}
+        description={t('comments.deleteConfirm')}
+        isPending={remove.isPending}
+        error={deleteError}
+        confirmLabel={t('common.confirm')}
+        cancelLabel={t('common.cancel')}
+        pendingLabel={t('common.loading')}
+        onConfirm={() => {
+          if (!pendingDeleteId) return
+          remove.mutate(pendingDeleteId, {
+            onSuccess: () => setDeleteConfirmOpen(false),
+            onError: (error) => setDeleteError(error.message),
+          })
+        }}
+      />
     </div>
   )
 }

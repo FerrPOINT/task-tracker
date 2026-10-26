@@ -2,7 +2,9 @@
 
 ## 1. Overview
 
-Frontend — одностраничное React-приложение на Vite 6.2.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui. Архитектура построена по методологии **Feature-Sliced Design (FSD)** с элементами **Atomic Design** для презентационных компонентов.
+Frontend — одностраничное React-приложение на Vite, TypeScript и Tailwind CSS.
+Общие UI-компоненты и оформление предоставляет публичный `@pdlc/ui` Base;
+предметные страницы и feature adapters организованы по Feature-Sliced Design.
 
 Цели:
 
@@ -20,7 +22,7 @@ Frontend — одностраничное React-приложение на Vite 6
 | Build | Vite 6.2.0 |
 | Language | TypeScript 5.9.3 |
 | Styling | Tailwind CSS 4.1.0 + CSS variables |
-| Components | shadcn/ui + Radix primitives |
+| Components | Публичный `@pdlc/ui` Base |
 | State (server) | @tanstack/react-query 5.74.4 |
 | State (client) | zustand 5.0.3 |
 | Routing | react-router 8.1.0 |
@@ -31,7 +33,7 @@ Frontend — одностраничное React-приложение на Vite 6
 | Date | date-fns 4.1.0 |
 | Virtualization | @tanstack/react-virtual |
 | Charts | recharts |
-| Toasts | sonner |
+| Toasts | `Toaster`/`toast` из `@pdlc/ui`; Sonner принадлежит Base |
 | Tests | vitest 4.1.10 + @testing-library/react 16.x + playwright 1.61.1 |
 | E2E | Playwright 1.61.1 |
 
@@ -90,7 +92,7 @@ frontend/src/
 │   └── notification/
 ├── shared/                 # Переиспользуемый код
 │   ├── api/                # axios/fetch instance, interceptors
-│   ├── ui/                 # shadcn/ui primitives (Button, Input, Dialog)
+│   ├── ui/                 # Только предметные адаптеры; примитивы импортируются из Base
 │   ├── lib/                # utils (cn, formatters)
 │   ├── config/             # env, constants
 │   ├── hooks/              # generic hooks (useDebounce, useMediaQuery)
@@ -156,7 +158,7 @@ export { formatIssueKey } from "./lib/formatIssueKey"
 
 | Уровень | Папка | Примеры |
 |---------|-------|---------|
-| Atoms | `shared/ui/` | Button, Input, Badge, Label |
+| Общие примитивы | `@pdlc/ui/ui` | Button, Input, Badge, Label; реализация в Base |
 | Molecules | `entities/*/ui/` | IssueSummary, UserAvatar |
 | Organisms | `widgets/` | IssueCard, BoardColumn, FilterPanel |
 | Templates | `pages/*/ui/` | ProjectLayout, IssueLayout |
@@ -166,7 +168,7 @@ export { formatIssueKey } from "./lib/formatIssueKey"
 
 ```tsx
 // organisms/IssueCard.tsx
-import { Card } from "@/shared/ui/card"
+import { Card } from "@pdlc/ui/ui"
 import { IssueSummary } from "@/entities/issue/ui/IssueSummary"
 import { IssueTypeBadge } from "@/entities/issue/ui/IssueTypeBadge"
 import { AssignIssueFeature } from "@/features/assign-issue"
@@ -312,7 +314,7 @@ export function CreateIssueForm({ projectId }: { projectId: string }) {
 ## 11. Error Handling
 
 - ErrorBoundary на уровне pages/widgets.
-- Query error → toast через sonner.
+- Query error → явное состояние ресурса Base; уведомления через `toast` Base.
 - Mutation error → inline form error.
 - 401 → redirect to login.
 
@@ -380,3 +382,53 @@ Content mutations используют [исходный scope операции]
 Identity mutations остаются вне space admission. Guard обязан предшествовать
 private cache write/download/navigation; произвольный async callback проверяет
 scope после своего await. Server authorization остаётся независимой.
+
+## Действие добавления на доске
+
+Пунктирное оформление действия принадлежит `Button variant="dashed"` Base.
+`CreateTaskAction` остаётся предметным адаптером: проверяет доверенный каталог
+Fleet, идентичность проекта, отмену запроса и открывает PM chat. Board передаёт
+проект, подпись и внешний margin выбранной плотности, не копирует общий skin.
+Новый вариант должен присутствовать в принятом UI pin; source checkout и
+установленная платформа проверяются отдельно.
+
+
+## Размеры продуктовых действий
+
+`CreateTaskAction` передаёт параметры оформления своему Base Button. В backlog
+и shell не задаются повторно min-height, внутренние padding, шрифт и gap:
+размеры `sm`, `default` и `icon` принадлежат Base, включая мобильный минимум.
+Sprint actions и project menu trigger также используют готовые варианты;
+ширина контекста проекта, responsive visibility, внешние отступы и позиция
+счётчика остаются компоновкой Tracker. Контракт перехода, namespace, права,
+notifications и мутации спринтов этим оформлением не изменяются.
+
+
+## Навигация разделов и ссылки внутри текста
+
+Namespace landing и маршруты настроек проекта используют `SectionNavigation`
+и `SectionNavigationItem asChild` Base. Tracker передаёт свой `ProjectLink`,
+точный URL и признак активного маршрута; библиотека задаёт общие padding,
+радиусы, selected/focus и минимальную область нажатия. Это навигация между
+страницами, а не Tabs с клиентскими панелями. Ссылка на каталог без выбранного
+namespace и breadcrumb проекта в задаче используют `TextLink asChild`.
+
+`ProjectLink` сохраняет `project_scope`, проверенный namespace и нативные
+переходы ссылок. Архивный проект не получает действие создания; ошибочная
+привязка не подменяется каталогом. Данные, query hooks и callbacks сохранения
+остаются в Tracker. Оставшиеся многострочные ссылки результатов/уведомлений
+и логотип требуют отдельной классификации, а не механической обёртки TextLink.
+
+
+## Ссылки ресурсов и общий sizing
+
+Уведомление со ссылкой и действие «прочитано» — соседние области ResourceListRow,
+без button внутри anchor. Нативная ссылка сохраняет один callback прочитанности
+при активации; hover/focus не выполняют запись. Запись без action_url остаётся
+текстом. Отдельные label-оболочки заменены label-контрактами Checkbox/Switch.
+Заголовки поиска и задач доски используют TextLink, логотип shell — Button
+asChild/ghost/icon. Namespace, DnD, фильтры, статусы и handlers принадлежат Tracker.
+
+Общие высоты Button/Input и размеры/шрифт TabsTrigger не копируются в pages;
+width, line-clamp и внешние отступы данных сохраняются. Source-проверка не
+означает обновление принятого UI pin или установленного стенда.

@@ -706,3 +706,5 @@ expiry закрывает операцию. Включение берётся и
 Реализация и тесты находятся в feature-ветке; полный runtime cohort и реальное
 связанное задание не считаются принятыми по одному owner adapter. Подробности:
 [человеческие роли и приложения](HUMAN_APPLICATION_ACCESS.md).
+
+Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).

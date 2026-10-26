@@ -1713,3 +1713,5 @@ Draft допускает явный выбор источника в той же
 barrier и scheduler-only API. Задача, execution, назначение, ID lease, исходный
 claim и история сохраняются. Восстановление не сбрасывает задачу, не создаёт
 фиктивный terminal/checkpoint и само по себе не разрешает runtime dispatch.
+
+Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).

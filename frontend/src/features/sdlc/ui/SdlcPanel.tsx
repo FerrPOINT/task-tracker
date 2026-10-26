@@ -1,4 +1,5 @@
 import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
+import { Notice, SectionHeader } from '@pdlc/ui/ui'
 import {
   Disclosure,
   Button,
@@ -179,20 +180,23 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
 
   return (
     <section aria-label={t('sdlc.title')} className="min-w-0 border-t border-border pt-4 text-sm">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">{t('sdlc.title')}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          title={t('sdlc.refresh')}
-          aria-label={t('sdlc.refresh')}
-          disabled={snapshot.isFetching || metadata.isFetching || confirm.isPending}
-          onClick={() => void refresh()}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-      <p role="status" className="mb-3 text-text-muted">
+      <SectionHeader
+        title={t('sdlc.title')}
+        className="mb-3"
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t('sdlc.refresh')}
+            aria-label={t('sdlc.refresh')}
+            disabled={snapshot.isFetching || metadata.isFetching || confirm.isPending}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        }
+      />
+      <Notice role="status" tone="neutral" appearance="inline">
         {snapshot.isFetching
           ? t('sdlc.refreshing')
           : snapshot.error
@@ -201,7 +205,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
         <time dateTime={new Date(snapshot.dataUpdatedAt).toISOString()}>
           {new Date(snapshot.dataUpdatedAt).toLocaleString()}
         </time>
-      </p>
+      </Notice>
       {snapshot.error && (
         <ErrorState message={errorMessage(snapshot.error)} onRetry={() => void refresh()} />
       )}
@@ -231,7 +235,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
       {context.stage === 'Analysis' &&
         (intent ? (
           <section aria-label={t('sdlc.intent')} className="mb-5 border-y border-border py-4">
-            <h3 className="mb-2 font-semibold">{t('sdlc.intent')}</h3>
+            <SectionHeader level={3} title={<>{t('sdlc.intent')}</>} className="mb-2" />
             <p className="mb-3 font-medium text-text-primary">
               {intent.stage} / {intent.status} · {t('sdlc.awaitingAdmission')}
             </p>
@@ -270,9 +274,15 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
 
       {requirements ? (
         <section aria-label={t('sdlc.requirements')} className="min-w-0">
-          <h3 className="mb-2 font-semibold">
-            {t('sdlc.requirements')} · {t('sdlc.revision')} {requirements.revision}
-          </h3>
+          <SectionHeader
+            level={3}
+            title={
+              <>
+                {t('sdlc.requirements')} · {t('sdlc.revision')} {requirements.revision}
+              </>
+            }
+            className="mb-2"
+          />
           <dl className="mb-4">
             <DescriptionItem layout="inline" label="SHA-256">
               {requirements.content_hash}
@@ -280,7 +290,11 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
           </dl>
           {documentFields.map((field) => (
             <div key={field} className="mb-4 min-w-0">
-              <h4 className="mb-1 font-medium">{t(`sdlc.document.${field}`)}</h4>
+              <SectionHeader
+                level={4}
+                title={<>{t(`sdlc.document.${field}`)}</>}
+                className="mb-1"
+              />
               {typeof requirements[field] === 'string' ? (
                 <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
                   {requirements[field]}
@@ -297,7 +311,11 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
           {isRequirementsReviewContext(context) && (
             <div className="border-t border-border py-4">
               {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
-              {confirm.data && <p role="status">{t('sdlc.confirmationSaved')}</p>}
+              {confirm.data && (
+                <Notice role="status" tone="success" appearance="inline">
+                  {t('sdlc.confirmationSaved')}
+                </Notice>
+              )}
               {context.permissions.can_confirm ? (
                 <>
                   <Label className="mb-3 flex min-h-10 items-start gap-2">
@@ -312,7 +330,11 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                     <span>{t('sdlc.acknowledge', { revision: requirements.revision })}</span>
                   </Label>
                   <section aria-label={t('sdlc.publication.title')} className="mb-4 min-w-0">
-                    <h4 className="mb-2 font-medium">{t('sdlc.publication.title')}</h4>
+                    <SectionHeader
+                      level={4}
+                      title={<>{t('sdlc.publication.title')}</>}
+                      className="mb-2"
+                    />
                     {routingPolicy.isFetching && (
                       <LoadingState message={t('sdlc.publication.loading')} />
                     )}
@@ -351,9 +373,11 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                 const route = displayedPolicy.routes[role]
                                 return (
                                   <section key={role} className="border-b border-border py-2">
-                                    <h5 className="mb-1 font-medium">
-                                      {t(`sdlc.publication.roles.${role}`)}
-                                    </h5>
+                                    <SectionHeader
+                                      level={5}
+                                      title={<>{t(`sdlc.publication.roles.${role}`)}</>}
+                                      className="mb-1"
+                                    />
                                     <dl>
                                       <DescriptionItem
                                         layout="inline"
@@ -421,9 +445,9 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                               </span>
                             </Label>
                             {selected && !publicationReady && (
-                              <p role="status" className="mt-2 text-text-muted">
+                              <Notice role="status" tone="neutral" appearance="inline">
                                 {t('sdlc.publication.stale')}
-                              </p>
+                              </Notice>
                             )}
                           </>
                         )}
@@ -431,7 +455,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                   <Button
                     disabled={!canConfirm || acknowledgedPin !== pin || !publicationReady}
                     onClick={() => submitConfirmation(requirements)}
-                    className="min-h-10 whitespace-normal"
+                    className="whitespace-normal"
                   >
                     <Check className="h-4 w-4 shrink-0" />
                     {confirm.isPending ? t('sdlc.confirming') : t('sdlc.confirm')}
@@ -448,9 +472,9 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
       )}
 
       <section className="mt-4 min-w-0 border-t border-border pt-4" aria-label={t('sdlc.history')}>
-        <h3 className="mb-2 font-semibold">{t('sdlc.history')}</h3>
+        <SectionHeader level={3} title={<>{t('sdlc.history')}</>} className="mb-2" />
         {metadata.dataUpdatedAt > 0 && (
-          <p role="status" className="mb-2 text-text-muted">
+          <Notice role="status" tone="neutral" appearance="inline">
             {metadata.isFetching
               ? t('sdlc.refreshing')
               : metadata.error
@@ -459,7 +483,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
             <time dateTime={new Date(metadata.dataUpdatedAt).toISOString()}>
               {new Date(metadata.dataUpdatedAt).toLocaleString()}
             </time>
-          </p>
+          </Notice>
         )}
         {metadata.error ? (
           <ErrorState

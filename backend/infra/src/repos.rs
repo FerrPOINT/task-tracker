@@ -210,6 +210,34 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn identity_deletion_check(
+        &self,
+        request: &shared::identity_deletion::DeletionRequest,
+        window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerReferenceSummary, AppError> {
+        crate::identity_deletion::IdentityDeletionStore::new(self.db.raw())
+            .identity_owner_check(request, window)
+            .await
+    }
+    async fn identity_deletion_freeze(
+        &self,
+        request: &shared::identity_deletion::DeletionRequest,
+        window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerFreezeReceipt, AppError> {
+        crate::identity_deletion::IdentityDeletionStore::new(self.db.raw())
+            .identity_owner_freeze(request, window)
+            .await
+    }
+    async fn identity_deletion_release(
+        &self,
+        request: &shared::identity_deletion::DeletionRequest,
+        window: &shared::identity_deletion::IdentityDeletionWindow,
+    ) -> Result<shared::identity_deletion::OwnerReleaseReceipt, AppError> {
+        crate::identity_deletion::IdentityDeletionStore::new(self.db.raw())
+            .identity_owner_release(request, window)
+            .await
+    }
+
     async fn central_subject(&self, user: UserId) -> Result<Option<String>, AppError> {
         let row = user::Entity::find_by_id(user.as_uuid())
             .filter(user::Column::IsActive.eq(true))
@@ -2873,6 +2901,14 @@ struct ProjectMemberRepo {
 
 #[async_trait]
 impl ProjectMemberRepository for ProjectMemberRepo {
+    async fn identity_memberships(
+        &self,
+        subject: Uuid,
+        limit: u64,
+        offset: u64,
+    ) -> Result<domain::identity_memberships::IdentityMembershipPage, AppError> {
+        crate::identity_memberships::page(&self.db, subject, limit, offset).await
+    }
     async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError> {
         let models = project_member::Entity::find()
             .filter(project_member::Column::ProjectId.eq(project_id.as_uuid()))

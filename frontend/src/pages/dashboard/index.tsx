@@ -1,6 +1,16 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { ProjectAvatar, ResourceList, ResourceListRow, EmptyState, ErrorState } from '@pdlc/ui/ui'
+import {
+  Badge,
+  Button,
+  PageHeader,
+  SectionHeader,
+  ProjectAvatar,
+  ResourceList,
+  ResourceListRow,
+  EmptyState,
+  ErrorState,
+} from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
@@ -37,21 +47,24 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
+      <PageHeader title={t('dashboard.title')} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
         <section className="min-w-0 border-t border-border pt-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold">{t('dashboard.assignedToMe')}</h2>
-            {assigned.length > PREVIEW_LIMIT && (
-              <Link
-                to={assignedSearch}
-                className="text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                {t('dashboard.viewAllAssigned')}
-              </Link>
-            )}
-          </div>
+          <SectionHeader
+            level={2}
+            className="mb-3"
+            title={<>{t('dashboard.assignedToMe')}</>}
+            actions={
+              <>
+                {assigned.length > PREVIEW_LIMIT && (
+                  <Button asChild variant="link">
+                    <Link to={assignedSearch}>{t('dashboard.viewAllAssigned')}</Link>
+                  </Button>
+                )}
+              </>
+            }
+          />
           {dashboardLoading ? (
             <p className="text-sm text-text-muted">{t('dashboard.loadingAssigned')}</p>
           ) : dashboardError ? (
@@ -68,7 +81,7 @@ export function DashboardPage() {
                   <ResourceListRow asChild interactive key={item.id}>
                     <Link
                       to={`/issues/${item.id}`}
-                      className="grid gap-1.5 rounded-sm text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      className="grid gap-1.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                     >
                       <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
                         <span className="shrink-0 font-mono text-xs text-text-muted">
@@ -78,9 +91,9 @@ export function DashboardPage() {
                           {item.summary}
                         </span>
                       </span>
-                      <span className="w-fit rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+                      <Badge tone="muted" className="w-fit">
                         {statusLabel(item.status, t)}
-                      </span>
+                      </Badge>
                     </Link>
                   </ResourceListRow>
                 ))}
@@ -90,20 +103,25 @@ export function DashboardPage() {
         </section>
 
         <section className="min-w-0 border-t border-border pt-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold">
-              {t('dashboard.projects')}
-              {projects ? ` · ${projects.length}` : ''}
-            </h2>
-            {(projects?.length ?? 0) > PREVIEW_LIMIT && (
-              <Link
-                to="/projects"
-                className="text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                {t('projects.all')}
-              </Link>
-            )}
-          </div>
+          <SectionHeader
+            level={2}
+            className="mb-3"
+            title={
+              <>
+                {t('dashboard.projects')}
+                {projects ? ` · ${projects.length}` : ''}
+              </>
+            }
+            actions={
+              <>
+                {(projects?.length ?? 0) > PREVIEW_LIMIT && (
+                  <Button asChild variant="link">
+                    <Link to="/projects">{t('projects.all')}</Link>
+                  </Button>
+                )}
+              </>
+            }
+          />
           {projectsLoading ? (
             <p className="text-sm text-text-muted">{t('dashboard.loadingProjects')}</p>
           ) : projectsError ? (
@@ -118,7 +136,7 @@ export function DashboardPage() {
               <div>
                 {projects.slice(0, PREVIEW_LIMIT).map((project) => (
                   <ResourceListRow asChild interactive key={project.id}>
-                    <Link to={`/projects/${project.key}/board`} className="block rounded-sm">
+                    <Link to={`/projects/${project.key}/board`} className="block">
                       <div className="mb-1 flex items-center gap-2 break-words text-sm font-medium text-text-primary">
                         <ProjectAvatar projectKey={project.key} />
                         <span className="min-w-0">

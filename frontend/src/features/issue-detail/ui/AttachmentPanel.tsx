@@ -3,7 +3,16 @@ import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import { Button, ConfirmDialog, ResourceList, ResourceListRow, toast } from '@pdlc/ui/ui'
+import {
+  Button,
+  ConfirmDialog,
+  ResourceList,
+  ResourceListRow,
+  SectionHeader,
+  Progress,
+  Notice,
+  toast,
+} from '@pdlc/ui/ui'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -70,39 +79,42 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
 
   return (
     <div className="space-y-3" data-testid="attachment-panel">
-      <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <Paperclip className="h-4 w-4" aria-hidden />
-          {t('attachments.title')}
-          {attachments.length > 0 && (
-            <span className="text-muted-foreground">({attachments.length})</span>
-          )}
-        </h3>
-        <div>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="hidden"
-            data-testid="attachment-input"
-            onChange={(e) => {
-              void onPick(e.target.files)
-              e.target.value = ''
-            }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            aria-label={t('attachments.upload')}
-          >
-            <Paperclip className="mr-1 h-4 w-4" aria-hidden />
-            {uploading ? t('attachments.uploading') : t('attachments.upload')}
-          </Button>
-        </div>
-      </div>
+      <SectionHeader
+        level={3}
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Paperclip className="h-4 w-4" aria-hidden />
+            {t('attachments.title')}
+          </span>
+        }
+        context={attachments.length > 0 ? `(${attachments.length})` : undefined}
+        actions={
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              data-testid="attachment-input"
+              onChange={(e) => {
+                void onPick(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              aria-label={t('attachments.upload')}
+            >
+              <Paperclip className="mr-1 h-4 w-4" aria-hidden />
+              {uploading ? t('attachments.uploading') : t('attachments.upload')}
+            </Button>
+          </>
+        }
+      />
 
       {uploading &&
         Object.entries(progress).map(([index, item]) => (
@@ -113,14 +125,12 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                 {formatSize(item.loaded)} / {formatSize(item.total)}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
-              <div
-                className="h-full rounded-full bg-accent transition-all"
-                style={{
-                  width: `${item.total > 0 ? Math.round((item.loaded / item.total) * 100) : 0}%`,
-                }}
-              />
-            </div>
+            <Progress
+              value={item.total > 0 ? item.loaded : 0}
+              max={item.total > 0 ? item.total : 1}
+              aria-label={`${t('attachments.uploading')}: ${item.fileName}`}
+              aria-valuetext={`${formatSize(item.loaded)} / ${formatSize(item.total)}`}
+            />
           </div>
         ))}
 
@@ -181,9 +191,9 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
       )}
 
       {uploadError && (
-        <p className="text-sm text-destructive" data-testid="attachment-error">
+        <Notice tone="danger" appearance="inline" data-testid="attachment-error">
           {t('attachments.uploadFailed')}
-        </p>
+        </Notice>
       )}
       <ConfirmDialog
         open={pendingDelete !== null}

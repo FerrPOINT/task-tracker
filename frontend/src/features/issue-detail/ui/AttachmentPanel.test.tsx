@@ -98,4 +98,24 @@ describe('AttachmentPanel', () => {
     resolvers[1]?.()
     await waitFor(() => expect(screen.queryAllByTestId('upload-progress')).toHaveLength(0))
   })
+
+  it('exposes byte progress through the shared progressbar without changing the upload request', async () => {
+    mockAttachments.mockReturnValue({ data: [], isLoading: false, error: null })
+    let finish: (() => void) | undefined
+    mockUpload.mockImplementationOnce(({ onProgress }) => {
+      onProgress(2, 4)
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    render(wrapper(<AttachmentPanel issueId="progress-issue" />))
+    const file = new File(['test'], 'progress.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByTestId('attachment-input'), { target: { files: [file] } })
+    const progressbar = await screen.findByRole('progressbar', { name: /progress.txt/ })
+    expect(progressbar).toHaveAttribute('aria-valuenow', '2')
+    expect(progressbar).toHaveAttribute('aria-valuemax', '4')
+    expect(mockUpload).toHaveBeenLastCalledWith({ file, onProgress: expect.any(Function) })
+    finish?.()
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+  })
 })

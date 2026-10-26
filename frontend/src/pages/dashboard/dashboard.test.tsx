@@ -147,6 +147,13 @@ describe('DashboardPage', () => {
       '/search?assignee_id=u1',
     )
     expect(screen.getByRole('link', { name: /Все проекты/i })).toHaveAttribute('href', '/projects')
+    for (const name of [/Все мои задачи/i, /Все проекты/i]) {
+      const link = screen.getByRole('link', { name })
+      expect(link.tagName).toBe('A')
+      expect(link).toHaveClass('base-button')
+      expect(link).toHaveAttribute('data-variant', 'link')
+      expect(link.querySelector('button, a')).toBeNull()
+    }
     expect(screen.getByRole('link', { name: /TT-5/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /TT-6/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /P5 · Project 5/ })).toBeInTheDocument()

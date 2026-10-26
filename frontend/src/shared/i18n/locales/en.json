@@ -326,6 +326,7 @@
     "backToProjects": "Back to projects",
     "clear": "Clear",
     "filters": "Filters",
+    "mode": "Search mode",
     "modeSimple": "Simple",
     "loadError": "Could not load search results",
     "noResults": "No results",

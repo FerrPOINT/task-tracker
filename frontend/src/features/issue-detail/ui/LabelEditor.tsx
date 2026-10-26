@@ -8,7 +8,7 @@ import {
   useDetachLabel,
   useCreateLabel,
 } from '@/shared/api/hooks'
-import { Button, Input, toast } from '@pdlc/ui/ui'
+import { SectionHeader, Badge, Button, Input, toast, Notice } from '@pdlc/ui/ui'
 
 const PALETTE = [
   '#ef4444',
@@ -21,15 +21,7 @@ const PALETTE = [
   '#6b7280',
 ]
 
-export function labelForeground(color: string): '#000000' | '#ffffff' {
-  if (!/^#[0-9a-f]{6}$/i.test(color)) return '#000000'
-  const channels = [1, 3, 5].map((index) => {
-    const value = parseInt(color.slice(index, index + 2), 16) / 255
-    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-  })
-  const luminance = 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
-  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff'
-}
+export { readableForeground as labelForeground } from '@pdlc/ui/lib'
 
 export function LabelEditor({ issueId, projectKey }: { issueId: string; projectKey: string }) {
   const { t } = useTranslation()
@@ -74,33 +66,33 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
 
   return (
     <div className="space-y-2" data-testid="label-editor">
-      <h3 className="flex items-center gap-2 text-sm font-semibold">
-        <Tag className="h-4 w-4" aria-hidden />
-        {t('labels.title')}
-      </h3>
+      <SectionHeader
+        level={3}
+        title={
+          <>
+            <Tag className="h-4 w-4" aria-hidden />
+            {t('labels.title')}
+          </>
+        }
+      />
 
       {issueLabels.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {issueLabels.map((l) => (
-            <span
-              key={l.id}
-              className="inline-flex min-h-10 items-center gap-1 rounded-full pl-3 pr-0 text-xs font-medium"
-              style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
-              data-testid="issue-label"
-            >
+            <Badge key={l.id} subjectColor={l.color} data-testid="issue-label">
               {l.name}
               <Button
-                variant="ghost"
+                variant="subject"
+                size="icon"
                 type="button"
                 aria-label={t('labels.detach', { name: l.name })}
                 onClick={() =>
                   detach.mutate(l.id, { onError: (error) => toast.error(error.message) })
                 }
-                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full hover:bg-black/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
               >
                 <X className="h-3 w-3" aria-hidden />
               </Button>
-            </span>
+            </Badge>
           ))}
         </div>
       )}
@@ -116,7 +108,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
               onChange={(e) => setNewName(e.target.value)}
               aria-label={t('labels.nameLabel')}
               placeholder={t('labels.namePlaceholder')}
-              className="min-h-10 min-w-0 flex-1 text-xs"
+              className="min-w-0 flex-1"
               data-testid="label-name-input"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -128,7 +120,6 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             <Button
               type="button"
               size="sm"
-              className="h-10 xl:h-8"
               disabled={create.isPending || attach.isPending}
               onClick={() => void onCreate()}
             >
@@ -136,9 +127,9 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             </Button>
           </div>
           {createError && (
-            <p role="alert" className="text-xs text-danger">
+            <Notice role="alert" tone="danger" appearance="inline">
               {createError}
-            </p>
+            </Notice>
           )}
         </div>
       ) : (
@@ -147,15 +138,14 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             .filter((l) => !issueLabelIds.has(l.id))
             .map((l) => (
               <Button
-                variant="ghost"
+                variant="subject"
+                size="sm"
                 key={l.id}
                 type="button"
                 onClick={() =>
                   attach.mutate(l.id, { onError: (error) => toast.error(error.message) })
                 }
-                className="min-h-10 rounded-full px-3 text-xs font-medium transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
-                data-subject-color={l.color}
-                style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
+                subjectColor={l.color}
               >
                 + {l.name}
               </Button>
@@ -164,11 +154,10 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             type="button"
             variant="ghost"
             size="sm"
-            className="h-10 px-2 text-xs xl:h-8"
             onClick={() => setCreating(true)}
             aria-label={t('labels.create')}
           >
-            <Plus className="mr-1 h-3 w-3" aria-hidden />
+            <Plus className="h-3 w-3" aria-hidden />
             {t('labels.create')}
           </Button>
         </div>

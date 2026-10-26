@@ -1,4 +1,7 @@
+import { useClipboard } from '@pdlc/ui/lib'
 import {
+  Badge,
+  TextLink,
   ProjectAvatar,
   toast,
   Tabs,
@@ -72,6 +75,10 @@ export function IssueDetailPage() {
   const worklogTabRef = useRef<HTMLButtonElement | null>(null)
 
   const issueQuery = useIssue(id)
+  const issueClipboard = useClipboard(issueQuery.data?.key ?? '', {
+    onCopied: () => toast.success(t('issue.keyCopied')),
+    onCopyError: () => toast.error(t('issue.copyFailed')),
+  })
   const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
@@ -155,15 +162,6 @@ export function IssueDetailPage() {
 
   const handleDelete = (worklogId: string) => remove.mutateAsync(worklogId)
 
-  const copyKey = async () => {
-    try {
-      await navigator.clipboard.writeText(issue.key)
-      toast.success(t('issue.keyCopied'))
-    } catch {
-      toast.error(t('issue.copyFailed'))
-    }
-  }
-
   const updateActiveTab = (value: string) => {
     const nextTab = parseIssueTab(value)
     if (nextTab === latestTab.current) return
@@ -183,24 +181,23 @@ export function IssueDetailPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
             <div className="min-w-0 max-w-full break-words text-sm text-text-muted">
-              <Link
-                to={`/projects/${issue.project_key}/board`}
-                className="inline-flex items-center gap-2 min-h-6 max-w-full break-words rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                <ProjectAvatar projectKey={issue.project_key} size="xs" />
-                {issue.project_name}
-              </Link>{' '}
+              <TextLink asChild className="inline-flex max-w-full items-center gap-2">
+                <Link to={`/projects/${issue.project_key}/board`}>
+                  <ProjectAvatar projectKey={issue.project_key} size="xs" />
+                  {issue.project_name}
+                </Link>
+              </TextLink>{' '}
               / {issue.key}
             </div>
-            <span className="shrink-0 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
+            <Badge tone="info" className="shrink-0">
               {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
-            </span>
+            </Badge>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
-              className="h-10 xl:h-8"
+
               disabled={
                 updateIssue.isPending || !currentUserId || currentUserId === issue.assignee_id
               }
@@ -221,23 +218,27 @@ export function IssueDetailPage() {
                   ref={issueActionsRef}
                   variant="secondary"
                   size="icon"
-                  className="h-10 w-10 xl:h-9 xl:w-9"
+
                   aria-label={t('issue.actions')}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void copyKey()} className="gap-2">
+                <DropdownMenuItem
+                  disabled={issueClipboard.pending}
+                  onClick={() => void issueClipboard.copy()}
+                  className="gap-2"
+                >
                   <Copy className="h-4 w-4" />
                   {t('issue.copyKey')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  tone="danger"
                   onClick={() => {
                     deleteIssueMutation.reset()
                     setDeleteConfirmOpen(true)
                   }}
-                  className="gap-2 text-danger"
                 >
                   {t('issue.delete')}
                 </DropdownMenuItem>
@@ -281,21 +282,13 @@ export function IssueDetailPage() {
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
-                  <TabsTrigger className="min-h-10" value="activity">
-                    {t('issue.activity')}
-                  </TabsTrigger>
-                  <TabsTrigger className="min-h-10" value="comments">
-                    {t('issue.comments')}
-                  </TabsTrigger>
-                  <TabsTrigger ref={worklogTabRef} className="min-h-10" value="worklog">
+                  <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
+                  <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
+                  <TabsTrigger ref={worklogTabRef} value="worklog">
                     {t('timeTracking.worklog.title')}
                   </TabsTrigger>
-                  <TabsTrigger className="min-h-10" value="attachments">
-                    {t('attachments.title')}
-                  </TabsTrigger>
-                  <TabsTrigger className="min-h-10" value="sdlc">
-                    {t('sdlc.title')}
-                  </TabsTrigger>
+                  <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
+                  <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
                   {commentsQuery.error && (

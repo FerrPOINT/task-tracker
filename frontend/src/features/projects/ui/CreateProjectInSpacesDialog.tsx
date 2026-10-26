@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
-import {
+import { Fieldset,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -215,7 +215,7 @@ function CreateForm({
             create.mutate(journal.capture(request))
           })}
         >
-          <fieldset disabled={!catalogReady || busy} className="min-w-0 space-y-3 border-0 p-0">
+          <Fieldset disabled={!catalogReady || busy} className="min-w-0 space-y-3">
             <label className="block space-y-1" htmlFor={id + '-key'}>
               <span>Ключ проекта</span>
               <Input id={id + '-key'} maxLength={10} autoComplete="off" {...form.register('key')} />
@@ -232,7 +232,7 @@ function CreateForm({
               <span>Описание проекта</span>
               <Textarea id={id + '-description'} {...form.register('description')} />
             </label>
-          </fieldset>
+          </Fieldset>
           <Controller
             name="spaces"
             control={form.control}

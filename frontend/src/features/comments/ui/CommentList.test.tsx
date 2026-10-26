@@ -47,7 +47,7 @@ describe('CommentList', () => {
 })
 
 describe('CommentItem', () => {
-  it('preserves soft line breaks in paragraphs and list items without changing code blocks', async () => {
+  it('preserves soft line breaks in paragraphs and list items without changing code blocks', () => {
     const body =
       'Первая строка\nВторая строка\n\n- Первый пункт\n  Продолжение пункта\n\n```text\nfirst line\n  indented line\n```'
     const { container } = render(
@@ -57,23 +57,11 @@ describe('CommentItem', () => {
     )
     const paragraph = screen.getByText('Первая строка Вторая строка')
     expect(paragraph.textContent).toBe('Первая строка\nВторая строка')
-    expect(paragraph.parentElement).toHaveClass('[&_p]:whitespace-pre-line')
     const listItem = screen.getByRole('listitem')
     expect(listItem.textContent).toBe('Первый пункт\nПродолжение пункта')
-    expect(paragraph.parentElement).toHaveClass('[&_li]:whitespace-pre-line')
     expect(container.querySelector('pre code')?.textContent).toBe('first line\n  indented line\n')
-    const { compile } = await import('tailwindcss')
-    const compiler = await compile('@tailwind utilities;')
-    const style = document.createElement('style')
-    style.textContent = compiler.build(Array.from(paragraph.parentElement!.classList))
-    document.head.append(style)
-    try {
-      expect(paragraph).toHaveStyle({ whiteSpace: 'pre-line' })
-      expect(listItem).toHaveStyle({ whiteSpace: 'pre-line' })
-      expect(container.querySelector('pre')).toHaveStyle({ whiteSpace: 'pre' })
-    } finally {
-      style.remove()
-    }
+    // Base owns the computed CSS regression; the product supplies the opt-in and exact Markdown.
+    expect(paragraph.closest('.base-prose')).toHaveAttribute('data-preserve-line-breaks', 'true')
   })
 
   it('renders Markdown, not raw syntax, without executing HTML or unsafe links', () => {

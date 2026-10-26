@@ -20,6 +20,39 @@ beforeEach(() => {
   accessActor.role = 'admin'
 })
 afterEach(() => vi.unstubAllEnvs())
+it.each(['admin', 'user'] as const)(
+  'keeps delete permission and explicit selection for %s',
+  async (role) => {
+    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'false')
+    accessActor.role = role
+    const onDelete = vi.fn()
+    const { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } = await import('@pdlc/ui/ui')
+    render(
+      <MemoryRouter>
+        <DropdownMenu>
+          <DropdownMenuTrigger>Project actions</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <ProjectCardActionItems
+              project={{ id: 'selected-project', key: 'SECOND', name: 'Same name' }}
+              onDelete={onDelete}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </MemoryRouter>,
+    )
+    expect(onDelete).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }))
+    expect(onDelete).not.toHaveBeenCalled()
+    const deletion = screen.queryByRole('menuitem', { name: 'Удалить' })
+    if (role === 'user') expect(deletion).not.toBeInTheDocument()
+    else {
+      expect(deletion).toBeInTheDocument()
+      deletion!.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(onDelete).toHaveBeenCalledTimes(1)
+    }
+  },
+)
 it('opens settings for the exact project without losing the all-projects scope', async () => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
   const namespace = {

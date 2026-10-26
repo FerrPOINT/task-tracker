@@ -80,6 +80,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::identity_memberships::get,
+        routes::identity_deletion::check,
+        routes::identity_deletion::freeze,
+        routes::identity_deletion::release,
         routes::space_catalog::visible,
         routes::sdlc_candidates::delivery_candidates,
         routes::sdlc_delivery::current,
@@ -292,6 +296,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::components_versions::delete_version,
     ),
     components(schemas(
+        domain::identity_memberships::IdentityMembershipPage,
+        domain::identity_memberships::IdentityProjectMembership,
         domain::sdlc_critical_blockers::CriticalPolicyChange,
         domain::sdlc_critical_blockers::ReturnCriticalToPm,
         domain::sdlc_critical_blockers::CriticalPmReviewGuard,
@@ -839,6 +845,17 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .merge(
             Router::new()
                 .route(
+                    "/identity-users/{subject}/memberships",
+                    get(routes::identity_memberships::get),
+                )
+                .layer(SetResponseHeaderLayer::overriding(
+                    axum::http::header::CACHE_CONTROL,
+                    HeaderValue::from_static("no-store"),
+                )),
+        )
+        .merge(
+            Router::new()
+                .route(
                     "/spaces/{registry}/{space}/owner-state",
                     axum::routing::put(routes::namespace::apply_space_v2),
                 )
@@ -882,6 +899,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             space_api.layer(GovernorLayer::new(general_limiter)),
         )
         .nest("/api/v1", events_router)
+        .merge(routes::identity_deletion::router())
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()));
 
     if ctx.config.metrics.public {

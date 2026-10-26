@@ -3,15 +3,19 @@
 ## 1. Общие принципы дизайна
 
 - **Тема по умолчанию**: dark.
-- **Цветовая палитра**: фон `bg-zinc-950`, карточки `bg-zinc-900`, поднятые поверхности `bg-zinc-800`, границы `border-zinc-700`, акцент `indigo-500`.
-- **Типографика**: sans Inter / system-ui, размеры из Tailwind scale.
-- **Отступы**: 16px базовый grid, компактный dense layout как в Jira.
+- **Цветовая палитра**: семантические tokens Base; тема и опубликованный документ Admin задают оформление через PlatformProvider.
+- **Типографика**: шрифт и масштаб из общих presets Base; локальная фиксированная палитра или шрифт не подменяют branding.
+- **Отступы**: геометрия контролов и плотность принадлежат Base; расположение предметного содержания — Tracker.
 - **Контрастность**: доступный WCAG AA для текста.
 - **Иконки**: lucide-react, цветные issue type icons.
 - **Локализация**: ru / en, LTR.
 - **Язык UI по умолчанию**: русский.
-- **CSS-токены**: реализованы через `frontend/src/index.css`: `--color-background`, `--color-surface`, `--color-surface-raised`, `--color-border`, `--color-border-strong`, `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-accent`, `--color-accent-hover`, `--color-danger`, `--color-success`, `--color-warning`. Имена токенов совпадают в Tailwind (`bg-background`, `text-text-primary`, `bg-accent` и т.д.).
-- **Переход между темами**: переключатель в шапке, значение сохраняется в `localStorage` ключ `theme`. Три темы: `dark`, `gray`, `light`.
+- **CSS-токены**: импортируются через `@pdlc/ui/tokens.css` в `frontend/src/index.css`. Имена доступны в Tailwind (`bg-background`, `text-text-primary`, `bg-accent` и т.д.); продукт не объявляет их повторно.
+- **Переход между темами**: общий переключатель и ThemeProvider Base; хранением выбора и совместимостью ключей управляет Base. Три темы: `dark`, `gray`, `light`.
+
+Общие сообщения, FormField и управляемые диалоги описаны в
+[подключении дизайн-системы](shared-design-system.md). Проверки source-кандидата
+не означают обновление установленной платформы.
 
 ---
 
