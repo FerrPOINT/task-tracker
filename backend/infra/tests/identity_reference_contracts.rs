@@ -117,6 +117,7 @@ fn critical_result(owner: &str, machine: &str) -> CriticalPmReservationResult {
     CriticalPmReservationResult {
         purpose: CriticalPmReservationPurpose::CriticalBusinessReview,
         reservation: PmDraftReservation {
+            interaction_protocol: None,
             contract_version: 1,
             variant: PmDraftVariant::Reserved,
             binding: PmDraftBinding {
@@ -226,6 +227,7 @@ async fn draft(db: &DatabaseConnection, url: &str) -> (PostgresSdlcRepository, T
             project,
             &actor,
             CreateDraftCommand {
+                interaction_protocol: None,
                 title: "Identity permit fixture".into(),
                 description: "Synthetic persisted task".into(),
                 idempotency_key: "identity-contract-draft".into(),
