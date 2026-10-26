@@ -16,6 +16,16 @@ the producer rechecks current authority and expired CAS after the callback.
 Original requests without recovery keep their existing serialization/hash.
 [Contract, replay and unrun gates](contracts/pm-settled-input-recovery.md).
 
+Optional trusted callback budget (source only): Fleet witness может содержать
+закрытый девятиполевой `manual_budget`; при `None` поле не сериализуется.
+Публичный resume POST/body/hash и существующие endpoints не меняются. Без proof
+сохраняется cap3; с валидным proof commit требует `prefix_count <= n < prefix_count + 3`
+и повторяет все текущие custody/CAS guards. Historical exact-key GET/replay
+использует сохранённый witness, не требует нового callback после completion parent
+и не продлевает lease. Новых Auth roles, CLI или MCP нет. Forward104/source
+format/review не означают compile/PG/image/live PASS; установленный Tracker533
+пока блокирует четвёртую recovery. [Точная форма и границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
 project source-policy CAS, explicit owner Draft enrollment and typed readback.
 Migration/schema and Forge source verification qualification are required.

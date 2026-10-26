@@ -40,7 +40,52 @@ Exact-key GET reads original and recovery ledgers. Same key/payload returns its
 immutable receipt, not a renewal. If a recovery ACK is already expired, Fleet
 retains it without a permit and keeps the barrier closed. A next attempt may
 follow only that latest committed predecessor, with another exact expired CAS.
-The three-attempt limit is durable. Unknown acceptance is never a new attempt.
+The default three-attempt limit is durable. Unknown acceptance is never a new attempt.
+
+## Optional Trusted Manual Budget (Source Only)
+
+Реализация Tracker `e7c0f57c` принимает optional `manual_budget` из ответа
+существующего authenticated Fleet callback. Поле отсутствует при `None`, поэтому
+legacy wire/hash не меняются. Публичный resume POST, его ключ, body и hash не
+получают новых полей; клиент не может прислать разрешающий budget вместо callback.
+Не добавляются endpoint, CLI, MCP, Auth role, таблица или изменения Hermes.
+
+Закрытый payload содержит ровно девять полей:
+`contract_version`, `root_operation_id`, `control_operation_id`,
+`retry_operation_key`, `retry_request_sha256`, `original_resume_request_sha256`,
+`prefix_count`, `prefix_sha256`, `allowance`. Требуются version1, canonical nonnil
+UUID, canonical retry key, lowercase SHA256, `prefix_count >= 3` и `allowance = 3`.
+`original_resume_request_sha256` должен совпадать с исходным hash в recovery
+command. Fleet root/control IDs не приравниваются к Tracker execution/run IDs.
+
+Fleet проверяет immutable committed prefix и текущего pending retry parent
+перед выдачей callback proof. `prefix_sha256` запечатывает полные Fleet commands,
+включая kind/request/attempted/result: это НЕ hash проекции Tracker. Tracker
+проверяет свою цепочку оригинала/predecessor и число `n` уже committed recoveries
+для того же original request. Без budget разрешено только `n < 3`; с валидным
+budget требуется `prefix_count <= n < prefix_count + 3`. Grant с prefix3 допускает
+позиции3,4,5 (четвёртую-шестую recovery), но не позицию6. Grant сам по себе не
+доказывает ACK и не предоставляет lease или business permission.
+
+Preflight за default cap только читает custody, чтобы обратиться к trusted
+callback; это не выдача разрешения. Commit заново проверяет task/owner/project,
+assignment/fence, exact command/barrier и expired lease CAS под существующими
+locks, затем сохраняет budget внутри `sdlc_pm_lease_operations.recovery.witness`.
+Forward104 payload `backend/migration/src/pm_manual_recovery_budget.sql` меняет
+только cap и optional closed witness shape старого SQL gate, сохраняя остальные
+guards. Main `fb5ef353` регистрирует wrapper
+`m20261026_0000104_pm_manual_recovery_budget`; applied103 не редактируется.
+
+Fresh issuance требует свежего callback. Exact-key historical GET/replay
+проверяет сохранённый witness и его исходную позицию, не требует снова живого
+Fleet parent после его completion и не обновляет срок lease. Исторический ACK
+не становится текущей authority. Source contract не снимает unknown у уже
+attempted четвёртой recovery и не разрешает reset latch, повтор POST или новый key.
+
+Для этого расширения пройдены только source format/review; compile, PostgreSQL,
+новый image и live counterpart НЕ проверены. Установленный Tracker533 сохраняет
+cap3 и остаётся producer blocker для четвёртой recovery. Старые qualification
+receipts не являются проверкой optional budget/104.
 
 ## Verification And Rollout
 

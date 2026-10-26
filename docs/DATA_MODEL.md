@@ -11,6 +11,17 @@ receipt is rewritten. The task-locked key namespace covers both resume inputs
 and all lease-operation inserts, including reverse-order collisions.
 [Source candidate and verification boundary](contracts/pm-settled-input-recovery.md).
 
+Forward104 `m20261026_0000104_pm_manual_recovery_budget` зарегистрирован в Main
+`fb5ef353` поверх103, без редактирования applied103 и без новой таблицы. Optional
+closed nine-field budget сохраняется только в существующем
+`sdlc_pm_lease_operations.recovery.witness.manual_budget` из trusted callback.
+Legacy `None` отсутствует в JSON. SQL сохраняет старые guards и default cap3;
+budget допускает только `prefix_count <= n < prefix_count + 3`, где `n` относится
+к committed Tracker recovery chain того же original request. Fleet prefix hash
+не равен Tracker row projection. Старые receipts остаются immutable; historical
+replay не выдаёт новую lease/ACK. Только source format/review PASS, без compile,
+PG, image или live qualification. [Контракт104](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Source candidate0099 reuses immutable `sdlc_pm_lease_operations.recovery` for one
 initial terminal/no-enrollment bootstrap retry. Original task/assignment/execution,
 owner, input, lease ID/claimedAt and old keys are retained; only exact expired

@@ -10,6 +10,16 @@ the current assignment and a Fleet no-successor barrier; owner confirmation and
 Backlog/Ready policy remain unchanged.
 [Implementation and remaining gates](contracts/pm-settled-input-recovery.md).
 
+Source-only расширение ручного продолжения принимает optional nine-field manual
+budget только из существующего trusted Fleet witness, не из публичного POST.
+Default cap3 сохраняется; дополнительные позиции ограничены
+`prefix_count <= n < prefix_count + 3` с неизменными custody/fence/expired-CAS
+checks и immutable history. Forward104 зарегистрирован Main без правок103.
+Это не новый owner answer/confirmation, Auth role, CLI/MCP или ACK; unknown
+четвёртая попытка и её latch не сбрасываются. Source format/review пройдены,
+compile/PG/new image/live не проверены; установленный Tracker533 всё ещё
+producer blocker. [Точный контракт](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Technical bootstrap retry before PM enrollment/first instruction is a scheduler
 recovery, not a new Draft or owner answer. The existing task/chat/business input
 is retained and unknown/pending effects block retry. Source candidate only:

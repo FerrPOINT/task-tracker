@@ -11,6 +11,16 @@ It is a narrow branch of the existing resume producer, not a scheduler or native
 dispatch path. Historical ACK settlement and live authority are separate states.
 [Contract and pending qualification](contracts/pm-settled-input-recovery.md).
 
+Optional manual budget использует ту же trusted Fleet callback boundary: preflight
+за cap3 только читает, а commit повторяет authority/expired-CAS checks под locks.
+Tracker проверяет closed nine-field proof и свою chain position; opaque Fleet
+prefix seal не подменяется hash Tracker rows. SQL104 проверяет bounded permission,
+но не происхождение HTTP и не выдуманный ACK: trust задаётся существующим reader.
+Fresh callback admission отделён от historical exact-key replay сохранённого
+witness после completion parent. Нет новой роли, endpoint, таблицы, controller,
+CLI/MCP или Hermes patch. Forward104 зарегистрирован Main; source format/review
+не закрывает compile/PG/image/live gates. [Границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Initial PM bootstrap retry reads a composite witness from the EXISTING Fleet
 reader outside SQL, then rechecks task/lease/authorization under locks. Fleet,
 not Tracker, reads Workflow. Original-key recovery is ledger-first; no public
