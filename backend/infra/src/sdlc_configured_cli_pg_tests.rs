@@ -547,7 +547,9 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     assert_eq!(
         f.db.query_one(statement(
             "SELECT m.stage||'/'||m.status AS projected FROM issues i
-        JOIN sdlc_issue_status_mapping m ON m.status_id=i.status_id WHERE i.id=$1",
+        JOIN sdlc_tasks t ON t.task_id=i.id
+        JOIN sdlc_issue_status_mapping m ON m.status_id=i.status_id
+            AND m.stage=t.state->>'stage' AND m.status=t.state->>'status' WHERE i.id=$1",
             vec![task.into()]
         ))
         .await
