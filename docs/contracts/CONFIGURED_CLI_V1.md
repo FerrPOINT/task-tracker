@@ -134,6 +134,12 @@ confirmation receipt remains Draft even after publication. No Analysis intent,
 assignment or downstream dispatch is created. Legacy confirmation timing is
 unchanged.
 
+Configured tasks are explicitly excluded before pagination from existing delivery
+candidate discovery. The existing EnsureQueued and Reserve consumer commands
+also reject this protocol, even when the project enables single-task delivery.
+Project enablement alone is not opt-in to Analyst or later roles. No new queue
+or authority flag is introduced; legacy discovery and consumers are unchanged.
+
 Exact replay is 200, first commit is 201, changed key payload is 409. GET of the
 same completion route returns `{interaction_protocol,current}`; GET
 `.../pm-draft-completion/operations/{key}` returns key/request_sha256/result.
@@ -156,6 +162,10 @@ immutability and no lease/native/evidence/routing/source/Analysis rows.
 It uses the existing candidates fixture and synthetic service/Workflow receipts,
 not live Central Auth/provider acceptance. The HTTP unit exercises the actual
 reader against a controlled server, not a real Workflow deployment.
+The same PG case verifies empty delivery candidates and refusal of EnsureQueued/
+Reserve after completion without data changes or queue/hold/assignment rows.
+The pure `sdlc_candidates::tests::configured_cli_pm_never_opts_in_to_downstream_discovery`
+case also refuses hypothetical downstream heads while preserving legacy eligibility.
 
 Suggested scoped commands for the integrator, after registering 105:
 

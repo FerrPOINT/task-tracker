@@ -448,6 +448,31 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         serde_json::to_value(expected).unwrap(),
         serde_json::to_value(&after).unwrap()
     );
+    assert!(f.repo.config.single_task_project_ids.contains(&f.project));
+    let before_scheduler = f.snapshot().await;
+    assert!(
+        f.repo
+            .read_delivery_candidates(&f.reader, f.query(None, 100))
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    for command in [
+        LifecycleCommand::EnsureQueued {
+            idempotency_key: "configured-no-analysis".into(),
+        },
+        LifecycleCommand::Reserve {
+            expected_task_version: 1,
+            idempotency_key: "configured-no-downstream".into(),
+        },
+    ] {
+        assert!(matches!(
+            f.repo.lifecycle_command(task, &f.writer, command).await,
+            Err(AppError::Conflict(_))
+        ));
+    }
+    assert_eq!(f.snapshot().await, before_scheduler);
     for field in [
         "requirements",
         "owner",
@@ -480,6 +505,11 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "sdlc_pm_native_admissions",
         "sdlc_pm_lease_operations",
         "sdlc_analysis_intents",
+        "sdlc_analysis_capacity_holds",
+        "sdlc_delivery_heads",
+        "sdlc_delivery_assignments",
+        "sdlc_delivery_holds",
+        "sdlc_delivery_operations",
         "sdlc_evidence",
         "sdlc_task_routing_snapshots",
         "sdlc_task_source_bindings",

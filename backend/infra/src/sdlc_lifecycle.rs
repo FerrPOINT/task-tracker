@@ -939,6 +939,16 @@ impl LifecycleRepository for PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((result, true));
         }
+        if state.configured_cli()
+            && matches!(
+                command,
+                LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
+            )
+        {
+            return Err(AppError::conflict(
+                "configured CLI PM completion does not opt in to downstream delivery",
+            ));
+        }
         if matches!(
             command,
             LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
