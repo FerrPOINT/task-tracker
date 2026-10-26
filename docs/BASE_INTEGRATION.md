@@ -163,3 +163,19 @@ Tracker связана с её данными и не получает общи�
 reference/CLI и typecheck данного frontend.
 Backend build, hosted CI, общий интеграционный gate и установка здесь
 не выполнялись; source adoption не меняет установленный runtime.
+
+## Markdown и защита ухода — 2026-10-27
+
+CommentBody использует CodeBlock Base для fenced code; parsing, skipHtml и
+политика ссылок сохранены. Стабильный renderer не пересоздаёт pre при повторном
+рендере. Прошли 4 адресных теста, typecheck, lint и shell guard.
+
+Используется уже принятый UI producer
+`a95d9fe7b31cca23e1f6432bae43246120859efb`; UI/SDK/skills pins и зависимости
+не менялись. Production bytes UI совпадают с ранее проверенным архивом,
+повторные install/pack/generation не выполнялись.
+
+IAB проверяет source-компоненты на синтетических данных. Это не установленное
+приложение, API/Auth или runtime-приёмка. Снимки 375/1920/2560 сохранены
+отдельно от основной матрицы трёх тем и ширин 320/375/1920/2560.
+Полный интеграционный gate, hosted CI, push и установка не выполнялись.

@@ -262,3 +262,10 @@ success; общий error mapping не заменять текстовым Error
 Ключ mapped-узла передавать внешнему SidebarList. Данные, ACL, URL, раскрытие
 и внешние margin/width остаются у продукта; внутренний base-sidebar-list и
 его border/padding/gap не копировать. Сначала pdlc-ui show и один example.
+
+## Markdown комментария
+
+Markdown остаётся у Tracker: skipHtml, политика ссылок и исходный body сохраняются.
+Блоки кода выводятся через CodeBlock Base; renderer mapping держать вне render,
+чтобы повторный рендер/смена темы не заменяли сфокусированный pre. Не копировать
+его tabindex, фон и прокрутку. Новый парсер в Base не добавлять.
