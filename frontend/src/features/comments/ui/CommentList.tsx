@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
+  ActionGroup,
   EmptyState,
   LoadingState,
   ConfirmDialog,
@@ -84,7 +85,7 @@ export function CommentForm({
           {submitError}
         </Notice>
       )}
-      <div className="flex justify-end gap-2">
+      <ActionGroup align="end">
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
             {t('common.cancel')}
@@ -93,7 +94,7 @@ export function CommentForm({
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {submitLabel ?? t('common.save')}
         </Button>
-      </div>
+      </ActionGroup>
     </form>
   )
 }

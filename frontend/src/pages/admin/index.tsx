@@ -37,9 +37,11 @@ function formatDate(value: string) {
 function ChangesSummary({ value }: { value: unknown }) {
   const summary = formatJson(value)
   return (
-    <span className="line-clamp-2 break-all font-mono text-xs text-text-secondary" title={summary}>
-      {summary}
-    </span>
+    <ResourceListDescription asChild>
+      <span className="line-clamp-2 break-all font-mono" title={summary}>
+        {summary}
+      </span>
+    </ResourceListDescription>
   )
 }
 

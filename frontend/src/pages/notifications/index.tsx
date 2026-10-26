@@ -15,6 +15,7 @@ import {
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
 import {
+  ActionGroup,
   ResourceListTitle,
   ResourceListDescription,
   Fieldset,
@@ -413,10 +414,7 @@ export function NotificationsPage() {
                   }
                   disabled={updateSettings.isPending}
                 />
-                <Fieldset
-                  separated
-                  legend={t('notifications.eventsTitle')}
-                >
+                <Fieldset separated legend={t('notifications.eventsTitle')}>
                   {NOTIFICATION_EVENTS.map((eventType) => (
                     <Checkbox
                       key={eventType}
@@ -450,7 +448,7 @@ export function NotificationsPage() {
                       )}
                     </Notice>
                   )}
-                  <div className="flex justify-end gap-2">
+                  <ActionGroup align="end">
                     <Button
                       type="button"
                       variant="ghost"
@@ -470,7 +468,7 @@ export function NotificationsPage() {
                     >
                       {t('common.save')}
                     </Button>
-                  </div>
+                  </ActionGroup>
                 </div>
               </form>
             )}

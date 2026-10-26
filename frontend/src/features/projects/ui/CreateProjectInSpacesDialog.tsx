@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 import {
+  ActionGroup,
   TextLink,
   FormField,
   Fieldset,
@@ -177,11 +178,11 @@ function CreateForm({
               <p>
                 Найден проект: {lookup.data.key} · {lookup.data.name}.
               </p>
-              <TextLink asChild><Link
-                to={'/projects/' + encodeURIComponent(lookup.data.key) + '/board'}
-              >
-                Открыть найденный проект
-              </Link></TextLink>
+              <TextLink asChild>
+                <Link to={'/projects/' + encodeURIComponent(lookup.data.key) + '/board'}>
+                  Открыть найденный проект
+                </Link>
+              </TextLink>
               <Button
                 type="button"
                 variant="outline"
@@ -222,7 +223,11 @@ function CreateForm({
             <FormField
               id={id + '-key'}
               label="Ключ проекта"
-              error={form.formState.errors.key ? 'Ключ: от 1 до 10 латинских букв, цифр или дефисов.' : undefined}
+              error={
+                form.formState.errors.key
+                  ? 'Ключ: от 1 до 10 латинских букв, цифр или дефисов.'
+                  : undefined
+              }
             >
               {(attrs) => (
                 <Input {...attrs} maxLength={10} autoComplete="off" {...form.register('key')} />
@@ -277,7 +282,7 @@ function CreateForm({
               Перед созданием другого проекта проверьте этот ключ.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex justify-end gap-2">
+          <ActionGroup align="end">
             <AlertDialogCancel>Продолжить проверку</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -290,7 +295,7 @@ function CreateForm({
             >
               Прекратить повторы
             </AlertDialogAction>
-          </div>
+          </ActionGroup>
         </AlertDialogContent>
       </AlertDialog>
     </div>

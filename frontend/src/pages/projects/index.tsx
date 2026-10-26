@@ -7,6 +7,7 @@ import {
   ProjectCardState,
 } from '@/widgets/project-actions'
 import {
+  ActionGroup,
   PageNavigation,
   EmptyState,
   PageHeader,
@@ -121,21 +122,25 @@ export function ProjectsPage() {
               {t('projects.deleteError')}
             </Notice>
           )}
-          <div className="flex justify-end gap-2 pt-2">
-            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                if (deletingProject) {
-                  remove.mutate(deletingProject.key, {
-                    onSuccess: () => setDeletingProject(null),
-                  })
-                }
-              }}
-              disabled={remove.isPending}
-            >
-              {remove.isPending ? t('common.loading') : t('common.delete')}
-            </AlertDialogAction>
+          <div className="pt-2">
+            <ActionGroup align="end">
+              <AlertDialogCancel disabled={remove.isPending}>
+                {t('common.cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (deletingProject) {
+                    remove.mutate(deletingProject.key, {
+                      onSuccess: () => setDeletingProject(null),
+                    })
+                  }
+                }}
+                disabled={remove.isPending}
+              >
+                {remove.isPending ? t('common.loading') : t('common.delete')}
+              </AlertDialogAction>
+            </ActionGroup>
           </div>
         </AlertDialogContent>
       </AlertDialog>
