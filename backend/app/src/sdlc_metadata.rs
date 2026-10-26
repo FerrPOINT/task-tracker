@@ -846,6 +846,32 @@ mod tests {
     }
 
     #[test]
+    fn configured_old_question_cancellation_preserves_revision_and_protocol() {
+        let (mut event, refs) = clarification_source("clarification.cancelled", true);
+        event.payload["requirement_revision"] = json!(2);
+        let actual = value(project(&event, refs).unwrap()).unwrap();
+        assert_eq!(actual["payload"]["current_requirement_revision"], json!(2));
+        assert_eq!(
+            actual["payload"]["resource"],
+            clarification_resource("clarification.cancelled", true)
+        );
+        let mut sealed = actual.clone();
+        sealed.as_object_mut().unwrap().remove("metadata_sha256");
+        assert_eq!(
+            actual["metadata_sha256"],
+            canonical_hash(&json!({
+                "contract_version":1,"projection":"metadata_v1","event":sealed
+            }))
+            .unwrap()
+        );
+        for kind in ["clarification.published", "clarification.answered"] {
+            let (mut event, refs) = clarification_source(kind, true);
+            event.payload["requirement_revision"] = json!(2);
+            assert!(project(&event, refs).is_err(), "{kind}/stale-question");
+        }
+    }
+
+    #[test]
     fn legacy_clarification_resource_bytes_and_digests_remain_unchanged() {
         for kind in [
             "clarification.published",
