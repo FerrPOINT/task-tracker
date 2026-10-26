@@ -236,6 +236,25 @@ pub struct PmCompletionResource {
     pub workflow_receipt_sha256: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConfiguredPmCompletionResource {
+    pub interaction_protocol: crate::sdlc::InteractionProtocol,
+    pub completion_id: Uuid,
+    pub fence: MachineFence,
+    pub requirement_revision: i64,
+    pub content_hash: String,
+    pub confirmation_id: Uuid,
+    pub workflow_receipt_sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum PmCompletionResourceFormat {
+    Configured(ConfiguredPmCompletionResource),
+    Legacy(PmCompletionResource),
+}
+
 // Enum derive does not preserve strict keys or macro variant wire names in OpenAPI.
 #[derive(utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -262,7 +281,7 @@ metadata_events! {
     DeliveryResultAccepted, "delivery.result_accepted", LifecycleResource;
     DeliveryProposalSubmitted, "delivery.proposal_submitted", DeliveryProposalResource;
     PmFeedbackRecorded, "pm.feedback_recorded", PmFeedbackResource;
-    PmCompleted, "pm.completed", PmCompletionResource;
+    PmCompleted, "pm.completed", PmCompletionResourceFormat;
     TaskCreated, "task.created", CreatedResource;
     TaskBound, "task.bound", BoundResource;
     PmAssigned, "pm.assigned", MachineFence;

@@ -19,6 +19,7 @@ mod tests;
 pub struct SdlcService {
     pub repository: Arc<dyn SdlcRepository>,
     pub fleet_configuration: Option<crate::sdlc_configuration::FleetConfigurationReader>,
+    pub configured_workflow: Option<crate::sdlc_workflow_receipt::WorkflowReceiptReader>,
 }
 
 impl SdlcService {

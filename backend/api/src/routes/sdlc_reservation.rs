@@ -5,6 +5,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::{get, post},
 };
+use domain::sdlc_configured_cli::*;
 use domain::{sdlc::Principal, sdlc_reservation::*};
 use shared::AppError;
 use std::sync::Arc;
@@ -173,17 +174,25 @@ pub async fn result_operation(
     ))
 }
 
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="complete_pm_draft",tag="sdlc",params(("id"=Uuid,Path)),request_body=CompletePmDraft,
-    responses((status=201,body=PmDraftCompletionReceipt),(status=200,body=PmDraftCompletionReceipt,description="Original durable replay; no duplicate completion"),(status=401),(status=403),(status=404),(status=409,description="Stale PM fence/lease, missing lease or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="complete_pm_draft",tag="sdlc",params(("id"=Uuid,Path)),request_body=PmCompletionCommand,
+    responses((status=201,body=PmCompletionResponse),(status=200,body=PmCompletionResponse,description="Original durable replay; no duplicate completion"),(status=401),(status=403),(status=404),(status=409,description="Stale business fence, terminal receipt, lease or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn complete_pm_draft(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(task): Path<Uuid>,
-    Json(command): Json<CompletePmDraft>,
-) -> Result<(StatusCode, HeaderMap, Json<PmDraftCompletionReceipt>), AppError> {
-    let (receipt, replay) = service(&ctx)?
-        .complete_pm_draft(task, &actor, command)
-        .await?;
+    Json(command): Json<PmCompletionCommand>,
+) -> Result<(StatusCode, HeaderMap, Json<PmCompletionResponse>), AppError> {
+    let svc = service(&ctx)?;
+    let (receipt, replay) = match command {
+        PmCompletionCommand::Configured(command) => {
+            let (result, replay) = svc.complete_configured_pm(task, &actor, command).await?;
+            (PmCompletionResponse::Configured(result), replay)
+        }
+        PmCompletionCommand::Legacy(command) => {
+            let (result, replay) = svc.complete_pm_draft(task, &actor, command).await?;
+            (PmCompletionResponse::Legacy(result), replay)
+        }
+    };
     Ok((
         if replay {
             StatusCode::OK
@@ -195,32 +204,51 @@ pub async fn complete_pm_draft(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="read_pm_draft_completion",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=PmDraftCompletionReadback),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="read_pm_draft_completion",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=PmCompletionReadbackResponse),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
 pub async fn pm_completion(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(task): Path<Uuid>,
-) -> Result<(HeaderMap, Json<PmDraftCompletionReadback>), AppError> {
-    Ok((
-        no_store(),
-        Json(service(&ctx)?.pm_draft_completion(task, &actor).await?),
-    ))
+) -> Result<(HeaderMap, Json<PmCompletionReadbackResponse>), AppError> {
+    let svc = service(&ctx)?;
+    let state = svc.repository.read(task, &actor).await?;
+    let result = if state.configured_cli() {
+        let saved = svc
+            .repository
+            .configured_pm_completion(task, &actor, None)
+            .await?;
+        PmCompletionReadbackResponse::Configured(ConfiguredPmCompletionReadback {
+            interaction_protocol: domain::sdlc::InteractionProtocol::ConfiguredCliV1,
+            current: saved.map(|s| s.result),
+        })
+    } else {
+        PmCompletionReadbackResponse::Legacy(svc.pm_draft_completion(task, &actor).await?)
+    };
+    Ok((no_store(), Json(result)))
 }
 
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",operation_id="read_pm_draft_completion_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=PmDraftCompletionOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",operation_id="read_pm_draft_completion_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=PmCompletionOperationResponse),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn pm_completion_operation(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path((task, key)): Path<(Uuid, String)>,
-) -> Result<(HeaderMap, Json<PmDraftCompletionOperation>), AppError> {
-    Ok((
-        no_store(),
-        Json(
-            service(&ctx)?
-                .pm_draft_completion_operation(task, &actor, &key)
+) -> Result<(HeaderMap, Json<PmCompletionOperationResponse>), AppError> {
+    let svc = service(&ctx)?;
+    let state = svc.repository.read(task, &actor).await?;
+    let result = if state.configured_cli() {
+        let saved = svc
+            .repository
+            .configured_pm_completion(task, &actor, Some(&key))
+            .await?
+            .ok_or_else(|| AppError::not_found("PM completion operation", &key))?;
+        PmCompletionOperationResponse::Configured(saved)
+    } else {
+        PmCompletionOperationResponse::Legacy(
+            svc.pm_draft_completion_operation(task, &actor, &key)
                 .await?,
-        ),
-    ))
+        )
+    };
+    Ok((no_store(), Json(result)))
 }
 
 #[cfg(test)]

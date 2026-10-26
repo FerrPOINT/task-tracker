@@ -781,6 +781,33 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn configured_pm_completion(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: Option<&str>,
+    ) -> Result<Option<crate::sdlc_configured_cli::ConfiguredPmCompletionOperation>, AppError> {
+        Err(AppError::Unavailable(
+            "configured PM completion is unavailable".into(),
+        ))
+    }
+    async fn complete_configured_pm(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_configured_cli::CompleteConfiguredPm,
+        _receipt: crate::sdlc_configured_cli::ConfiguredWorkflowReceipt,
+    ) -> Result<
+        (
+            crate::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        Err(AppError::Unavailable(
+            "configured PM completion is unavailable".into(),
+        ))
+    }
     fn source_repository(&self) -> Option<&dyn crate::sdlc_source::TaskSourceRepository> {
         None
     }

@@ -1,4 +1,5 @@
 use domain::sdlc::*;
+use domain::sdlc_configured_cli::*;
 use shared::AppError;
 use uuid::Uuid;
 
@@ -36,12 +37,160 @@ pub fn authorize_configured_pm(state: &TaskState, actor: &Principal) -> Result<(
     state.require_root()
 }
 
+pub fn validate_completion(
+    state: &TaskState,
+    actor: &Principal,
+    command: &CompleteConfiguredPm,
+) -> Result<(), AppError> {
+    authorize_configured_pm(state, actor)?;
+    crate::sdlc::validate_key(&command.idempotency_key)?;
+    crate::sdlc::validate_key(&command.workflow_operation_key)?;
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    let revision = state
+        .revisions
+        .last()
+        .ok_or_else(|| AppError::conflict("requirements absent"))?;
+    let confirmation = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation required"))?;
+    if state.stage != Stage::Backlog
+        || state.status != Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)
+        || command.fence.assignment_id != assignment.assignment_id
+        || command.fence.execution_id != assignment.execution_id
+        || command.fence.agent_id != assignment.agent_id
+        || command.fence.assignment_version != assignment.version
+        || command.requirement_revision != revision.revision
+        || command.content_hash != revision.content_hash
+        || crate::sdlc::canonical_hash(&revision.document)? != revision.content_hash
+        || confirmation.owner_subject != state.owner_subject
+        || command.workflow_execution_ref.is_nil()
+        || !(1..=MAX_SAFE_VERSION).contains(&command.namespace_id)
+        || !(2..=MAX_SAFE_VERSION).contains(&command.workflow_result_version)
+    {
+        return Err(AppError::conflict(
+            "configured completion fence or owner confirmation changed",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_receipt(
+    state: &TaskState,
+    command: &CompleteConfiguredPm,
+    receipt: &ConfiguredWorkflowReceipt,
+) -> Result<(), AppError> {
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    let confirmation = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation required"))?;
+    let key = state
+        .retained_fields
+        .get("workflow_task_key")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| AppError::conflict("workflow business key absent"))?;
+    let hash = &receipt.request_sha256;
+    if receipt.interaction_protocol != InteractionProtocol::ConfiguredCliV1
+        || receipt.execution_ref != command.workflow_execution_ref
+        || receipt.namespace_id != command.namespace_id
+        || receipt.task != key
+        || receipt.tracker_task_id != state.task_id
+        || receipt.concrete_agent_ref != assignment.agent_id
+        || receipt.assignment_ref != assignment.assignment_id
+        || receipt.tracker_execution_id != assignment.execution_id
+        || receipt.assignment_version != assignment.version
+        || receipt.machine_subject != assignment.machine_subject
+        || receipt.operation_key != command.workflow_operation_key
+        || receipt.result_version != command.workflow_result_version
+        || receipt.requirements_revision != command.requirement_revision
+        || receipt.requirements_sha256 != command.content_hash
+        || receipt.confirmation_id != confirmation.id
+        || receipt.owner_subject != state.owner_subject
+        || receipt.status != "done"
+        || receipt.history_id <= 0
+        || hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(AppError::conflict(
+            "authoritative Workflow terminal receipt mismatch",
+        ));
+    }
+    Ok(())
+}
+
+pub fn completion_result(
+    state: &TaskState,
+    command: &CompleteConfiguredPm,
+    receipt: ConfiguredWorkflowReceipt,
+    owner_version: i64,
+    completion_id: Uuid,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> Result<ConfiguredPmCompletionReceipt, AppError> {
+    validate_receipt(state, command, &receipt)?;
+    let workflow_receipt_sha256 = crate::sdlc::canonical_hash(&receipt)?;
+    Ok(ConfiguredPmCompletionReceipt {
+        interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+        completion_id,
+        tracker_instance_id: state.tracker_instance_id.clone(),
+        project_id: state.project_id,
+        task_id: state.task_id,
+        root_task_id: state.root_task_id,
+        owner_subject: state.owner_subject.clone(),
+        fence: command.fence.clone(),
+        owner_version,
+        requirement_revision: command.requirement_revision,
+        content_hash: command.content_hash.clone(),
+        confirmation_id: receipt.confirmation_id,
+        workflow_receipt: receipt,
+        workflow_receipt_sha256,
+        stage: Stage::Backlog,
+        status: domain::sdlc_lifecycle::LifecycleStatus::Ready,
+        previous_pm_admission_state: "reserved".into(),
+        next_pm_admission_state: "completed".into(),
+        idempotency_key: command.idempotency_key.clone(),
+        created_at,
+    })
+}
+
+impl crate::sdlc::SdlcService {
+    pub async fn complete_configured_pm(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: CompleteConfiguredPm,
+    ) -> Result<(ConfiguredPmCompletionReceipt, bool), AppError> {
+        let state = self.repository.read(task, actor).await?;
+        validate_completion(&state, actor, &command)?;
+        let hash = crate::sdlc::canonical_hash(&command)?;
+        if let Some(saved) = self
+            .repository
+            .configured_pm_completion(task, actor, Some(&command.idempotency_key))
+            .await?
+        {
+            if saved.request_sha256 != hash {
+                return Err(AppError::conflict("PM completion key payload conflict"));
+            }
+            return Ok((saved.result, true));
+        }
+        let reader = self.configured_workflow.as_ref().ok_or_else(|| {
+            AppError::Unavailable("Workflow receipt reader is not configured".into())
+        })?;
+        let receipt = reader.read(&state, &command).await?;
+        // The repository reauthorizes and rechecks the complete business tuple
+        // under its lock after IO. No Tracker transaction spans Workflow HTTP.
+        self.repository
+            .complete_configured_pm(task, actor, command, receipt)
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
-    fn fixture() -> (TaskState, Principal, SdlcConfig, MachineFence) {
+    pub(super) fn fixture() -> (TaskState, Principal, SdlcConfig, MachineFence) {
         let task = Uuid::from_u128(1);
         let agent = Uuid::from_u128(2);
         let assignment = PmAssignment {
@@ -187,3 +336,7 @@ mod tests {
         assert!(crate::sdlc::authorize(&state, &actor, &config, &confirm).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "sdlc_configured_completion_tests.rs"]
+mod completion_tests;

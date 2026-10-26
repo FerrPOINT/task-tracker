@@ -1,7 +1,7 @@
 # Configured CLI V1
 
-Status: producer/assignment implementation; not installed or live accepted.
-Workflow terminal readback/completion integration is pending the shared wire.
+Status: source implementation; not installed or live accepted. Focused Rust/PG
+execution and the shared Workflow receipt tuple remain integration gates.
 
 ## Creation And Reservation
 
@@ -66,19 +66,93 @@ token/origin and global PDLC/SDLC token fallback are refused. Manual legacy mode
 and `--from-file -` stdin are unchanged. The separately pinned runtime CLI cohort
 must include this CLI change before live acceptance.
 
+## Completion
+
+The existing `task-tracker sdlc pm completion submit --task <uuid> --from-file -`
+reads this closed JSON body from stdin (no token/receipt materialization):
+
+```json
+{
+  "interaction_protocol": "configured-cli-v1",
+  "fence": {
+    "assignment_id": "<current assignment UUID>",
+    "execution_id": "<Tracker execution UUID>",
+    "agent_id": "<current agent UUID>",
+    "assignment_version": 1
+  },
+  "requirement_revision": 2,
+  "content_hash": "<actual current requirements SHA256>",
+  "namespace_id": 2,
+  "workflow_execution_ref": "<Workflow enrollment execution UUID>",
+  "workflow_operation_key": "<saved terminal report key>",
+  "workflow_result_version": 4,
+  "idempotency_key": "<stable completion key>"
+}
+```
+
+Numbers/UUIDs above are selectors/examples, never defaults. They must come from
+current Tracker context and the real saved Workflow result. The same body goes
+to `POST /api/v1/issues/{task}/sdlc/pm-draft-completion`. The current assigned PM
+can call it; the owner, admin PAT or scheduler cannot substitute for that PM.
+Unknown fields (including caller-supplied receipts/native flags) are rejected.
+
+Tracker uses fixed server settings TASKTRACKER_SDLC__WORKFLOW_URL and
+TASKTRACKER_SDLC__WORKFLOW_READ_TOKEN, the existing trusted PM assignment-service
+read integration, NOT the agent credential. Both must be configured together.
+The reader makes one bounded/no-redirect/no-proxy/no-retry POST to the existing
+`/internal/runtime/terminal-receipt/readback`. This POST only reads history.
+Selectors are protocol, task SDLC-N, namespace_id, execution_ref, operation_key,
+concrete_agent_ref, assignment_ref, requirements_revision/sha256, result_version.
+No URL or credential is accepted from the completion caller.
+
+Closed response is `{ok:true,complete:true,receipt:{...},workflow_receipt:{reference,sha256}}`.
+The receipt includes the selectors plus tracker_task_id, request_sha256,
+owner_subject, confirmation_id, history_id, status `done`. Tracker additionally
+requires tracker_execution_id, assignment_version and machine_subject from the
+immutable Workflow enrollment. These three fields must be aligned in Fermat's
+receipt producer before integrated qualification; missing fields fail closed.
+The canonical hash/reference and full tuple are checked, then current assignment,
+revision/hash and real saved owner confirmation are rechecked under Tracker lock.
+No transaction spans HTTP. A completed Hermes request is not a prerequisite.
+
+The configured result has interaction_protocol, completion_id, Tracker binding,
+fence/owner_version, requirement_revision/content_hash, confirmation_id, the
+verified workflow_receipt/hash, stage Backlog, status Ready, admission transition,
+idempotency_key and created_at. No lease/native receipt is synthesized. Its
+append-only ledger and admission transition commit atomically with pm.completed.
+Existing owner confirmation already projects Backlog/Ready; completion closes
+PM admission. This package preserves that existing business timing and never
+creates an Analysis intent/assignment.
+
+Exact replay is 200, first commit is 201, changed key payload is 409. GET of the
+same completion route returns `{interaction_protocol,current}`; GET
+`.../pm-draft-completion/operations/{key}` returns key/request_sha256/result.
+Existing CLI `completion read` and `completion operation` expose these readbacks.
+Legacy completion DTOs/readbacks remain on their original branch.
+
 ## Integration And Checks
 
 Integrator registers `m20261026_0000105_configured_cli` in both migration
 lineages, exports the Rust API and updates generated clients. The migration is
 forward-only and does not rewrite business or legacy native history.
 
-Prepared tests: app::sdlc_configured_cli::tests (4), CLI agent_credentials::tests
-(2), migration 105 unit (1), and candidates::configured_cli_tests real owned-PG
-business ledger case (1). The PG case uses the existing candidates fixture and
-synthetic service identities, not live Central Auth or Workflow acceptance.
-No Cargo/PG execution or installation is claimed by this source packet.
+Prepared tests: app::sdlc_configured_cli::tests (4),
+app::sdlc_configured_cli::completion_tests (5), CLI agent_credentials::tests (2),
+migration 105 units (2), and candidates::configured_cli_tests real owned-PG case
+(1). The latter now covers owner answers/confirmation, competing completion
+replay, changed payload, append immutability and no lease/native/Analysis rows.
+It uses the existing candidates fixture and synthetic service/Workflow receipts,
+not live Central Auth/provider acceptance. The HTTP unit exercises the actual
+reader against a controlled server, not a real Workflow deployment.
 
-Completion must not use legacy scheduler credentials or manufacture lease/native
-receipts. The shared Workflow receipt endpoint/closed shape must be agreed and
-read server-to-server before enabling configured completion. This first producer
-packet does not claim that completion is implemented.
+Suggested scoped commands for the integrator, after registering 105:
+
+```sh
+cargo test -p app sdlc_configured_cli::
+cargo test -p task-tracker-cli --bin task-tracker agent_credentials::tests::
+cargo test -p migration m20261026_0000105_configured_cli::tests::
+cargo test -p infra --lib sdlc::candidates::tests::configured_cli_tests:: -- --ignored --test-threads=1
+```
+
+The PG selector requires a fresh disposable TT_CANDIDATES_TEST_DATABASE_URL
+ending `_candidates_test`. No Cargo/PG execution or installation is claimed here.

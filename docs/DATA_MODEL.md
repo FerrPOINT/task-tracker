@@ -2309,3 +2309,8 @@ aggregate and creation/reservation JSON ledgers, without historical backfill.
 Configured questions omit their native checkpoint; legacy questions retain it.
 The existing execution ordinal remains authoritative for SDLC-N. See
 [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md) for integration limits.
+
+The same unapplied 0105 owns sdlc_configured_pm_completions: append-only task/
+execution/key, exact owner confirmation, command hash and verified Workflow
+receipt. It has the existing native task scope/namespace and deferred commit
+clock guards. Legacy completion tables and applied migration bytes are retained.

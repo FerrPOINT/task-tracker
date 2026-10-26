@@ -232,6 +232,9 @@ fn pm_request_policy(
             ("POST", ["clarifications", question, "cancel"]) => {
                 app::sdlc::canonical_pm_uuid(question).is_some()
             }
+            ("GET", ["pm-draft-completion", "operations", key]) => {
+                app::sdlc::validate_key(key).is_ok()
+            }
             _ => app::sdlc_confirmation::is_confirmation_read(method, &parts),
         };
         return if allowed {

@@ -129,6 +129,36 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
             hash(&selected.request_sha256)?;
             value(selected)?
         }
+        "pm.completed"
+            if source.interaction_protocol == Some(InteractionProtocol::ConfiguredCliV1) =>
+        {
+            let receipt: domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt =
+                decode(&source.result)?;
+            valid(
+                receipt.completion_id == event.event_id
+                    && receipt.task_id == event.task_id
+                    && receipt.root_task_id == source.root_task_id
+                    && receipt.project_id == source.project_id
+                    && receipt.owner_subject == source.owner_subject
+                    && receipt.tracker_instance_id == source.tracker_instance_id
+                    && receipt.stage == Stage::Backlog
+                    && receipt.status == domain::sdlc_lifecycle::LifecycleStatus::Ready
+                    && source.requirement_revision == Some(receipt.requirement_revision)
+                    && canonical_hash(&receipt.workflow_receipt)
+                        .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                        == receipt.workflow_receipt_sha256,
+            )?;
+            revision(receipt.requirement_revision, &receipt.content_hash, &refs)?;
+            value(ConfiguredPmCompletionResource {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                completion_id: receipt.completion_id,
+                fence: receipt.fence,
+                requirement_revision: receipt.requirement_revision,
+                content_hash: receipt.content_hash,
+                confirmation_id: receipt.confirmation_id,
+                workflow_receipt_sha256: receipt.workflow_receipt_sha256,
+            })?
+        }
         "pm.completed" => {
             let receipt: domain::sdlc_reservation::PmDraftCompletionReceipt =
                 decode(&source.result)?;

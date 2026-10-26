@@ -2144,5 +2144,7 @@ RPC/cohort/Kubernetes остаются отдельными gates, перечи�
 
 New single-task Draft creation and reservation accept an explicit immutable
 interaction_protocol and a persistent assigned PM service subject. Existing
-business commands retain fence/CAS/idempotency. See the exact wire and pending
-completion boundary in [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).
+business commands retain fence/CAS/idempotency. The existing completion endpoint
+also accepts the closed configured command without native lease fields and reads
+Workflow evidence server-to-server. See the exact wire and integration gates in
+[CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).

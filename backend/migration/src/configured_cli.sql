@@ -77,3 +77,119 @@ BEGIN
 END $$;
 CREATE TRIGGER sdlc_configured_cli_no_native_lease BEFORE INSERT ON sdlc_pm_execution_leases
     FOR EACH ROW EXECUTE FUNCTION sdlc_configured_cli_no_native_lease();
+
+CREATE TABLE sdlc_configured_pm_completions (
+    completion_id uuid PRIMARY KEY CHECK(completion_id<>'00000000-0000-0000-0000-000000000000'),
+    task_id uuid NOT NULL UNIQUE REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
+    execution_id uuid NOT NULL UNIQUE REFERENCES sdlc_pm_executions(execution_id) ON DELETE RESTRICT,
+    confirmation_id uuid NOT NULL,
+    requirement_revision bigint NOT NULL CHECK(requirement_revision BETWEEN 1 AND 9007199254740991),
+    content_hash text NOT NULL CHECK(content_hash ~ '^[0-9a-f]{64}$'),
+    actor_subject text NOT NULL CHECK(length(actor_subject)>0),
+    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
+    payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
+    command jsonb NOT NULL,
+    workflow_receipt jsonb NOT NULL,
+    result jsonb NOT NULL,
+    created_at timestamptz NOT NULL,
+    FOREIGN KEY(task_id,confirmation_id,requirement_revision,content_hash)
+        REFERENCES sdlc_confirmations(task_id,id,revision,content_hash) ON DELETE RESTRICT,
+    UNIQUE(task_id,idempotency_key)
+);
+CREATE TRIGGER sdlc_configured_pm_completion_immutable BEFORE UPDATE OR DELETE ON sdlc_configured_pm_completions
+    FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
+DO $$
+DECLARE definition text; anchor text := '''sdlc_idempotency'',''sdlc_outbox'',';
+BEGIN
+    definition:=pg_get_functiondef('tracker_authorize_native_sdlc(text,text,jsonb,jsonb)'::regprocedure);
+    IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+        RAISE EXCEPTION 'configured completion native task guard anchor changed';
+    END IF;
+    EXECUTE replace(definition,anchor,anchor||'''sdlc_configured_pm_completions'',');
+END $$;
+CREATE TRIGGER namespace_write_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_configured_pm_completions
+    FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+CREATE CONSTRAINT TRIGGER shared_sdlc_commit_clock AFTER INSERT OR UPDATE OR DELETE ON sdlc_configured_pm_completions
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION tracker_sdlc_commit_clock();
+
+CREATE FUNCTION sdlc_configured_pm_completion_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE t sdlc_tasks; e sdlc_pm_executions; c sdlc_confirmations;
+BEGIN
+    SELECT * INTO STRICT t FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    SELECT * INTO STRICT e FROM sdlc_pm_executions WHERE execution_id=NEW.execution_id;
+    SELECT * INTO STRICT c FROM sdlc_confirmations WHERE id=NEW.confirmation_id;
+    IF NOT ((t.state->>'interaction_protocol'='configured-cli-v1'
+        AND t.root_task_id=t.task_id AND t.pm_execution_id=NEW.execution_id AND t.pm_admission_state='reserved'
+        AND e.task_id=t.task_id AND e.owner_version=t.pm_owner_version AND e.result->'assignment'=t.state->'assignment'
+        AND e.result->>'interaction_protocol'='configured-cli-v1'
+        AND t.state->>'workflow_task_key'='SDLC-'||e.ordinal::text
+        AND t.state->>'stage'='Backlog' AND t.state->>'status'='Ready'
+        AND t.state->'revisions'->-1->'revision'=to_jsonb(NEW.requirement_revision)
+        AND t.state->'revisions'->-1->>'content_hash'=NEW.content_hash
+        AND t.state->'assignment'->>'machine_subject'=NEW.actor_subject
+        AND c.task_id=t.task_id AND c.revision=NEW.requirement_revision AND c.content_hash=NEW.content_hash
+        AND c.payload->>'owner_subject'=t.owner_subject AND c.payload->>'stage'='Backlog'
+        AND t.state->'confirmations' @> jsonb_build_array(c.payload)
+        AND NEW.command->>'interaction_protocol'='configured-cli-v1'
+        AND NEW.command->>'idempotency_key'=NEW.idempotency_key
+        AND NEW.command->'requirement_revision'=to_jsonb(NEW.requirement_revision)
+        AND NEW.command->>'content_hash'=NEW.content_hash
+        AND NEW.command->'fence'=jsonb_build_object('assignment_id',e.assignment_id,'execution_id',e.execution_id,
+            'agent_id',t.state->'assignment'->'agent_id','assignment_version',e.assignment_version)
+        AND NEW.workflow_receipt->>'interaction_protocol'='configured-cli-v1'
+        AND NEW.workflow_receipt->>'tracker_task_id'=t.task_id::text
+        AND NEW.workflow_receipt->>'task'=t.state->>'workflow_task_key'
+        AND NEW.workflow_receipt->'namespace_id'=NEW.command->'namespace_id'
+        AND NEW.workflow_receipt->'execution_ref'=NEW.command->'workflow_execution_ref'
+        AND NEW.workflow_receipt->'operation_key'=NEW.command->'workflow_operation_key'
+        AND NEW.workflow_receipt->'result_version'=NEW.command->'workflow_result_version'
+        AND NEW.workflow_receipt->'requirements_revision'=to_jsonb(NEW.requirement_revision)
+        AND NEW.workflow_receipt->>'requirements_sha256'=NEW.content_hash
+        AND NEW.workflow_receipt->>'confirmation_id'=NEW.confirmation_id::text
+        AND NEW.workflow_receipt->>'owner_subject'=t.owner_subject
+        AND NEW.workflow_receipt->>'assignment_ref'=e.assignment_id::text
+        AND NEW.workflow_receipt->>'tracker_execution_id'=e.execution_id::text
+        AND NEW.workflow_receipt->'assignment_version'=to_jsonb(e.assignment_version)
+        AND NEW.workflow_receipt->'concrete_agent_ref'=t.state->'assignment'->'agent_id'
+        AND NEW.workflow_receipt->>'machine_subject'=NEW.actor_subject
+        AND NEW.workflow_receipt->>'status'='done'
+        AND NEW.result->>'completion_id'=NEW.completion_id::text
+        AND NEW.result->>'task_id'=t.task_id::text AND NEW.result->>'root_task_id'=t.root_task_id::text
+        AND NEW.result->>'tracker_instance_id'=t.tracker_instance_id AND NEW.result->>'project_id'=t.project_id::text
+        AND NEW.result->>'owner_subject'=t.owner_subject AND NEW.result->'fence'=NEW.command->'fence'
+        AND NEW.result->'owner_version'=to_jsonb(t.pm_owner_version)
+        AND NEW.result->'requirement_revision'=to_jsonb(NEW.requirement_revision) AND NEW.result->>'content_hash'=NEW.content_hash
+        AND NEW.result->>'confirmation_id'=NEW.confirmation_id::text AND NEW.result->'workflow_receipt'=NEW.workflow_receipt
+        AND NEW.result->>'workflow_receipt_sha256' ~ '^[0-9a-f]{64}$'
+        AND NEW.result->>'idempotency_key'=NEW.idempotency_key AND NEW.result->>'interaction_protocol'='configured-cli-v1'
+        AND NEW.result->>'stage'='Backlog' AND NEW.result->>'status'='Ready'
+        AND NEW.result->>'previous_pm_admission_state'='reserved' AND NEW.result->>'next_pm_admission_state'='completed'
+        AND (NEW.result->>'created_at')::timestamptz=NEW.created_at) IS TRUE) THEN
+        RAISE EXCEPTION 'configured completion requires current assignment and exact owner-confirmed terminal receipt' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_configured_pm_completion_gate BEFORE INSERT ON sdlc_configured_pm_completions
+    FOR EACH ROW EXECUTE FUNCTION sdlc_configured_pm_completion_gate();
+
+CREATE FUNCTION sdlc_current_configured_pm_completed(task uuid,execution uuid,state jsonb,admission_state text)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+    SELECT (admission_state='completed' AND state->>'interaction_protocol'='configured-cli-v1'
+        AND EXISTS(SELECT 1 FROM sdlc_configured_pm_completions c
+            WHERE c.task_id=task AND c.execution_id=execution AND c.result->'fence'->'assignment_id'=state->'assignment'->'assignment_id'
+            AND c.result->'fence'->'assignment_version'=state->'assignment'->'version'
+            AND c.result->'fence'->'agent_id'=state->'assignment'->'agent_id'
+            AND c.requirement_revision::text=state->'revisions'->-1->>'revision'
+            AND c.content_hash=state->'revisions'->-1->>'content_hash'
+            AND c.result->>'next_pm_admission_state'='completed')) IS TRUE
+$$;
+-- Preserve the installed legacy definition and its OID; add only the new exact ledger alternative.
+DO $$
+DECLARE definition text; anchor text := 'SELECT admission_state=''completed''';
+BEGIN
+    definition:=pg_get_functiondef('sdlc_current_pm_completed(uuid,uuid,jsonb,text)'::regprocedure);
+    IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+        RAISE EXCEPTION 'configured completion legacy function anchor changed';
+    END IF;
+    EXECUTE replace(definition,anchor,'SELECT sdlc_current_configured_pm_completed(task,execution,state,admission_state) OR admission_state=''completed''');
+END $$;

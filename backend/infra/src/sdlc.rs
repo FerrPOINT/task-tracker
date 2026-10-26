@@ -11,6 +11,8 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "sdlc_configured_cli.rs"]
+mod configured_cli;
 #[path = "sdlc_critical_blockers.rs"]
 mod critical_blockers;
 #[path = "sdlc_critical_pm_lifecycle.rs"]
@@ -825,6 +827,31 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn configured_pm_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<Option<domain::sdlc_configured_cli::ConfiguredPmCompletionOperation>, AppError>
+    {
+        self.configured_completion_read(task, actor, key).await
+    }
+    async fn complete_configured_pm(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_configured_cli::CompleteConfiguredPm,
+        receipt: domain::sdlc_configured_cli::ConfiguredWorkflowReceipt,
+    ) -> Result<
+        (
+            domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        self.configured_completion_commit(task, actor, command, receipt)
+            .await
+    }
     fn source_repository(&self) -> Option<&dyn domain::sdlc_source::TaskSourceRepository> {
         Some(self)
     }
