@@ -1,8 +1,17 @@
 # Интеграция task-tracker с Base
 
-## Текущая UI-поставка
+## Текущий source-кандидат UI
 
-UI закреплён на `94272dc5512be58ec6c88fb7c1d1d33c7599a3e4` ([pin](../.base-ui-revision)); зависит от [Base #297](https://github.com/FerrPOINT/services-base/pull/297).
+Точный UI SHA: `73665aa7bb64cbf16b1537f81c6e8f6129373738` ([pin](../.base-ui-revision)).
+Компоненты и reference берутся из этой версии Base; открытый справочник другой
+версии не подтверждает доступность контракта в продукте. SDK/skills pins
+независимы. Это исходники собственного checkout; установка и authenticated
+приёмка runtime этим значением не подтверждаются. Датированные разделы ниже
+описывают прежние квалификации и не заменяют проверку итогового кандидата.
+
+## Исходная UI-поставка — 21 октября 2026
+
+UI был закреплён на `94272dc5512be58ec6c88fb7c1d1d33c7599a3e4` ([pin](../.base-ui-revision)); зависит от [Base #297](https://github.com/FerrPOINT/services-base/pull/297).
 Проверки consumer и устранение прежнего локального offset логотипа описаны
 в [отчёте квалификации](reports/ui-repin-qualification-20261021.md).
 SDK и skills pins независимы и этим обновлением не меняются. Общая типографика,
