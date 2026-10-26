@@ -91,6 +91,21 @@ pub async fn confirmation(api: &Api, command: ConfirmationCommand) -> Result<Val
             &format!("/requirements/{revision}/confirmation"),
         ))
         .await?;
+    let context = if receipt["stage"] == "Draft" {
+        Some(api.get(&sdlc_path(task, "/context")).await?)
+    } else {
+        None
+    };
+    validate_confirmation(&receipt, task, revision, context.as_ref())?;
+    Ok(receipt)
+}
+
+fn validate_confirmation(
+    receipt: &Value,
+    task: Uuid,
+    revision: i64,
+    configured_context: Option<&Value>,
+) -> Result<()> {
     let task_text = task.to_string();
     let canonical_id = receipt.get("id").and_then(Value::as_str).is_some_and(|id| {
         Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == id)
@@ -111,11 +126,147 @@ pub async fn confirmation(api: &Api, command: ConfirmationCommand) -> Result<Val
         || receipt["created_at"]
             .as_str()
             .is_none_or(|time| time.trim().is_empty())
-        || receipt["stage"] != "Backlog"
+        || receipt["stage"]
+            != if configured_context.is_some() {
+                "Draft"
+            } else {
+                "Backlog"
+            }
     {
         anyhow::bail!("owner confirmation receipt does not match requested task/revision");
     }
-    Ok(receipt)
+    if let Some(context) = configured_context {
+        if context["interaction_protocol"] != "configured-cli-v1"
+            || context["task_id"].as_str() != Some(task_text.as_str())
+            || context["root_task_id"].as_str() != Some(task_text.as_str())
+            || context["owner_subject"] != receipt["owner_subject"]
+            || context["requirement_revision"].as_i64() != Some(revision)
+            || context["content_hash"] != receipt["content_hash"]
+            || !((context["stage"] == "Draft" && context["status"] == "InProgress")
+                || (context["stage"] == "Backlog" && context["status"] == "Ready"))
+        {
+            anyhow::bail!("configured owner confirmation differs from current task context");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod confirmation_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fixture() -> (Uuid, Value, Value) {
+        let task = Uuid::from_u128(11);
+        let receipt = json!({"id":Uuid::from_u128(12),"task_id":task,"revision":3,
+            "owner_subject":Uuid::from_u128(13),"content_hash":"a".repeat(64),
+            "created_at":"2026-10-26T10:00:00Z","stage":"Draft"});
+        let context = json!({"interaction_protocol":"configured-cli-v1", "task_id":task,
+            "root_task_id":task,"owner_subject":receipt["owner_subject"],
+            "requirement_revision":3,"content_hash":receipt["content_hash"],
+            "stage":"Draft","status":"InProgress"});
+        (task, receipt, context)
+    }
+
+    #[test]
+    fn legacy_backlog_confirmation_retains_direct_readback_validation() {
+        let (task, mut receipt, _) = fixture();
+        receipt["stage"] = json!("Backlog");
+        validate_confirmation(&receipt, task, 3, None).unwrap();
+        for stage in ["Draft", "Analysis", "Completed", ""] {
+            receipt["stage"] = json!(stage);
+            assert!(validate_confirmation(&receipt, task, 3, None).is_err());
+        }
+    }
+
+    #[test]
+    fn configured_draft_receipt_survives_terminal_completion_without_rewriting_stage() {
+        let (task, receipt, mut context) = fixture();
+        let original = receipt.clone();
+        validate_confirmation(&receipt, task, 3, Some(&context)).unwrap();
+        context["stage"] = json!("Backlog");
+        context["status"] = json!("Ready");
+        for _ in 0..2 {
+            validate_confirmation(&receipt, task, 3, Some(&context)).unwrap();
+        }
+        assert_eq!(receipt, original);
+        assert_eq!(receipt["stage"], "Draft");
+        assert!(validate_confirmation(&receipt, task, 2, Some(&context)).is_err());
+        assert!(validate_confirmation(&receipt, task, 4, Some(&context)).is_err());
+    }
+
+    #[test]
+    fn configured_confirmation_requires_exact_protocol_current_revision_and_owner_tuple() {
+        let (task, receipt, context) = fixture();
+        for (field, value) in [
+            ("interaction_protocol", json!(null)),
+            ("interaction_protocol", json!("legacy")),
+            ("interaction_protocol", json!("configured-cli-v2")),
+            ("task_id", json!(Uuid::from_u128(21))),
+            ("root_task_id", json!(Uuid::from_u128(22))),
+            ("owner_subject", json!(Uuid::from_u128(23))),
+            ("requirement_revision", json!(4)),
+            ("requirement_revision", json!("3")),
+            ("content_hash", json!("b".repeat(64))),
+            ("stage", json!("Analysis")),
+            ("status", json!("Ready")),
+        ] {
+            let mut changed = context.clone();
+            changed[field] = value;
+            assert!(
+                validate_confirmation(&receipt, task, 3, Some(&changed)).is_err(),
+                "{field}"
+            );
+        }
+        for field in [
+            "interaction_protocol",
+            "task_id",
+            "root_task_id",
+            "owner_subject",
+            "requirement_revision",
+            "content_hash",
+            "stage",
+            "status",
+        ] {
+            let mut changed = context.clone();
+            changed.as_object_mut().unwrap().remove(field);
+            assert!(
+                validate_confirmation(&receipt, task, 3, Some(&changed)).is_err(),
+                "{field}"
+            );
+        }
+        let mut false_publication = receipt.clone();
+        false_publication["stage"] = json!("Backlog");
+        assert!(validate_confirmation(&false_publication, task, 3, Some(&context)).is_err());
+    }
+
+    #[test]
+    fn malformed_or_foreign_receipts_fail_in_both_protocols() {
+        let (task, receipt, context) = fixture();
+        for configured in [false, true] {
+            let mut base = receipt.clone();
+            if !configured {
+                base["stage"] = json!("Backlog");
+            }
+            let proof = configured.then_some(&context);
+            for (field, value) in [
+                ("id", json!(Uuid::nil())),
+                ("id", json!("not-a-uuid")),
+                ("task_id", json!(Uuid::from_u128(31))),
+                ("revision", json!(2)),
+                ("content_hash", json!("x".repeat(64))),
+                ("owner_subject", json!(" ")),
+                ("created_at", json!("")),
+            ] {
+                let mut changed = base.clone();
+                changed[field] = value;
+                assert!(
+                    validate_confirmation(&changed, task, 3, proof).is_err(),
+                    "{field}"
+                );
+            }
+        }
+    }
 }
 
 #[derive(Subcommand)]
