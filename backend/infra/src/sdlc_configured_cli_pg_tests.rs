@@ -376,16 +376,16 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         .unwrap(),
         0
     );
+    let tx = f.db.begin().await.unwrap();
     let uncommitted = app::sdlc_configured_cli::completion_result(
         &confirmed,
         &command,
         receipt.clone(),
         reservation.owner_cas.version,
         Uuid::new_v4(),
-        chrono::Utc::now(),
+        crate::sdlc::execution_lease::clock(&tx).await.unwrap(),
     )
     .unwrap();
-    let tx = f.db.begin().await.unwrap();
     exec(&tx,"INSERT INTO sdlc_configured_pm_completions(completion_id,task_id,execution_id,confirmation_id,requirement_revision,content_hash,
         actor_subject,idempotency_key,payload_hash,command,workflow_receipt,result,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
         vec![uncommitted.completion_id.into(),task.into(),fence.execution_id.into(),uncommitted.confirmation_id.into(),
