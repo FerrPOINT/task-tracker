@@ -594,7 +594,7 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
                     sdlc_pm_settled_manual_budget_allows($2,$3,$4) AS legacy",
                 vec![
                     raw_witness.clone().into(),
-                    json_value(&witness(&f, &fourth)).unwrap().into(),
+                    json_value(&witness(&f, &fourth)).unwrap(),
                     raw_command.clone().into(),
                     position.into(),
                 ],
