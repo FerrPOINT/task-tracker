@@ -32,6 +32,18 @@ RUST_TEST = r"#\[(?:tokio::)?test\]"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_closed_generation_is_declared_and_available_before_docker_postinstall(self):
+        manifest = selector.load(ROOT)
+        self.assertIn('openapi/**', manifest['frontend_generation']['inputs'])
+        self.assertIn('frontend/scripts/base-generate-openapi.mjs', manifest['frontend_generation']['inputs'])
+        for gate in manifest['gates']:
+            if gate.get('prepare_frontend'):
+                self.assertEqual(gate['descriptor_input_contract'], 'prepared-frontend-generation-context-v1')
+        for name in ('Dockerfile', 'Dockerfile.umbrella'):
+            source = (ROOT / 'frontend' / name).read_text(encoding='utf8')
+            stage = source.split('AS generated\n', 1)[1].split('\nFROM ', 1)[0]
+            self.assertLess(stage.index('COPY task-tracker/frontend/scripts/base-generate-openapi.mjs'), stage.index('pnpm run postinstall'))
+
     def test_committed_selector_matches_its_committed_delivery_receipt(self) -> None:
         def committed(name: str) -> bytes:
             return subprocess.check_output(['git', '-C', str(ROOT), 'show', 'HEAD:' + name])

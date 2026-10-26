@@ -138,3 +138,16 @@ function IssueList({ issues }) {
 - `docs/ARCHITECTURE.md`
 - `docs/CACHING.md`
 - `docs/MONITORING.md`
+
+
+## Кэш обычной генерации OpenAPI
+
+Обычный postinstall использует exact helper Base из общего V2 tooling packet.
+Dependencies устанавливаются без scripts; generation имеет отдельные schema/command/
+environment inputs и проверенные outputs. Test-only не запускает генератор.
+Ручная команда генерации сохранена для более широких сценариев; внешние refs,
+cwd Redocly config и внешний SPEC требуют отдельной квалификации.
+Общий контракт: Base `docs/plans/frontend-closed-generation-20261026.md`;
+unit/static выполняются в разработке, integration/slow/release — вручную.
+
+Из корня workspace: `./check-workspace.ps1 -Profile Fast -Repository task-tracker -Component frontend`.

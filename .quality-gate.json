@@ -45,8 +45,21 @@
     {
       "id": "maintenance:wrapper-unit",
       "component": "maintenance",
-      "profiles": ["fast", "unit", "build", "integrated", "release"],
-      "argv": ["{python}", "-B", "-m", "unittest", "scripts.tests.test_base_maintenance", "-q"],
+      "profiles": [
+        "fast",
+        "unit",
+        "build",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "{python}",
+        "-B",
+        "-m",
+        "unittest",
+        "scripts.tests.test_base_maintenance",
+        "-q"
+      ],
       "cwd": ".",
       "inputs": [
         "scripts/tests/test_base_maintenance.py",
@@ -55,7 +68,9 @@
         ".quality-gate.json",
         ".github/workflows/ci.yml"
       ],
-      "platforms": ["linux"],
+      "platforms": [
+        "linux"
+      ],
       "cacheable": false,
       "execution_slot": "none",
       "test_tier": "unit"
@@ -101,8 +116,20 @@
     {
       "id": "tooling:build-contracts",
       "component": "tooling",
-      "profiles": ["fast", "unit", "build", "integrated", "release"],
-      "argv": ["{python}", "-B", "-m", "unittest", "scripts.tests.test_ci_contract_checks"],
+      "profiles": [
+        "fast",
+        "unit",
+        "build",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "{python}",
+        "-B",
+        "-m",
+        "unittest",
+        "scripts.tests.test_ci_contract_checks"
+      ],
       "cwd": ".",
       "inputs": [
         ".quality-gate.json",
@@ -180,7 +207,8 @@
       ],
       "prepare_frontend": "22.20.0",
       "environment_input_contract": "frontend-agent-presence-v1",
-      "test_tier": "static"
+      "test_tier": "static",
+      "descriptor_input_contract": "prepared-frontend-generation-context-v1"
     },
     {
       "id": "frontend:tests",
@@ -222,7 +250,8 @@
       ],
       "prepare_frontend": "22.20.0",
       "environment_input_contract": "frontend-agent-presence-v1",
-      "test_tier": "unit"
+      "test_tier": "unit",
+      "descriptor_input_contract": "prepared-frontend-generation-context-v1"
     },
     {
       "id": "frontend:lint",
@@ -260,7 +289,8 @@
         }
       ],
       "prepare_frontend": "22.20.0",
-      "test_tier": "static"
+      "test_tier": "static",
+      "descriptor_input_contract": "prepared-frontend-generation-context-v1"
     },
     {
       "id": "frontend:build",
@@ -337,7 +367,7 @@
       ],
       "test_tier": "artifact",
       "artifact_input_contract": "git-source-v1",
-      "descriptor_input_contract": "prepared-frontend-v1"
+      "descriptor_input_contract": "prepared-frontend-generation-context-v1"
     },
     {
       "id": "backend:unit",
@@ -575,5 +605,21 @@
     "backend/domain/src/repositories/tests.rs",
     "backend/domain/src/stubs/memory/tests.rs",
     "backend/domain/src/value_objects/tests.rs"
-  ]
+  ],
+  "frontend_generation": {
+    "schema": "base-frontend-generation/v1",
+    "inputs": [
+      "frontend/scripts/base-generate-openapi.mjs",
+      "openapi/**",
+      "frontend/redocly.yaml",
+      "frontend/redocly.yml",
+      "frontend/.redocly.yaml",
+      "frontend/.redocly.yml"
+    ],
+    "scripts": [
+      "postinstall"
+    ],
+    "commands_sha256": "9e4fcc50c190137927126c3d8de6281dc0f1bfb6961e32dbe662d7cf576a8cee",
+    "environment_input_contract": "frontend-agent-presence-v1"
+  }
 }
