@@ -45,12 +45,7 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     }
     let configured_machine = registered_sdlc_subject(&central.user_id)
         || verified.subject_role.as_deref() == Some("service_account");
-    let configured_cli_grant = central
-        .scopes
-        .iter()
-        .any(|scope| scope.starts_with(app::sdlc_configured_cli::AGENT_SCOPE_PREFIX));
     if (configured_machine
-        || configured_cli_grant
         || app::sdlc::has_pm_grant(&central.scopes)
         || app::sdlc_lifecycle::has_delivery_grant(&central.scopes))
         && verified.subject_role.as_deref() != Some("service_account")
@@ -59,6 +54,12 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     }
     let trusted_human = is_trusted_human(&central, configured_machine);
     let human_session = is_human_session(&central, configured_machine);
+    if !trusted_human
+        && !human_session
+        && verified.subject_role.as_deref() != Some("service_account")
+    {
+        return Err(AppError::Forbidden);
+    }
     let actor = domain::sdlc::Principal {
         subject: central.user_id,
         human_session,
@@ -161,6 +162,36 @@ fn is_trusted_human(central: &pdlc_auth_core::AuthContext, configured_machine: b
 mod human_identity_tests {
     use super::*;
     #[test]
+    fn ordinary_service_scopes_keep_verified_machine_and_human_pat_distinct() {
+        let mut central = pdlc_auth_core::AuthContext {
+            user_id: uuid::Uuid::from_u128(5).to_string(),
+            role: Some("service_account".into()),
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+            session_id: None,
+            email: None,
+            token: "sdlc_pat_verified".into(),
+        };
+        assert!(!is_trusted_human(&central, true));
+        assert!(!is_human_session(&central, true));
+        // Role can arrive in verified subject_role metadata rather than context.
+        central.role = None;
+        assert!(!is_trusted_human(&central, true));
+        assert!(!is_human_session(&central, true));
+        // The same ordinary scopes on a human PAT do not make it a machine.
+        assert!(is_trusted_human(&central, false));
+        let actor = domain::sdlc::Principal {
+            subject: central.user_id,
+            human_session: false,
+            trusted_human: false,
+            scopes: central.scopes,
+        };
+        let path = format!("/api/v1/issues/{}/sdlc/", uuid::Uuid::from_u128(1));
+        assert!(pm_request_policy(&actor, "GET", &format!("{path}context")).is_ok());
+        assert!(pm_request_policy(&actor, "POST", &format!("{path}requirements")).is_ok());
+        assert!(pm_request_policy(&actor, "POST", &format!("{path}pm-draft-completion")).is_ok());
+    }
+
+    #[test]
     fn verified_personal_identity_preserves_machine_and_owner_session_boundaries() {
         let mut central = pdlc_auth_core::AuthContext {
             user_id: "verified-user".into(),
@@ -204,45 +235,8 @@ fn pm_request_policy(
     method: &str,
     path: &str,
 ) -> Result<(), AppError> {
-    if app::sdlc_configured_cli::configured_agent(actor)?.is_some() {
-        let tail = path
-            .strip_prefix("/api/v1/issues/")
-            .ok_or(AppError::Forbidden)?;
-        let (task, action) = tail.split_once("/sdlc/").ok_or(AppError::Forbidden)?;
-        app::sdlc::canonical_pm_uuid(task).ok_or(AppError::Forbidden)?;
-        let parts: Vec<_> = action.split('/').collect();
-        let allowed = match (method, parts.as_slice()) {
-            (
-                "GET",
-                [
-                    "context"
-                    | "pm-draft-input"
-                    | "clarifications"
-                    | "requirements"
-                    | "events"
-                    | "pm-draft-assignment"
-                    | "pm-draft-completion",
-                ],
-            )
-            | ("GET", ["requirements", "revisions"])
-            | ("POST", ["clarifications" | "requirements" | "pm-draft-completion"]) => true,
-            ("GET", ["requirements", revision]) | ("GET", ["requirements", revision, "diff"]) => {
-                app::sdlc::canonical_pm_version(revision)
-            }
-            ("POST", ["clarifications", question, "cancel"]) => {
-                app::sdlc::canonical_pm_uuid(question).is_some()
-            }
-            ("GET", ["pm-draft-completion", "operations", key]) => {
-                app::sdlc::validate_key(key).is_ok()
-            }
-            _ => app::sdlc_confirmation::is_confirmation_read(method, &parts),
-        };
-        return if allowed {
-            Ok(())
-        } else {
-            Err(AppError::Forbidden)
-        };
-    }
+    // Ordinary service scopes carry no task/agent claim. Configured authorization
+    // is selected from the persisted task and enforced under the repository lock.
     let Some(task) = app::sdlc::pm_grant_task(actor)? else {
         return Ok(());
     };

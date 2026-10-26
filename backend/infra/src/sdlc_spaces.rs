@@ -220,7 +220,7 @@ pub(super) async fn bind_task(
     let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
     if native.identity().subject != actor.subject
         || (!app::sdlc::has_pm_grant(&actor.scopes)
-            && app::sdlc_configured_cli::configured_agent(actor)?.is_none()
+            && !state.configured_cli()
             && !app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
             && actor.subject != config.orchestrator_subject
             && actor.subject != config.verifier_subject

@@ -70,21 +70,26 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         .reserve_pm_draft(task, &f.owner, reserve)
         .await
         .unwrap();
-    let mut pm = actor(
+    let pm = actor(
         &subject,
         false,
         &["task-tracker:read", "task-tracker:write"],
     );
-    pm.scopes.insert(format!(
-        "task-tracker:sdlc:agent:{}",
-        reservation.assignment.agent_id
-    ));
     let fence = MachineFence {
         assignment_id: reservation.assignment.assignment_id,
         execution_id: reservation.assignment.execution_id,
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
+    assert_eq!(pm.scopes.len(), 2);
+    for scope in ["task-tracker:read", "task-tracker:write"] {
+        let mut partial = pm.clone();
+        partial.scopes.remove(scope);
+        assert!(
+            f.repo.read(task, &partial).await.is_err(),
+            "missing {scope}"
+        );
+    }
     let revision: PublishRevision = parse(
         json!({"fence":fence,"expected_requirement_revision":null,
         "idempotency_key":"configured-revision","document":{"goal":"Goal","scope":["Scope"],"exclusions":[],
@@ -160,12 +165,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     assert!(state.questions[0].checkpoint_id.is_none());
     assert!(!state.context(&pm).permissions.can_confirm);
     let mut foreign = pm.clone();
-    foreign
-        .scopes
-        .retain(|s| !s.starts_with("task-tracker:sdlc:agent:"));
-    foreign
-        .scopes
-        .insert(format!("task-tracker:sdlc:agent:{}", Uuid::new_v4()));
+    foreign.subject = "verifier".into();
     assert!(f.repo.read(task, &foreign).await.is_err());
     assert!(
         f.repo

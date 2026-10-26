@@ -1,4 +1,4 @@
-use crate::sdlc_configured_cli::{authorize_configured_pm, configured_agent};
+use crate::sdlc_configured_cli::authorize_configured_pm;
 use domain::sdlc::*;
 use domain::sdlc_pm_draft::{PmDraftReadback, PmDraftReservation, ReservePmDraft};
 use serde::Serialize;
@@ -374,7 +374,7 @@ pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
 
 pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     state.require_root()?;
-    if configured_agent(actor)?.is_some() {
+    if state.configured_cli() && !actor.trusted_human {
         return authorize_configured_pm(state, actor);
     }
     if state.configured_cli() && has_pm_grant(&actor.scopes) {

@@ -3,32 +3,17 @@ use domain::sdlc_configured_cli::*;
 use shared::AppError;
 use uuid::Uuid;
 
-pub const AGENT_SCOPE_PREFIX: &str = "task-tracker:sdlc:agent:";
-
-pub fn configured_agent(actor: &Principal) -> Result<Option<Uuid>, AppError> {
-    let mut scopes = actor
-        .scopes
-        .iter()
-        .filter_map(|s| s.strip_prefix(AGENT_SCOPE_PREFIX));
-    let Some(raw) = scopes.next() else {
-        return Ok(None);
-    };
-    let id = crate::sdlc::canonical_pm_uuid(raw).ok_or(AppError::Forbidden)?;
-    if actor.human_session
-        || actor.trusted_human
-        || scopes.next().is_some()
-        || crate::sdlc::has_pm_grant(&actor.scopes)
-    {
-        return Err(AppError::Forbidden);
-    }
-    Ok(Some(id))
-}
-
 pub fn authorize_configured_pm(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
-    let agent = configured_agent(actor)?.ok_or(AppError::Forbidden)?;
     let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
     if !state.configured_cli()
-        || assignment.agent_id != agent
+        || actor.human_session
+        || actor.trusted_human
+        || !actor.scopes.contains("task-tracker:read")
+        || !actor.scopes.contains("task-tracker:write")
+        || crate::sdlc::has_pm_grant(&actor.scopes)
+        || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+        || crate::sdlc::canonical_pm_uuid(&actor.subject).is_none()
+        || assignment.agent_id.is_nil()
         || assignment.machine_subject != actor.subject
         || actor.subject == state.owner_subject
     {
@@ -222,13 +207,9 @@ mod tests {
             subject: assignment.machine_subject.clone(),
             human_session: false,
             trusted_human: false,
-            scopes: [
-                format!("{AGENT_SCOPE_PREFIX}{agent}"),
-                "task-tracker:read".into(),
-                "task-tracker:write".into(),
-            ]
-            .into_iter()
-            .collect(),
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()]
+                .into_iter()
+                .collect(),
         };
         let config = SdlcConfig {
             single_task_project_ids: Default::default(),
@@ -247,14 +228,14 @@ mod tests {
     }
 
     #[test]
-    fn stable_service_scope_is_current_assignment_not_a_task_credential() {
+    fn standard_service_scopes_use_current_assignment_subject_not_a_task_credential() {
         let (mut state, actor, _, _) = fixture();
         authorize_configured_pm(&state, &actor).unwrap();
         crate::sdlc::authorize_pm_read(&state, &actor).unwrap();
-        state.assignment.as_mut().unwrap().agent_id = Uuid::from_u128(99);
+        state.assignment.as_mut().unwrap().agent_id = Uuid::nil();
         assert!(authorize_configured_pm(&state, &actor).is_err());
         state.assignment.as_mut().unwrap().agent_id = Uuid::from_u128(2);
-        state.assignment.as_mut().unwrap().machine_subject = "foreign".into();
+        state.assignment.as_mut().unwrap().machine_subject = Uuid::from_u128(42).to_string();
         assert!(authorize_configured_pm(&state, &actor).is_err());
     }
 
@@ -275,6 +256,42 @@ mod tests {
         let mut legacy = state.clone();
         legacy.retained_fields.remove("interaction_protocol");
         assert!(authorize_configured_pm(&legacy, &actor).is_err());
+        let mut mixed = actor.clone();
+        mixed
+            .scopes
+            .insert("task-tracker:sdlc:delivery:foreign".into());
+        assert!(authorize_configured_pm(&state, &mixed).is_err());
+        let mut human_pat = actor.clone();
+        human_pat.human_session = true;
+        assert!(authorize_configured_pm(&state, &human_pat).is_err());
+    }
+
+    #[test]
+    fn configured_pm_requires_both_standard_scopes_and_canonical_exact_subject() {
+        let (mut state, actor, _, _) = fixture();
+        let mut with_workflow = actor.clone();
+        with_workflow.scopes.extend([
+            "project-workflow:read".into(),
+            "project-workflow:write".into(),
+        ]);
+        authorize_configured_pm(&state, &with_workflow).unwrap();
+        crate::sdlc_confirmation::authorize_read(&state, &with_workflow).unwrap();
+        for scope in ["task-tracker:read", "task-tracker:write"] {
+            let mut partial = actor.clone();
+            partial.scopes.remove(scope);
+            assert!(authorize_configured_pm(&state, &partial).is_err());
+            assert!(crate::sdlc::authorize_pm_read(&state, &partial).is_err());
+        }
+        for subject in [
+            Uuid::nil().to_string(),
+            "not-a-uuid".into(),
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".into(),
+        ] {
+            let mut bad = actor.clone();
+            bad.subject = subject.clone();
+            state.assignment.as_mut().unwrap().machine_subject = subject;
+            assert!(authorize_configured_pm(&state, &bad).is_err());
+        }
     }
 
     #[test]
@@ -297,6 +314,17 @@ mod tests {
             "document":{"goal":"A goal","scope":["scope"],"exclusions":[],"constraints":[],"dependencies":[],"assumptions":[],"scenarios":["scenario"],
                 "acceptance_criteria":["criterion"],"checklist":["check"],"prerequisites":["prerequisite"]}
         })).unwrap();
+        let mut stale = revision.clone();
+        stale.fence.agent_id = Uuid::from_u128(99);
+        assert!(
+            crate::sdlc::authorize(
+                &state,
+                &actor,
+                &config,
+                &SdlcCommand::PublishRevision(stale)
+            )
+            .is_err()
+        );
         crate::sdlc::apply(
             &mut state,
             &actor,

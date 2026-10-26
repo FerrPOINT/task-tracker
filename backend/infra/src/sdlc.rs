@@ -281,7 +281,7 @@ impl PostgresSdlcRepository {
         }
         state.require_root()?;
         state.interaction_protocol()?;
-        if app::sdlc_configured_cli::configured_agent(actor)?.is_some() {
+        if state.configured_cli() && !actor.trusted_human {
             app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
         }
         spaces::bind_task(tx, config, &state, actor).await?;
@@ -307,7 +307,7 @@ impl PostgresSdlcRepository {
         app::sdlc::authorize_pm_read(&state, actor)?;
         lifecycle::authorize_read(tx, &state, actor).await?;
         if app::sdlc::has_pm_grant(&actor.scopes)
-            || app::sdlc_configured_cli::configured_agent(actor)?.is_some()
+            || (state.configured_cli() && !actor.trusted_human)
         {
             let row = tx.query_one(statement(
                 "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",

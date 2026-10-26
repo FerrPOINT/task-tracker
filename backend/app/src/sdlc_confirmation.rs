@@ -32,7 +32,7 @@ pub fn is_confirmation_read(method: &str, resource: &[&str]) -> bool {
 pub fn authorize_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     crate::sdlc::authorize_pm_read(state, actor)?;
     if crate::sdlc::pm_grant_task(actor)?.is_some()
-        || crate::sdlc_configured_cli::configured_agent(actor)?.is_some()
+        || (state.configured_cli() && !actor.trusted_human)
     {
         if !actor.scopes.contains("task-tracker:read") {
             return Err(AppError::Forbidden);

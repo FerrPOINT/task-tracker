@@ -237,6 +237,9 @@ fn completion_requires_real_owner_confirmation_and_current_service_fence() {
     let mut stale = command.clone();
     stale.fence.assignment_version += 1;
     assert!(validate_completion(&state, &pm, &stale).is_err());
+    let mut stale_agent = command.clone();
+    stale_agent.fence.agent_id = Uuid::from_u128(99);
+    assert!(validate_completion(&state, &pm, &stale_agent).is_err());
     let mut unconfirmed = state.clone();
     unconfirmed.confirmations.clear();
     assert!(validate_completion(&unconfirmed, &pm, &command).is_err());

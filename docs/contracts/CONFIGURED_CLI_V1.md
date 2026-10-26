@@ -29,12 +29,17 @@ reservation. Exact replay is 200; creation is 201; changed payload conflicts.
 
 ## Agent Authorization
 
-The configured service credential contains the stable scope
-`task-tracker:sdlc:agent:<canonical-agent-uuid>` and ordinary Tracker app scopes.
-Central Auth must verify service_account. Human credentials and mixed legacy
-task grants are rejected. Every task read/write verifies the current assignment
-subject and agent under the task lock, as well as existing active user/project
-membership. A caller-provided agent ID or environment variable is not authority.
+The persistent service credential uses ordinary `task-tracker:read` and
+`task-tracker:write` scopes (both required), with ordinary
+`project-workflow:read`/`project-workflow:write` for the Workflow CLI. No custom
+agent scope or per-task token is required. Central Auth must verify
+service_account; the verified principal is neither a human session nor a trusted
+human PAT. Human credentials and mixed legacy PM/delivery task grants are
+rejected. The explicit task protocol selects configured authorization. Every task
+read/write verifies the exact canonical assignment.machine_subject and current
+assignment under the task lock, as well as existing active user/project
+membership. Command agent/execution/assignment/version fences come from that
+assignment; a caller-provided agent ID or environment variable is not authority.
 The reservation does not mint or delegate credentials.
 
 The capability permits only the existing context, input, clarification,
