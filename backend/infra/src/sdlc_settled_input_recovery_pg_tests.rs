@@ -215,6 +215,27 @@ fn witness(f: &Fixture, c: &ResumePmExecutionLease) -> PmSettledInputRecoveryWit
     }
 }
 
+fn manual_witness(f: &Fixture, c: &ResumePmExecutionLease) -> PmSettledInputRecoveryWitness {
+    let mut w = witness(f, c);
+    w.manual_budget = Some(PmSettledInputManualBudget {
+        contract_version: 1,
+        root_operation_id: Uuid::from_u128(100),
+        control_operation_id: Uuid::from_u128(101),
+        retry_operation_key: format!("fleet-pm-resume-retry:{}", "a".repeat(64)),
+        retry_request_sha256: "b".repeat(64),
+        original_resume_request_sha256: c
+            .recovery
+            .as_ref()
+            .unwrap()
+            .original_request_sha256
+            .clone(),
+        prefix_count: 3,
+        prefix_sha256: "c".repeat(64),
+        allowance: 3,
+    });
+    w
+}
+
 async fn original_history(f: &Fixture) -> Json {
     f.db.query_one(statement("SELECT jsonb_build_object('inputs',(SELECT jsonb_agg(to_jsonb(i) ORDER BY lease_version) FROM sdlc_pm_resume_inputs i WHERE task_id=$1),
         'feedback',(SELECT jsonb_agg(to_jsonb(b) ORDER BY message_id) FROM sdlc_pm_feedback b WHERE task_id=$1),
@@ -490,9 +511,18 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
         .unwrap();
     expire(&f).await;
     let fourth = recovery(&f, &third_receipt, "recovery-4", &third_result);
+    // Preflight beyond three only permits reading Fleet, never lease issuance.
     assert!(
         f.repo
             .preflight_settled_input_recovery(f.task, &f.scheduler, &fourth)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let before_fourth = saved_lease(&f.db, f.reservation.assignment.execution_id).await;
+    assert!(
+        f.repo
+            .recover_settled_input_lease(f.task, &f.scheduler, fourth.clone(), witness(&f, &fourth))
             .await
             .is_err()
     );
@@ -509,6 +539,249 @@ async fn settled_input_recovery_expiry_lost_ack_chain_cas_and_immutable_history(
     );
     assert_eq!(count(&f.db, "sdlc_pm_resume_inputs").await, 1);
     assert_eq!(count(&f.db, "sdlc_pm_lease_operations").await, 4);
+
+    let fourth_witness = manual_witness(&f, &fourth);
+    // Same genuine history/request: legacy SQL103 rejects the new permission.
+    assert!(
+        f.repo
+            .recover_settled_input_lease(
+                f.task,
+                &f.scheduler,
+                fourth.clone(),
+                fourth_witness.clone()
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        saved_lease(&f.db, f.reservation.assignment.execution_id).await,
+        before_fourth
+    );
+    assert_eq!(count(&f.db, "sdlc_pm_lease_operations").await, 4);
+    let gate_sql = "SELECT oid::bigint AS id,pg_get_functiondef(oid) AS body FROM pg_proc
+        WHERE oid='sdlc_pm_settled_input_recovery_gate()'::regprocedure";
+    let old_gate =
+        f.db.query_one(statement(gate_sql, vec![]))
+            .await
+            .unwrap()
+            .unwrap();
+    f.db.execute_unprepared(include_str!(
+        "../../migration/src/pm_manual_recovery_budget.sql"
+    ))
+    .await
+    .unwrap();
+    let new_gate =
+        f.db.query_one(statement(gate_sql, vec![]))
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        old_gate.try_get::<i64>("", "id").unwrap(),
+        new_gate.try_get::<i64>("", "id").unwrap()
+    );
+    assert_eq!(new_gate.try_get::<String>("", "body").unwrap(),
+        old_gate.try_get::<String>("", "body").unwrap()
+            .replace("AND NEW.idempotency_key<>predecessor_key AND attempts<3",
+                     "AND NEW.idempotency_key<>predecessor_key AND sdlc_pm_settled_manual_budget_allows(w,c,attempts)")
+            .replace("AND w-ARRAY['contract_version','session_run_id','barrier_id','identity','request_sha256','command']='{}'::jsonb",
+                     "AND w-ARRAY['contract_version','session_run_id','barrier_id','identity','request_sha256','command','manual_budget']='{}'::jsonb"));
+    let raw_witness = json_value(&fourth_witness).unwrap();
+    let raw_command = json_value(&fourth).unwrap();
+    for position in 0i64..7 {
+        let row =
+            f.db.query_one(statement(
+                "SELECT sdlc_pm_settled_manual_budget_allows($1,$3,$4) AS manual,
+                    sdlc_pm_settled_manual_budget_allows($2,$3,$4) AS legacy",
+                vec![
+                    raw_witness.clone().into(),
+                    json_value(&witness(&f, &fourth)).unwrap().into(),
+                    raw_command.clone().into(),
+                    position.into(),
+                ],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.try_get::<bool>("", "manual").unwrap(),
+            (3..6).contains(&position)
+        );
+        assert_eq!(row.try_get::<bool>("", "legacy").unwrap(), position < 3);
+    }
+    for (field, bad) in [
+        ("original_resume_request_sha256", json!("f".repeat(64))),
+        ("allowance", json!(4)),
+        ("prefix_count", json!(4)),
+        ("prefix_count", json!(3.5)),
+        ("prefix_count", json!("3")),
+        ("contract_version", json!(1.0)),
+        ("root_operation_id", json!(Uuid::nil())),
+        (
+            "control_operation_id",
+            json!("00000000-0000-0000-0000-00000000000A"),
+        ),
+        ("prefix_sha256", json!("bad")),
+        ("unexpected", json!(true)),
+    ] {
+        let mut changed = raw_witness.clone();
+        changed["manual_budget"][field] = bad;
+        let row =
+            f.db.query_one(statement(
+                "SELECT sdlc_pm_settled_manual_budget_allows($1,$2,3) AS allowed",
+                vec![changed.clone().into(), raw_command.clone().into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!row.try_get::<bool>("", "allowed").unwrap(), "SQL {field}");
+        if let Ok(changed) = serde_json::from_value(changed) {
+            assert!(
+                f.repo
+                    .recover_settled_input_lease(f.task, &f.scheduler, fourth.clone(), changed)
+                    .await
+                    .is_err(),
+                "Rust {field}"
+            );
+        }
+    }
+    let mut null_proof = raw_witness.clone();
+    null_proof["manual_budget"] = Json::Null;
+    let row =
+        f.db.query_one(statement(
+            "SELECT sdlc_pm_settled_manual_budget_allows($1,$2,3) AS allowed",
+            vec![null_proof.into(), raw_command.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!row.try_get::<bool>("", "allowed").unwrap());
+    assert_eq!(
+        saved_lease(&f.db, f.reservation.assignment.execution_id).await,
+        before_fourth
+    );
+    let (a, b) = tokio::join!(
+        f.repo.recover_settled_input_lease(
+            f.task,
+            &f.scheduler,
+            fourth.clone(),
+            fourth_witness.clone()
+        ),
+        f.repo.recover_settled_input_lease(
+            f.task,
+            &f.scheduler,
+            fourth.clone(),
+            fourth_witness.clone()
+        )
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_ne!(a.1, b.1);
+    assert_eq!(json_value(&a.0).unwrap(), json_value(&b.0).unwrap());
+    assert_eq!(a.0.lease.version, third_receipt.lease.version + 1);
+    assert_eq!(a.0.lease.claimed_at, third_receipt.lease.claimed_at);
+    assert!(!a.0.dispatch_allowed);
+    assert_eq!(count(&f.db, "sdlc_pm_lease_operations").await, 5);
+    let mut current = a.0;
+    for position in 4..=6 {
+        expire(&f).await;
+        let predecessor_key = format!("recovery-{position}");
+        let predecessor = f
+            .repo
+            .pm_resume_operation(f.task, &reader, &predecessor_key)
+            .await
+            .unwrap();
+        let command = recovery(
+            &f,
+            &current,
+            &format!("recovery-{}", position + 1),
+            &predecessor,
+        );
+        let before = saved_lease(&f.db, f.reservation.assignment.execution_id).await;
+        if position == 6 {
+            assert!(
+                f.repo
+                    .recover_settled_input_lease(
+                        f.task,
+                        &f.scheduler,
+                        command.clone(),
+                        manual_witness(&f, &command)
+                    )
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                saved_lease(&f.db, f.reservation.assignment.execution_id).await,
+                before
+            );
+            break;
+        }
+        let mut stale = command.clone();
+        stale.expected_lease_version -= 1;
+        stale.idempotency_key = format!("stale-{position}");
+        assert!(
+            f.repo
+                .recover_settled_input_lease(
+                    f.task,
+                    &f.scheduler,
+                    stale.clone(),
+                    manual_witness(&f, &stale)
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            f.repo
+                .recover_settled_input_lease(
+                    f.task,
+                    &f.scheduler,
+                    command.clone(),
+                    witness(&f, &command)
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            saved_lease(&f.db, f.reservation.assignment.execution_id).await,
+            before
+        );
+        current = f
+            .repo
+            .recover_settled_input_lease(
+                f.task,
+                &f.scheduler,
+                command.clone(),
+                manual_witness(&f, &command),
+            )
+            .await
+            .unwrap()
+            .0;
+    }
+    // Already accepted results remain historical after expiry and cap exhaustion.
+    // No mutable Fleet parent status or new callback is consulted by readback.
+    let replay = f
+        .repo
+        .preflight_settled_input_recovery(f.task, &f.scheduler, &fourth)
+        .await
+        .unwrap()
+        .unwrap();
+    let accepted = f
+        .repo
+        .pm_resume_operation(f.task, &reader, "recovery-4")
+        .await
+        .unwrap();
+    assert_eq!(
+        json_value(&replay).unwrap(),
+        json_value(&accepted.result).unwrap()
+    );
+    let replay = f
+        .repo
+        .recover_settled_input_lease(f.task, &f.scheduler, fourth.clone(), witness(&f, &fourth))
+        .await
+        .unwrap();
+    assert!(replay.1);
+    assert_eq!(original_history(&f).await, history);
+    assert_eq!(count(&f.db, "sdlc_pm_resume_inputs").await, 1);
+    assert_eq!(count(&f.db, "sdlc_pm_lease_operations").await, 7);
     f.repo.db.close().await.unwrap();
     f.db.close().await.unwrap();
 }

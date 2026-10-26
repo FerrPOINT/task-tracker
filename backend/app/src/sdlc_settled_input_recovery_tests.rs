@@ -17,6 +17,147 @@ fn command() -> (PmDraftReservation, ResumePmExecutionLease) {
     (reservation, command)
 }
 
+fn budget_witness() -> (
+    PmDraftReservation,
+    ResumePmExecutionLease,
+    PmSettledInputRecoveryWitness,
+) {
+    let (reservation, command) = command();
+    let witness = PmSettledInputRecoveryWitness {
+        contract_version: 1,
+        session_run_id: command.previous_run_id,
+        barrier_id: command.recovery.as_ref().unwrap().barrier_id,
+        identity: crate::sdlc_pm_bootstrap_retry::identity(&reservation),
+        request_sha256: request_hash(&command).unwrap(),
+        command: command.clone(),
+        manual_budget: Some(PmSettledInputManualBudget {
+            contract_version: 1,
+            root_operation_id: Uuid::from_u128(100),
+            control_operation_id: Uuid::from_u128(101),
+            retry_operation_key: format!("fleet-pm-resume-retry:{}", "a".repeat(64)),
+            retry_request_sha256: "b".repeat(64),
+            original_resume_request_sha256: command
+                .recovery
+                .as_ref()
+                .unwrap()
+                .original_request_sha256
+                .clone(),
+            prefix_count: 3,
+            prefix_sha256: "c".repeat(64),
+            allowance: 3,
+        }),
+    };
+    (reservation, command, witness)
+}
+
+#[test]
+fn settled_manual_budget_preserves_default_cap_and_bounds_the_extra_positions() {
+    let (reservation, command, mut witness) = budget_witness();
+    let command_hash = request_hash(&command).unwrap();
+    validate_settled_witness(&witness, &reservation, &command).unwrap();
+    for position in 0..8 {
+        assert_eq!(
+            validate_settled_budget_position(&witness, position).is_ok(),
+            (3..6).contains(&position)
+        );
+    }
+    // Root/control may coincide, but neither is inferred from Tracker execution/run IDs.
+    let budget = witness.manual_budget.as_mut().unwrap();
+    budget.control_operation_id = budget.root_operation_id;
+    validate_settled_witness(&witness, &reservation, &command).unwrap();
+    assert_eq!(request_hash(&command).unwrap(), command_hash);
+    witness.manual_budget = None;
+    for position in 0..8 {
+        assert_eq!(
+            validate_settled_budget_position(&witness, position).is_ok(),
+            position < 3
+        );
+    }
+    assert!(
+        serde_json::to_value(witness)
+            .unwrap()
+            .get("manual_budget")
+            .is_none()
+    );
+}
+
+#[test]
+fn settled_manual_budget_rejects_malformed_foreign_and_overflowing_permission() {
+    let (reservation, command, witness) = budget_witness();
+    let raw = serde_json::to_value(witness).unwrap();
+    for (field, value) in [
+        ("contract_version", json!(2)),
+        ("root_operation_id", json!(Uuid::nil())),
+        ("control_operation_id", json!(Uuid::nil())),
+        ("retry_operation_key", json!("another-retry")),
+        ("retry_request_sha256", json!("B".repeat(64))),
+        ("original_resume_request_sha256", json!("f".repeat(64))),
+        ("prefix_sha256", json!("not-a-hash")),
+        ("prefix_count", json!(2)),
+        ("prefix_count", json!(9_007_199_254_740_990u64)),
+        ("allowance", json!(4)),
+    ] {
+        let mut changed = raw.clone();
+        changed["manual_budget"][field] = value;
+        let Ok(changed) = serde_json::from_value::<PmSettledInputRecoveryWitness>(changed) else {
+            // Canonical DTO identity checks may refuse before semantic validation.
+            continue;
+        };
+        assert!(
+            validate_settled_witness(&changed, &reservation, &command).is_err(),
+            "{field}"
+        );
+        assert!(
+            validate_settled_budget_position(&changed, 3).is_err(),
+            "{field}"
+        );
+    }
+    for (field, value) in [
+        ("unknown", json!(true)),
+        ("prefix_count", json!(3.5)),
+        (
+            "root_operation_id",
+            json!("00000000-0000-0000-0000-00000000000A"),
+        ),
+    ] {
+        let mut changed = raw.clone();
+        changed["manual_budget"][field] = value;
+        assert!(serde_json::from_value::<PmSettledInputRecoveryWitness>(changed).is_err());
+    }
+    // Clients cannot supply the callback permission through the existing POST DTO.
+    let mut supplied = serde_json::to_value(&command).unwrap();
+    supplied["manual_budget"] = raw["manual_budget"].clone();
+    assert!(serde_json::from_value::<ResumePmExecutionLease>(supplied).is_err());
+}
+
+#[test]
+fn settled_manual_budget_does_not_substitute_for_exact_callback_custody() {
+    let (reservation, command, witness) = budget_witness();
+    let raw = serde_json::to_value(&witness).unwrap();
+    for (pointer, value) in [
+        ("/request_sha256", json!("e".repeat(64))),
+        ("/barrier_id", json!(Uuid::new_v4())),
+        ("/identity/execution_ref", json!(Uuid::new_v4().to_string())),
+        ("/command/expected_lease_version", json!(104)),
+    ] {
+        let mut changed = raw.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            validate_settled_witness(
+                &serde_json::from_value(changed).unwrap(),
+                &reservation,
+                &command
+            )
+            .is_err()
+        );
+    }
+    // Historical proof validation needs no fresh callback or mutable Fleet parent state.
+    let retained: PmSettledInputRecoveryWitness = serde_json::from_value(raw.clone()).unwrap();
+    validate_settled_witness(&retained, &reservation, &command).unwrap();
+    validate_settled_budget_position(&retained, 3).unwrap();
+    assert_eq!(serde_json::to_value(retained).unwrap(), raw);
+}
+
 #[test]
 fn settled_input_absent_extension_preserves_original_wire_and_hash() {
     let (_, _, command) = super::tests::fixture();

@@ -131,6 +131,62 @@ pub fn validate_settled_witness(
             "Fleet settled PM recovery barrier changed",
         ));
     }
+    if let Some(budget) = &witness.manual_budget {
+        validate_manual_budget(budget, command)?;
+    }
+    Ok(())
+}
+
+fn validate_manual_budget(
+    budget: &PmSettledInputManualBudget,
+    command: &ResumePmExecutionLease,
+) -> Result<(), AppError> {
+    let recovery = command
+        .recovery
+        .as_ref()
+        .ok_or_else(|| AppError::conflict("manual PM recovery budget requires a settled input"))?;
+    if budget.contract_version != 1
+        || budget.root_operation_id.is_nil()
+        || budget.control_operation_id.is_nil()
+        || !budget
+            .retry_operation_key
+            .strip_prefix("fleet-pm-resume-retry:")
+            .is_some_and(hash)
+        || !hash(&budget.retry_request_sha256)
+        || !hash(&budget.original_resume_request_sha256)
+        || !hash(&budget.prefix_sha256)
+        || budget.original_resume_request_sha256 != recovery.original_request_sha256
+        || budget.allowance != 3
+        || budget.prefix_count < 3
+        || budget
+            .prefix_count
+            .checked_add(budget.allowance)
+            .is_none_or(|end| end > MAX_SAFE_VERSION as usize)
+    {
+        return Err(AppError::conflict(
+            "Fleet manual PM recovery budget changed",
+        ));
+    }
+    // Fleet validates its own audit/prefix hash. Its root/control IDs are not
+    // Tracker execution IDs or necessarily the previous native run ID.
+    Ok(())
+}
+
+pub fn validate_settled_budget_position(
+    witness: &PmSettledInputRecoveryWitness,
+    attempts: usize,
+) -> Result<(), AppError> {
+    let allowed = if let Some(budget) = &witness.manual_budget {
+        validate_manual_budget(budget, &witness.command)?;
+        budget.prefix_count <= attempts && attempts < budget.prefix_count + budget.allowance
+    } else {
+        attempts < 3
+    };
+    if !allowed {
+        return Err(AppError::conflict(
+            "settled PM recovery attempt limit reached",
+        ));
+    }
     Ok(())
 }
 

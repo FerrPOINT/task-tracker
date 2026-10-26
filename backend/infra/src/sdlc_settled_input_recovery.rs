@@ -88,6 +88,32 @@ impl PostgresSdlcRepository {
             &reservation,
             &evidence.command,
         )?;
+        let recovery = evidence
+            .command
+            .recovery
+            .as_ref()
+            .ok_or_else(inconsistent)?;
+        let position = tx
+            .query_one(statement(
+                "SELECT count(*) AS attempts FROM sdlc_pm_lease_operations WHERE execution_id=$1
+             AND recovery->>'kind'=$2 AND recovery#>>'{command,recovery,original_key}'=$3
+             AND recovery#>>'{command,recovery,original_request_sha256}'=$4 AND lease_version<$5",
+                vec![
+                    result.fence.execution_id.into(),
+                    KIND.into(),
+                    recovery.original_key.clone().into(),
+                    recovery.original_request_sha256.clone().into(),
+                    result.lease.version.into(),
+                ],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(inconsistent)?;
+        app::sdlc_pm_resume::validate_settled_budget_position(
+            &evidence.witness,
+            usize::try_from(position.try_get::<i64>("", "attempts").map_err(map_db)?)
+                .map_err(|_| inconsistent())?,
+        )?;
         let c = &evidence.command;
         let hash = app::sdlc_pm_resume::request_hash(c)?;
         if c.idempotency_key != key
@@ -124,7 +150,7 @@ impl PostgresSdlcRepository {
         state: &TaskState,
         actor: &Principal,
         command: &ResumePmExecutionLease,
-    ) -> Result<(PmDraftReservation, ExecutionLeaseReceipt), AppError> {
+    ) -> Result<(PmDraftReservation, ExecutionLeaseReceipt, usize), AppError> {
         let recovery = command.recovery.as_ref().ok_or_else(inconsistent)?;
         let original = self
             .resume_operation_source(tx, state, actor, &recovery.original_key)
@@ -203,11 +229,8 @@ impl PostgresSdlcRepository {
              AND recovery#>>'{command,recovery,original_request_sha256}'=$4 ORDER BY lease_version DESC",
             vec![f.execution_id.into(), KIND.into(), recovery.original_key.clone().into(), recovery.original_request_sha256.clone().into()],
         )).await.map_err(map_db)?;
-        if chain.len() >= 3 {
-            return Err(AppError::conflict(
-                "settled PM recovery attempt limit reached",
-            ));
-        }
+        // Preflight can read the trusted Fleet witness beyond the default cap.
+        // Only the locked issuance path below validates permission for that slot.
         let (key, hash) = match chain.first() {
             Some(row) => (
                 row.try_get::<String>("", "idempotency_key")
@@ -244,7 +267,7 @@ impl PostgresSdlcRepository {
                 "settled PM recovery requires exact current expired lease",
             ));
         }
-        Ok((reservation, current))
+        Ok((reservation, current, chain.len()))
     }
 
     pub(super) async fn preflight_settled_input_recovery(
@@ -296,10 +319,11 @@ impl PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((saved.result, true));
         }
-        let (reservation, mut current) = self
+        let (reservation, mut current, attempts) = self
             .settled_input_context(&tx, &state, actor, &command)
             .await?;
         app::sdlc_pm_resume::validate_settled_witness(&witness, &reservation, &command)?;
+        app::sdlc_pm_resume::validate_settled_budget_position(&witness, attempts)?;
         let before = current.clone();
         let now = clock(&tx).await?;
         current.lease.version += 1;
