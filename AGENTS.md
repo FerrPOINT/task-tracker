@@ -250,3 +250,12 @@ success; общий error mapping не заменять текстовым Error
 При временном сбое можно оставить подтверждённые данные и локальный ввод,
 блокируя запись через Fieldset/disabled и guard обработчика. Query keys,
 зависимости ресурсов и границы draft между задачами остаются у Tracker.
+
+## Коллекции боковой навигации
+
+После проверки UI pin используйте SidebarList Base для списка и separated
+для его разделителя, nested — для отступа вложенной коллекции. asChild
+сохраняет native nav/ul/li/section, hidden, ID и обработчики без DOM-оболочки.
+Ключ mapped-узла передавать внешнему SidebarList. Данные, ACL, URL, раскрытие
+и внешние margin/width остаются у продукта; внутренний base-sidebar-list и
+его border/padding/gap не копировать. Сначала pdlc-ui show и один example.

@@ -3,6 +3,7 @@ import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
 import { isUnarchivedProject } from './namespace-context'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
+  SidebarList,
   AccountMenu,
   AppShell as BaseAppShell,
   Badge,
@@ -162,62 +163,61 @@ function ProjectNavigation({
   if (catalogStatus === 'loading') return <LoadingState message="Загружаем проекты…" />
   if (!groups.length) return <Notice appearance="inline">Нет доступных проектов</Notice>
   return (
-    <nav
-      aria-label={t('navigation.projectNav')}
-      className="base-sidebar-list mt-3 border-t border-border pt-3"
-    >
-      {groups.map((project) => {
-        const open = !collapsed.has(project.id)
-        const key = encodeURIComponent(project.key)
-        const items = [
-          { to: `/projects/${key}/board`, icon: Columns2, labelKey: 'navigation.board' },
-          { to: `/projects/${key}/backlog`, icon: List, labelKey: 'navigation.backlog' },
-          {
-            to: `/reports?project_key=${key}`,
-            icon: BarChart3,
-            labelKey: 'navigation.projectReports',
-          },
-        ]
-        return (
-          <ProjectNavigationGroup
-            key={project.id}
-            name={project.name}
-            projectKey={project.key}
-            active={[
-              ...items,
-              { to: `/projects/${key}/trash` },
-              { to: `/projects/${key}/settings` },
-              { to: `/projects/${key}/settings/custom-fields` },
-            ].some((item) =>
-              isActive(
-                project.namespace ? withNamespaceLocation(item.to, project.namespace) : item.to,
-              ),
-            )}
-            compact={compact}
-            open={open}
-            onToggle={() => onToggle(project.id)}
-            actions={<ProjectActions project={project} onNavigate={onNavigate} />}
-          >
-            {items.map((item) => {
-              const target = project.namespace
-                ? withNamespaceLocation(item.to, project.namespace)
-                : item.to
-              return (
-                <SidebarLink
-                  key={item.to}
-                  to={target}
-                  icon={item.icon}
-                  label={t(item.labelKey)}
-                  active={isActive(target)}
-                  compact={compact}
-                  onClick={onNavigate}
-                />
-              )
-            })}
-          </ProjectNavigationGroup>
-        )
-      })}
-    </nav>
+    <SidebarList asChild separated className="mt-3">
+      <nav aria-label={t('navigation.projectNav')}>
+        {groups.map((project) => {
+          const open = !collapsed.has(project.id)
+          const key = encodeURIComponent(project.key)
+          const items = [
+            { to: `/projects/${key}/board`, icon: Columns2, labelKey: 'navigation.board' },
+            { to: `/projects/${key}/backlog`, icon: List, labelKey: 'navigation.backlog' },
+            {
+              to: `/reports?project_key=${key}`,
+              icon: BarChart3,
+              labelKey: 'navigation.projectReports',
+            },
+          ]
+          return (
+            <ProjectNavigationGroup
+              key={project.id}
+              name={project.name}
+              projectKey={project.key}
+              active={[
+                ...items,
+                { to: `/projects/${key}/trash` },
+                { to: `/projects/${key}/settings` },
+                { to: `/projects/${key}/settings/custom-fields` },
+              ].some((item) =>
+                isActive(
+                  project.namespace ? withNamespaceLocation(item.to, project.namespace) : item.to,
+                ),
+              )}
+              compact={compact}
+              open={open}
+              onToggle={() => onToggle(project.id)}
+              actions={<ProjectActions project={project} onNavigate={onNavigate} />}
+            >
+              {items.map((item) => {
+                const target = project.namespace
+                  ? withNamespaceLocation(item.to, project.namespace)
+                  : item.to
+                return (
+                  <SidebarLink
+                    key={item.to}
+                    to={target}
+                    icon={item.icon}
+                    label={t(item.labelKey)}
+                    active={isActive(target)}
+                    compact={compact}
+                    onClick={onNavigate}
+                  />
+                )
+              })}
+            </ProjectNavigationGroup>
+          )
+        })}
+      </nav>
+    </SidebarList>
   )
 }
 
@@ -355,19 +355,21 @@ export function AppShell() {
               {t('navigation.create')}
             </CreateTaskAction>
           )}
-          <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
-            {navItems.map((item) => (
-              <SidebarLink
-                key={item.to}
-                to={item.to}
-                icon={item.icon}
-                label={t(item.labelKey)}
-                active={isActive(item.to)}
-                compact={compact}
-                onClick={onNavigate}
-              />
-            ))}
-          </nav>
+          <SidebarList asChild>
+            <nav aria-label={t('navigation.mainNav')}>
+              {navItems.map((item) => (
+                <SidebarLink
+                  key={item.to}
+                  to={item.to}
+                  icon={item.icon}
+                  label={t(item.labelKey)}
+                  active={isActive(item.to)}
+                  compact={compact}
+                  onClick={onNavigate}
+                />
+              ))}
+            </nav>
+          </SidebarList>
           <ProjectNavigation
             groups={projectGroups}
             catalogStatus={
@@ -479,9 +481,7 @@ export function AppShell() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
                   <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border p-1">
-                    <DropdownMenuLabel>
-                      {t('notifications.title')}
-                    </DropdownMenuLabel>
+                    <DropdownMenuLabel>{t('notifications.title')}</DropdownMenuLabel>
                     <DropdownMenuItem
                       onSelect={() => markAllNotificationsRead.mutate()}
                       disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
@@ -506,10 +506,7 @@ export function AppShell() {
                       return (
                         <DropdownMenuGroup key={notification.id} className="flex items-start gap-1">
                           {notification.action_url ? (
-                            <DropdownMenuItem
-                              asChild
-                              className="min-w-0 flex-1 items-start"
-                            >
+                            <DropdownMenuItem asChild className="min-w-0 flex-1 items-start">
                               <Link
                                 to={notification.action_url}
                                 onClick={() => {
@@ -565,7 +562,10 @@ export function AppShell() {
                 modal={false}
                 account={{
                   label: user?.display_name ?? user?.email ?? t('navigation.user'),
-                  secondary: user?.display_name && user.display_name !== user.email ? user?.email : undefined,
+                  secondary:
+                    user?.display_name && user.display_name !== user.email
+                      ? user?.email
+                      : undefined,
                   onLogout: () => logout.mutate(),
                   pending: logout.isPending,
                 }}
