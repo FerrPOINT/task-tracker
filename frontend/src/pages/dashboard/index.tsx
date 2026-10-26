@@ -1,6 +1,7 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
+  ResourceListDescription,
   LoadingState,
   Badge,
   Button,
@@ -85,9 +86,11 @@ export function DashboardPage() {
                       className="grid gap-1.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                     >
                       <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-                        <span className="shrink-0 font-mono text-xs text-text-muted">
+                        <ResourceListDescription asChild technical>
+                          <span className="shrink-0">
                           {item.key}
                         </span>
+                        </ResourceListDescription>
                         <span className="line-clamp-2 break-words sm:line-clamp-1">
                           {item.summary}
                         </span>

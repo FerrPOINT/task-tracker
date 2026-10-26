@@ -1,6 +1,8 @@
 import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { useDebouncedValue } from '@pdlc/ui/lib'
 import {
+  CardTitle,
+  ResourceListDescription,
   EmptyState,
   LoadingState,
   RadioGroup,
@@ -386,7 +388,9 @@ export default function SearchPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-text-muted" />
-              <span className="text-sm font-medium">{t('jql.title')}</span>
+              <CardTitle asChild>
+                <span>{t('jql.title')}</span>
+              </CardTitle>
             </div>
             <form onSubmit={submitJql} className="mt-3 flex flex-col gap-2 sm:flex-row">
               <Input
@@ -404,7 +408,9 @@ export default function SearchPage() {
                 {t('jql.invalid')}
               </Notice>
             ) : (
-              <p className="mt-2 text-xs text-text-muted">{t('jql.help')}</p>
+              <ResourceListDescription asChild>
+                <p className="mt-2">{t('jql.help')}</p>
+              </ResourceListDescription>
             )}
           </CardContent>
         </Card>

@@ -7,6 +7,7 @@ import {
   ProjectCardState,
 } from '@/widgets/project-actions'
 import {
+  Metric,
   ActionGroup,
   PageNavigation,
   EmptyState,
@@ -205,21 +206,10 @@ export function ProjectsPage() {
                     <ProjectCardState projectId={project.id} />
                   </span>
                 </ProjectCardLink>
-                <ResourceListRow className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 items-center gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
-                  <div className="min-w-0">
-                    <span className="block truncate text-text-muted">{t('projects.todo')}</span>
-                    <span className="font-medium">{project.todo_count}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block truncate text-text-muted">
-                      {t('projects.inProgress')}
-                    </span>
-                    <span className="font-medium">{project.in_progress_count}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="block truncate text-text-muted">{t('projects.done')}</span>
-                    <span className="font-medium">{project.done_count}</span>
-                  </div>
+                <ResourceListRow className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 items-center gap-1 text-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                  <Metric appearance="compact" label={t("projects.todo")} value={project.todo_count} />
+                  <Metric appearance="compact" label={t("projects.inProgress")} value={project.in_progress_count} />
+                  <Metric appearance="compact" label={t("projects.done")} value={project.done_count} />
                 </ResourceListRow>
                 <ResourceListRow className="col-start-2 row-start-1 flex items-center sm:col-start-3">
                   <DropdownMenu modal={false}>

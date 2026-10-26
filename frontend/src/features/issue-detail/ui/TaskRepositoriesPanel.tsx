@@ -1,4 +1,5 @@
 import {
+  ResourceListDescription,
   EmptyState,
   TextLink,
   Select,
@@ -269,9 +270,11 @@ export function TaskRepositoriesPanel({
                         )}{' '}
                         · {item.status}
                       </p>
-                      <p className="break-all text-xs text-text-muted">
+                      <ResourceListDescription asChild technical>
+                        <p className="break-all">
                         Коммиты: {item.commits.join(', ')}
                       </p>
+                      </ResourceListDescription>
                       <ul className="space-y-1 text-sm">
                         {item.checks.map((check) => (
                           <li key={check.pipeline_id}>
@@ -288,9 +291,11 @@ export function TaskRepositoriesPanel({
                             ) : (
                               check.status
                             )}
-                            <span className="ml-2 font-mono text-xs">
+                            <ResourceListDescription asChild technical>
+                              <span className="ml-2">
                               {check.commit_sha.slice(0, 12)}
                             </span>
+                            </ResourceListDescription>
                           </li>
                         ))}
                         {item.checks.length === 0 && (

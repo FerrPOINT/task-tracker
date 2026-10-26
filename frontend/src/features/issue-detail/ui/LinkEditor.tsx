@@ -1,4 +1,5 @@
 import {
+  ResourceListDescription,
   TextLink,
   SectionHeader,
   Select,
@@ -86,7 +87,9 @@ function IssueLinkEditor({ issueId, currentKey }: { issueId: string; currentKey:
                     <ResourceListRow asChild key={l.id}>
                       <li className="flex items-center justify-between gap-2 text-sm">
                         <span className="min-w-0 break-words">
-                          <span className="text-muted-foreground">{label}</span>{' '}
+                          <ResourceListDescription asChild>
+                            <span>{label}</span>
+                          </ResourceListDescription>{' '}
                           <TextLink asChild>
                             <Link to={`/issues/${otherId}`} className="font-medium">
                               {otherKey}

@@ -3,6 +3,7 @@ import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Prose,
   Button,
   Card,
   CardContent,
@@ -204,7 +205,9 @@ function Management({ project, session }: { project: Project; session: SpaceSess
       {original && (
         <Card>
           <CardContent density="compact" className="space-y-2">
-            <p className="text-sm">Есть незавершённое изменение. Его набор и ключ сохранены.</p>
+            <Prose asChild>
+              <p>Есть незавершённое изменение. Его набор и ключ сохранены.</p>
+            </Prose>
             <Button
               type="button"
               disabled={save.isPending || receiptRead.isPending}

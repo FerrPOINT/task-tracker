@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  ResourceListDescription,
   EmptyState,
   ResourceListTitle,
   SectionHeader,
@@ -208,10 +209,12 @@ export function ProjectCustomFieldsPage() {
                             {field.name}
                             {field.is_required ? ' *' : ''}
                           </p></ResourceListTitle>
-                          <p className="break-words text-sm text-text-muted">
+                          <ResourceListDescription asChild>
+                            <p className="break-words">
                             {t(`customFields.types.${field.field_type}`)}
                             {field.options.length ? `: ${field.options.join(', ')}` : ''}
                           </p>
+                          </ResourceListDescription>
                         </div>
                         <Button
                           variant="destructive-outline"

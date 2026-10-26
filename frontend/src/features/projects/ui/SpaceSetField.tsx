@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useState } from 'react'
 import {
+  ResourceListTitle,
   Card,
   CardContent,
   Fieldset,
@@ -135,10 +136,12 @@ export function SpaceSetField({
                 density="compact"
                 className="flex min-w-0 items-center justify-between gap-2"
               >
-                <span className="min-w-0 break-all text-sm">
+                <ResourceListTitle asChild>
+                  <span className="min-w-0 break-all">
                   {entry?.metadata.name ?? 'Пространство'} · {ref.registry_instance_id}/
                   {ref.space_id}
                 </span>
+                </ResourceListTitle>
                 <Button
                   type="button"
                   variant="ghost"

@@ -1,5 +1,11 @@
 import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
-import { ResourceListTitle, PageNavigation, Notice, SectionHeader } from '@pdlc/ui/ui'
+import {
+  ResourceListDescription,
+  ResourceListTitle,
+  PageNavigation,
+  Notice,
+  SectionHeader,
+} from '@pdlc/ui/ui'
 import {
   Disclosure,
   Button,
@@ -501,9 +507,11 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                         <ResourceListTitle asChild>
                           <p>{t(`sdlc.events.${eventLabels[event.event_type]}`)}</p>
                         </ResourceListTitle>
-                        <p className="text-text-muted">
+                        <ResourceListDescription asChild>
+                          <p>
                           #{event.sequence} · {new Date(event.created_at).toLocaleString()}
                         </p>
+                        </ResourceListDescription>
                         {event.event_type === 'analysis.intent_created' && (
                           <dl>
                             <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>

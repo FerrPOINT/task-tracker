@@ -288,22 +288,28 @@ export function AdminPage() {
                         {entry.action}
                       </div>
                       <div className="min-w-0 break-all text-xs">
-                        <span className="mr-1 text-text-muted lg:hidden">
+                        <ResourceListDescription asChild>
+                          <span className="mr-1 lg:hidden">
                           {t('admin.audit.entity')}:
                         </span>
+                        </ResourceListDescription>
                         {entry.entity_type}
                         {entry.entity_id ? ` · ${entry.entity_id}` : ''}
                       </div>
                       <div className="min-w-0 break-all font-mono text-xs">
-                        <span className="mr-1 font-sans text-text-muted lg:hidden">
+                        <ResourceListDescription asChild>
+                          <span className="mr-1 lg:hidden">
                           {t('admin.audit.actor')}:
                         </span>
+                        </ResourceListDescription>
                         {entry.actor_id || t('admin.audit.system')}
                       </div>
                       <div className="min-w-0">
-                        <ResourceListDescription asChild className="lg:hidden"><span >
+                        <ResourceListDescription asChild className="lg:hidden">
+                          <span >
                           {t('admin.audit.changes')}:
-                        </span></ResourceListDescription>
+                        </span>
+                        </ResourceListDescription>
                         <ChangesSummary value={entry.metadata} />
                       </div>
                       <div className="text-xs text-text-muted">{formatDate(entry.created_at)}</div>
