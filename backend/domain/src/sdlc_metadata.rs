@@ -1,4 +1,4 @@
-use crate::sdlc::{MachineFence, Stage};
+use crate::sdlc::{InteractionProtocol, MachineFence, Stage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -59,6 +59,8 @@ pub enum CancelledQuestionState {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QuestionResource<S> {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub question_id: Uuid,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub question_version: i64,
@@ -75,6 +77,8 @@ pub struct QuestionResource<S> {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AnswerResource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub answer_id: Uuid,
     pub question_id: Uuid,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
