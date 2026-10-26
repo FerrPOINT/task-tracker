@@ -2148,3 +2148,9 @@ business commands retain fence/CAS/idempotency. The existing completion endpoint
 also accepts the closed configured command without native lease fields and reads
 Workflow evidence server-to-server. See the exact wire and integration gates in
 [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).
+
+Configured-only confirmation is exact owner consent with `stage: Draft`, not
+publication or infrastructure readiness proof. Context stays Draft/InProgress
+until current assigned PM completion verifies the authoritative Workflow terminal
+receipt and atomically publishes Backlog/Ready. Legacy Backlog confirmation
+receipts and verifier/evidence checks are unchanged.

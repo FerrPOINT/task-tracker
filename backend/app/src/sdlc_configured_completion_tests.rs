@@ -7,7 +7,8 @@ fn confirmed() -> (
     CompleteConfiguredPm,
     ConfiguredWorkflowReceipt,
 ) {
-    let (mut state, pm, config, fence) = super::tests::fixture();
+    let (mut state, pm, mut config, fence) = super::tests::fixture();
+    config.verifier_subject.clear();
     state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
     let revision:PublishRevision=serde_json::from_value(json!({"fence":fence,"expected_requirement_revision":null,
         "idempotency_key":"revision","document":{"goal":"Goal","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],
@@ -19,31 +20,6 @@ fn confirmed() -> (
         &SdlcCommand::PublishRevision(revision),
     )
     .unwrap();
-    let verifier = Principal {
-        subject: config.verifier_subject.clone(),
-        human_session: false,
-        trusted_human: false,
-        scopes: [format!("task-tracker:sdlc:evidence:{}:1", state.task_id)]
-            .into_iter()
-            .collect(),
-    };
-    for check in ["Check", "Prerequisite"] {
-        let evidence = EvidenceCommand {
-            fence: fence.clone(),
-            requirement_revision: 1,
-            content_hash: state.revisions[0].content_hash.clone(),
-            check_id: check.into(),
-            evidence_reference: "fixture://readiness".into(),
-            idempotency_key: format!("evidence-{check}"),
-        };
-        crate::sdlc::apply(
-            &mut state,
-            &verifier,
-            &config,
-            &SdlcCommand::Evidence(evidence),
-        )
-        .unwrap();
-    }
     let owner = Principal {
         subject: state.owner_subject.clone(),
         human_session: true,
@@ -65,6 +41,9 @@ fn confirmed() -> (
         },
     )
     .unwrap();
+    assert!(state.evidence.is_empty());
+    assert_eq!(state.stage, Stage::Draft);
+    assert_eq!(state.current_confirmation().unwrap().stage, Stage::Draft);
     let command = CompleteConfiguredPm {
         interaction_protocol: InteractionProtocol::ConfiguredCliV1,
         fence: fence.clone(),
@@ -107,6 +86,143 @@ fn response(receipt: &ConfiguredWorkflowReceipt) -> Value {
 }
 
 #[test]
+fn configured_consent_is_draft_without_a_verifier_and_remains_exact_after_publication() {
+    let (mut state, pm, _, _) = confirmed();
+    let receipt = state.current_confirmation().unwrap().clone();
+    crate::sdlc_confirmation::exact_receipt(&state, 1, Some(&receipt), Some(&receipt.content_hash))
+        .unwrap();
+    assert_eq!(state.context(&pm).stage, Stage::Draft);
+    assert_eq!(
+        state.context(&pm).waiting_reason.as_deref(),
+        Some("waiting_for_workflow_completion")
+    );
+    assert_eq!(
+        state.status,
+        Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
+    );
+    state.stage = Stage::Backlog;
+    state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    state.draft_submode = None;
+    assert_eq!(state.current_confirmation(), Some(&receipt));
+    assert_eq!(
+        crate::sdlc_confirmation::exact_receipt(
+            &state,
+            1,
+            Some(&receipt),
+            Some(&receipt.content_hash),
+        )
+        .unwrap()
+        .stage,
+        Stage::Draft
+    );
+    let mut event = OutboxEvent {
+        sequence: 1,
+        event_id: Uuid::new_v4(),
+        task_id: state.task_id,
+        event_type: "requirements.confirmed".into(),
+        created_at: receipt.created_at,
+        payload: json!({"contract_version":1,"interaction_protocol":"configured-cli-v1",
+            "tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,
+            "task_id":state.task_id,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,
+            "stage":"Draft","requirement_revision":receipt.revision,"result":receipt}),
+    };
+    let refs = || crate::sdlc_metadata::MetadataReferences {
+        input: None,
+        question: None,
+        requirement_hash: Some(receipt.content_hash.clone()),
+    };
+    assert!(crate::sdlc_metadata::project(&event, refs()).is_ok());
+    event
+        .payload
+        .as_object_mut()
+        .unwrap()
+        .remove("interaction_protocol");
+    assert!(crate::sdlc_metadata::project(&event, refs()).is_err());
+}
+
+#[test]
+fn configured_consent_still_requires_business_readiness_and_exact_revision() {
+    let (mut state, pm, _, _) = confirmed();
+    state.confirmations.clear();
+    let (_, _, mut config, fence) = super::tests::fixture();
+    config.verifier_subject.clear();
+    let owner = Principal {
+        subject: state.owner_subject.clone(),
+        human_session: true,
+        trusted_human: true,
+        scopes: Default::default(),
+    };
+    let command = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: state.revisions[0].content_hash.clone(),
+            idempotency_key: "consent".into(),
+            expected_routing_policy_version: None,
+        },
+    };
+    let mut invalid = state.clone();
+    invalid.revisions[0].document.goal.clear();
+    assert!(crate::sdlc::apply(&mut invalid, &owner, &config, &command).is_err());
+    let mut stale = state.clone();
+    stale.confirmation_revision = Some(2);
+    assert!(crate::sdlc::apply(&mut stale, &owner, &config, &command).is_err());
+    let mut unassigned = state.clone();
+    unassigned.assignment = None;
+    assert!(crate::sdlc::apply(&mut unassigned, &owner, &config, &command).is_err());
+    let mut bad_hash = state.clone();
+    bad_hash.revisions[0].content_hash = "b".repeat(64);
+    assert!(crate::sdlc::apply(&mut bad_hash, &owner, &config, &command).is_err());
+    let question: PublishQuestion = serde_json::from_value(json!({"fence":fence,
+        "request_id":Uuid::from_u128(333),"question_id":Uuid::from_u128(334),
+        "expected_question_version":null,"requirement_revision":1,"requirement_reference":null,
+        "text":"Required choice","rationale":"Business input","required":true,"mode":"text",
+        "options":[],"recommended_option_id":null,"idempotency_key":"required-question"}))
+    .unwrap();
+    crate::sdlc::apply(
+        &mut state,
+        &pm,
+        &config,
+        &SdlcCommand::PublishQuestion(question),
+    )
+    .unwrap();
+    assert!(!state.ready());
+    assert!(crate::sdlc::apply(&mut state, &owner, &config, &command).is_err());
+    assert!(state.confirmations.is_empty());
+    assert_eq!(state.stage, Stage::Draft);
+}
+
+#[test]
+fn legacy_consent_still_requires_verifier_evidence_and_backlog_receipt() {
+    let (mut state, _, _, _) = confirmed();
+    state.confirmations.clear();
+    state.retained_fields.remove("interaction_protocol");
+    let (_, _, mut config, _) = super::tests::fixture();
+    let owner = Principal {
+        subject: state.owner_subject.clone(),
+        human_session: true,
+        trusted_human: true,
+        scopes: Default::default(),
+    };
+    let command = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: state.revisions[0].content_hash.clone(),
+            idempotency_key: "legacy-consent".into(),
+            expected_routing_policy_version: None,
+        },
+    };
+    assert!(!state.ready());
+    assert!(crate::sdlc::apply(&mut state, &owner, &config, &command).is_err());
+    config.verifier_subject.clear();
+    assert!(matches!(
+        crate::sdlc::apply(&mut state, &owner, &config, &command),
+        Err(AppError::Unavailable(_))
+    ));
+    assert_eq!(state.confirmation_stage(), Stage::Backlog);
+    assert!(state.confirmations.is_empty());
+}
+
+#[test]
 fn completion_requires_real_owner_confirmation_and_current_service_fence() {
     let (state, pm, command, receipt) = confirmed();
     validate_completion(&state, &pm, &command).unwrap();
@@ -124,6 +240,12 @@ fn completion_requires_real_owner_confirmation_and_current_service_fence() {
     let mut unconfirmed = state.clone();
     unconfirmed.confirmations.clear();
     assert!(validate_completion(&unconfirmed, &pm, &command).is_err());
+    let mut pretended = state.clone();
+    pretended.confirmations[0].stage = Stage::Backlog;
+    assert!(validate_completion(&pretended, &pm, &command).is_err());
+    let mut invalid = state.clone();
+    invalid.revisions[0].document.goal.clear();
+    assert!(validate_completion(&invalid, &pm, &command).is_err());
     let mut native = serde_json::to_value(&command).unwrap();
     native["terminal_receipt"] = json!(receipt);
     assert!(serde_json::from_value::<CompleteConfiguredPm>(native).is_err());

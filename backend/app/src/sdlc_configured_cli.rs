@@ -53,8 +53,12 @@ pub fn validate_completion(
     let confirmation = state
         .current_confirmation()
         .ok_or_else(|| AppError::conflict("exact owner confirmation required"))?;
-    if state.stage != Stage::Backlog
-        || state.status != Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)
+    crate::sdlc::validate_document(&revision.document)?;
+    if !((state.stage == Stage::Draft
+        && state.status == Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
+        && state.ready())
+        || (state.stage == Stage::Backlog
+            && state.status == Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)))
         || command.fence.assignment_id != assignment.assignment_id
         || command.fence.execution_id != assignment.execution_id
         || command.fence.agent_id != assignment.agent_id
@@ -172,6 +176,11 @@ impl crate::sdlc::SdlcService {
                 return Err(AppError::conflict("PM completion key payload conflict"));
             }
             return Ok((saved.result, true));
+        }
+        if state.stage != Stage::Draft {
+            return Err(AppError::conflict(
+                "configured completion requires confirmed Draft",
+            ));
         }
         let reader = self.configured_workflow.as_ref().ok_or_else(|| {
             AppError::Unavailable("Workflow receipt reader is not configured".into())

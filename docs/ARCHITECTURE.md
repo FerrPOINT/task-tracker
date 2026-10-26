@@ -719,3 +719,10 @@ admission, not at a proxy/resolver. Central Auth verifies the service subject;
 Tracker checks its stable agent capability against the locked assignment and
 retains project/member RBAC. No native admission observation or execution lease
 is accepted for this mode. See [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).
+
+For this protocol only, business readiness is a valid current document with
+mandatory questions closed, not infrastructure verifier evidence. Owner consent
+is an immutable Draft receipt. Only completion, after authoritative Workflow
+terminal readback and locked owner/assignment revalidation, projects Draft to
+Backlog/Ready in the same transaction as its ledger, admission and outbox. It
+does not activate Analysis or retrofit legacy consent/history.

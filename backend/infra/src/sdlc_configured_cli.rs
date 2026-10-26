@@ -114,11 +114,12 @@ impl PostgresSdlcRepository {
             .map_err(map_db)?
             .ok_or_else(|| AppError::conflict("PM cursor absent"))?;
         let version: i64 = row.try_get("", "pm_owner_version").map_err(map_db)?;
-        if row
-            .try_get::<Option<String>>("", "pm_admission_state")
-            .map_err(map_db)?
-            .as_deref()
-            != Some("reserved")
+        if state.stage != Stage::Draft
+            || row
+                .try_get::<Option<String>>("", "pm_admission_state")
+                .map_err(map_db)?
+                .as_deref()
+                != Some("reserved")
             || Self::configured_saved(&tx, &state, None).await?.is_some()
         {
             return Err(AppError::conflict(
@@ -144,12 +145,31 @@ impl PostgresSdlcRepository {
             vec![result.completion_id.into(),task.into(),assignment.execution_id.into(),confirmation.id.into(),command.requirement_revision.into(),
                 command.content_hash.clone().into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),
                 json_value(&command)?,json_value(&result.workflow_receipt)?,json_value(&result)?,now.into()]).await?;
+        let mut next = state.clone();
+        next.stage = Stage::Backlog;
+        next.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+        next.draft_submode = None;
+        let next_state = json_value(&next)?;
         exec(
             &tx,
-            "UPDATE sdlc_tasks SET pm_admission_state='completed' WHERE task_id=$1",
-            vec![task.into()],
+            "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+            VALUES($1,pg_current_xact_id(),$2)",
+            vec![task.into(), next_state.clone()],
         )
         .await?;
+        exec(
+            &tx,
+            "UPDATE sdlc_tasks SET state=$2,pm_admission_state='completed' WHERE task_id=$1",
+            vec![task.into(), next_state],
+        )
+        .await?;
+        let status_id = lifecycle::mapped_issue_status(
+            &tx,
+            Stage::Backlog,
+            domain::sdlc_lifecycle::LifecycleStatus::Ready,
+        )
+        .await?;
+        lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
         exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'pm.completed',$3)",
             vec![result.completion_id.into(),task.into(),json!({"contract_version":1,"interaction_protocol":"configured-cli-v1",
                 "tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,

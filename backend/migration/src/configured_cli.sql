@@ -67,6 +67,30 @@ END $$;
 CREATE TRIGGER sdlc_configured_cli_creation_gate BEFORE INSERT ON sdlc_draft_creations
     FOR EACH ROW EXECUTE FUNCTION sdlc_configured_cli_creation_gate();
 
+CREATE FUNCTION sdlc_configured_cli_confirmation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE t sdlc_tasks;
+BEGIN
+    SELECT * INTO STRICT t FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    IF t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1' THEN RETURN NEW; END IF;
+    IF NOT ((t.state->>'stage'='Draft' AND t.pm_admission_state='reserved'
+        AND sdlc_current_pm_draft_reserved(t.task_id,t.pm_execution_id,t.state,t.pm_owner_version,t.pm_admission_state)
+        AND t.state->'confirmation_revision'=to_jsonb(NEW.revision)
+        AND t.state->'revisions'->-1->'revision'=to_jsonb(NEW.revision)
+        AND t.state->'revisions'->-1->>'content_hash'=NEW.content_hash
+        AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(t.state->'questions') q
+            WHERE q->'required'='true'::jsonb AND q->>'state'='open')
+        AND NEW.payload->>'id'=NEW.id::text AND NEW.payload->>'task_id'=NEW.task_id::text
+        AND NEW.payload->'revision'=to_jsonb(NEW.revision) AND NEW.payload->>'content_hash'=NEW.content_hash
+        AND NEW.payload->>'owner_subject'=t.owner_subject AND NEW.payload->>'stage'='Draft'
+        AND jsonb_typeof(NEW.payload->'created_at')='string'
+        AND NEW.payload-ARRAY['id','task_id','revision','content_hash','owner_subject','created_at','stage']='{}'::jsonb) IS TRUE) THEN
+        RAISE EXCEPTION 'configured consent requires current owner-confirmed business-ready Draft' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_configured_cli_confirmation_gate BEFORE INSERT ON sdlc_confirmations
+    FOR EACH ROW EXECUTE FUNCTION sdlc_configured_cli_confirmation_gate();
+
 CREATE FUNCTION sdlc_configured_cli_no_native_lease() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.pm_execution_id=NEW.execution_id
@@ -123,12 +147,15 @@ BEGIN
         AND e.task_id=t.task_id AND e.owner_version=t.pm_owner_version AND e.result->'assignment'=t.state->'assignment'
         AND e.result->>'interaction_protocol'='configured-cli-v1'
         AND t.state->>'workflow_task_key'='SDLC-'||e.ordinal::text
-        AND t.state->>'stage'='Backlog' AND t.state->>'status'='Ready'
+        AND t.state->>'stage'='Draft' AND t.state->>'status'='InProgress'
+        AND t.state->'confirmation_revision'=to_jsonb(NEW.requirement_revision)
+        AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(t.state->'questions') q
+            WHERE q->'required'='true'::jsonb AND q->>'state'='open')
         AND t.state->'revisions'->-1->'revision'=to_jsonb(NEW.requirement_revision)
         AND t.state->'revisions'->-1->>'content_hash'=NEW.content_hash
         AND t.state->'assignment'->>'machine_subject'=NEW.actor_subject
         AND c.task_id=t.task_id AND c.revision=NEW.requirement_revision AND c.content_hash=NEW.content_hash
-        AND c.payload->>'owner_subject'=t.owner_subject AND c.payload->>'stage'='Backlog'
+        AND c.payload->>'owner_subject'=t.owner_subject AND c.payload->>'stage'='Draft'
         AND t.state->'confirmations' @> jsonb_build_array(c.payload)
         AND NEW.command->>'interaction_protocol'='configured-cli-v1'
         AND NEW.command->>'idempotency_key'=NEW.idempotency_key
@@ -175,14 +202,66 @@ CREATE TRIGGER sdlc_configured_pm_completion_gate BEFORE INSERT ON sdlc_configur
 CREATE FUNCTION sdlc_current_configured_pm_completed(task uuid,execution uuid,state jsonb,admission_state text)
 RETURNS boolean LANGUAGE sql STABLE AS $$
     SELECT (admission_state='completed' AND state->>'interaction_protocol'='configured-cli-v1'
-        AND EXISTS(SELECT 1 FROM sdlc_configured_pm_completions c
+        AND EXISTS(SELECT 1 FROM sdlc_configured_pm_completions c JOIN sdlc_confirmations consent
+            ON consent.task_id=c.task_id AND consent.id=c.confirmation_id
             WHERE c.task_id=task AND c.execution_id=execution AND c.result->'fence'->'assignment_id'=state->'assignment'->'assignment_id'
             AND c.result->'fence'->'assignment_version'=state->'assignment'->'version'
             AND c.result->'fence'->'agent_id'=state->'assignment'->'agent_id'
             AND c.requirement_revision::text=state->'revisions'->-1->>'revision'
             AND c.content_hash=state->'revisions'->-1->>'content_hash'
+            AND consent.payload->>'stage'='Draft' AND consent.payload->>'owner_subject'=state->>'owner_subject'
+            AND state->'confirmations' @> jsonb_build_array(consent.payload)
             AND c.result->>'next_pm_admission_state'='completed')) IS TRUE
 $$;
+
+CREATE FUNCTION sdlc_configured_cli_completion_transition() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1' THEN RETURN NEW; END IF;
+    IF NEW.state->>'stage'='Draft' THEN
+        IF NEW.pm_admission_state='completed' THEN
+            RAISE EXCEPTION 'configured completed admission must publish Backlog' USING ERRCODE='23514';
+        END IF;
+        IF TG_OP='UPDATE' AND OLD.state->>'stage' IS DISTINCT FROM 'Draft' THEN
+            RAISE EXCEPTION 'configured completion cannot revert to Draft' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF TG_OP='INSERT' THEN RAISE EXCEPTION 'configured task must start in Draft' USING ERRCODE='23514'; END IF;
+    IF NOT ((NEW.state->>'stage'='Backlog' AND NEW.state->>'status'='Ready'
+        AND NOT NEW.state ? 'draft_submode'
+        AND sdlc_current_configured_pm_completed(NEW.task_id,NEW.pm_execution_id,NEW.state,NEW.pm_admission_state)
+        AND ((OLD.state->>'stage'='Draft' AND OLD.pm_admission_state='reserved'
+            AND OLD.state-ARRAY['stage','status','draft_submode']=NEW.state-ARRAY['stage','status','draft_submode'])
+            OR (OLD.state=NEW.state AND OLD.pm_admission_state=NEW.pm_admission_state))) IS TRUE) THEN
+        RAISE EXCEPTION 'configured publication requires exact terminal completion; no Analysis' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_configured_cli_completion_transition BEFORE INSERT OR UPDATE ON sdlc_tasks
+    FOR EACH ROW EXECUTE FUNCTION sdlc_configured_cli_completion_transition();
+
+CREATE FUNCTION sdlc_configured_cli_completion_committed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
+        AND t.state->>'stage'='Backlog' AND t.state->>'status'='Ready'
+        AND sdlc_current_configured_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)) THEN
+        RAISE EXCEPTION 'configured completion must atomically publish Backlog' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE CONSTRAINT TRIGGER sdlc_configured_cli_completion_committed AFTER INSERT ON sdlc_configured_pm_completions
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sdlc_configured_cli_completion_committed();
+
+-- Configured publication has its own exact completion ledger, not legacy routing/native evidence.
+DO $$
+DECLARE definition text; anchor text := 'IF NEW.state ? ''flow'' AND NEW.state->>''stage'' NOT IN (''Draft'',''Clarification'')';
+BEGIN
+    definition:=pg_get_functiondef('sdlc_draft_flow_gate()'::regprocedure);
+    IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+        RAISE EXCEPTION 'configured completion Draft flow anchor changed';
+    END IF;
+    EXECUTE replace(definition,anchor,anchor||' AND NOT sdlc_current_configured_pm_completed(NEW.task_id,NEW.pm_execution_id,NEW.state,NEW.pm_admission_state)');
+END $$;
 -- Preserve the installed legacy definition and its OID; add only the new exact ledger alternative.
 DO $$
 DECLARE definition text; anchor text := 'SELECT admission_state=''completed''';

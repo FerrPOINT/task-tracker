@@ -436,12 +436,18 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
         "requirements.confirmed" => {
             let confirmation: Confirmation = decode(&source.result)?;
             revision(confirmation.revision, &confirmation.content_hash, &refs)?;
+            let stage = if source.interaction_protocol == Some(InteractionProtocol::ConfiguredCliV1)
+            {
+                Stage::Draft
+            } else {
+                Stage::Backlog
+            };
             valid(
                 !confirmation.id.is_nil()
                     && confirmation.task_id == event.task_id
                     && confirmation.owner_subject == source.owner_subject
-                    && matches!(confirmation.stage, Stage::Backlog)
-                    && matches!(source.stage, Stage::Backlog)
+                    && confirmation.stage == stage
+                    && source.stage == stage
                     && source.requirement_revision == Some(confirmation.revision),
             )?;
             value(ConfirmationResource {

@@ -1724,6 +1724,8 @@ Private identity-deletion owner source: [contract and pending qualification](IDE
 An explicitly selected new PM Draft uses the assigned agent's persistent Central
 Auth service credential for ordinary business commands. It does not mint a
 per-task token or require a native lease/rebind. Legacy histories remain legacy;
-owner-only exact requirements confirmation is unchanged. Configured completion
-verifies a server-to-server Workflow terminal receipt and current owner consent;
+owner-only exact requirements confirmation retains its ownership/revision/hash
+checks but stays Draft without native or per-item verifier evidence. Configured completion
+verifies a server-to-server Workflow terminal receipt and current owner consent,
+then atomically publishes Backlog/Ready without Analysis;
 its shared receipt tuple and runtime qualification are not yet live accepted.

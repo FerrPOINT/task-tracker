@@ -54,11 +54,18 @@ can precede questions. Configured question publication retains the same business
 fields but omits checkpoint_id. Legacy publication still requires a nonnil
 checkpoint. No fabricated checkpoint is stored for configured questions.
 
-Owner answers retain AnswerCommand and version CAS. Owner confirmation retains
-the exact revision/hash and existing readiness/evidence checks. Only the owner
-can answer/confirm; PM reads the saved confirmation via
+Owner answers retain AnswerCommand and version CAS. Only the owner can confirm
+the exact current revision/hash after a valid business document and resolution
+of mandatory questions, under the current assignment and existing project ACL.
+For configured-cli-v1 this does not require native/checkpoint proof, a trusted
+readiness verifier, or evidence for each checklist/prerequisite. These document
+items are business content, not synthetic infrastructure evidence. Legacy
+readiness/evidence behavior is unchanged. PM reads the saved confirmation via
 `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`.
-No automatic Analysis dispatch is added.
+The confirmation receipt truthfully reports `stage: Draft`; the aggregate remains
+Draft/InProgress with `waiting_reason: waiting_for_workflow_completion`. Confirmed
+requirements are immutable. No routing/source snapshot or Analysis is created
+by configured consent. CLI/deployment readiness is qualified separately.
 
 Configured CLI mode is selected by FLEET_CLI_PROTOCOL. It requires canonical
 FLEET_AGENT_ID, nonempty TASKTRACKER_TOKEN and TASKTRACKER_API_URL. An alternate
@@ -119,10 +126,13 @@ The configured result has interaction_protocol, completion_id, Tracker binding,
 fence/owner_version, requirement_revision/content_hash, confirmation_id, the
 verified workflow_receipt/hash, stage Backlog, status Ready, admission transition,
 idempotency_key and created_at. No lease/native receipt is synthesized. Its
-append-only ledger and admission transition commit atomically with pm.completed.
-Existing owner confirmation already projects Backlog/Ready; completion closes
-PM admission. This package preserves that existing business timing and never
-creates an Analysis intent/assignment.
+append-only ledger, exact Draft-to-Backlog/Ready aggregate and issue projection,
+and admission transition commit atomically with pm.completed. Until that commit
+the task remains Draft, including while Workflow completes. Failed/foreign/stale
+terminal receipt leaves it Draft; consent alone cannot publish. The original
+confirmation receipt remains Draft even after publication. No Analysis intent,
+assignment or downstream dispatch is created. Legacy confirmation timing is
+unchanged.
 
 Exact replay is 200, first commit is 201, changed key payload is 409. GET of the
 same completion route returns `{interaction_protocol,current}`; GET
@@ -137,10 +147,12 @@ lineages, exports the Rust API and updates generated clients. The migration is
 forward-only and does not rewrite business or legacy native history.
 
 Prepared tests: app::sdlc_configured_cli::tests (4),
-app::sdlc_configured_cli::completion_tests (5), CLI agent_credentials::tests (2),
-migration 105 units (2), and candidates::configured_cli_tests real owned-PG case
-(1). The latter now covers owner answers/confirmation, competing completion
-replay, changed payload, append immutability and no lease/native/Analysis rows.
+app::sdlc_configured_cli::completion_tests (8), CLI agent_credentials::tests (2),
+migration 105 units (3), and candidates::configured_cli_tests real owned-PG case
+(1). The latter now covers owner answers/confirmation without verifier/evidence,
+Draft-only consent/readback, refusal of publication before completion, foreign/
+stale terminal tuples, competing completion replay, changed payload, append
+immutability and no lease/native/evidence/routing/source/Analysis rows.
 It uses the existing candidates fixture and synthetic service/Workflow receipts,
 not live Central Auth/provider acceptance. The HTTP unit exercises the actual
 reader against a controlled server, not a real Workflow deployment.

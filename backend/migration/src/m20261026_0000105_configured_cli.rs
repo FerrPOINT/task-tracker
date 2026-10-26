@@ -52,4 +52,21 @@ mod tests {
         assert!(!sql.contains("DROP FUNCTION sdlc_current_pm_completed"));
         assert!(!sql.contains("INSERT INTO sdlc_analysis_intents"));
     }
+
+    #[test]
+    fn configured_consent_stays_draft_and_publication_requires_terminal_ledger() {
+        let sql = include_str!("configured_cli.sql");
+        assert!(sql.contains("NEW.payload->>'stage'='Draft'"));
+        assert!(sql.contains("c.payload->>'stage'='Draft'"));
+        assert!(sql.contains("t.state->>'stage'='Draft' AND t.state->>'status'='InProgress'"));
+        assert!(sql.contains("q->'required'='true'::jsonb AND q->>'state'='open'"));
+        assert!(
+            sql.contains("configured publication requires exact terminal completion; no Analysis")
+        );
+        assert!(sql.contains("OLD.state-ARRAY['stage','status','draft_submode']=NEW.state-ARRAY['stage','status','draft_submode']"));
+        assert!(sql.contains("pg_get_functiondef('sdlc_draft_flow_gate()'::regprocedure)"));
+        assert!(sql.contains("configured completion must atomically publish Backlog"));
+        assert!(!sql.contains("DROP FUNCTION sdlc_draft_flow_gate"));
+        assert!(!sql.contains("FROM sdlc_evidence"));
+    }
 }

@@ -2314,3 +2314,9 @@ The same unapplied 0105 owns sdlc_configured_pm_completions: append-only task/
 execution/key, exact owner confirmation, command hash and verified Workflow
 receipt. It has the existing native task scope/namespace and deferred commit
 clock guards. Legacy completion tables and applied migration bytes are retained.
+
+Configured consent is stored as an immutable Draft receipt without per-item
+verifier evidence. The aggregate remains Draft until the configured completion
+transaction inserts its exact Workflow/owner ledger, changes the aggregate and
+issue projection to Backlog/Ready, and closes PM admission. The saved consent
+stage is never rewritten; 0105 guards reject early publication and Analysis.

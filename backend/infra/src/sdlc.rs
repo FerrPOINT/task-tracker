@@ -544,7 +544,7 @@ impl PostgresSdlcRepository {
             }
         }
         exec(tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)", vec![task.into(), actor.subject.clone().into(), key.into(), hash.into(), result.clone().into()]).await?;
-        let event_stage = if event_type == "requirements.confirmed" {
+        let event_stage = if event_type == "requirements.confirmed" && !state.configured_cli() {
             Stage::Backlog
         } else {
             state.stage
@@ -633,8 +633,9 @@ impl PostgresSdlcRepository {
                 let confirmation: Confirmation =
                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
-                let routing_snapshot = if state.draft_flow()?.is_some()
-                    || c.expected_routing_policy_version.is_some()
+                let routing_snapshot = if !state.configured_cli()
+                    && (state.draft_flow()?.is_some()
+                        || c.expected_routing_policy_version.is_some())
                 {
                     Some(
                         self.freeze_routing(
@@ -763,6 +764,9 @@ impl PostgresSdlcRepository {
                 }
                 "pm.feedback_recorded" => {
                     "SELECT EXISTS(SELECT 1 FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2 AND payload=$3) AS valid"
+                }
+                "pm.completed" if state.configured_cli() => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_configured_pm_completions WHERE task_id=$1 AND completion_id=$2 AND result=$3) AS valid"
                 }
                 "pm.completed" => {
                     "SELECT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE task_id=$1 AND completion_id=$2 AND result=$3) AS valid"

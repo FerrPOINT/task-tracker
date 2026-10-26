@@ -632,20 +632,31 @@ impl TaskState {
                 .questions
                 .iter()
                 .any(|q| q.required && q.state == QuestionState::Open)
-            && revision
-                .document
-                .checklist
-                .iter()
-                .chain(&revision.document.prerequisites)
-                .all(|check| {
-                    self.evidence.iter().any(|e| {
-                        e.requirement_revision == revision.revision
-                            && e.content_hash == revision.content_hash
-                            && &e.check_id == check
-                            && latest_answered_clarification_at
-                                .is_none_or(|answered_at| e.created_at >= answered_at)
+            && (if self.configured_cli() {
+                self.assignment.is_some()
+            } else {
+                revision
+                    .document
+                    .checklist
+                    .iter()
+                    .chain(&revision.document.prerequisites)
+                    .all(|check| {
+                        self.evidence.iter().any(|e| {
+                            e.requirement_revision == revision.revision
+                                && e.content_hash == revision.content_hash
+                                && &e.check_id == check
+                                && latest_answered_clarification_at
+                                    .is_none_or(|answered_at| e.created_at >= answered_at)
+                        })
                     })
-                })
+            })
+    }
+    pub fn confirmation_stage(&self) -> Stage {
+        if self.configured_cli() {
+            Stage::Draft
+        } else {
+            Stage::Backlog
+        }
     }
     pub fn current_confirmation(&self) -> Option<&Confirmation> {
         let revision = self.revisions.last()?;
@@ -654,7 +665,7 @@ impl TaskState {
                 && confirmation.owner_subject == self.owner_subject
                 && confirmation.revision == revision.revision
                 && confirmation.content_hash == revision.content_hash
-                && confirmation.stage == Stage::Backlog
+                && confirmation.stage == self.confirmation_stage()
         })
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
@@ -698,6 +709,11 @@ impl TaskState {
                 reason.as_str().map(str::to_owned)
             } else {
                 match self.stage {
+                    Stage::Draft
+                        if self.configured_cli() && self.current_confirmation().is_some() =>
+                    {
+                        Some("waiting_for_workflow_completion".into())
+                    }
                     Stage::Draft if !self.clarifying() => Some("waiting_for_pm".into()),
                     Stage::Draft
                         if self
@@ -707,9 +723,11 @@ impl TaskState {
                     {
                         Some("waiting_for_owner_answers".into())
                     }
-                    Stage::Draft if !self.ready() => {
-                        Some("waiting_for_requirements_or_evidence".into())
-                    }
+                    Stage::Draft if !self.ready() => Some(if self.configured_cli() {
+                        "waiting_for_requirements".into()
+                    } else {
+                        "waiting_for_requirements_or_evidence".into()
+                    }),
                     Stage::Draft => Some("waiting_for_owner_confirmation".into()),
                     Stage::Backlog => None,
                     Stage::Analysis => Some("queued_for_analysis".into()),

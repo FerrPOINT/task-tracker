@@ -902,7 +902,7 @@ pub fn apply(
             revision,
             command: c,
         } => {
-            if config.verifier_subject.is_empty() {
+            if !state.configured_cli() && config.verifier_subject.is_empty() {
                 return Err(AppError::Unavailable(
                     "trusted readiness verifier is not configured".into(),
                 ));
@@ -919,6 +919,15 @@ pub fn apply(
                     "requirements are not ready for confirmation",
                 ));
             }
+            if state.configured_cli() {
+                if state.stage != Stage::Draft {
+                    return Err(AppError::conflict("configured consent requires Draft"));
+                }
+                validate_document(&current.document)?;
+                if canonical_hash(&current.document)? != current.content_hash {
+                    return Err(AppError::conflict("requirements document hash differs"));
+                }
+            }
             let confirmation = Confirmation {
                 id: Uuid::new_v4(),
                 task_id: state.task_id,
@@ -926,10 +935,12 @@ pub fn apply(
                 content_hash: c.content_hash.clone(),
                 owner_subject: actor.subject.clone(),
                 created_at: now,
-                stage: Stage::Backlog,
+                stage: state.confirmation_stage(),
             };
             state.confirmations.push(confirmation.clone());
-            state.stage = Stage::Backlog;
+            if !state.configured_cli() {
+                state.stage = Stage::Backlog;
+            }
             serde_json::to_value(confirmation)
         }
         SdlcCommand::Evidence(c) => {
@@ -996,8 +1007,12 @@ pub fn apply(
                 );
             }
             SdlcCommand::Confirm { .. } => {
-                state.status = Some(LifecycleStatus::Ready);
-                state.draft_submode = None;
+                if state.configured_cli() {
+                    state.status = Some(LifecycleStatus::InProgress);
+                } else {
+                    state.status = Some(LifecycleStatus::Ready);
+                    state.draft_submode = None;
+                }
             }
             SdlcCommand::Evidence(_) => {}
         }
