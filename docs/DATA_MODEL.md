@@ -2301,3 +2301,11 @@ transaction-local native caller/task scope, проверки фактическ�
 Rollback требует совместимого защищённого cohort с сохранением каталогов и grants.
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+
+## Configured CLI V1
+
+Migration 0105 adds immutable creation-only protocol guards to the existing
+aggregate and creation/reservation JSON ledgers, without historical backfill.
+Configured questions omit their native checkpoint; legacy questions retain it.
+The existing execution ordinal remains authoritative for SDLC-N. See
+[CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md) for integration limits.

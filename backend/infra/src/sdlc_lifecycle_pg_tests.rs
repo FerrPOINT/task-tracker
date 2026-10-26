@@ -210,6 +210,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Lifecycle fixture".into(),
                 description: "Synthetic acceptance fixture".into(),
@@ -436,6 +437,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 title: "Concurrent PM allocator fixture".into(),
                 description: "Synthetic owner input".into(),
                 idempotency_key: "other-pm-draft".into(),

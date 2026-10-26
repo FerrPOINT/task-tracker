@@ -254,7 +254,7 @@ pub fn validate_answer(
         || q.version != answer.question_version
         || q.requirement_revision != answer.requirement_revision
         || q.state != QuestionState::Answered
-        || q.checkpoint_id != c.checkpoint.checkpoint_id
+        || q.checkpoint_id != Some(c.checkpoint.checkpoint_id)
         || q.assignment_id != f.assignment_id
         || q.execution_id != f.execution_id
         || q.agent_id != f.agent_id

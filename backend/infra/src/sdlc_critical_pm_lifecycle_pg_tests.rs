@@ -177,7 +177,7 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
                 question_id: Uuid::new_v4(),
                 expected_question_version: None,
                 requirement_revision: 1,
-                checkpoint_id: Uuid::new_v4(),
+                checkpoint_id: Some(Uuid::new_v4()),
                 requirement_reference: None,
                 text: "Synthetic business decision?".into(),
                 rationale: "Synthetic critical review".into(),
@@ -217,7 +217,7 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
             input_id: answer.id,
         },
         checkpoint: PmResumeCheckpoint {
-            checkpoint_id: q.checkpoint_id,
+            checkpoint_id: q.checkpoint_id.unwrap(),
             checkpoint_revision: 1,
             checkpoint_sha256: "c".repeat(64),
             fence: r.lease.fence.clone(),

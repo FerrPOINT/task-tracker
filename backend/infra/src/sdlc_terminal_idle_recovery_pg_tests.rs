@@ -75,6 +75,7 @@ async fn terminal_idle_permit_is_only_metadata_replay_does_not_renew_and_unknown
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Original goal".into(),
                 description: "Synthetic only".into(),

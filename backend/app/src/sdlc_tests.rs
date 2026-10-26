@@ -49,6 +49,7 @@ fn non_root_cannot_use_pm_lifecycle_or_issue_confirmation_permission() {
 fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
     let human = actor("central-human", true, vec![]);
     let mut command = CreateDraftCommand {
+        interaction_protocol: None,
         flow: None,
         title: "\u{43f}".repeat(500),
         description: "x".repeat(100_000),
@@ -706,7 +707,7 @@ fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_publishe
     };
     let checkpoint = PmFeedbackCheckpoint {
         fence: fence.clone(),
-        checkpoint_id: Uuid::new_v4(),
+        checkpoint_id: Some(Uuid::new_v4()),
         checkpoint_version: 1,
         previous_run_id: Uuid::new_v4(),
         previous_run_terminal: ArtifactReceipt {
@@ -816,7 +817,7 @@ fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
         question_id: Uuid::new_v4(),
         expected_question_version: None,
         requirement_revision: 1,
-        checkpoint_id: Uuid::new_v4(),
+        checkpoint_id: Some(Uuid::new_v4()),
         requirement_reference: Some("scope".into()),
         text: "Choose".into(),
         rationale: "Clarify scope".into(),

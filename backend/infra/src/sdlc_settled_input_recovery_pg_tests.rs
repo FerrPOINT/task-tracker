@@ -88,6 +88,7 @@ async fn fixture() -> Fixture {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Settled input".into(),
                 description: "Synthetic saved feedback".into(),

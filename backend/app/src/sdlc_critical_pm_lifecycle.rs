@@ -427,7 +427,7 @@ fn apply_command(
             if state.current_revision() != Some(c.requirement_revision)
                 || c.question_id.is_nil()
                 || c.request_id.is_nil()
-                || c.checkpoint_id.is_nil()
+                || c.checkpoint_id.is_none_or(|id| id.is_nil())
             {
                 return Err(conflict());
             }
@@ -1059,7 +1059,7 @@ mod tests {
                 question_id: id(201),
                 expected_question_version: None,
                 requirement_revision: self.state.current_revision().unwrap(),
-                checkpoint_id: id(202),
+                checkpoint_id: Some(id(202)),
                 requirement_reference: None,
                 text: "Synthetic clarification?".into(),
                 rationale: "Synthetic business choice".into(),

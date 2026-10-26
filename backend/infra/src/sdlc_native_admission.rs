@@ -86,6 +86,14 @@ impl PostgresSdlcRepository {
                 "PM reservation changed during native observation",
             ));
         }
+        if state.configured_cli() {
+            if observation.is_some() {
+                return Err(AppError::conflict(
+                    "configured CLI does not accept native admission",
+                ));
+            }
+            return Ok(());
+        }
         if let Some(observed) = observation {
             observed.validate(&current)?;
             let latest = tx

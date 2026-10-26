@@ -293,7 +293,8 @@ pub struct PublishQuestion {
     pub expected_question_version: Option<i64>,
     #[serde(deserialize_with = "safe_version")]
     pub requirement_revision: i64,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     pub requirement_reference: Option<String>,
     pub text: String,
     pub rationale: String,
@@ -333,6 +334,12 @@ pub struct BindCommand {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateDraftCommand {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "interaction_protocol"
+    )]
+    pub interaction_protocol: Option<InteractionProtocol>,
     #[schema(min_length = 1, max_length = 500)]
     pub title: String,
     #[schema(max_length = 100000)]
@@ -354,6 +361,18 @@ pub enum DraftFlow {
     SingleTaskV1,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum InteractionProtocol {
+    #[serde(rename = "configured-cli-v1")]
+    ConfiguredCliV1,
+}
+
+pub fn interaction_protocol<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<InteractionProtocol>, D::Error> {
+    InteractionProtocol::deserialize(d).map(Some)
+}
+
 fn draft_flow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<DraftFlow>, D::Error> {
     DraftFlow::deserialize(d).map(Some)
 }
@@ -366,6 +385,8 @@ pub enum DraftStage {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CreatedDraft {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub tracker_instance_id: String,
     pub project_id: Uuid,
     pub task_id: Uuid,
@@ -447,7 +468,8 @@ pub struct Question {
     pub execution_id: Uuid,
     pub agent_id: Uuid,
     pub assignment_version: i64,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     pub text: String,
     pub rationale: String,
     pub required: bool,
@@ -489,6 +511,14 @@ pub struct Permissions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_task_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_assignment_version: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
     pub contract_version: u8,
     pub tracker_instance_id: String,
     pub project_id: Uuid,
@@ -538,6 +568,22 @@ pub struct TaskState {
 }
 
 impl TaskState {
+    pub fn interaction_protocol(&self) -> Result<Option<InteractionProtocol>, AppError> {
+        self.retained_fields
+            .get("interaction_protocol")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid immutable interaction protocol"))
+            })
+            .transpose()
+    }
+
+    pub fn configured_cli(&self) -> bool {
+        matches!(
+            self.interaction_protocol(),
+            Ok(Some(InteractionProtocol::ConfiguredCliV1))
+        )
+    }
     pub fn draft_flow(&self) -> Result<Option<DraftFlow>, AppError> {
         self.retained_fields
             .get("flow")
@@ -620,6 +666,20 @@ impl TaskState {
                 .iter()
                 .any(|q| q.state == QuestionState::Open);
         SdlcContext {
+            interaction_protocol: self.interaction_protocol().ok().flatten(),
+            workflow_task_key: self
+                .retained_fields
+                .get("workflow_task_key")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            expected_assignment_version: self
+                .configured_cli()
+                .then(|| self.assignment.as_ref().map(|a| a.version))
+                .flatten(),
+            content_hash: self
+                .configured_cli()
+                .then(|| self.revisions.last().map(|r| r.content_hash.clone()))
+                .flatten(),
             contract_version: 1,
             tracker_instance_id: self.tracker_instance_id.clone(),
             project_id: self.project_id,

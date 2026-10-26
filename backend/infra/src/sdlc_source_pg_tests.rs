@@ -159,6 +159,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: None,
                 title: "Synthetic legacy Draft".into(),
                 description: String::new(),
@@ -219,6 +220,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Synthetic selected Draft".into(),
                 description: String::new(),
@@ -496,6 +498,7 @@ async fn explicit_unconfigured_draft_fixture(
             project,
             owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Synthetic unconfigured original Draft".into(),
                 description: String::new(),

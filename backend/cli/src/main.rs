@@ -1,3 +1,4 @@
+mod agent_credentials;
 mod commands;
 mod support;
 use anyhow::{Context, Result};
@@ -529,13 +530,32 @@ struct Api {
 
 impl Api {
     fn new(base: String, token: Option<String>) -> Result<Self> {
+        let protocol = std::env::var("FLEET_CLI_PROTOCOL").ok();
+        let token = agent_credentials::configured_token(
+            protocol.as_deref(),
+            std::env::var("FLEET_AGENT_ID").ok().as_deref(),
+            std::env::var("TASKTRACKER_TOKEN").ok().as_deref(),
+            token.as_deref(),
+        )?;
+        if protocol.as_deref() == Some("configured-cli-v1") {
+            let configured = std::env::var("TASKTRACKER_API_URL").map_err(|_| {
+                anyhow::anyhow!("TASKTRACKER_API_URL is required in configured agent mode")
+            })?;
+            if configured.trim().is_empty() || configured != base {
+                anyhow::bail!("configured agent mode requires its configured TASKTRACKER_API_URL");
+            }
+        }
         let base_has_version = base.trim_end_matches('/').ends_with("/api/v1");
         // The shared transport trims explicit tokens and can fall back from an
         // empty token. Redact both original and effective credential forms.
         let secrets = token
             .clone()
             .into_iter()
-            .chain(pdlc_cli_core::platform_env("API_TOKEN")?)
+            .chain(if protocol.as_deref() == Some("configured-cli-v1") {
+                None
+            } else {
+                pdlc_cli_core::platform_env("API_TOKEN")?
+            })
             .flat_map(|value| [value.trim().to_owned(), value])
             .filter(|value| !value.is_empty())
             .collect();

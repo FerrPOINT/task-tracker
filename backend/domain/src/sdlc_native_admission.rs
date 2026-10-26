@@ -361,6 +361,7 @@ mod tests {
         let assignment = Uuid::new_v4();
         let project = Uuid::new_v4();
         let reservation = PmDraftReservation {
+            interaction_protocol: None,
             contract_version: 1,
             variant: PmDraftVariant::Reserved,
             binding: PmDraftBinding {

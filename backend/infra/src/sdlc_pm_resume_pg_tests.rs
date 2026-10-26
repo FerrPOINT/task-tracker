@@ -209,6 +209,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "PM resume fixture".into(),
                 description: "Not live runtime evidence".into(),
@@ -594,7 +595,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         question_id: Uuid::new_v4(),
         expected_question_version: None,
         requirement_revision: 1,
-        checkpoint_id: checkpoint,
+        checkpoint_id: Some(checkpoint),
         requirement_reference: Some("scope".into()),
         text: "Describe scope".into(),
         rationale: "Owner input".into(),

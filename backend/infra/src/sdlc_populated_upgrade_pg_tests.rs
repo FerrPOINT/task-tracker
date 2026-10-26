@@ -384,7 +384,7 @@ async fn seed_legacy_history(
                 question_id: question,
                 expected_question_version: None,
                 requirement_revision: 1,
-                checkpoint_id: Uuid::new_v4(),
+                checkpoint_id: Some(Uuid::new_v4()),
                 requirement_reference: Some("synthetic:requirements:1".into()),
                 text: "Which retained business scope?".into(),
                 rationale: "Preserve actual owner answer history".into(),

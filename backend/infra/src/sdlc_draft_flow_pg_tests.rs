@@ -44,6 +44,7 @@ fn config(project: Uuid, enabled: bool) -> SdlcConfig {
 
 fn create(key: &str, flow: Option<DraftFlow>) -> CreateDraftCommand {
     CreateDraftCommand {
+        interaction_protocol: None,
         title: "Draft flow fixture".into(),
         description: "Real saved synthetic input".into(),
         idempotency_key: key.into(),

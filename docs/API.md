@@ -2139,3 +2139,10 @@ human допуск не получают. Страница использует 
 `openapi/openapi.json` и `frontend/src/api/generated.ts`; существующие
 `openapi:check` и `openapi:compat` проверяют frontend-контракт. Реальные private
 RPC/cohort/Kubernetes остаются отдельными gates, перечисленными в связанном документе.
+
+## Configured CLI V1 Producer
+
+New single-task Draft creation and reservation accept an explicit immutable
+interaction_protocol and a persistent assigned PM service subject. Existing
+business commands retain fence/CAS/idempotency. See the exact wire and pending
+completion boundary in [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).

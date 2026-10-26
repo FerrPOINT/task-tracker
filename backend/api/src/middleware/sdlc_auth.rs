@@ -45,7 +45,12 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     }
     let configured_machine = registered_sdlc_subject(&central.user_id)
         || verified.subject_role.as_deref() == Some("service_account");
+    let configured_cli_grant = central
+        .scopes
+        .iter()
+        .any(|scope| scope.starts_with(app::sdlc_configured_cli::AGENT_SCOPE_PREFIX));
     if (configured_machine
+        || configured_cli_grant
         || app::sdlc::has_pm_grant(&central.scopes)
         || app::sdlc_lifecycle::has_delivery_grant(&central.scopes))
         && verified.subject_role.as_deref() != Some("service_account")
@@ -199,6 +204,42 @@ fn pm_request_policy(
     method: &str,
     path: &str,
 ) -> Result<(), AppError> {
+    if app::sdlc_configured_cli::configured_agent(actor)?.is_some() {
+        let tail = path
+            .strip_prefix("/api/v1/issues/")
+            .ok_or(AppError::Forbidden)?;
+        let (task, action) = tail.split_once("/sdlc/").ok_or(AppError::Forbidden)?;
+        app::sdlc::canonical_pm_uuid(task).ok_or(AppError::Forbidden)?;
+        let parts: Vec<_> = action.split('/').collect();
+        let allowed = match (method, parts.as_slice()) {
+            (
+                "GET",
+                [
+                    "context"
+                    | "pm-draft-input"
+                    | "clarifications"
+                    | "requirements"
+                    | "events"
+                    | "pm-draft-assignment"
+                    | "pm-draft-completion",
+                ],
+            )
+            | ("GET", ["requirements", "revisions"])
+            | ("POST", ["clarifications" | "requirements" | "pm-draft-completion"]) => true,
+            ("GET", ["requirements", revision]) | ("GET", ["requirements", revision, "diff"]) => {
+                app::sdlc::canonical_pm_version(revision)
+            }
+            ("POST", ["clarifications", question, "cancel"]) => {
+                app::sdlc::canonical_pm_uuid(question).is_some()
+            }
+            _ => app::sdlc_confirmation::is_confirmation_read(method, &parts),
+        };
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden)
+        };
+    }
     let Some(task) = app::sdlc::pm_grant_task(actor)? else {
         return Ok(());
     };

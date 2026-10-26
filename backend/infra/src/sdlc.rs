@@ -278,6 +278,10 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("SDLC binding mismatch"));
         }
         state.require_root()?;
+        state.interaction_protocol()?;
+        if app::sdlc_configured_cli::configured_agent(actor)?.is_some() {
+            app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
+        }
         spaces::bind_task(tx, config, &state, actor).await?;
         Ok(state)
     }
@@ -300,7 +304,9 @@ impl PostgresSdlcRepository {
         let state = Self::load_with_config(tx, config, task, actor).await?;
         app::sdlc::authorize_pm_read(&state, actor)?;
         lifecycle::authorize_read(tx, &state, actor).await?;
-        if app::sdlc::has_pm_grant(&actor.scopes) {
+        if app::sdlc::has_pm_grant(&actor.scopes)
+            || app::sdlc_configured_cli::configured_agent(actor)?.is_some()
+        {
             let row = tx.query_one(statement(
                 "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",
                 vec![task.into()],
@@ -403,6 +409,7 @@ impl PostgresSdlcRepository {
                 .map_err(|_| AppError::conflict("PM reservation history invalid"))?;
         let input = Self::original_input(tx, state).await?;
         if result.binding != Self::draft_binding(state)
+            || result.interaction_protocol != state.interaction_protocol()?
             || result.assignment.execution_id != id
             || result.input.snapshot_ref != input.snapshot_ref
             || result.input.sha256 != input.sha256
@@ -540,7 +547,10 @@ impl PostgresSdlcRepository {
         } else {
             state.stage
         };
-        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
+        let mut payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
+        if let Some(protocol) = state.interaction_protocol()? {
+            payload["interaction_protocol"] = json!(protocol);
+        }
         exec(
             tx,
             "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
@@ -1106,6 +1116,39 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let input = Self::original_input(&tx, &state).await?;
+        let protocol = state.interaction_protocol()?;
+        if command.interaction_protocol != protocol {
+            return Err(AppError::conflict(
+                "PM reservation interaction protocol mismatch",
+            ));
+        }
+        let machine_subject = if state.configured_cli() {
+            let subject = command
+                .machine_subject
+                .as_deref()
+                .ok_or_else(|| AppError::validation("configured PM service subject is required"))?;
+            let id = Uuid::parse_str(subject)
+                .map_err(|_| AppError::validation("invalid PM service subject"))?;
+            if id.is_nil()
+                || id.to_string() != subject
+                || subject == state.owner_subject
+                || subject == self.config.verifier_subject
+                || subject == self.config.orchestrator_subject
+                || subject == self.config.reservation_scheduler_subject
+            {
+                return Err(AppError::validation(
+                    "PM requires a dedicated service subject",
+                ));
+            }
+            subject.to_owned()
+        } else {
+            if command.machine_subject.is_some() {
+                return Err(AppError::validation(
+                    "legacy reservation cannot change machine subject",
+                ));
+            }
+            self.config.orchestrator_subject.clone()
+        };
         let hash =
             app::sdlc::canonical_hash(&json!({"operation":"reserve_pm_draft","payload":command}))?;
         if let Some(saved) = Self::replay(&tx, task, actor, &command.idempotency_key, &hash).await?
@@ -1150,7 +1193,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 "initial PM reservation requires unassigned Draft and current owner CAS",
             ));
         }
-        if self.config.orchestrator_subject.trim().is_empty() {
+        if machine_subject.trim().is_empty() {
             return Err(AppError::Unavailable(
                 "PM machine identity is not configured".into(),
             ));
@@ -1195,8 +1238,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 command.requested_agent_id,
             )?;
         }
-        if self.config.orchestrator_subject == state.owner_subject
-            || self.config.orchestrator_subject == self.config.verifier_subject
+        if machine_subject == state.owner_subject || machine_subject == self.config.verifier_subject
         {
             return Err(AppError::conflict(
                 "PM machine identity conflicts with owner/verifier",
@@ -1207,7 +1249,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             execution_id: Uuid::now_v7(),
             agent_id: command.requested_agent_id,
             version: 1,
-            machine_subject: self.config.orchestrator_subject.clone(),
+            machine_subject,
         };
         let ordinal_row = tx
             .query_one(statement(
@@ -1219,6 +1261,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             .ok_or_else(|| AppError::internal("PM ordinal absent"))?;
         let ordinal: i64 = ordinal_row.try_get("", "ordinal").map_err(map_db)?;
         let result = PmDraftReservation {
+            interaction_protocol: protocol,
             contract_version: 1,
             variant: PmDraftVariant::Reserved,
             binding: Self::draft_binding(&state),
@@ -1256,6 +1299,11 @@ impl SdlcRepository for PostgresSdlcRepository {
                 version.into(),result.owner_cas.version.into(),result.input.snapshot_ref.into(),result.input.sha256.clone().into(),
                 result.assignment_operation_key.clone().into(),json_value(&result)?]).await?;
         state.assignment = Some(assignment.clone());
+        if state.configured_cli() {
+            state
+                .retained_fields
+                .insert("workflow_task_key".into(), json!(result.execution.key));
+        }
         exec(&tx, "UPDATE sdlc_tasks SET state=$2,pm_owner_version=$3,pm_execution_id=$4,pm_admission_state='reserved' WHERE task_id=$1 AND pm_owner_version=$5",
             vec![task.into(),json_value(&state)?,result.owner_cas.version.into(),assignment.execution_id.into(),version.into()]).await?;
         exec(&tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)",
@@ -1555,6 +1603,9 @@ impl SdlcRepository for PostgresSdlcRepository {
                 return Err(map_db(error));
             }
             let mut retained_fields = serde_json::Map::new();
+            if let Some(protocol) = command.interaction_protocol {
+                retained_fields.insert("interaction_protocol".into(), json!(protocol));
+            }
             if let Some(flow) = command.flow {
                 retained_fields.insert(
                     "flow".into(),
@@ -1589,6 +1640,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 self.select_task_source(&tx, &state, user).await?;
             }
             let result = CreatedDraft {
+                interaction_protocol: command.interaction_protocol,
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,
                 task_id: task,
@@ -1675,11 +1727,13 @@ impl SdlcRepository for PostgresSdlcRepository {
             || result.root_task_id != task
             || result.project_id != project
             || result.owner_subject != actor.subject
+            || result.interaction_protocol != state.interaction_protocol()?
         {
             return Err(inconsistent());
         }
         let input = Self::original_input(&tx, &state).await?;
         let original = CreateDraftCommand {
+            interaction_protocol: state.interaction_protocol()?,
             title: input.title,
             description: input.description,
             idempotency_key: key.into(),

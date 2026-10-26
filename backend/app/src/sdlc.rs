@@ -1,3 +1,4 @@
+use crate::sdlc_configured_cli::{authorize_configured_pm, configured_agent};
 use domain::sdlc::*;
 use domain::sdlc_pm_draft::{PmDraftReadback, PmDraftReservation, ReservePmDraft};
 use serde::Serialize;
@@ -372,6 +373,12 @@ pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
 
 pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     state.require_root()?;
+    if configured_agent(actor)?.is_some() {
+        return authorize_configured_pm(state, actor);
+    }
+    if state.configured_cli() && has_pm_grant(&actor.scopes) {
+        return Err(AppError::Forbidden);
+    }
     let Some(task) = pm_grant_task(actor)? else {
         return Ok(());
     };
@@ -434,6 +441,11 @@ pub fn validate_draft(actor: &Principal, command: &CreateDraftCommand) -> Result
         return Err(AppError::Forbidden);
     }
     validate_key(&command.idempotency_key)?;
+    if command.interaction_protocol.is_some() && command.flow != Some(DraftFlow::SingleTaskV1) {
+        return Err(AppError::validation(
+            "configured CLI requires single-task-v1 Draft",
+        ));
+    }
     if command.title.trim().is_empty()
         || command.title.chars().count() > 500
         || command.title.chars().any(char::is_control)
@@ -530,6 +542,8 @@ pub fn authorize(
                 {
                     return Err(AppError::Forbidden);
                 }
+            } else if state.configured_cli() {
+                authorize_configured_pm(state, actor)?;
             } else if actor.subject != assignment.machine_subject
                 || !actor.scopes.contains(&assignment.scope(state.task_id))
             {
@@ -751,6 +765,15 @@ pub fn apply(
             serde_json::to_value(revision)
         }
         SdlcCommand::PublishQuestion(c) => {
+            if state.configured_cli() {
+                if c.checkpoint_id.is_some() {
+                    return Err(AppError::validation(
+                        "configured CLI questions have no native checkpoint",
+                    ));
+                }
+            } else if c.checkpoint_id.is_none_or(|id| id.is_nil()) {
+                return Err(AppError::validation("legacy question requires checkpoint"));
+            }
             if matches!(state.stage, Stage::Backlog)
                 || state.current_revision() != Some(c.requirement_revision)
             {

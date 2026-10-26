@@ -63,7 +63,8 @@ pub struct QuestionResource<S> {
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub question_version: i64,
     pub request_id: Uuid,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub requirement_revision: i64,
     #[schema(inline)]
@@ -79,7 +80,8 @@ pub struct AnswerResource {
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub question_version: i64,
     pub request_id: Uuid,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub requirement_revision: i64,
     pub fence: MachineFence,

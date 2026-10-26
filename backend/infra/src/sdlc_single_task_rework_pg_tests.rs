@@ -259,6 +259,7 @@ impl ReworkFixture {
                 project,
                 &owner,
                 CreateDraftCommand {
+                    interaction_protocol: None,
                     flow: Some(DraftFlow::SingleTaskV1),
                     title: "One actual Tracker task".into(),
                     description: "Synthetic persisted Reviewer and Tester rework fixture".into(),

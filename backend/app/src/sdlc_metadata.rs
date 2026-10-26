@@ -10,6 +10,8 @@ type ProjectionResult<T> = Result<T, MetadataErrorCode>;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SourcePayload {
+    #[serde(default)]
+    interaction_protocol: Option<InteractionProtocol>,
     contract_version: u8,
     tracker_instance_id: String,
     project_id: Uuid,
@@ -72,7 +74,11 @@ fn question(
     source: &SourcePayload,
     refs: &MetadataReferences,
 ) -> ProjectionResult<()> {
-    valid(!q.id.is_nil() && !q.request_id.is_nil() && !q.checkpoint_id.is_nil())?;
+    valid(!q.id.is_nil() && !q.request_id.is_nil())?;
+    valid(match source.interaction_protocol {
+        Some(InteractionProtocol::ConfiguredCliV1) => q.checkpoint_id.is_none(),
+        None => q.checkpoint_id.is_some_and(|id| !id.is_nil()),
+    })?;
     valid(q.task_id == source.task_id && q.root_task_id == source.root_task_id)?;
     version(q.version)?;
     version(q.requirement_revision)?;

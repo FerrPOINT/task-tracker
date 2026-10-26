@@ -290,6 +290,7 @@ pub fn prepare_critical_pm_reservation(
     )?;
     state = serde_json::from_value(canonical).map_err(AppError::internal)?;
     let reservation = PmDraftReservation {
+        interaction_protocol: None,
         contract_version: 1,
         variant: PmDraftVariant::Reserved,
         binding: previous.binding.clone(),
@@ -432,6 +433,7 @@ mod tests {
                 },
             };
             let previous = PmDraftReservation {
+                interaction_protocol: None,
                 contract_version: 1,
                 variant: PmDraftVariant::Reserved,
                 binding: PmDraftBinding {

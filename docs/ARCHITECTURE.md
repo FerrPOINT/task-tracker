@@ -711,3 +711,11 @@ expiry закрывает операцию. Включение берётся и
 [человеческие роли и приложения](HUMAN_APPLICATION_ACCESS.md).
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+
+## Configured CLI V1 PM
+
+The opt-in protocol branches at current assignment authorization and business
+admission, not at a proxy/resolver. Central Auth verifies the service subject;
+Tracker checks its stable agent capability against the locked assignment and
+retains project/member RBAC. No native admission observation or execution lease
+is accepted for this mode. See [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).

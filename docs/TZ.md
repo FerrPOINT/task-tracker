@@ -1718,3 +1718,11 @@ claim и история сохраняются. Восстановление н�
 фиктивный terminal/checkpoint и само по себе не разрешает runtime dispatch.
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+
+## Configured CLI V1 PM
+
+An explicitly selected new PM Draft uses the assigned agent's persistent Central
+Auth service credential for ordinary business commands. It does not mint a
+per-task token or require a native lease/rebind. Legacy histories remain legacy;
+owner-only exact requirements confirmation is unchanged. Completion integration
+is pending the shared authoritative Workflow readback contract, not live accepted.

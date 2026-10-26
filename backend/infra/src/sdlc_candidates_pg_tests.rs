@@ -3,6 +3,8 @@ use super::*;
 use domain::sdlc_source::{SetSourcePolicy, TaskSourceRepository};
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
+#[path = "sdlc_configured_cli_pg_tests.rs"]
+mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
 mod critical_blocker_tests;
 #[path = "sdlc_pm_unsubmitted_pg_tests.rs"]
@@ -151,6 +153,7 @@ impl Fixture {
                 self.project,
                 &self.owner,
                 CreateDraftCommand {
+                    interaction_protocol: None,
                     flow,
                     title: key.into(),
                     description: "Synthetic test input, not live execution".into(),
