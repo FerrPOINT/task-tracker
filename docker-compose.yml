@@ -43,6 +43,7 @@ services:
       - uploads:/var/lib/tasktracker/uploads
 
   backend:
+    init: true
     build:
       context: ..
       dockerfile: task-tracker/backend/Dockerfile
@@ -80,7 +81,7 @@ services:
     healthcheck:
       # /api/v1/health is mounted outside the rate-limited nest, so probes
       # can never be throttled (429) by real traffic sharing the IP key.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3456/api/v1/health || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--output-document", "/dev/null", "--timeout", "2", "--tries", "1", "http://127.0.0.1:3456/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 5
