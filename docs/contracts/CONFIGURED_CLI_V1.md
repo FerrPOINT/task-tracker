@@ -42,6 +42,14 @@ membership. Command agent/execution/assignment/version fences come from that
 assignment; a caller-provided agent ID or environment variable is not authority.
 The reservation does not mint or delegate credentials.
 
+Initial project admission uses the existing owner-only member API with the
+explicit Central Auth subject UUID and project role `member`, not the agent's
+profession. Service-account lookup requires the caller's existing administrative
+Auth session and verifies current identity activity before local JIT. Service
+accounts are not added to the human directory. Keep a Workflow-only credential
+for the Workflow CLI: its existing scope contract rejects other application
+scopes even when the account itself legitimately works in both applications.
+
 The separate server readback credential retains the existing exact
 `{task-tracker:read}` machine-reader admission and current active project ACL.
 It can read context, requirements and the saved confirmation without being the

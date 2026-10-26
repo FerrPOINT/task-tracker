@@ -629,6 +629,18 @@ password/register/refresh endpoints являются legacy-контрактом
 | GET, POST | `/projects/{project_key}/members` | Участники проекта / добавление (upsert роли) |
 | DELETE | `/projects/{project_key}/members/{user_id}` | Удаление участника |
 
+Configured SDLC отдельно проверяет действующего пользователя и project ACL,
+независимо от legacy central-auth поведения обычных карточек. Для первоначального
+допуска PM владелец проекта может явно передать Central Auth subject UUID
+служебной учётки в `POST .../members` с проектной ролью `member`. Профессия агента
+не является проектной ролью (`developer` здесь не принимается).
+
+До lookup/JIT проверяются owner и допустимая роль. Служебная запись ищется через
+существующий административный Auth API с исходным session JWT; нужны точные UUID,
+тип service_account, active status и действующее SDK-подтверждение identity.
+Обычный владелец без административного допуска Auth не получает этот lookup.
+Human directory и селекторы исполнителей не расширяются служебными записями.
+
 ### Issues
 
 | Метод | Путь | Назначение |
