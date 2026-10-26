@@ -525,6 +525,7 @@ enum MemberCommands {
 struct Api {
     client: ApiClient,
     base_has_version: bool,
+    configured_cli: bool,
     secrets: Vec<String>,
 }
 
@@ -563,6 +564,7 @@ impl Api {
             secrets,
             client: ApiClient::new(&base, token.as_deref(), Duration::from_secs(30))?,
             base_has_version,
+            configured_cli: protocol.as_deref() == Some("configured-cli-v1"),
         })
     }
 

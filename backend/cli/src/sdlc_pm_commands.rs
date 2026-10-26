@@ -91,12 +91,18 @@ pub async fn confirmation(api: &Api, command: ConfirmationCommand) -> Result<Val
             &format!("/requirements/{revision}/confirmation"),
         ))
         .await?;
-    let context = if receipt["stage"] == "Draft" {
+    let context = if api.configured_cli {
         Some(api.get(&sdlc_path(task, "/context")).await?)
     } else {
         None
     };
-    validate_confirmation(&receipt, task, revision, context.as_ref())?;
+    validate_confirmation(
+        &receipt,
+        task,
+        revision,
+        api.configured_cli,
+        context.as_ref(),
+    )?;
     Ok(receipt)
 }
 
@@ -104,6 +110,7 @@ fn validate_confirmation(
     receipt: &Value,
     task: Uuid,
     revision: i64,
+    configured_cli: bool,
     configured_context: Option<&Value>,
 ) -> Result<()> {
     let task_text = task.to_string();
@@ -126,16 +133,14 @@ fn validate_confirmation(
         || receipt["created_at"]
             .as_str()
             .is_none_or(|time| time.trim().is_empty())
-        || receipt["stage"]
-            != if configured_context.is_some() {
-                "Draft"
-            } else {
-                "Backlog"
-            }
+        || receipt["stage"] != if configured_cli { "Draft" } else { "Backlog" }
     {
         anyhow::bail!("owner confirmation receipt does not match requested task/revision");
     }
-    if let Some(context) = configured_context {
+    if configured_cli {
+        let context = configured_context.ok_or_else(|| {
+            anyhow::anyhow!("configured owner confirmation requires current task context")
+        })?;
         if context["interaction_protocol"] != "configured-cli-v1"
             || context["task_id"].as_str() != Some(task_text.as_str())
             || context["root_task_id"].as_str() != Some(task_text.as_str())
@@ -172,10 +177,10 @@ mod confirmation_tests {
     fn legacy_backlog_confirmation_retains_direct_readback_validation() {
         let (task, mut receipt, _) = fixture();
         receipt["stage"] = json!("Backlog");
-        validate_confirmation(&receipt, task, 3, None).unwrap();
+        validate_confirmation(&receipt, task, 3, false, None).unwrap();
         for stage in ["Draft", "Analysis", "Completed", ""] {
             receipt["stage"] = json!(stage);
-            assert!(validate_confirmation(&receipt, task, 3, None).is_err());
+            assert!(validate_confirmation(&receipt, task, 3, false, None).is_err());
         }
     }
 
@@ -183,16 +188,16 @@ mod confirmation_tests {
     fn configured_draft_receipt_survives_terminal_completion_without_rewriting_stage() {
         let (task, receipt, mut context) = fixture();
         let original = receipt.clone();
-        validate_confirmation(&receipt, task, 3, Some(&context)).unwrap();
+        validate_confirmation(&receipt, task, 3, true, Some(&context)).unwrap();
         context["stage"] = json!("Backlog");
         context["status"] = json!("Ready");
         for _ in 0..2 {
-            validate_confirmation(&receipt, task, 3, Some(&context)).unwrap();
+            validate_confirmation(&receipt, task, 3, true, Some(&context)).unwrap();
         }
         assert_eq!(receipt, original);
         assert_eq!(receipt["stage"], "Draft");
-        assert!(validate_confirmation(&receipt, task, 2, Some(&context)).is_err());
-        assert!(validate_confirmation(&receipt, task, 4, Some(&context)).is_err());
+        assert!(validate_confirmation(&receipt, task, 2, true, Some(&context)).is_err());
+        assert!(validate_confirmation(&receipt, task, 4, true, Some(&context)).is_err());
     }
 
     #[test]
@@ -214,7 +219,7 @@ mod confirmation_tests {
             let mut changed = context.clone();
             changed[field] = value;
             assert!(
-                validate_confirmation(&receipt, task, 3, Some(&changed)).is_err(),
+                validate_confirmation(&receipt, task, 3, true, Some(&changed)).is_err(),
                 "{field}"
             );
         }
@@ -231,13 +236,13 @@ mod confirmation_tests {
             let mut changed = context.clone();
             changed.as_object_mut().unwrap().remove(field);
             assert!(
-                validate_confirmation(&receipt, task, 3, Some(&changed)).is_err(),
+                validate_confirmation(&receipt, task, 3, true, Some(&changed)).is_err(),
                 "{field}"
             );
         }
         let mut false_publication = receipt.clone();
         false_publication["stage"] = json!("Backlog");
-        assert!(validate_confirmation(&false_publication, task, 3, Some(&context)).is_err());
+        assert!(validate_confirmation(&false_publication, task, 3, true, Some(&context)).is_err());
     }
 
     #[test]
@@ -261,11 +266,25 @@ mod confirmation_tests {
                 let mut changed = base.clone();
                 changed[field] = value;
                 assert!(
-                    validate_confirmation(&changed, task, 3, proof).is_err(),
+                    validate_confirmation(&changed, task, 3, configured, proof).is_err(),
                     "{field}"
                 );
             }
         }
+    }
+
+    #[test]
+    fn configured_mode_never_falls_back_based_on_receipt_stage_or_missing_context() {
+        let (task, draft, context) = fixture();
+        let mut backlog = draft.clone();
+        backlog["stage"] = json!("Backlog");
+        for proof in [None, Some(&context)] {
+            assert!(validate_confirmation(&backlog, task, 3, true, proof).is_err());
+            assert!(validate_confirmation(&draft, task, 3, false, proof).is_err());
+        }
+        assert!(validate_confirmation(&draft, task, 3, true, None).is_err());
+        validate_confirmation(&draft, task, 3, true, Some(&context)).unwrap();
+        validate_confirmation(&backlog, task, 3, false, None).unwrap();
     }
 }
 
