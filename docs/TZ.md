@@ -16,9 +16,12 @@ Default cap3 сохраняется; дополнительные позиции
 `prefix_count <= n < prefix_count + 3` с неизменными custody/fence/expired-CAS
 checks и immutable history. Forward104 зарегистрирован Main без правок103.
 Это не новый owner answer/confirmation, Auth role, CLI/MCP или ACK; unknown
-четвёртая попытка и её latch не сбрасываются. Source format/review пройдены,
-compile/PG/new image/live не проверены; установленный Tracker533 всё ещё
-producer blocker. [Точный контракт](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+четвёртая попытка и её latch не сбрасываются. На c8/ed61 реально проходят девять
+scoped tests, включая PostgreSQL. После7b test-only conversion fix пройдены
+fmt/strict Clippy и actual Rust export/client parity; standalone typecheck не
+подменяет полный frontend gate. Новый image/live ещё не проверены; установленный
+Tracker533 всё ещё producer blocker.
+[Точный контракт](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
 
 Technical bootstrap retry before PM enrollment/first instruction is a scheduler
 recovery, not a new Draft or owner answer. The existing task/chat/business input

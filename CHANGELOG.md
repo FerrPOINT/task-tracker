@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-26: Bounded PM Recovery Qualified At Source Level
+
+- Current main is integrated, retaining identity103, PM103 and forward104 without
+  changing applied migration bytes. The optional manual budget comes only from
+  the authenticated Fleet callback; default cap3 and original request hashes stay.
+- Nine actual scoped tests pass on c8/SDKed61, including the219.39-second real
+  PostgreSQL expiry/CAS/chain/replay/history scenario. The original overall FAIL
+  retains its test-only Clippy warning. The subsequent7b one-line redundant
+  conversion correction changes no production code or assertion.
+- Actual fmt and strict release workspace/all-target Clippy pass on7b. This
+  gate-only run executes zero tests; the nine earlier passes are not recounted.
+- Genuine Rust OpenAPI export is adopted byte-identically. Client generation,
+  parity and standalone strict TypeScript pass using the lock's tool versions;
+  this is not a full frontend gate. The original spec-drift FAIL is retained.
+- Installed Tracker533 is unchanged. New image/rollout, real Fleet callback,
+  useful PM and human-confirmed Backlog/Ready remain open. No Analyst, new MCP,
+  controller, scheduler, fake ACK or attempt reset is introduced.
+
 ## 2026-10-24: Terminal-Idle Checkpoint Permit Source
 
 - Independent source review found the new original-key GET required writer

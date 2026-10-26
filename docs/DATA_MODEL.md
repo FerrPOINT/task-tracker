@@ -19,8 +19,10 @@ Legacy `None` отсутствует в JSON. SQL сохраняет стары�
 budget допускает только `prefix_count <= n < prefix_count + 3`, где `n` относится
 к committed Tracker recovery chain того же original request. Fleet prefix hash
 не равен Tracker row projection. Старые receipts остаются immutable; historical
-replay не выдаёт новую lease/ACK. Только source format/review PASS, без compile,
-PG, image или live qualification. [Контракт104](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+replay не выдаёт новую lease/ACK. Девять actual scoped tests на c8/ed61, включая
+real PostgreSQL219s, проходят; после7b test-only lint fix fmt/strict Clippy также
+проходят. Старые overall FAIL сохраняются; image/live qualification ещё нет.
+[Контракт104](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
 
 Source candidate0099 reuses immutable `sdlc_pm_lease_operations.recovery` for one
 initial terminal/no-enrollment bootstrap retry. Original task/assignment/execution,

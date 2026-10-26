@@ -82,10 +82,22 @@ Fleet parent после его completion и не обновляет срок le
 не становится текущей authority. Source contract не снимает unknown у уже
 attempted четвёртой recovery и не разрешает reset latch, повтор POST или новый key.
 
-Для этого расширения пройдены только source format/review; compile, PostgreSQL,
-новый image и live counterpart НЕ проверены. Установленный Tracker533 сохраняет
-cap3 и остаётся producer blocker для четвёртой recovery. Старые qualification
-receipts не являются проверкой optional budget/104.
+Для этого расширения на c8/ed61 реально прошли девять выбранных тестов: шесть
+app cases, два migration104 cases и PostgreSQL chain/CAS/history case219.39s.
+Original overall run остаётся FAIL из-за одного Clippy warning в fixture.
+Последующий7b меняет только identity `.into()` conversion того же SQL value;
+actual fmt/strict release workspace/all-target Clippy проходят. Gate-only run
+выполняет ноль тестов и не пересчитывает предыдущие девять как новый запуск.
+
+Actual Rust OpenAPI export выходит0, SHA
+`ec250d0db623e64cad50af37b90b7af9cda4f437759e48c50eaa2f7f67f25042`;
+его bytes приняты без ручного редактирования. Original gate-only overall FAIL
+за spec drift сохраняется. Клиент сгенерирован openapi-typescript7.13.0 согласно
+lock; parity и standalone strict TypeScript5.9.3 проходят. Client SHA
+`4768a35c1d8ac9f4b947fe9fd52d8eaebf368990be7608dd75037619bd7f2475`.
+Это не полный frontend gate и не live callback. Новые image и live counterpart
+НЕ проверены; установленный Tracker533 сохраняет cap3. Прежние qualification
+receipts не подменяют optional budget/104 или human-confirmed Backlog.
 
 ## Verification And Rollout
 

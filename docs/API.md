@@ -23,8 +23,12 @@ Optional trusted callback budget (source only): Fleet witness может сод�
 и повторяет все текущие custody/CAS guards. Historical exact-key GET/replay
 использует сохранённый witness, не требует нового callback после completion parent
 и не продлевает lease. Новых Auth roles, CLI или MCP нет. Forward104/source
-format/review не означают compile/PG/image/live PASS; установленный Tracker533
-пока блокирует четвёртую recovery. [Точная форма и границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+qualification включает девять actual scoped tests на c8/ed61, включая PostgreSQL.
+После test-only lint correction7b пройдены fmt и strict workspace/all-target Clippy.
+Настоящий Rust export принят byte-identical; generated client проходит parity и
+standalone strict TypeScript, не полный frontend gate. Image/live остаются OPEN;
+установленный Tracker533 пока блокирует четвёртую recovery.
+[Точная форма и границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
 
 Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
 project source-policy CAS, explicit owner Draft enrollment and typed readback.
