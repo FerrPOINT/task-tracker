@@ -42,6 +42,14 @@ membership. Command agent/execution/assignment/version fences come from that
 assignment; a caller-provided agent ID or environment variable is not authority.
 The reservation does not mint or delegate credentials.
 
+The separate server readback credential retains the existing exact
+`{task-tracker:read}` machine-reader admission and current active project ACL.
+It can read context, requirements and the saved confirmation without being the
+assigned PM or a configured scheduler subject. It cannot publish, cancel,
+confirm or complete. A foreign subject with read+write is not a read-only reader
+and cannot borrow this exception; PM mutations still require the exact assigned
+service subject and current fence. No reader registry or new permission is added.
+
 The capability permits only the existing context, input, clarification,
 requirements, confirmation-read and completion business routes. It does not
 permit owner answers/confirmation, assignment changes, scheduler or native

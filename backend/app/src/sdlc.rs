@@ -375,6 +375,9 @@ pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
 pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     state.require_root()?;
     if state.configured_cli() && !actor.trusted_human {
+        if !actor.human_session && crate::sdlc_reservation::reader(actor).is_ok() {
+            return Ok(());
+        }
         return authorize_configured_pm(state, actor);
     }
     if state.configured_cli() && has_pm_grant(&actor.scopes) {

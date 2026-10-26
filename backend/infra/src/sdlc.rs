@@ -282,7 +282,7 @@ impl PostgresSdlcRepository {
         state.require_root()?;
         state.interaction_protocol()?;
         if state.configured_cli() && !actor.trusted_human {
-            app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
+            app::sdlc::authorize_pm_read(&state, actor)?;
         }
         spaces::bind_task(tx, config, &state, actor).await?;
         Ok(state)

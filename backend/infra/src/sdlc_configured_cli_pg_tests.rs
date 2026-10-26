@@ -85,8 +85,9 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     for scope in ["task-tracker:read", "task-tracker:write"] {
         let mut partial = pm.clone();
         partial.scopes.remove(scope);
-        assert!(
-            f.repo.read(task, &partial).await.is_err(),
+        assert_eq!(
+            f.repo.read(task, &partial).await.is_ok(),
+            scope == "task-tracker:write",
             "missing {scope}"
         );
     }
@@ -333,6 +334,119 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "request_sha256":"a".repeat(64),"result_version":4,"requirements_revision":2,"requirements_sha256":command.content_hash,
         "owner_subject":confirmed.owner_subject,"confirmation_id":confirmed.current_confirmation().unwrap().id,"history_id":17,"status":"done"}),
     );
+    let server_reader = actor("foreign", false, &["task-tracker:read"]);
+    assert_ne!(
+        server_reader.subject,
+        f.repo.config.reservation_scheduler_subject
+    );
+    assert_ne!(server_reader.subject, f.repo.config.orchestrator_subject);
+    assert_ne!(server_reader.subject, f.repo.config.verifier_subject);
+    // Context and requirements GETs share repository.read; confirmation has its
+    // own receipt reader. Neither may bypass current project membership.
+    assert!(matches!(
+        f.repo.read(task, &server_reader).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        f.repo.confirmation_read(task, &server_reader, 2).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role)
+        SELECT $1,id,'developer' FROM users WHERE central_sub='foreign'",
+        vec![f.project.into()],
+    )
+    .await
+    .unwrap();
+    let before_reader = f.snapshot().await;
+    let context = f
+        .repo
+        .read(task, &server_reader)
+        .await
+        .unwrap()
+        .context(&server_reader);
+    assert_eq!(context.assignment, Some(reservation.assignment.clone()));
+    assert_eq!(
+        context.workflow_task_key.as_deref(),
+        Some(reservation.execution.key.as_str())
+    );
+    let requirements = f
+        .repo
+        .read(task, &server_reader)
+        .await
+        .unwrap()
+        .revisions
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&requirements).unwrap(),
+        serde_json::to_value(confirmed.revisions.last().unwrap()).unwrap()
+    );
+    let consent = f
+        .repo
+        .confirmation_read(task, &server_reader, 2)
+        .await
+        .unwrap();
+    assert_eq!(consent, *confirmed.current_confirmation().unwrap());
+    let writes = [
+        SdlcCommand::PublishRevision(PublishRevision {
+            fence: fence.clone(),
+            expected_requirement_revision: Some(2),
+            document: requirements.document.clone(),
+            idempotency_key: "reader-must-not-publish".into(),
+        }),
+        SdlcCommand::Cancel {
+            question_id: confirmed.questions[0].id,
+            command: CancelQuestion {
+                fence: fence.clone(),
+                expected_question_version: confirmed.questions[0].version,
+                idempotency_key: "reader-must-not-cancel".into(),
+            },
+        },
+        SdlcCommand::Confirm {
+            revision: 2,
+            command: ConfirmCommand {
+                content_hash: requirements.content_hash.clone(),
+                idempotency_key: "reader-must-not-confirm".into(),
+                expected_routing_policy_version: None,
+            },
+        },
+    ];
+    for write in writes {
+        assert!(matches!(
+            f.repo
+                .execute_verified(task, &server_reader, write, reservation.clone(), None)
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(matches!(
+        f.repo
+            .complete_configured_pm(task, &server_reader, command.clone(), receipt.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut foreign_writer = server_reader.clone();
+    foreign_writer.scopes.insert("task-tracker:write".into());
+    assert!(matches!(
+        f.repo.read(task, &foreign_writer).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        f.repo.confirmation_read(task, &foreign_writer, 2).await,
+        Err(AppError::Forbidden)
+    ));
+    let mut stale_fence = command.clone();
+    stale_fence.fence.agent_id = Uuid::new_v4();
+    assert!(
+        f.repo
+            .complete_configured_pm(task, &pm, stale_fence, receipt.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(f.snapshot().await, before_reader);
     assert!(
         f.repo
             .complete_configured_pm(task, &f.owner, command.clone(), receipt.clone())

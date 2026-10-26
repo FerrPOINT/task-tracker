@@ -280,7 +280,10 @@ mod tests {
             let mut partial = actor.clone();
             partial.scopes.remove(scope);
             assert!(authorize_configured_pm(&state, &partial).is_err());
-            assert!(crate::sdlc::authorize_pm_read(&state, &partial).is_err());
+            assert_eq!(
+                crate::sdlc::authorize_pm_read(&state, &partial).is_ok(),
+                scope == "task-tracker:write"
+            );
         }
         for subject in [
             Uuid::nil().to_string(),
@@ -292,6 +295,28 @@ mod tests {
             state.assignment.as_mut().unwrap().machine_subject = subject;
             assert!(authorize_configured_pm(&state, &bad).is_err());
         }
+    }
+
+    #[test]
+    fn server_reader_is_readonly_and_never_assigned_pm_authority() {
+        let (state, _, _, _) = fixture();
+        let mut reader = Principal {
+            subject: Uuid::from_u128(42).to_string(),
+            human_session: false,
+            trusted_human: false,
+            scopes: ["task-tracker:read".into()].into(),
+        };
+        crate::sdlc::authorize_pm_read(&state, &reader).unwrap();
+        crate::sdlc_confirmation::authorize_read(&state, &reader).unwrap();
+        assert!(authorize_configured_pm(&state, &reader).is_err());
+        for scope in ["task-tracker:write", "project-workflow:read"] {
+            let mut extra = reader.clone();
+            extra.scopes.insert(scope.into());
+            assert!(crate::sdlc::authorize_pm_read(&state, &extra).is_err());
+            assert!(crate::sdlc_confirmation::authorize_read(&state, &extra).is_err());
+        }
+        reader.human_session = true;
+        assert!(crate::sdlc::authorize_pm_read(&state, &reader).is_err());
     }
 
     #[test]
