@@ -134,12 +134,20 @@ pub(crate) async fn resolve_directory_references(
         return Ok(HashMap::new());
     }
     let entries = fetch_central_directory(headers, &jwks_uri).await?;
+    resolve_known_directory_references(ctx, ids, &entries).await
+}
+
+async fn resolve_known_directory_references(
+    ctx: &Arc<app::AppContext>,
+    ids: &[UserId],
+    entries: &[CentralDirectoryUser],
+) -> Result<HashMap<UserId, UserId>, shared::AppError> {
     let subjects = entries
         .iter()
         .map(|entry| entry.id.clone())
         .collect::<Vec<_>>();
     let profiles = ctx.repos.users.central_profiles(&subjects).await?;
-    let directory = project_directory(&entries, &profiles)?;
+    let directory = project_directory(entries, &profiles)?;
     let candidates = ids
         .iter()
         .map(|id| {
@@ -182,6 +190,160 @@ pub(crate) async fn resolve_directory_references(
         resolved.insert(id, profile.id);
     }
     Ok(resolved)
+}
+
+/// Only the owner-authorized member mutation may explicitly resolve a service
+/// identity. Directory reads and other human selectors retain their old source.
+pub(crate) async fn resolve_project_member_reference(
+    ctx: &Arc<app::AppContext>,
+    headers: &HeaderMap,
+    id: UserId,
+) -> Result<UserId, shared::AppError> {
+    let Ok(jwks_uri) = std::env::var("TT_AUTH__CENTRAL_JWKS_URI") else {
+        return Ok(id);
+    };
+    let entries = fetch_central_directory(headers, &jwks_uri).await?;
+    let subjects = entries
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect::<Vec<_>>();
+    let profiles = ctx.repos.users.central_profiles(&subjects).await?;
+    if project_directory(&entries, &profiles)?
+        .iter()
+        .any(|entry| entry.id == id.to_string())
+    {
+        return resolve_known_directory_references(ctx, &[id], &entries)
+            .await?
+            .remove(&id)
+            .ok_or_else(|| shared::AppError::invalid_input("user reference is unavailable"));
+    }
+    let entry = fetch_explicit_service_account(headers, &jwks_uri, id).await?;
+    // Reuse the same local identity mapping and inactive-profile refusal as the
+    // ordinary directory path, without adding the SA to that directory.
+    let profile = ctx
+        .repos
+        .users
+        .find_or_create_central_user(&entry.id, &entry.email, &entry.display_name)
+        .await
+        .map_err(|error| match error {
+            shared::AppError::Unauthorized => {
+                shared::AppError::invalid_input("user reference is inactive")
+            }
+            error => error,
+        })?;
+    Ok(profile.id)
+}
+
+#[derive(serde::Deserialize)]
+struct CentralManagedUser {
+    id: String,
+    email: String,
+    display_name: String,
+    role: String,
+    status: String,
+}
+
+async fn fetch_explicit_service_account(
+    headers: &HeaderMap,
+    jwks_uri: &str,
+    id: UserId,
+) -> Result<CentralDirectoryUser, shared::AppError> {
+    let unavailable =
+        || shared::AppError::Unavailable("Central Auth service identity is unavailable".into());
+    let invalid = || shared::AppError::invalid_input("explicit active service account required");
+    if id.as_uuid().is_nil() {
+        return Err(invalid());
+    }
+    let authorization = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .ok_or(shared::AppError::Unauthorized)?;
+    let mut url = reqwest::Url::parse(jwks_uri).map_err(|_| unavailable())?;
+    url.set_path("/auth/users");
+    url.set_query(None);
+    url.set_fragment(None);
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(3))
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .build()
+        .map_err(|_| unavailable())?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut seen = HashSet::new();
+    for page in 0..100 {
+        let remaining = deadline
+            .checked_duration_since(std::time::Instant::now())
+            .ok_or_else(unavailable)?;
+        let mut response = client
+            .get(url.clone())
+            .query(&[
+                ("status", "active"),
+                ("limit", "100"),
+                ("offset", &(page * 100).to_string()),
+            ])
+            .timeout(remaining)
+            .header(axum::http::header::AUTHORIZATION, authorization.clone())
+            .send()
+            .await
+            .map_err(|_| unavailable())?;
+        if response.status() == reqwest::StatusCode::FORBIDDEN {
+            return Err(shared::AppError::Forbidden);
+        }
+        if response.status() != reqwest::StatusCode::OK
+            || response
+                .content_length()
+                .is_some_and(|length| length > 262_144)
+        {
+            return Err(unavailable());
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
+            if bytes.len().saturating_add(chunk.len()) > 262_144
+                || std::time::Instant::now() >= deadline
+            {
+                return Err(unavailable());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let batch: Vec<CentralManagedUser> =
+            serde_json::from_slice(&bytes).map_err(|_| unavailable())?;
+        if batch.len() > 100 {
+            return Err(unavailable());
+        }
+        let count = batch.len();
+        let mut found = None;
+        for entry in batch {
+            let subject = uuid::Uuid::parse_str(&entry.id).map_err(|_| unavailable())?;
+            if subject.is_nil() || subject.to_string() != entry.id || !seen.insert(subject) {
+                return Err(unavailable());
+            }
+            if subject == id.as_uuid() {
+                if entry.role != "service_account"
+                    || entry.status != "active"
+                    || entry.email.trim().is_empty()
+                {
+                    return Err(invalid());
+                }
+                found = Some(CentralDirectoryUser {
+                    id: entry.id,
+                    display_name: if entry.display_name.trim().is_empty() {
+                        entry.email.clone()
+                    } else {
+                        entry.display_name
+                    },
+                    email: entry.email,
+                    status: entry.status,
+                });
+            }
+        }
+        if let Some(entry) = found {
+            return Ok(entry);
+        }
+        if count < 100 {
+            return Err(invalid());
+        }
+    }
+    Err(unavailable())
 }
 
 async fn fetch_central_directory(
@@ -246,6 +408,10 @@ async fn fetch_central_directory(
         "Central Auth directory is too large".into(),
     ))
 }
+
+#[cfg(test)]
+#[path = "users_service_account_tests.rs"]
+mod service_account_tests;
 
 #[cfg(test)]
 mod tests {

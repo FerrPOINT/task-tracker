@@ -90,14 +90,16 @@ pub async fn add_member(
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let project_id = resolve_project_id(&ctx, project_key, requester).await?;
+    ctx.authz.require_owner(project_id, requester).await?;
+    domain::ProjectRole::from_str(&body.role).map_err(AppError::invalid_input)?;
     let user_id = body
         .user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
-    let resolved = super::users::resolve_directory_references(&ctx, &headers, &[user_id]).await?;
+    let resolved = super::users::resolve_project_member_reference(&ctx, &headers, user_id).await?;
     let cmd = app::commands::AddProjectMemberCommand {
         project_id,
-        user_id: resolved[&user_id],
+        user_id: resolved,
         role: body.role,
     };
     let m = ctx.services.member.add(cmd, requester).await?;
