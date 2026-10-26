@@ -17,6 +17,32 @@ fn headers() -> HeaderMap {
     headers
 }
 
+#[test]
+fn active_admin_status_does_not_replace_identity_active_confirmation() {
+    use shared::space_access::{AdmissionValidity, CentralIdentity, IdentityConfirmation};
+    let target = UserId::new();
+    let listed: CentralManagedUser =
+        serde_json::from_value(managed(target.as_uuid(), "service_account", "active")).unwrap();
+    assert_eq!(listed.status, "active");
+    assert_eq!(listed.role, "service_account");
+    let now = chrono::Utc::now().timestamp();
+    let confirmed = IdentityConfirmation {
+        identity: CentralIdentity {
+            issuer: "https://auth.example.test".into(),
+            subject: listed.id,
+        },
+        active: true,
+        validity: AdmissionValidity::confirmed(now, now + 60, now + 60).unwrap(),
+    };
+    assert!(require_active_service_identity(Some(confirmed.clone())).is_ok());
+    let inactive = IdentityConfirmation {
+        active: false,
+        ..confirmed
+    };
+    assert!(require_active_service_identity(Some(inactive)).is_err());
+    assert!(require_active_service_identity(None).is_err());
+}
+
 #[tokio::test]
 async fn explicit_service_lookup_uses_admin_active_pages_and_exact_subject() {
     let target = UserId::new();

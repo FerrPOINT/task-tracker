@@ -218,6 +218,7 @@ pub(crate) async fn resolve_project_member_reference(
             .ok_or_else(|| shared::AppError::invalid_input("user reference is unavailable"));
     }
     let entry = fetch_explicit_service_account(headers, &jwks_uri, id).await?;
+    confirm_active_service_account(headers, id).await?;
     // Reuse the same local identity mapping and inactive-profile refusal as the
     // ordinary directory path, without adding the SA to that directory.
     let profile = ctx
@@ -232,6 +233,46 @@ pub(crate) async fn resolve_project_member_reference(
             error => error,
         })?;
     Ok(profile.id)
+}
+
+async fn confirm_active_service_account(
+    headers: &HeaderMap,
+    id: UserId,
+) -> Result<(), shared::AppError> {
+    use pdlc_auth_core::service_bridge::VerifiedBridgeError;
+    let map_error = |error| match error {
+        VerifiedBridgeError::Unavailable | VerifiedBridgeError::NotConfigured => {
+            shared::AppError::Unavailable("Central Auth service identity is unavailable".into())
+        }
+        VerifiedBridgeError::Forbidden => shared::AppError::Forbidden,
+        _ => shared::AppError::Unauthorized,
+    };
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(pdlc_auth_core::bearer_from_header)
+        .ok_or(shared::AppError::Unauthorized)?;
+    let bridge = &app::space_access::CENTRAL_BRIDGE;
+    let caller = bridge.try_verified_token(token).await.map_err(map_error)?;
+    // The admin list exposes status, not users.active. The SDK confirms the
+    // exact subject/issuer and bounds validity to the original caller proof.
+    let confirmation = bridge
+        .confirm_known_identity(&caller, id.as_uuid())
+        .await
+        .map_err(map_error)?;
+    require_active_service_identity(confirmation)
+}
+
+fn require_active_service_identity(
+    confirmation: Option<shared::space_access::IdentityConfirmation>,
+) -> Result<(), shared::AppError> {
+    if confirmation.is_some_and(|identity| identity.active) {
+        Ok(())
+    } else {
+        Err(shared::AppError::invalid_input(
+            "explicit active service account required",
+        ))
+    }
 }
 
 #[derive(serde::Deserialize)]
