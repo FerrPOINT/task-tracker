@@ -213,6 +213,23 @@ pub struct PmSettledInputRecovery {
     pub barrier_id: Uuid,
 }
 
+/// Immutable owner budget, accepted only inside the existing trusted Fleet callback.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PmSettledInputManualBudget {
+    pub contract_version: u8,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub root_operation_id: Uuid,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub control_operation_id: Uuid,
+    pub retry_operation_key: String,
+    pub retry_request_sha256: String,
+    pub original_resume_request_sha256: String,
+    pub prefix_count: usize,
+    pub prefix_sha256: String,
+    pub allowance: usize,
+}
+
 /// Authenticated Fleet journal/barrier observation, never caller-supplied authority.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -225,6 +242,8 @@ pub struct PmSettledInputRecoveryWitness {
     pub identity: PmExecutionIdentity,
     pub request_sha256: String,
     pub command: ResumePmExecutionLease,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_budget: Option<PmSettledInputManualBudget>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema, PartialEq)]
 #[serde(deny_unknown_fields)]

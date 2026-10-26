@@ -69,9 +69,11 @@ fn settled_input_witness_is_closed_and_exactly_bound_to_request_and_assignment()
         identity: crate::sdlc_pm_bootstrap_retry::identity(&reservation),
         request_sha256: request_hash(&command).unwrap(),
         command: command.clone(),
+        manual_budget: None,
     };
     validate_settled_witness(&witness, &reservation, &command).unwrap();
     let raw = serde_json::to_value(witness).unwrap();
+    assert!(raw.get("manual_budget").is_none());
     for (pointer, bad) in [
         ("/contract_version", json!(2)),
         ("/session_run_id", json!(Uuid::new_v4())),

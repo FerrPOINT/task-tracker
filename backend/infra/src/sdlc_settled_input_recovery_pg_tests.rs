@@ -211,6 +211,7 @@ fn witness(f: &Fixture, c: &ResumePmExecutionLease) -> PmSettledInputRecoveryWit
         identity: app::sdlc_pm_bootstrap_retry::identity(&f.reservation),
         request_sha256: app::sdlc_pm_resume::request_hash(c).unwrap(),
         command: c.clone(),
+        manual_budget: None,
     }
 }
 
