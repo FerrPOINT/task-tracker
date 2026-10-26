@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
@@ -19,7 +20,7 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('SprintFormDialog', () => {
-  it('associates an invalid date range with the end date and submits only after correction', () => {
+  it('associates an invalid date range with the end date and submits only after correction', async () => {
     const onSubmit = vi.fn()
     render(
       wrapper(
@@ -30,7 +31,7 @@ describe('SprintFormDialog', () => {
     fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-10-24' } })
     const end = screen.getByLabelText(/end date/i)
     fireEvent.change(end, { target: { value: '2026-10-23' } })
-    fireEvent.click(screen.getByRole('button', { name: /create sprint/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create sprint/i }))
     expect(onSubmit).not.toHaveBeenCalled()
     expect(end).toHaveAttribute('aria-invalid', 'true')
     expect(end).toHaveAccessibleDescription('End date cannot be earlier than start date')
@@ -38,7 +39,7 @@ describe('SprintFormDialog', () => {
       'End date cannot be earlier than start date',
     )
     fireEvent.change(end, { target: { value: '2026-10-24' } })
-    fireEvent.click(screen.getByRole('button', { name: /create sprint/i }))
+    await userEvent.click(screen.getByRole('button', { name: /create sprint/i }))
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         name: 'Date check',
@@ -48,6 +49,21 @@ describe('SprintFormDialog', () => {
     )
     expect(end).not.toHaveAttribute('aria-invalid')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('locks editing and dismissal until the parent write settles', () => {
+    const onOpenChange = vi.fn()
+    const props = { open: true, onOpenChange, onSubmit: vi.fn() }
+    const page = render(wrapper(<SprintFormDialog {...props} isPending />))
+    expect(screen.getByLabelText(/^name/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^close$/i })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape' })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    page.rerender(wrapper(<SprintFormDialog {...props} isPending={false} />))
+    expect(screen.getByLabelText(/^name/i)).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('announces a failed save while retaining entered fields without an automatic retry', () => {

@@ -97,3 +97,28 @@ viewport320/375/1920/2560, standard/large и обычное/длинное со�
 сначала дали RED, затем GREEN; повторены ActivityFeed, types и scoped lint.
 Остальные ключи переводов совпадают с baseline; IAB подтвердил оба языка.
 Evidence: private message-captions-20261026.
+
+## Общая рамка форм проекта, спринта и времени — 2026-10-26
+
+Три предметных диалога используют FormDialog Base из UI producer
+`ee10d583dbc5cf9b0c8679944c542b07363e670d`. Удалены локальные form/header/footer
+frames; поля, DTO, права и сохранение остаются у Tracker. Сохранены native
+key validation, stopPropagation проекта, date range и undefined/null-контракт
+спринта, React Hook Form и timer списания времени. Async client validation
+не объявляется write Promise: реальная запись передаёт собственный pending.
+Pending спринта теперь блокирует поля и закрытие общим механизмом Base.
+
+20 selected unit cases, TypeScript, scoped lint и UI contract прошли. Новый
+regression-case редактирования/закрытия при pending дал RED на прежнем модуле.
+Проекции трёх полных модулей вне frame и 16 compiled полей/кнопок совпали;
+отрицательные изменения DTO не принимаются проверкой.
+
+IAB:156 контекстов настоящих source-форм create/edit/error/pending, три темы,
+standard/large и viewport320/375/1920/2560, без overflow. Ключ проекта, диапазон
+дат, native очистка dates в null, RHF error focus, ошибка записи без потери
+ввода/автоповтора, timer close/reset и pending Escape проверены отдельно.
+Неудачные способы автоматизированного ввода native date сохранены отдельно,
+а не объявлены успешной проверкой. Три финальных снимка просмотрены; console
+чиста, source hashes неизменны. Это memory-only source UI, не backend/Auth/
+installed acceptance. SDK/skills pins и lockfile прежние.
+Evidence: private form-dialog-consolidation-20261026.
