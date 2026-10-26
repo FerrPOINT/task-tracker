@@ -269,3 +269,10 @@ Markdown остаётся у Tracker: skipHtml, политика ссылок и
 Блоки кода выводятся через CodeBlock Base; renderer mapping держать вне render,
 чтобы повторный рендер/смена темы не заменяли сфокусированный pre. Не копировать
 его tabindex, фон и прокрутку. Новый парсер в Base не добавлять.
+
+
+Текст бокового пункта после проверки UI pin использует SidebarItemLabel Base.
+Не копировать base-sidebar-item-label/truncate: compact и сокращение общие.
+Иконка, полное aria-label/title, маршрут, current state и callbacks остаются
+продукту. У текстового slot нет собственного SSR macro; отдельную кнопку
+или focus target вокруг подписи не добавлять.

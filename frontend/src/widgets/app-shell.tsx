@@ -16,6 +16,7 @@ import {
   ProjectNavigationGroup,
   SidebarNavigationGroup,
   useSidebarDisclosure,
+  SidebarItemLabel,
   SidebarItem,
   PlatformMark,
   PlatformHeader,
@@ -123,7 +124,7 @@ function SidebarLink({
         aria-current={active ? 'page' : undefined}
       >
         <Icon aria-hidden="true" />
-        {!compact && <span className="base-sidebar-item-label">{label}</span>}
+        {!compact && <SidebarItemLabel>{label}</SidebarItemLabel>}
       </Link>
     </SidebarItem>
   )
