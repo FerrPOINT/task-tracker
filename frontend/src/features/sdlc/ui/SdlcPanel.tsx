@@ -3,6 +3,7 @@ import {
   ResourceListDescription,
   ResourceListTitle,
   PageNavigation,
+  Fieldset,
   Notice,
   SectionHeader,
 } from '@pdlc/ui/ui'
@@ -314,7 +315,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
             </div>
           ))}
           {isRequirementsReviewContext(context) && (
-            <div className="border-t border-border py-4">
+            <Fieldset separated legend={t('sdlc.confirm')} legendVisuallyHidden>
               {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
               {confirm.data && (
                 <Notice role="status" tone="success" appearance="inline">
@@ -370,62 +371,67 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                   {displayedPolicy.routing_hash}
                                 </DescriptionItem>
                               </dl>
-                              {Object.values(routingRoles).map((role) => {
-                                const route = displayedPolicy.routes[role]
-                                return (
-                                  <section key={role} className="border-b border-border py-2">
-                                    <SectionHeader
-                                      level={5}
-                                      title={<>{t(`sdlc.publication.roles.${role}`)}</>}
-                                      className="mb-1"
-                                    />
-                                    <dl>
-                                      <DescriptionItem
-                                        layout="inline"
-                                        label={t('sdlc.publication.agent')}
-                                      >
-                                        {route.agent_id}
-                                      </DescriptionItem>
-                                      <DescriptionItem
-                                        layout="inline"
-                                        label={t('sdlc.publication.effectiveRevision')}
-                                      >
-                                        {route.fleet_config_revision}
-                                      </DescriptionItem>
-                                      {displayedPolicy.contract_version === 1 ? (
-                                        <DescriptionItem
-                                          layout="inline"
-                                          label={t('sdlc.publication.package')}
-                                        >
-                                          {route.package_commit} / {route.package_manifest_sha256}
-                                        </DescriptionItem>
-                                      ) : (
-                                        <DescriptionItem
-                                          layout="inline"
-                                          label={t('sdlc.publication.instructionProfile')}
-                                        >
-                                          {route.instruction_profile} /{' '}
-                                          {route.instruction_manifest_sha256}
-                                        </DescriptionItem>
-                                      )}
-                                      <DescriptionItem
-                                        layout="inline"
-                                        label={t('sdlc.publication.workflow')}
-                                      >
-                                        {route.namespace_id} / {route.namespace_name} /{' '}
-                                        {route.workflow_id} / {route.workflow_key}
-                                      </DescriptionItem>
-                                      <DescriptionItem
-                                        layout="inline"
-                                        label={t('sdlc.publication.profile')}
-                                      >
-                                        {route.profile} / {route.workflow_catalog_version} /{' '}
-                                        {route.workflow_catalog_sha256}
-                                      </DescriptionItem>
-                                    </dl>
-                                  </section>
-                                )
-                              })}
+                              <ResourceList>
+                                {Object.values(routingRoles).map((role) => {
+                                  const route = displayedPolicy.routes[role]
+                                  return (
+                                    <ResourceListRow asChild key={role}>
+                                      <section>
+                                        <SectionHeader
+                                          level={5}
+                                          title={<>{t(`sdlc.publication.roles.${role}`)}</>}
+                                          className="mb-1"
+                                        />
+                                        <dl>
+                                          <DescriptionItem
+                                            layout="inline"
+                                            label={t('sdlc.publication.agent')}
+                                          >
+                                            {route.agent_id}
+                                          </DescriptionItem>
+                                          <DescriptionItem
+                                            layout="inline"
+                                            label={t('sdlc.publication.effectiveRevision')}
+                                          >
+                                            {route.fleet_config_revision}
+                                          </DescriptionItem>
+                                          {displayedPolicy.contract_version === 1 ? (
+                                            <DescriptionItem
+                                              layout="inline"
+                                              label={t('sdlc.publication.package')}
+                                            >
+                                              {route.package_commit} /{' '}
+                                              {route.package_manifest_sha256}
+                                            </DescriptionItem>
+                                          ) : (
+                                            <DescriptionItem
+                                              layout="inline"
+                                              label={t('sdlc.publication.instructionProfile')}
+                                            >
+                                              {route.instruction_profile} /{' '}
+                                              {route.instruction_manifest_sha256}
+                                            </DescriptionItem>
+                                          )}
+                                          <DescriptionItem
+                                            layout="inline"
+                                            label={t('sdlc.publication.workflow')}
+                                          >
+                                            {route.namespace_id} / {route.namespace_name} /{' '}
+                                            {route.workflow_id} / {route.workflow_key}
+                                          </DescriptionItem>
+                                          <DescriptionItem
+                                            layout="inline"
+                                            label={t('sdlc.publication.profile')}
+                                          >
+                                            {route.profile} / {route.workflow_catalog_version} /{' '}
+                                            {route.workflow_catalog_sha256}
+                                          </DescriptionItem>
+                                        </dl>
+                                      </section>
+                                    </ResourceListRow>
+                                  )
+                                })}
+                              </ResourceList>
                             </Disclosure>
                             <Checkbox
                               label={t('sdlc.publication.select', {
@@ -462,7 +468,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               ) : (
                 <p className="text-text-muted">{t('sdlc.confirmUnavailable')}</p>
               )}
-            </div>
+            </Fieldset>
           )}
         </section>
       ) : (
@@ -509,8 +515,8 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                         </ResourceListTitle>
                         <ResourceListDescription asChild>
                           <p>
-                          #{event.sequence} · {new Date(event.created_at).toLocaleString()}
-                        </p>
+                            #{event.sequence} · {new Date(event.created_at).toLocaleString()}
+                          </p>
                         </ResourceListDescription>
                         {event.event_type === 'analysis.intent_created' && (
                           <dl>

@@ -234,3 +234,15 @@ mobileFlow для длинной формы. SSR-аналога этого React
 Настоящий архив из 882 файлов сверён с установленным UI; offline frozen install,
 singleton React и CLI check пройдены. SDK/skills pins сохранены. Это source
 adoption; приложение, backend и Storybook не пересобирались, runtime не менялся.
+
+## Подтверждение требований
+
+Группа подтверждения SdlcPanel использует Fieldset separated Base с доступным
+именем и визуально скрытой legend. Группа не получает общий disabled: права,
+acknowledged pin, pending и готовность policy проверяются прежними отдельными
+controls. Технические ссылки ролей оформляются ResourceList/ResourceListRow;
+native section и иерархия заголовков сохраняются.
+
+Tracker владеет revision/hash, routing policy, idempotency/readback и командой
+подтверждения. Оформление группы не создаёт событий и не меняет данные.
+Проверки source не означают runtime-приёмку; UI/SDK/skills pins сохранены.

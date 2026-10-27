@@ -263,6 +263,10 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     )
     mount()
     const button = await screen.findByRole('button', { name: 'Confirm requirements' })
+    const confirmationGroup = screen.getByRole('group', { name: 'Confirm requirements' })
+    expect(within(confirmationGroup).getByRole('button', { name: 'Confirm requirements' })).toBe(
+      button,
+    )
     expect(button).toBeDisabled()
     expect(screen.getByText(hash)).toBeInTheDocument()
     expect(confirmRequirements).not.toHaveBeenCalled()
