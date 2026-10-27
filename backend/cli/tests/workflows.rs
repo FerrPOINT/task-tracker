@@ -554,6 +554,66 @@ async fn sdlc_revision_publish_help_has_typed_working_document_without_owner_aut
 }
 
 #[tokio::test]
+async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_network() {
+    use domain::sdlc_configured_cli::{CompleteConfiguredPm, PmCompletionCommand};
+
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "pm", "completion", "submit", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let completion: CompleteConfiguredPm = serde_json::from_value(payload.clone()).unwrap();
+    assert_eq!(completion.fence.assignment_version, 1);
+    assert_eq!(completion.requirement_revision, 2);
+    assert_eq!(completion.workflow_result_version, 4);
+    assert_ne!(
+        completion.fence.execution_id,
+        completion.workflow_execution_ref
+    );
+    assert_eq!(completion.content_hash, "a".repeat(64));
+    assert!(matches!(
+        serde_json::from_value::<PmCompletionCommand>(payload.clone()).unwrap(),
+        PmCompletionCommand::Configured(_)
+    ));
+    assert!(
+        serde_json::from_value::<domain::sdlc_reservation::CompletePmDraft>(payload.clone())
+            .is_err()
+    );
+    for text in [
+        "--from-file -",
+        "exact saved human-owner confirmation",
+        "complete=true result with the real terminal_receipt",
+        "Tracker execution_id is NOT Workflow execution_ref",
+        "singular",
+        "server-to-server",
+        "Legacy completion remains supported",
+        "no blind resend or replacement key",
+        "completion operation --task TASK_UUID --key COMPLETION_KEY",
+        "completion read --task TASK_UUID",
+        "do not queue Analysis or dispatch Analyst",
+    ] {
+        assert!(help.contains(text), "missing help boundary: {text}");
+    }
+    assert!(!help.contains("fixture-token"));
+    assert!(serde_json::from_value::<PmCompletionCommand>(json!({})).is_err());
+    let mut wrong = payload.clone();
+    let revision = wrong
+        .as_object_mut()
+        .unwrap()
+        .remove("requirement_revision")
+        .unwrap();
+    wrong["requirements_revision"] = revision;
+    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    let mut wrong = payload.clone();
+    wrong["terminal_receipt"] = json!({});
+    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    let mut wrong = payload;
+    wrong["lease_id"] = json!("77777777-7777-4777-8777-777777777777");
+    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     let question = json!({

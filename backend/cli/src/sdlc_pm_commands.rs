@@ -386,6 +386,58 @@ pub enum LeaseCommand {
 
 #[derive(Subcommand)]
 pub enum CompletionCommand {
+    /// Submit the actual PM completion JSON payload from a file or stdin
+    #[command(
+        after_long_help = r#"Configured-cli-v1 only: first read `task-tracker sdlc context --task TASK_UUID`.
+Use the current assigned PM service identity, not human/scheduler credentials.
+Read the latest real requirements and their exact saved human-owner confirmation
+with `task-tracker sdlc confirmation read --task TASK_UUID --revision REVISION`.
+Draft publication or a clarification answer is NOT that confirmation.
+Finish the same PM Workflow only after that consent. Before this submit, require
+its accepted complete=true result with the real terminal_receipt. This command
+does not create the Workflow receipt or confirm requirements for the owner.
+
+Copy fence from fresh Tracker context.assignment: assignment_id, execution_id,
+agent_id and version (as assignment_version). Match those to terminal_receipt
+assignment_ref, tracker_execution_id, concrete_agent_ref and assignment_version.
+Tracker execution_id is NOT Workflow execution_ref; never change either to match.
+Take requirement_revision from terminal_receipt.requirements_revision (singular
+in this request), content_hash from requirements_sha256, namespace_id from
+namespace_id, workflow_execution_ref from execution_ref, workflow_operation_key
+from operation_key, and workflow_result_version from result_version.
+All identities, versions, keys and hash below are illustrative, not authority.
+Send ONLY these fields; do not paste workflow_receipt/terminal_receipt objects
+or add native checkpoint/lease fields. Tracker reads the terminal receipt
+server-to-server and atomically publishes Draft -> Backlog / Ready. Stop there;
+do not queue Analysis or dispatch Analyst. Legacy completion remains supported
+with its separate existing lease/native-receipt contract, NOT this JSON shape.
+Pipe JSON into `task-tracker sdlc pm completion submit --task TASK_UUID --from-file -`.
+
+After success, unknown acceptance or an exact replay, read the original operation:
+`task-tracker sdlc pm completion operation --task TASK_UUID --key COMPLETION_KEY`,
+then `task-tracker sdlc pm completion read --task TASK_UUID` and the task context.
+Retain the exact body and COMPLETION_KEY; no blind resend or replacement key after
+an unknown outcome. Match the saved result's task/root, revision/hash and
+Backlog / Ready state. An unchanged exact replay must not create another completion.
+
+JSON example (configured-cli-v1):
+{
+  "interaction_protocol": "configured-cli-v1",
+  "fence": {
+    "assignment_id": "22222222-2222-4222-8222-222222222222",
+    "execution_id": "33333333-3333-4333-8333-333333333333",
+    "agent_id": "44444444-4444-4444-8444-444444444444",
+    "assignment_version": 1
+  },
+  "requirement_revision": 2,
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "namespace_id": 2,
+  "workflow_execution_ref": "99999999-9999-4999-8999-999999999999",
+  "workflow_operation_key": "example-final-report",
+  "workflow_result_version": 4,
+  "idempotency_key": "example-completion-1"
+}"#
+    )]
     Submit {
         #[arg(long)]
         task: Uuid,
