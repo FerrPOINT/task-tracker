@@ -250,7 +250,7 @@ jobs:
           version: 10.28.1
       - uses: actions/setup-node@v7
         with:
-          node-version: "22.20.0"
+          node-version: "22.22.2"
           cache: pnpm
           cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
