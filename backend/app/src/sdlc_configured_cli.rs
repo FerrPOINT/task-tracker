@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub fn authorize_configured_identity(actor: &Principal) -> Result<(), AppError> {
     if actor.human_session
         || actor.trusted_human
+        || actor.scopes.contains("admin")
         || !actor.scopes.contains("task-tracker:read")
         || !actor.scopes.contains("task-tracker:write")
         || crate::sdlc::has_pm_grant(&actor.scopes)
@@ -37,7 +38,9 @@ pub fn authorize_completion_read(state: &TaskState, actor: &Principal) -> Result
         return Err(AppError::Forbidden);
     }
     if state.owner(actor)
-        || (!actor.human_session && !actor.trusted_human && crate::sdlc_reservation::reader(actor).is_ok())
+        || (!actor.human_session
+            && !actor.trusted_human
+            && crate::sdlc_reservation::reader(actor).is_ok())
     {
         return state.require_root();
     }
@@ -336,6 +339,9 @@ mod tests {
         let mut human_pat = actor.clone();
         human_pat.human_session = true;
         assert!(authorize_configured_pm(&state, &human_pat).is_err());
+        let mut administrator = actor;
+        administrator.scopes.insert("admin".into());
+        assert!(authorize_configured_pm(&state, &administrator).is_err());
     }
 
     #[test]
@@ -438,7 +444,9 @@ mod tests {
             "options":[],"recommended_option_id":null,"idempotency_key":"question"
         }))
         .unwrap();
-        assert!(question.checkpoint_id.is_none());
+        let mut retired = serde_json::to_value(&question).unwrap();
+        retired["checkpoint_id"] = json!(Uuid::new_v4());
+        assert!(serde_json::from_value::<PublishQuestion>(retired).is_err());
         crate::sdlc::apply(
             &mut state,
             &actor,

@@ -2177,3 +2177,10 @@ Discussion read pages use a stable snapshot; final discussion publication and
 operation readback are linked to the actual assignment and requirements revision.
 Completion requires that unchanged saved comment and the authoritative Workflow
 result. These candidate contracts still require PostgreSQL and live qualification.
+
+
+Critical blocker submission uses the same dedicated configured service identity
+as other agent business commands. Historical delivery grants can read retained
+results; they cannot authorize a new proposal. Global `admin` scope does not
+turn a service account into an assigned producer. Standard scopes for other
+products remain compatible with the ordinary CLI credential.

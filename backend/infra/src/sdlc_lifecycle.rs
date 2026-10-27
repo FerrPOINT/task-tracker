@@ -168,7 +168,12 @@ pub(super) async fn producer_grant(
     write: bool,
 ) -> Result<DeliveryGrant, AppError> {
     if !state.configured_cli() {
-        return app::sdlc_lifecycle::producer(actor, write);
+        if write {
+            return Err(AppError::conflict(
+                "retired execution is read-only; a configured assignment is required",
+            ));
+        }
+        return app::sdlc_lifecycle::producer(actor, false);
     }
     app::sdlc_configured_cli::authorize_configured_identity(actor)?;
     let assignment = configured_assignment(tx, state, actor)
@@ -685,7 +690,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: domain::sdlc_critical_blockers::SubmitCriticalBlocker,
     ) -> Result<(domain::sdlc_critical_blockers::CriticalBlockerReceipt, bool), AppError> {
-        app::sdlc_lifecycle::producer(actor, true)?;
+        // This is an ordinary business command from the permanently configured
+        // service account. Assignment, current stage and artifact ACLs are
+        // checked under the task lock by the existing storage implementation.
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         let storage = self.file_storage.as_deref().ok_or_else(|| {
             AppError::Unavailable("critical blocker artifact storage not configured".into())
         })?;

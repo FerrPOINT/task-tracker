@@ -401,8 +401,11 @@ pub fn assigned_producer(
             agent_id: assignment.agent_id,
             fencing_token: assignment.fencing_token,
         })
+    } else if !write {
+        // Historical producer grants only read their retained results.
+        producer(actor, false)
     } else {
-        producer(actor, write)
+        Err(AppError::Forbidden)
     }
 }
 
