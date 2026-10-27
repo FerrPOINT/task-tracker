@@ -403,7 +403,7 @@ mod tests {
                     "GET",
                     &format!("/api/v1/issues/{}/attachments", uuid::Uuid::new_v4())
                 )
-                .is_err()
+                .is_ok()
         );
         scheduler.subject = "foreign-machine".into();
         assert!(

@@ -958,78 +958,19 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn bootstrap_retry_schema_is_closed_and_contains_no_caller_proof() {
+    fn configured_api_does_not_publish_retired_native_execution_commands() {
         let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
-        let root = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap";
-        for (path, method) in [
-            (root.to_string(), "post"),
-            (format!("{root}/operations/{{idempotency_key}}"), "get"),
-        ] {
-            let operation = &doc["paths"][path][method];
-            assert_eq!(operation["security"], serde_json::json!([{"bearer":[]}]));
-            assert!(operation["responses"]["200"].is_object());
+        for path in doc["paths"].as_object().unwrap().keys() {
+            assert!(!path.contains("pm-draft-execution-lease"), "{path}");
         }
-        let schema = &doc["components"]["schemas"]["BootstrapRetryCommand"];
-        assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["required"].as_array().unwrap().len(), 12);
-        for field in [
-            "witness",
-            "terminal",
-            "no_step",
-            "no_enrollment",
-            "terminal_receipt",
-            "bootstrap_receipt",
-            "dispatch_allowed",
+        for name in [
+            "BootstrapRetryCommand",
+            "RecoverUnsubmittedPmExecutionLease",
+            "ClaimExecutionLease",
+            "HeartbeatExecutionLease",
+            "ResumePmExecutionLease",
         ] {
-            assert!(schema["properties"][field].is_null());
-        }
-        let predecessor = &doc["components"]["schemas"]["WorkflowBootstrapPredecessor"];
-        assert_eq!(predecessor["additionalProperties"], false);
-        assert!(
-            predecessor["required"]
-                .as_array()
-                .unwrap()
-                .contains(&serde_json::json!("finalized_binding"))
-        );
-    }
-
-    #[test]
-    fn unsubmitted_pm_recovery_schema_is_scheduler_only_and_has_no_caller_witness() {
-        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
-        let snapshot: serde_json::Value =
-            serde_json::from_str(include_str!("../../../openapi/openapi.json")).unwrap();
-        let root = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted";
-        for (path, method) in [
-            (root.to_string(), "post"),
-            (format!("{root}/operations/{{idempotency_key}}"), "get"),
-        ] {
-            let operation = &doc["paths"][&path][method];
-            assert_eq!(operation, &snapshot["paths"][&path][method]);
-            assert_eq!(operation["security"], serde_json::json!([{"bearer":[]}]));
-            for status in ["200", "401", "403", "404", "409", "422", "503"] {
-                assert!(operation["responses"][status].is_object());
-            }
-        }
-        let schema = &doc["components"]["schemas"]["RecoverUnsubmittedPmExecutionLease"];
-        assert_eq!(
-            schema,
-            &snapshot["components"]["schemas"]["RecoverUnsubmittedPmExecutionLease"]
-        );
-        assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["required"].as_array().unwrap().len(), 7);
-        for field in [
-            "expected_owner_version",
-            "fence",
-            "lease_id",
-            "expected_lease_version",
-            "session_run_id",
-            "barrier_id",
-            "idempotency_key",
-        ] {
-            assert!(schema["properties"][field].is_object());
-        }
-        for field in ["witness", "terminal", "checkpoint", "never_submitted"] {
-            assert!(schema["properties"][field].is_null());
+            assert!(doc["components"]["schemas"][name].is_null(), "{name}");
         }
     }
 
@@ -1135,7 +1076,7 @@ mod tests {
             (
                 "CreateDraftCommand",
                 vec!["title", "description", "idempotency_key"],
-                vec!["flow"],
+                vec!["flow", "interaction_protocol"],
             ),
             (
                 "CreatedDraft",
@@ -1148,7 +1089,7 @@ mod tests {
                     "owner_subject",
                     "stage",
                 ],
-                vec![],
+                vec!["interaction_protocol"],
             ),
         ] {
             let object = &schema["components"]["schemas"][name];
@@ -1237,12 +1178,19 @@ mod tests {
         for (name, fields) in [
             ("PmDraftInputResponse", 7),
             ("PmDraftInput", 4),
-            ("CreatedDraft", 7),
+            ("CreatedDraft", 8),
         ] {
             let object = &schema["components"]["schemas"][name];
             assert_eq!(object["additionalProperties"], false);
             assert_eq!(object["properties"].as_object().unwrap().len(), fields);
-            assert_eq!(object["required"].as_array().unwrap().len(), fields);
+            assert_eq!(
+                object["required"].as_array().unwrap().len(),
+                if name == "CreatedDraft" {
+                    fields - 1
+                } else {
+                    fields
+                }
+            );
         }
         let input = &schema["components"]["schemas"]["PmDraftInput"]["properties"];
         assert_eq!(input["snapshot_ref"]["format"], "uuid");
@@ -1322,7 +1270,7 @@ mod tests {
             "delivery.result_accepted" => metadata::LifecycleResource,
             "delivery.proposal_submitted" => metadata::DeliveryProposalResource,
             "pm.feedback_recorded" => metadata::PmFeedbackResource,
-            "pm.completed" => metadata::PmCompletionResource,
+            "pm.completed" => metadata::PmCompletionResourceFormat,
             "task.created" => metadata::CreatedResource,
             "task.bound" => metadata::BoundResource,
             "pm.assigned" => domain::sdlc::MachineFence,
@@ -1389,7 +1337,18 @@ mod tests {
                 .remove(kind)
                 .expect("unknown or duplicate metadata event variant");
             assert_eq!(payload["properties"]["resource"], resource, "{kind}");
-            assert_eq!(resource["additionalProperties"], false, "{kind}");
+            if kind == "pm.completed" {
+                let variants = resource["oneOf"].as_array().unwrap();
+                assert_eq!(variants.len(), 2);
+                for variant in variants {
+                    let reference = variant["$ref"].as_str().unwrap();
+                    let concrete =
+                        &schemas[reference.strip_prefix("#/components/schemas/").unwrap()];
+                    assert_eq!(concrete["additionalProperties"], false);
+                }
+            } else {
+                assert_eq!(resource["additionalProperties"], false, "{kind}");
+            }
             if kind == "clarification.published" || kind == "clarification.cancelled" {
                 let state = &payload["properties"]["resource"]["properties"]["state"];
                 let state = if let Some(reference) = state["$ref"].as_str() {
@@ -1505,50 +1464,6 @@ mod tests {
             revision["properties"]["revision"]["maximum"].as_f64(),
             Some(9007199254740991f64)
         );
-    }
-
-    #[test]
-    fn ownership_lease_schema_is_strict_separate_and_never_dispatch_authority() {
-        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
-        for (name, fields) in [
-            ("ClaimExecutionLease", 3),
-            ("HeartbeatExecutionLease", 5),
-            ("ExecutionLeaseReceipt", 8),
-            ("ExecutionLeaseReadback", 9),
-            ("ExecutionLease", 6),
-            ("ExecutionLeaseOperation", 3),
-        ] {
-            let schema = &doc["components"]["schemas"][name];
-            assert_eq!(schema["additionalProperties"], false, "{name}");
-            assert_eq!(
-                schema["properties"].as_object().unwrap().len(),
-                fields,
-                "{name}"
-            );
-            assert_eq!(
-                schema["required"].as_array().unwrap().len(),
-                fields,
-                "{name}"
-            );
-        }
-        for name in ["ExecutionLeaseReceipt", "ExecutionLeaseReadback"] {
-            assert_eq!(
-                doc["components"]["schemas"][name]["properties"]["dispatch_allowed"]["enum"],
-                serde_json::json!([false])
-            );
-        }
-        let path = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease";
-        for (route, method) in [
-            (path.to_string(), "get"),
-            (path.to_string(), "post"),
-            (format!("{path}/heartbeat"), "post"),
-        ] {
-            let operation = &doc["paths"][route][method];
-            assert!(!operation["security"].as_array().unwrap().is_empty());
-            for status in ["200", "401", "403", "404", "409", "422", "503"] {
-                assert!(operation["responses"][status].is_object());
-            }
-        }
     }
 
     #[test]

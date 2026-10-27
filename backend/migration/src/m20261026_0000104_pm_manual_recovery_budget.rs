@@ -41,10 +41,10 @@ mod tests {
             crate::PublishedMigrator::migrations(),
             crate::ProjectRepositoryMigrator::migrations(),
         ] {
-            assert_eq!(migrations.last().unwrap().name(), name);
+            let position = migrations.iter().position(|m| m.name() == name).unwrap();
             assert_eq!(migrations.iter().filter(|m| m.name() == name).count(), 1);
             assert_eq!(
-                migrations[migrations.len() - 2].name(),
+                migrations[position - 1].name(),
                 "m20261023_0000103_pm_settled_input_recovery"
             );
         }

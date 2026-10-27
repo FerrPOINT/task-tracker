@@ -327,7 +327,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
             (READ_ONLY,"GET",task_path.as_str(),StatusCode::NO_CONTENT),
             (READ_ONLY,"POST",task_path.as_str(),StatusCode::FORBIDDEN),
             (SCHEDULER,"GET",download.as_str(),StatusCode::NO_CONTENT),
-            (SCHEDULER,"GET",task_path.as_str(),StatusCode::FORBIDDEN),
+            (SCHEDULER,"GET",task_path.as_str(),StatusCode::NO_CONTENT),
             (SCHEDULER,"POST",task_path.as_str(),StatusCode::FORBIDDEN),
             (PM,"GET",task_path.as_str(),StatusCode::FORBIDDEN),
             (PM,"POST",task_path.as_str(),StatusCode::FORBIDDEN),

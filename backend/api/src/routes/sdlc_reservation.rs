@@ -208,12 +208,12 @@ pub async fn pm_completion(
             .repository
             .configured_pm_completion(task, &actor, None)
             .await?;
-        PmCompletionReadbackResponse::Configured(ConfiguredPmCompletionReadback {
+        PmCompletionReadbackResponse::Configured(Box::new(ConfiguredPmCompletionReadback {
             interaction_protocol: domain::sdlc::InteractionProtocol::ConfiguredCliV1,
             current: saved.map(|s| s.result),
-        })
+        }))
     } else {
-        PmCompletionReadbackResponse::Legacy(svc.pm_draft_completion(task, &actor).await?)
+        PmCompletionReadbackResponse::Legacy(Box::new(svc.pm_draft_completion(task, &actor).await?))
     };
     Ok((no_store(), Json(result)))
 }
@@ -232,12 +232,12 @@ pub async fn pm_completion_operation(
             .configured_pm_completion(task, &actor, Some(&key))
             .await?
             .ok_or_else(|| AppError::not_found("PM completion operation", &key))?;
-        PmCompletionOperationResponse::Configured(saved)
+        PmCompletionOperationResponse::Configured(Box::new(saved))
     } else {
-        PmCompletionOperationResponse::Legacy(
+        PmCompletionOperationResponse::Legacy(Box::new(
             svc.pm_draft_completion_operation(task, &actor, &key)
                 .await?,
-        )
+        ))
     };
     Ok((no_store(), Json(result)))
 }
@@ -266,7 +266,7 @@ mod tests {
             "SubmitAnalysisResult",
             "AnalysisResultReceipt",
             "AnalysisResultOperation",
-            "CompletePmDraft",
+            "CompleteConfiguredPm",
             "PmDraftCompletionReceipt",
             "PmDraftCompletionOperation",
             "PmDraftCompletionReadback",
@@ -317,8 +317,9 @@ mod tests {
         assert!(s["paths"]["/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight"]["get"]["security"].is_array());
         assert!(s["components"]["schemas"]["AnalysisReservationReadback"]["properties"]["reconciliation_needed"].is_object());
         assert_eq!(
-            s["components"]["schemas"]["CompletePmDraft"]["properties"]["contract_version"]["maximum"],
-            serde_json::json!(1)
+            s["components"]["schemas"]["CompleteConfiguredPm"]["properties"]["interaction_protocol"]
+                ["$ref"],
+            serde_json::json!("#/components/schemas/InteractionProtocol")
         );
     }
 }

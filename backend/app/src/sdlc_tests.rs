@@ -81,10 +81,11 @@ fn new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state() {
 
     let (mut state, config, _, pm, _, fence) = fixture();
     assert!(validate_new_pm_feedback(&state).is_ok());
-    state.stage = Stage::Clarification;
-    let legacy = serde_json::to_value(&state).unwrap();
-    assert!(validate_new_pm_feedback(&state).is_ok());
-    assert_eq!(serde_json::to_value(&state).unwrap(), legacy);
+    let (mut retained, _, _, _, _, _) = retained_fixture();
+    retained.stage = Stage::Clarification;
+    let legacy = serde_json::to_value(&retained).unwrap();
+    assert!(validate_new_pm_feedback(&retained).is_ok());
+    assert_eq!(serde_json::to_value(&retained).unwrap(), legacy);
 
     state.stage = Stage::Draft;
     state
@@ -220,12 +221,15 @@ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
     )
     .unwrap();
     let state: TaskState = serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
-    assert_eq!(state.stage, Stage::Backlog);
+    assert_eq!(state.stage, Stage::Draft);
     assert_eq!(
         state.status,
-        Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)
+        Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
     );
-    assert_eq!(state.draft_submode, None);
+    assert_eq!(
+        state.draft_submode,
+        Some(DraftSubmode::AwaitingConfirmation)
+    );
     assert!(state.questions.is_empty());
     assert_eq!(state.confirmations.len(), 1);
     assert!(!state.context(&owner).permissions.can_confirm);
@@ -243,7 +247,7 @@ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
     assert_eq!(invalid.draft_flow().unwrap(), None);
 }
 
-fn fixture() -> (
+fn retained_fixture() -> (
     TaskState,
     SdlcConfig,
     Principal,
@@ -305,6 +309,33 @@ fn fixture() -> (
     )
 }
 
+fn fixture() -> (
+    TaskState,
+    SdlcConfig,
+    Principal,
+    Principal,
+    Principal,
+    MachineFence,
+) {
+    let (mut state, config, owner, _, verifier, fence) = retained_fixture();
+    let subject = Uuid::from_u128(700).to_string();
+    state.assignment.as_mut().unwrap().machine_subject = subject.clone();
+    state
+        .retained_fields
+        .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+    state
+        .retained_fields
+        .insert("flow".into(), json!("single-task-v1"));
+    state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    state.draft_submode = Some(DraftSubmode::Brainstorming);
+    let pm = actor(
+        &subject,
+        false,
+        vec!["task-tracker:read".into(), "task-tracker:write".into()],
+    );
+    (state, config, owner, pm, verifier, fence)
+}
+
 fn document() -> RequirementsDocument {
     RequirementsDocument {
         goal: "Goal".into(),
@@ -344,7 +375,7 @@ fn sdlc_confirmation_read_uses_exact_saved_owner_history_without_current_stage_r
     )
     .unwrap();
     let receipt: Confirmation = serde_json::from_value(result.clone()).unwrap();
-    assert_eq!(state.stage, Stage::Backlog);
+    assert_eq!(state.stage, Stage::Draft);
     let before = canonical_hash(&state).unwrap();
     assert_eq!(
         serde_json::to_value(exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap())
@@ -407,7 +438,7 @@ fn sdlc_confirmation_read_uses_exact_saved_owner_history_without_current_stage_r
 #[test]
 fn sdlc_confirmation_read_grant_does_not_grant_owner_confirmation_or_foreign_task_access() {
     use crate::sdlc_confirmation::authorize_read;
-    let (state, config, owner, mut pm, _, _) = fixture();
+    let (state, config, owner, mut pm, _, _) = retained_fixture();
     assert!(matches!(
         authorize_read(&state, &pm),
         Err(AppError::Forbidden)
@@ -488,7 +519,7 @@ fn sdlc_confirmation_read_allowlist_adds_only_exact_get_with_safe_revision() {
 #[test]
 fn canonical_status_and_extensions_survive_aggregate_roundtrip_without_legacy_defaults() {
     use domain::sdlc_lifecycle::LifecycleStatus;
-    let (state, _, owner, _, _, _) = fixture();
+    let (state, _, owner, _, _, _) = retained_fixture();
     let legacy = serde_json::to_value(&state).unwrap();
     let legacy_context = serde_json::to_value(state.context(&owner)).unwrap();
     for wire in [&legacy, &legacy_context] {
@@ -557,7 +588,7 @@ fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
     assert_eq!(state.status, Some(LifecycleStatus::InProgress));
     assert_eq!(
         state.context(&owner).waiting_reason.as_deref(),
-        Some("waiting_for_requirements_or_evidence")
+        Some("waiting_for_requirements")
     );
     assert!(!state.context(&owner).permissions.can_confirm);
 }
@@ -565,7 +596,7 @@ fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
 #[test]
 fn pm_feedback_message_reader_requires_read_and_current_bound_pm_grant() {
     use crate::sdlc_lifecycle::authorize_pm_feedback_message_read;
-    let (state, _, owner, mut pm, _, _) = fixture();
+    let (state, _, owner, mut pm, _, _) = retained_fixture();
     let task = state.task_id;
     let scope = state.assignment.as_ref().unwrap().scope(task);
     assert!(authorize_pm_feedback_message_read(task, &pm).is_err());
@@ -690,7 +721,7 @@ fn pm_feedback_message_readback_preserves_original_input_and_checks_every_bindin
 #[test]
 fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_published_analysis() {
     use domain::sdlc_lifecycle::*;
-    let (mut state, _, _, _, _, fence) = fixture();
+    let (mut state, _, _, _, _, fence) = retained_fixture();
     let observed = chrono::Utc::now();
     let feedback = PmFeedbackReceipt {
         message_id: Uuid::new_v4(),
@@ -905,11 +936,11 @@ fn answered_clarification_requires_republication_even_with_fresh_evidence() {
         Err(AppError::Conflict(_))
     ));
     assert!(state.confirmations.is_empty());
-    assert_eq!(state.stage, Stage::Clarification);
+    assert_eq!(state.stage, Stage::Draft);
 
     publish(&mut state, &config, &pm, &fence);
     assert_eq!(state.current_revision(), Some(2));
-    assert!(!state.ready());
+    assert!(state.ready());
     for check in ["review", "contract"] {
         record_evidence(
             &mut state,
@@ -1172,9 +1203,12 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         .is_err()
     );
     apply(&mut state, &owner, &config, &command).unwrap();
-    assert!(matches!(state.stage, Stage::Backlog));
-    assert!(!state.ready());
-    assert_eq!(state.context(&owner).waiting_reason, None);
+    assert!(matches!(state.stage, Stage::Draft));
+    assert!(!state.context(&owner).permissions.can_confirm);
+    assert_eq!(
+        state.context(&owner).waiting_reason.as_deref(),
+        Some("waiting_for_workflow_completion")
+    );
     assert!(analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).is_err());
     let saved = canonical_hash(&state).unwrap();
     assert!(matches!(
@@ -1194,6 +1228,7 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
     assert_eq!(canonical_hash(&state).unwrap(), saved);
 
     // Historical/future-role fixtures must deliberately opt into Analysis; confirmation does not.
+    state.retained_fields.remove("interaction_protocol");
     state.stage = Stage::Analysis;
     let intent =
         analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).unwrap();

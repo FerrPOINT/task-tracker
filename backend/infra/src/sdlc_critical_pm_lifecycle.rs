@@ -31,7 +31,7 @@ impl Review {
     fn source<'a>(
         &'a self,
         state: &'a TaskState,
-        execution: CriticalPmExecutionContext<'a>,
+        observed_at: chrono::DateTime<chrono::Utc>,
     ) -> CriticalPmLifecycleSource<'a> {
         CriticalPmLifecycleSource {
             state,
@@ -40,7 +40,7 @@ impl Review {
             blocker: &self.blocker,
             initial_pm_assignment: &self.initial_pm,
             initial_routing: &self.initial_routing,
-            execution,
+            observed_at,
         }
     }
 }
@@ -242,10 +242,7 @@ impl PostgresSdlcRepository {
         )
         .then(Uuid::now_v7);
         let plan = prepare_critical_pm_command(
-            review.source(
-                state,
-                CriticalPmExecutionContext::Configured { observed_at: now },
-            ),
+            review.source(state, now),
             actor,
             &self.config,
             command,
@@ -319,12 +316,7 @@ impl PostgresSdlcRepository {
             return Ok(false);
         };
         let plan = prepare_configured_critical_pm_completion(
-            review.source(
-                state,
-                CriticalPmExecutionContext::Configured {
-                    observed_at: result.created_at,
-                },
-            ),
+            review.source(state, result.created_at),
             actor,
             &self.config,
             command,

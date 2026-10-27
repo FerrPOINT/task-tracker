@@ -120,13 +120,13 @@ pub struct ConfiguredPmCompletionReadback {
 #[derive(Serialize, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum PmCompletionReadbackResponse {
-    Configured(ConfiguredPmCompletionReadback),
-    Legacy(crate::sdlc_reservation::PmDraftCompletionReadback),
+    Configured(Box<ConfiguredPmCompletionReadback>),
+    Legacy(Box<crate::sdlc_reservation::PmDraftCompletionReadback>),
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum PmCompletionOperationResponse {
-    Configured(ConfiguredPmCompletionOperation),
-    Legacy(crate::sdlc_reservation::PmDraftCompletionOperation),
+    Configured(Box<ConfiguredPmCompletionOperation>),
+    Legacy(Box<crate::sdlc_reservation::PmDraftCompletionOperation>),
 }

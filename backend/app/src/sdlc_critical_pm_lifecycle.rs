@@ -1,11 +1,8 @@
 //! Pure review transitions. Repository replay/locks and actual terminal verification stay outside.
-use chrono::Duration;
 use domain::sdlc::*;
 use domain::sdlc_critical_blockers::*;
 use domain::sdlc_critical_pm_lifecycle::*;
-use domain::sdlc_execution_lease::ExecutionLeaseReceipt;
 use domain::sdlc_lifecycle::*;
-use domain::sdlc_reservation::CompletePmDraft;
 use domain::sdlc_routing::TaskRoutingSnapshot;
 use serde::Serialize;
 use serde_json::Value;
@@ -49,6 +46,7 @@ fn sync(projection: &mut CriticalPmProjection) -> Result<(), AppError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn fence(assignment: &PmAssignment) -> MachineFence {
     MachineFence {
         assignment_id: assignment.assignment_id,
@@ -105,10 +103,10 @@ fn snapshot(state: &TaskState, routing: &TaskRoutingSnapshot) -> Result<(), AppE
     Ok(())
 }
 
-fn validate_source<'a>(
-    source: &'a CriticalPmLifecycleSource<'_>,
+fn validate_source(
+    source: &CriticalPmLifecycleSource<'_>,
     config: &SdlcConfig,
-) -> Result<Option<&'a ExecutionLeaseReceipt>, AppError> {
+) -> Result<(), AppError> {
     let state = source.state;
     let current = source.lifecycle;
     let blocker = source.blocker;
@@ -123,7 +121,8 @@ fn validate_source<'a>(
         .find(|r| r.revision == review.context.requirements.revision)
         .ok_or_else(conflict)?;
     let latest = state.revisions.last().ok_or_else(conflict)?;
-    if state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
+    if !state.configured_cli()
+        || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
         || !config.single_task_project_ids.contains(&state.project_id)
         || state.tracker_instance_id != config.instance_id
         || state.owner_subject.trim().is_empty()
@@ -265,38 +264,7 @@ fn validate_source<'a>(
     {
         return Err(conflict());
     }
-    let lease = match &source.execution {
-        CriticalPmExecutionContext::Configured { .. } if state.configured_cli() => return Ok(None),
-        CriticalPmExecutionContext::Configured { .. } => return Err(conflict()),
-        CriticalPmExecutionContext::Open { lease, observed_at } => {
-            if state.configured_cli() || *observed_at < lease.lease.heartbeat_at {
-                return Err(conflict());
-            }
-            *lease
-        }
-        CriticalPmExecutionContext::Finalizing { lease, .. } if !state.configured_cli() => *lease,
-        _ => return Err(conflict()),
-    };
-    if lease.contract_version != 1
-        || lease.binding != pm.binding
-        || lease.owner_version != pm.owner_cas.version
-        || lease.fence != fence(&pm.assignment)
-        || lease.dispatch_allowed
-        || lease.ttl_seconds != 30
-        || lease.heartbeat_seconds != 10
-        || lease.lease.lease_id.is_nil()
-        || !bounded(lease.lease.version)
-        || lease.lease.holder_subject != pm.assignment.machine_subject
-        || lease.lease.claimed_at > lease.lease.heartbeat_at
-        || lease
-            .lease
-            .heartbeat_at
-            .checked_add_signed(Duration::seconds(30))
-            != Some(lease.lease.expires_at)
-    {
-        return Err(conflict());
-    }
-    Ok(Some(lease))
+    Ok(())
 }
 
 fn nonblank(text: &str) -> Result<(), AppError> {
@@ -349,34 +317,8 @@ fn question_index(state: &TaskState, id: Uuid) -> Result<usize, AppError> {
     Ok(index)
 }
 
-fn ready(state: &TaskState, config: &SdlcConfig) -> bool {
-    if state.configured_cli() {
-        // The same readiness rule as initial PM. Exact owner consent and the
-        // saved Workflow result are checked independently at completion.
-        return state.ready();
-    }
+fn ready(state: &TaskState, _config: &SdlcConfig) -> bool {
     state.ready()
-        && !config.verifier_subject.is_empty()
-        && state.revisions.last().is_some_and(|r| {
-            r.document
-                .checklist
-                .iter()
-                .chain(&r.document.prerequisites)
-                .all(|check| {
-                    state.evidence.iter().any(|e| {
-                        e.requirement_revision == r.revision
-                            && e.content_hash == r.content_hash
-                            && e.check_id == *check
-                            && e.verifier_subject == config.verifier_subject
-                            && state
-                                .questions
-                                .iter()
-                                .filter(|q| q.requirement_revision == r.revision)
-                                .filter_map(|q| q.answer.as_ref())
-                                .all(|a| e.created_at >= a.created_at)
-                    })
-                })
-        })
 }
 
 /// Existing command semantics with explicit server time/IDs, no clock, randomness or I/O.
@@ -663,12 +605,8 @@ pub fn prepare_critical_pm_command(
     command: &SdlcCommand,
     allocation: CriticalPmCommandAllocation,
 ) -> Result<CriticalPmCommandPlan, AppError> {
-    let lease = validate_source(&source, config)?;
-    let observed_at = match source.execution {
-        CriticalPmExecutionContext::Open { observed_at, .. }
-        | CriticalPmExecutionContext::Configured { observed_at } => observed_at,
-        _ => return Err(conflict()),
-    };
+    validate_source(&source, config)?;
+    let observed_at = source.observed_at;
     if allocation.now < observed_at
         || allocation.now
             < source
@@ -677,15 +615,6 @@ pub fn prepare_critical_pm_command(
                 .last()
                 .ok_or_else(conflict)?
                 .created_at
-    {
-        return Err(conflict());
-    }
-    if matches!(
-        command,
-        SdlcCommand::PublishQuestion(_)
-            | SdlcCommand::PublishRevision(_)
-            | SdlcCommand::Cancel { .. }
-    ) && lease.is_some_and(|lease| lease.lease.expires_at <= allocation.now)
     {
         return Err(conflict());
     }
@@ -722,124 +651,6 @@ pub fn prepare_critical_pm_command(
     })
 }
 
-pub fn prepare_critical_pm_completion(
-    source: CriticalPmLifecycleSource<'_>,
-    actor: &Principal,
-    config: &SdlcConfig,
-    command: &CompletePmDraft,
-    allocation: CriticalPmCompletionAllocation,
-) -> Result<CriticalPmCompletionPlan, AppError> {
-    crate::sdlc_reservation::scheduler(actor, config)?;
-    if actor.trusted_human {
-        return Err(AppError::Forbidden);
-    }
-    crate::sdlc_reservation::validate_pm_completion(command)?;
-    let lease = validate_source(&source, config)?.ok_or_else(conflict)?;
-    let CriticalPmExecutionContext::Finalizing { completion, .. } = source.execution else {
-        return Err(conflict());
-    };
-    let state = source.state;
-    let r = state.revisions.last().ok_or_else(conflict)?;
-    let pm = &source.review.reservation;
-    let confirmation = crate::sdlc_confirmation::exact_receipt(
-        state,
-        r.revision,
-        state
-            .confirmations
-            .iter()
-            .find(|c| c.revision == r.revision),
-        Some(&r.content_hash),
-    )?;
-    let prepared_command = CompletePmDraft {
-        contract_version: completion.contract_version,
-        fence: completion.fence.clone(),
-        lease_id: completion.lease_id,
-        lease_version: completion.lease_version,
-        requirement_revision: completion.requirement_revision,
-        content_hash: completion.content_hash.clone(),
-        terminal_receipt_ref: completion.terminal_receipt_ref.clone(),
-        terminal_receipt_sha256: completion.terminal_receipt_sha256.clone(),
-        workflow_receipt_ref: completion.workflow_receipt_ref.clone(),
-        workflow_receipt_sha256: completion.workflow_receipt_sha256.clone(),
-        idempotency_key: completion.idempotency_key.clone(),
-    };
-    if value(command)? != value(&prepared_command)?
-        || completion.completion_id.is_nil()
-        || completion.task_id != state.task_id
-        || completion.root_task_id != state.task_id
-        || completion.project_id != state.project_id
-        || completion.tracker_instance_id != state.tracker_instance_id
-        || completion.owner_subject != state.owner_subject
-        || completion.owner_version != pm.owner_cas.version
-        || completion.fence != lease.fence
-        || completion.lease_id != lease.lease.lease_id
-        || completion.lease_version != lease.lease.version
-        || completion.requirement_revision != r.revision
-        || completion.content_hash != r.content_hash
-        || completion.created_at < confirmation.created_at
-        || completion.previous_pm_admission_state != "reserved"
-        || completion.next_pm_admission_state != "completed"
-        || r.revision <= source.review.context.requirements.revision
-        || !ready(state, config)
-        || source.lifecycle.task.waiting_reason.as_deref() != Some(PM_FINALIZATION_REASON)
-        || allocation.snapshot_id.is_nil()
-        || allocation.analysis_intent_id.is_nil()
-        || allocation.snapshot_id == allocation.analysis_intent_id
-        || [
-            source.initial_routing.snapshot_id,
-            source.lifecycle.task.routing.snapshot_id,
-            confirmation.id,
-        ]
-        .iter()
-        .any(|id| *id == allocation.snapshot_id || *id == allocation.analysis_intent_id)
-    {
-        return Err(conflict());
-    }
-    let routing = CriticalPmRoutingGeneration {
-        generation: next(source.blocker.routing_generation)?,
-        previous_snapshot_id: source.lifecycle.task.routing.snapshot_id,
-        snapshot: TaskRoutingSnapshot {
-            snapshot_id: allocation.snapshot_id,
-            confirmation_id: confirmation.id,
-            requirement_revision: r.revision,
-            content_hash: r.content_hash.clone(),
-            created_at: confirmation.created_at,
-            ..source.lifecycle.task.routing.clone()
-        },
-    };
-    let before = frame(&source);
-    let mut after = before.clone();
-    after.blocker.version = next(before.blocker.version)?;
-    after.blocker.state = CriticalBlockerState::Resolved;
-    after.blocker.resolution = Some(CriticalResolutionRef {
-        requirement_revision: r.revision,
-        content_hash: r.content_hash.clone(),
-        routing_generation: routing.generation,
-    });
-    after.lifecycle.task.version = next(before.lifecycle.task.version)?;
-    after.lifecycle.task.stage = LifecycleStage::Analysis;
-    after.lifecycle.task.status = LifecycleStatus::Ready;
-    after.lifecycle.task.runtime = RuntimeState::Queued;
-    after.lifecycle.task.waiting_reason = Some("queued_for_assignment".into());
-    after.lifecycle.task.routing = routing.snapshot.clone();
-    after.lifecycle.task.cycle = 0;
-    after.lifecycle.task.transient_retries = 0;
-    after.state.draft_submode = None;
-    sync(&mut after)?;
-    let mut analysis_intent =
-        crate::sdlc::analysis_intent(&after.state, &confirmation, allocation.analysis_intent_id)?;
-    analysis_intent.workflow = routing.snapshot.policy.routes.analyst.workflow_key.clone();
-    Ok(CriticalPmCompletionPlan {
-        before,
-        after,
-        completion: completion.clone(),
-        routing,
-        analysis_intent,
-    })
-}
-
-/// Reuse current assignment and exact owner consent. The server has already read
-/// Workflow's terminal operation; it is not a caller-provided native receipt.
 pub fn prepare_configured_critical_pm_completion(
     source: CriticalPmLifecycleSource<'_>,
     actor: &Principal,
@@ -848,14 +659,7 @@ pub fn prepare_configured_critical_pm_completion(
     completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
     snapshot_id: Uuid,
 ) -> Result<ConfiguredCriticalPmCompletionPlan, AppError> {
-    if validate_source(&source, config)?.is_some()
-        || !matches!(
-            source.execution,
-            CriticalPmExecutionContext::Configured { .. }
-        )
-    {
-        return Err(conflict());
-    }
+    validate_source(&source, config)?;
     crate::sdlc_configured_cli::validate_completion(source.state, actor, command)?;
     let expected = crate::sdlc_configured_cli::completion_result(
         source.state,
@@ -924,9 +728,9 @@ pub fn prepare_configured_critical_pm_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{DateTime, TimeZone, Utc};
+    use chrono::{DateTime, Duration, TimeZone, Utc};
     use domain::sdlc_critical_pm_reservation::CriticalPmReservationResult;
-    use domain::sdlc_reservation::PmDraftCompletionReceipt;
+    use domain::sdlc_execution_lease::ExecutionLeaseReceipt;
     use serde_json::json;
 
     // Entirely synthetic producer-shaped records. No live/DB/terminal proof is claimed.
@@ -1101,16 +905,7 @@ mod tests {
                 review: &self.review,
                 initial_pm_assignment: &self.initial,
                 initial_routing: &self.initial_routing,
-                execution: if self.state.configured_cli() {
-                    CriticalPmExecutionContext::Configured {
-                        observed_at: self.now,
-                    }
-                } else {
-                    CriticalPmExecutionContext::Open {
-                        lease: &self.lease,
-                        observed_at: self.now,
-                    }
-                },
+                observed_at: self.now,
             }
         }
         fn pm(&self) -> Principal {
@@ -1203,29 +998,6 @@ mod tests {
                 self.command(&self.revision_command(), &self.pm(), None)
                     .unwrap(),
             );
-            for check in ["check", "prerequisite"] {
-                let r = self.state.revisions.last().unwrap();
-                let command = SdlcCommand::Evidence(EvidenceCommand {
-                    fence: fence(&self.review.reservation.assignment),
-                    requirement_revision: r.revision,
-                    content_hash: r.content_hash.clone(),
-                    check_id: check.into(),
-                    evidence_reference: "fixture://synthetic-readiness".into(),
-                    idempotency_key: format!("fixture:evidence:{check}"),
-                });
-                let verifier = actor(
-                    "verifier",
-                    false,
-                    &[
-                        "task-tracker:write".into(),
-                        format!(
-                            "task-tracker:sdlc:evidence:{}:{}",
-                            self.state.task_id, self.review.reservation.assignment.version
-                        ),
-                    ],
-                );
-                self.accept(self.command(&command, &verifier, None).unwrap());
-            }
         }
         fn confirmed(&mut self) {
             self.ready_for_confirmation();
@@ -1234,56 +1006,35 @@ mod tests {
                     .unwrap(),
             );
         }
-        fn completion(&self) -> (CompletePmDraft, PmDraftCompletionReceipt) {
-            let r = self.state.revisions.last().unwrap();
-            let command = CompletePmDraft {
-                contract_version: 1,
-                fence: self.lease.fence.clone(),
-                lease_id: self.lease.lease.lease_id,
-                lease_version: self.lease.lease.version,
-                requirement_revision: r.revision,
-                content_hash: r.content_hash.clone(),
-                terminal_receipt_ref: "fixture://synthetic-new-terminal".into(),
-                terminal_receipt_sha256: "a".repeat(64),
-                workflow_receipt_ref: "fixture://synthetic-new-workflow".into(),
-                workflow_receipt_sha256: "b".repeat(64),
-                idempotency_key: "fixture:complete".into(),
-            };
-            let mut raw = value(&command).unwrap();
-            raw.as_object_mut().unwrap().extend(json!({"completion_id":id(204),"tracker_instance_id":"fixture",
-                "project_id":self.state.project_id,"task_id":self.state.task_id,"root_task_id":self.state.task_id,
-                "owner_subject":"owner","owner_version":self.review.reservation.owner_cas.version,
-                "previous_pm_admission_state":"reserved","next_pm_admission_state":"completed","created_at":self.now})
-                .as_object().unwrap().clone());
-            (command, decode(raw))
+    }
+
+    fn configured_at(generation: i64) -> Fixture {
+        let mut f = Fixture::new(generation);
+        let subject = id(700).to_string();
+        f.state
+            .retained_fields
+            .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+        f.state
+            .retained_fields
+            .insert("workflow_task_key".into(), json!("SDLC-1"));
+        f.review.reservation.interaction_protocol = Some(InteractionProtocol::ConfiguredCliV1);
+        f.review.reservation.assignment.machine_subject = subject.clone();
+        f.state.assignment = Some(f.review.reservation.assignment.clone());
+        f.initial.machine_subject = subject;
+        for confirmation in &mut f.state.confirmations {
+            confirmation.stage = Stage::Draft;
         }
-        fn finalize(
-            &self,
-            who: &Principal,
-            command: &CompletePmDraft,
-            completion: &PmDraftCompletionReceipt,
-        ) -> Result<CriticalPmCompletionPlan, AppError> {
-            let mut source = self.source();
-            source.execution = CriticalPmExecutionContext::Finalizing {
-                lease: &self.lease,
-                completion,
-            };
-            prepare_critical_pm_completion(
-                source,
-                who,
-                &self.config,
-                command,
-                CriticalPmCompletionAllocation {
-                    snapshot_id: id(205),
-                    analysis_intent_id: id(206),
-                },
-            )
-        }
+        f.config.orchestrator_subject = "legacy-orchestrator".into();
+        f.config.verifier_subject.clear();
+        // Unusable native data must not become a business command prerequisite.
+        f.lease.lease.expires_at = f.now - Duration::days(1);
+        f.lease.fence.execution_id = Uuid::nil();
+        f
     }
 
     #[test]
     fn question_answer_revision_confirmation_stays_one_pm_execution_and_draft() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         let history = json!({"review":f.review,"routing":f.initial_routing,"initial":f.initial,"confirmations":f.state.confirmations});
         let q = f.command(&f.question_command(), &f.pm(), None).unwrap();
         assert_eq!(q.before.state.current_revision(), Some(1));
@@ -1337,7 +1088,7 @@ mod tests {
             "confirmations":&f.state.confirmations[..1]}),
             history
         );
-        assert_eq!(f.state.confirmations.last().unwrap().stage, Stage::Backlog);
+        assert_eq!(f.state.confirmations.last().unwrap().stage, Stage::Draft);
         assert_eq!(
             f.state.retained_fields["future_retained_marker"],
             json!({"must":"survive"})
@@ -1345,91 +1096,8 @@ mod tests {
     }
 
     #[test]
-    fn finalizing_is_one_uncommitted_plan_and_never_needs_a_previous_completion() {
-        let mut f = Fixture::new(1);
-        f.confirmed();
-        let before = json!({"state":f.state,"blocker":f.blocker,"lease":f.lease,"routing":f.initial_routing});
-        let (command, receipt) = f.completion();
-        let plan = f.finalize(&f.scheduler(), &command, &receipt).unwrap();
-        assert_eq!(value(&plan.before.state).unwrap(), value(&f.state).unwrap());
-        assert_eq!(plan.before.blocker.state, CriticalBlockerState::InPmReview);
-        assert_eq!(plan.after.blocker.state, CriticalBlockerState::Resolved);
-        assert_eq!(plan.after.blocker.version, f.blocker.version + 1);
-        assert_eq!(
-            plan.after
-                .blocker
-                .resolution
-                .as_ref()
-                .unwrap()
-                .routing_generation,
-            2
-        );
-        assert_eq!(plan.routing.generation, 2);
-        assert_eq!(
-            plan.routing.previous_snapshot_id,
-            f.initial_routing.snapshot_id
-        );
-        assert_eq!(
-            value(&plan.routing.snapshot.policy).unwrap(),
-            value(&f.initial_routing.policy).unwrap()
-        );
-        assert_eq!(plan.after.lifecycle.task.stage, LifecycleStage::Analysis);
-        assert_eq!(plan.after.lifecycle.task.status, LifecycleStatus::Ready);
-        assert_eq!(plan.after.lifecycle.task.runtime, RuntimeState::Queued);
-        assert_eq!(plan.after.lifecycle.task.cycle, 0);
-        assert_eq!(
-            plan.after.lifecycle.task.version,
-            f.lifecycle.task.version + 1
-        );
-        assert!(
-            plan.after.lifecycle.assignment.is_none()
-                && plan.after.lifecycle.lease.is_none()
-                && plan.after.lifecycle.binding.is_none()
-                && plan.after.lifecycle.result.is_none()
-        );
-        assert_eq!(plan.analysis_intent.requirement_revision, 2);
-        assert_eq!(plan.analysis_intent.workflow, "single-task-v1:analyst");
-        assert_eq!(value(&plan.completion).unwrap(), value(&receipt).unwrap());
-        assert_eq!(
-            crate::sdlc_lifecycle::canonical_projection(
-                &value(&plan.after.state).unwrap(),
-                &plan.after.lifecycle.task
-            )
-            .unwrap(),
-            value(&plan.after.state).unwrap()
-        );
-        assert_eq!(
-            before,
-            json!({"state":f.state,"blocker":f.blocker,"lease":f.lease,"routing":f.initial_routing})
-        );
-    }
-
-    #[test]
-    fn later_reviews_keep_generation_one_and_increment_actual_generation_not_rework_count() {
-        for generation in [2, 17] {
-            let mut f = Fixture::new(generation);
-            let original = value(&f.initial_routing).unwrap();
-            f.confirmed();
-            let (command, receipt) = f.completion();
-            let plan = f.finalize(&f.scheduler(), &command, &receipt).unwrap();
-            assert_eq!(plan.routing.generation, generation + 1);
-            assert_eq!(plan.analysis_intent.requirement_revision, generation + 1);
-            assert_eq!(
-                plan.after.state.assignment.as_ref().unwrap().version,
-                generation + 1
-            );
-            assert_eq!(
-                plan.routing.previous_snapshot_id,
-                f.lifecycle.task.routing.snapshot_id
-            );
-            assert_eq!(original, value(&f.initial_routing).unwrap());
-            assert_eq!(plan.before.blocker.routing_generation, generation);
-        }
-    }
-
-    #[test]
     fn old_pm_grants_owner_impersonation_and_machine_consent_are_denied() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         let old = actor(
             "pm",
             false,
@@ -1453,52 +1121,15 @@ mod tests {
                     .is_err()
             );
         }
-        let (command, receipt) = f.completion();
-        for denied in [
-            &f.owner(),
-            &f.pm(),
-            &actor("scheduler", false, &["task-tracker:read".into()]),
-            &actor(
-                "scheduler",
-                false,
-                &["task-tracker:read".into(), "task-tracker:write".into()],
-            ),
-        ] {
-            assert!(f.finalize(denied, &command, &receipt).is_err());
-        }
     }
 
     #[test]
-    fn expired_machine_write_fails_but_owner_consent_and_finalizing_do_not_renew_lease() {
-        let mut f = Fixture::new(1);
-        f.ready_for_confirmation();
-        f.now += Duration::seconds(40);
-        let before = value(&f.lease).unwrap();
-        assert!(f.command(&f.revision_command(), &f.pm(), None).is_err());
-        f.accept(
-            f.command(&f.confirm_command(), &f.owner(), Some(id(203)))
-                .unwrap(),
-        );
-        let (command, receipt) = f.completion();
-        f.finalize(&f.scheduler(), &command, &receipt).unwrap();
-        assert_eq!(before, value(&f.lease).unwrap());
-    }
-
-    #[test]
-    fn old_consent_missing_checks_and_stale_hash_cannot_release_review() {
-        let mut f = Fixture::new(1);
+    fn old_consent_and_stale_hash_cannot_release_review() {
+        let mut f = configured_at(1);
         assert!(
             f.command(&f.confirm_command(), &f.owner(), Some(id(203)))
                 .is_err()
         );
-        f.accept(f.command(&f.revision_command(), &f.pm(), None).unwrap());
-        assert!(
-            f.command(&f.confirm_command(), &f.owner(), Some(id(203)))
-                .is_err()
-        );
-        let (command, receipt) = f.completion();
-        assert!(f.finalize(&f.scheduler(), &command, &receipt).is_err());
-        let mut f = Fixture::new(1);
         f.ready_for_confirmation();
         let mut confirm = f.confirm_command();
         if let SdlcCommand::Confirm { command, .. } = &mut confirm {
@@ -1508,69 +1139,9 @@ mod tests {
     }
 
     #[test]
-    fn finalizing_requires_exact_current_command_lease_and_prepared_receipt() {
-        let mut f = Fixture::new(1);
-        f.confirmed();
-        let (command, receipt) = f.completion();
-        for change in 0..13 {
-            let mut bad = receipt.clone();
-            match change {
-                0 => bad.fence.assignment_id = f.initial.assignment_id,
-                1 => bad.fence.execution_id = f.initial.execution_id,
-                2 => bad.fence.agent_id = id(999),
-                3 => bad.lease_version += 1,
-                4 => bad.lease_id = id(999),
-                5 => bad.owner_version -= 1,
-                6 => bad.requirement_revision = 1,
-                7 => bad.workflow_receipt_sha256 = "c".repeat(64),
-                8 => bad.idempotency_key.push('x'),
-                9 => bad.owner_subject = "other".into(),
-                10 => bad.completion_id = Uuid::nil(),
-                11 => bad.previous_pm_admission_state = "completed".into(),
-                _ => bad.created_at = f.now - Duration::seconds(1),
-            }
-            assert!(
-                f.finalize(&f.scheduler(), &command, &bad).is_err(),
-                "change {change}"
-            );
-        }
-        assert!(
-            prepare_critical_pm_completion(
-                f.source(),
-                &f.scheduler(),
-                &f.config,
-                &command,
-                CriticalPmCompletionAllocation {
-                    snapshot_id: id(205),
-                    analysis_intent_id: id(206)
-                }
-            )
-            .is_err()
-        );
-        let mut source = f.source();
-        source.execution = CriticalPmExecutionContext::Finalizing {
-            lease: &f.lease,
-            completion: &receipt,
-        };
-        assert!(
-            prepare_critical_pm_command(
-                source,
-                &f.pm(),
-                &f.config,
-                &f.revision_command(),
-                CriticalPmCommandAllocation {
-                    now: f.now,
-                    generated_receipt_id: None
-                }
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
     fn wrong_source_canonical_binding_original_pm_and_technical_terminal_fail_closed() {
         for change in 0..12 {
-            let mut f = Fixture::new(1);
+            let mut f = configured_at(1);
             match change {
                 0 => f.state.assignment = Some(f.initial.clone()),
                 1 => f.state.retained_fields.get_mut("lifecycle").unwrap()["version"] = json!(99),
@@ -1579,8 +1150,8 @@ mod tests {
                 4 => f.initial.agent_id = id(999),
                 5 => f.blocker.proposal.question.push('?'),
                 6 => f.review.context.requirements.content_hash = "c".repeat(64),
-                7 => f.lease.fence.execution_id = id(999),
-                8 => f.lease.dispatch_allowed = true,
+                7 => f.review.reservation.assignment.machine_subject = id(999).to_string(),
+                8 => f.review.reservation.dispatch_allowed = true,
                 9 => f.blocker.state = CriticalBlockerState::AwaitingPmReview,
                 10 => {
                     assert!(f.state.retained_fields.remove("flow").is_some());
@@ -1596,7 +1167,7 @@ mod tests {
 
     #[test]
     fn explicit_allocation_is_deterministic_and_missing_or_reused_receipt_id_is_denied() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         f.ready_for_confirmation();
         for bad in [None, Some(Uuid::nil()), Some(f.state.confirmations[0].id)] {
             assert!(f.command(&f.confirm_command(), &f.owner(), bad).is_err());
@@ -1620,12 +1191,11 @@ mod tests {
 
     #[test]
     fn feedback_rework_after_consent_needs_new_revision_and_new_actual_owner_consent() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         f.confirmed();
         let old_consent = value(f.state.confirmations.last().unwrap()).unwrap();
         f.accept(f.command(&f.revision_command(), &f.pm(), None).unwrap());
-        let (command, receipt) = f.completion();
-        assert!(f.finalize(&f.scheduler(), &command, &receipt).is_err());
+        assert!(f.state.current_confirmation().is_none());
         assert_eq!(
             old_consent,
             value(f.state.confirmations.last().unwrap()).unwrap()
@@ -1639,30 +1209,17 @@ mod tests {
 
     #[test]
     fn bounded_versions_fail_instead_of_wrapping_or_resetting() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         f.lifecycle.task.version = MAX_SAFE_VERSION;
         f.state
             .retained_fields
             .insert("lifecycle".into(), value(&f.lifecycle.task).unwrap());
         assert!(f.command(&f.revision_command(), &f.pm(), None).is_err());
-        for change in 0..2 {
-            let mut f = Fixture::new(2);
-            f.confirmed();
-            if change == 0 {
-                f.blocker.routing_generation = MAX_SAFE_VERSION;
-            } else {
-                f.blocker.version = MAX_SAFE_VERSION;
-                f.review.context.blocker_version = MAX_SAFE_VERSION;
-            }
-            let (command, receipt) = f.completion();
-            assert!(validate_source(&f.source(), &f.config).is_ok());
-            assert!(f.finalize(&f.scheduler(), &command, &receipt).is_err());
-        }
     }
 
     #[test]
     fn question_and_cancel_cannot_rewrite_previous_pm_execution_question() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         f.accept(f.command(&f.question_command(), &f.pm(), None).unwrap());
         f.state.questions[0].assignment_id = f.initial.assignment_id;
         let answer = SdlcCommand::Answer {
@@ -1695,7 +1252,7 @@ mod tests {
 
     #[test]
     fn structured_single_choice_has_no_answer_preselection_and_owned_cancel_is_exact() {
-        let mut f = Fixture::new(1);
+        let mut f = configured_at(1);
         let mut command = f.question_command();
         if let SdlcCommand::PublishQuestion(c) = &mut command {
             c.mode = QuestionMode::Single;
@@ -1729,115 +1286,8 @@ mod tests {
     }
 
     #[test]
-    fn matching_old_completion_command_and_receipt_still_cannot_finalize_current_review() {
-        let mut f = Fixture::new(1);
-        f.confirmed();
-        let (mut command, mut receipt) = f.completion();
-        command.fence = fence(&f.initial);
-        receipt.fence = command.fence.clone();
-        command.requirement_revision = 1;
-        receipt.requirement_revision = 1;
-        command.content_hash = f.initial_routing.content_hash.clone();
-        receipt.content_hash = command.content_hash.clone();
-        assert!(f.finalize(&f.scheduler(), &command, &receipt).is_err());
-    }
-
-    #[test]
-    fn duplicate_consent_and_routing_allocation_are_not_fresh_operations() {
-        let mut f = Fixture::new(1);
-        f.confirmed();
-        assert!(
-            f.command(&f.confirm_command(), &f.owner(), Some(id(209)))
-                .is_err()
-        );
-        let (command, receipt) = f.completion();
-        for allocation in [
-            CriticalPmCompletionAllocation {
-                snapshot_id: Uuid::nil(),
-                analysis_intent_id: id(206),
-            },
-            CriticalPmCompletionAllocation {
-                snapshot_id: f.initial_routing.snapshot_id,
-                analysis_intent_id: id(206),
-            },
-            CriticalPmCompletionAllocation {
-                snapshot_id: id(205),
-                analysis_intent_id: id(205),
-            },
-        ] {
-            let mut source = f.source();
-            source.execution = CriticalPmExecutionContext::Finalizing {
-                lease: &f.lease,
-                completion: &receipt,
-            };
-            assert!(
-                prepare_critical_pm_completion(
-                    source,
-                    &f.scheduler(),
-                    &f.config,
-                    &command,
-                    allocation
-                )
-                .is_err()
-            );
-        }
-    }
-
-    #[test]
-    fn readiness_cannot_be_supplied_by_pm_or_an_unconfigured_verifier() {
-        let mut f = Fixture::new(1);
-        f.ready_for_confirmation();
-        assert!(ready(&f.state, &f.config));
-        for who in ["pm", "other-verifier"] {
-            let mut state = f.state.clone();
-            for evidence in &mut state.evidence {
-                evidence.verifier_subject = who.into();
-            }
-            let mut source = f.source();
-            source.state = &state;
-            assert!(
-                prepare_critical_pm_command(
-                    source,
-                    &f.owner(),
-                    &f.config,
-                    &f.confirm_command(),
-                    CriticalPmCommandAllocation {
-                        now: f.now,
-                        generated_receipt_id: Some(id(203))
-                    }
-                )
-                .is_err()
-            );
-        }
-    }
-
-    fn configured_fixture() -> Fixture {
-        let mut f = Fixture::new(1);
-        let subject = id(700).to_string();
-        f.state
-            .retained_fields
-            .insert("interaction_protocol".into(), json!("configured-cli-v1"));
-        f.state
-            .retained_fields
-            .insert("workflow_task_key".into(), json!("SDLC-1"));
-        f.review.reservation.interaction_protocol = Some(InteractionProtocol::ConfiguredCliV1);
-        f.review.reservation.assignment.machine_subject = subject.clone();
-        f.state.assignment = Some(f.review.reservation.assignment.clone());
-        f.initial.machine_subject = subject;
-        for confirmation in &mut f.state.confirmations {
-            confirmation.stage = Stage::Draft;
-        }
-        f.config.orchestrator_subject = "legacy-orchestrator".into();
-        f.config.verifier_subject.clear();
-        // Deliberately unusable: configured commands must never inspect this.
-        f.lease.lease.expires_at = f.now - Duration::days(1);
-        f.lease.fence.execution_id = Uuid::nil();
-        f
-    }
-
-    #[test]
     fn configured_review_publishes_and_confirms_without_a_native_lease_or_verifier() {
-        let mut f = configured_fixture();
+        let mut f = configured_at(1);
         let command = f.revision_command();
         f.accept(f.command(&command, &f.pm(), None).unwrap());
         assert_eq!(f.state.current_revision(), Some(2));
@@ -1857,7 +1307,7 @@ mod tests {
 
     #[test]
     fn configured_review_questions_have_no_checkpoint_and_reject_stale_or_foreign_writes() {
-        let mut f = configured_fixture();
+        let mut f = configured_at(1);
         let command = f.question_command();
         for kind in 0..4 {
             let mut changed = command.clone();
@@ -1891,96 +1341,100 @@ mod tests {
     #[test]
     fn configured_review_completion_resolves_to_backlog_and_keeps_the_frozen_policy() {
         use domain::sdlc_configured_cli::{CompleteConfiguredPm, ConfiguredWorkflowReceipt};
-        let mut f = configured_fixture();
-        f.accept(f.command(&f.revision_command(), &f.pm(), None).unwrap());
-        f.accept(
-            f.command(&f.confirm_command(), &f.owner(), Some(id(209)))
-                .unwrap(),
-        );
-        let revision = f.state.revisions.last().unwrap();
-        let command = CompleteConfiguredPm {
-            interaction_protocol: InteractionProtocol::ConfiguredCliV1,
-            fence: fence(&f.review.reservation.assignment),
-            requirement_revision: revision.revision,
-            content_hash: revision.content_hash.clone(),
-            namespace_id: 1,
-            workflow_execution_ref: id(800),
-            workflow_operation_key: "fixture:workflow-report".into(),
-            workflow_result_version: 7,
-            idempotency_key: "fixture:complete-business".into(),
-        };
-        let receipt = ConfiguredWorkflowReceipt {
-            interaction_protocol: InteractionProtocol::ConfiguredCliV1,
-            execution_ref: command.workflow_execution_ref,
-            task: "SDLC-1".into(),
-            tracker_task_id: f.state.task_id,
-            namespace_id: 1,
-            concrete_agent_ref: command.fence.agent_id,
-            assignment_ref: command.fence.assignment_id,
-            tracker_execution_id: command.fence.execution_id,
-            assignment_version: command.fence.assignment_version,
-            machine_subject: f.pm().subject,
-            operation_key: command.workflow_operation_key.clone(),
-            request_sha256: "a".repeat(64),
-            result_version: command.workflow_result_version,
-            requirements_revision: Some(command.requirement_revision),
-            requirements_sha256: Some(command.content_hash.clone()),
-            owner_subject: f.state.owner_subject.clone(),
-            confirmation_id: Some(id(209)),
-            history_id: 85,
-            status: "done".into(),
-        };
-        let completion = crate::sdlc_configured_cli::completion_result(
-            &f.state,
-            &command,
-            receipt,
-            f.review.reservation.owner_cas.version,
-            id(801),
-            f.now,
-        )
-        .unwrap();
-        let before = value(&f.state).unwrap();
-        let plan = prepare_configured_critical_pm_completion(
-            f.source(),
-            &f.pm(),
-            &f.config,
-            &command,
-            &completion,
-            id(802),
-        )
-        .unwrap();
-        assert_eq!(plan.after.state.stage, Stage::Backlog);
-        assert_eq!(plan.after.lifecycle.task.status, LifecycleStatus::Ready);
-        assert_eq!(plan.after.lifecycle.task.runtime, RuntimeState::Terminal);
-        assert!(plan.after.lifecycle.task.waiting_reason.is_none());
-        assert!(plan.after.lifecycle.assignment.is_none() && plan.after.lifecycle.lease.is_none());
-        assert_eq!(plan.after.blocker.state, CriticalBlockerState::Resolved);
-        assert_eq!(plan.routing.generation, 2);
-        assert_eq!(plan.routing.snapshot.policy, f.initial_routing.policy);
-        assert_eq!(plan.routing.snapshot.confirmation_id, id(209));
-        assert_eq!(value(&f.state).unwrap(), before);
-        for kind in 0..5 {
-            let mut altered = completion.clone();
-            let mut principal = f.pm();
-            match kind {
-                0 => altered.workflow_receipt.requirements_revision = Some(1),
-                1 => altered.workflow_receipt.confirmation_id = Some(id(1001)),
-                2 => altered.completion_id = Uuid::nil(),
-                3 => altered.created_at = f.now - Duration::seconds(1),
-                _ => principal.subject = id(701).to_string(),
-            }
-            assert!(
-                prepare_configured_critical_pm_completion(
-                    f.source(),
-                    &principal,
-                    &f.config,
-                    &command,
-                    &altered,
-                    id(802),
-                )
-                .is_err(),
-                "case {kind}"
+        for generation in [1, 2, 17] {
+            let mut f = configured_at(generation);
+            f.accept(f.command(&f.revision_command(), &f.pm(), None).unwrap());
+            f.accept(
+                f.command(&f.confirm_command(), &f.owner(), Some(id(209)))
+                    .unwrap(),
             );
+            let revision = f.state.revisions.last().unwrap();
+            let command = CompleteConfiguredPm {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                fence: fence(&f.review.reservation.assignment),
+                requirement_revision: revision.revision,
+                content_hash: revision.content_hash.clone(),
+                namespace_id: 1,
+                workflow_execution_ref: id(800),
+                workflow_operation_key: "fixture:workflow-report".into(),
+                workflow_result_version: 7,
+                idempotency_key: "fixture:complete-business".into(),
+            };
+            let receipt = ConfiguredWorkflowReceipt {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                execution_ref: command.workflow_execution_ref,
+                task: "SDLC-1".into(),
+                tracker_task_id: f.state.task_id,
+                namespace_id: 1,
+                concrete_agent_ref: command.fence.agent_id,
+                assignment_ref: command.fence.assignment_id,
+                tracker_execution_id: command.fence.execution_id,
+                assignment_version: command.fence.assignment_version,
+                machine_subject: f.pm().subject,
+                operation_key: command.workflow_operation_key.clone(),
+                request_sha256: "a".repeat(64),
+                result_version: command.workflow_result_version,
+                requirements_revision: Some(command.requirement_revision),
+                requirements_sha256: Some(command.content_hash.clone()),
+                owner_subject: f.state.owner_subject.clone(),
+                confirmation_id: Some(id(209)),
+                history_id: 85,
+                status: "done".into(),
+            };
+            let completion = crate::sdlc_configured_cli::completion_result(
+                &f.state,
+                &command,
+                receipt,
+                f.review.reservation.owner_cas.version,
+                id(801),
+                f.now,
+            )
+            .unwrap();
+            let before = value(&f.state).unwrap();
+            let plan = prepare_configured_critical_pm_completion(
+                f.source(),
+                &f.pm(),
+                &f.config,
+                &command,
+                &completion,
+                id(802),
+            )
+            .unwrap();
+            assert_eq!(plan.after.state.stage, Stage::Backlog);
+            assert_eq!(plan.after.lifecycle.task.status, LifecycleStatus::Ready);
+            assert_eq!(plan.after.lifecycle.task.runtime, RuntimeState::Terminal);
+            assert!(plan.after.lifecycle.task.waiting_reason.is_none());
+            assert!(
+                plan.after.lifecycle.assignment.is_none() && plan.after.lifecycle.lease.is_none()
+            );
+            assert_eq!(plan.after.blocker.state, CriticalBlockerState::Resolved);
+            assert_eq!(plan.routing.generation, generation + 1);
+            assert_eq!(plan.routing.snapshot.policy, f.initial_routing.policy);
+            assert_eq!(plan.routing.snapshot.confirmation_id, id(209));
+            assert_eq!(value(&f.state).unwrap(), before);
+            for kind in 0..5 {
+                let mut altered = completion.clone();
+                let mut principal = f.pm();
+                match kind {
+                    0 => altered.workflow_receipt.requirements_revision = Some(1),
+                    1 => altered.workflow_receipt.confirmation_id = Some(id(1001)),
+                    2 => altered.completion_id = Uuid::nil(),
+                    3 => altered.created_at = f.now - Duration::seconds(1),
+                    _ => principal.subject = id(701).to_string(),
+                }
+                assert!(
+                    prepare_configured_critical_pm_completion(
+                        f.source(),
+                        &principal,
+                        &f.config,
+                        &command,
+                        &altered,
+                        id(802),
+                    )
+                    .is_err(),
+                    "case {kind}"
+                );
+            }
         }
     }
 }
