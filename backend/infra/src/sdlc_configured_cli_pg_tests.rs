@@ -360,12 +360,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     .await
     .unwrap();
     let before_reader = f.snapshot().await;
-    let context = f
-        .repo
-        .read(task, &server_reader)
-        .await
-        .unwrap()
-        .context(&server_reader);
+    let context = f.repo.context(task, &server_reader).await.unwrap();
     assert_eq!(context.assignment, Some(reservation.assignment.clone()));
     assert_eq!(
         context.workflow_task_key.as_deref(),
@@ -447,6 +442,58 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             .is_err()
     );
     assert_eq!(f.snapshot().await, before_reader);
+    // Workflow's server reader keeps its own membership throughout. Revoking
+    // only the assigned producer must still invalidate execution authority.
+    exec(
+        &f.db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+        vec![f.project.into(), local.into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.repo.context(task, &server_reader).await,
+        Err(AppError::Forbidden)
+    ));
+    // Historical task data remains visible to the owner; revocation is not a
+    // request to remove or rewrite the stored assignment or its reports.
+    assert_eq!(
+        f.repo.context(task, &f.owner).await.unwrap().assignment,
+        Some(reservation.assignment.clone())
+    );
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        vec![f.project.into(), local.into()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        f.repo
+            .context(task, &server_reader)
+            .await
+            .unwrap()
+            .assignment,
+        Some(reservation.assignment.clone())
+    );
+    exec(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE id=$1",
+        vec![local.into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.repo.context(task, &server_reader).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE id=$1",
+        vec![local.into()],
+    )
+    .await
+    .unwrap();
     assert!(
         f.repo
             .complete_configured_pm(task, &f.owner, command.clone(), receipt.clone())
@@ -508,6 +555,128 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             json_value(&uncommitted).unwrap(),uncommitted.created_at.into()]).await.unwrap();
     assert!(tx.commit().await.is_err());
     assert_eq!(f.repo.read(task, &pm).await.unwrap().stage, Stage::Draft);
+    {
+        use domain::sdlc_discussion::*;
+        assert!(
+            f.repo
+                .complete_configured_pm(task, &pm, command.clone(), receipt.clone())
+                .await
+                .is_err(),
+            "a valid Workflow receipt does not replace the final ordinary comment"
+        );
+        let final_comment = PublishStageComment {
+            fence: fence.clone(),
+            body: "Exact approved document, checked evidence and requested Backlog handoff".into(),
+            idempotency_key: "configured-final-comment".into(),
+        };
+        let (saved, replay) = f
+            .repo
+            .publish_stage_comment(task, &pm, final_comment.clone())
+            .await
+            .unwrap();
+        assert!(!replay);
+        assert_eq!(saved.requirement_revision, Some(2));
+        let (same, replay) = f
+            .repo
+            .publish_stage_comment(task, &pm, final_comment.clone())
+            .await
+            .unwrap();
+        assert!(replay);
+        assert_eq!(
+            serde_json::to_value(&saved).unwrap(),
+            serde_json::to_value(same).unwrap()
+        );
+        let mut changed = final_comment.clone();
+        changed.body.push_str(" changed");
+        assert!(
+            f.repo
+                .publish_stage_comment(task, &pm, changed)
+                .await
+                .is_err()
+        );
+        let mut stale = final_comment.clone();
+        stale.idempotency_key = "comment-stale".into();
+        stale.fence.assignment_version += 1;
+        assert!(
+            f.repo
+                .publish_stage_comment(task, &pm, stale)
+                .await
+                .is_err()
+        );
+        // A second participant is visible, including across one-item pages.
+        let human = Uuid::now_v7();
+        exec(&f.db,"INSERT INTO comments(id,issue_id,author_id,body,created_at,updated_at)
+            SELECT $1,$2,id,'Owner follow-up',clock_timestamp(),clock_timestamp() FROM users WHERE central_sub=$3",
+            vec![human.into(),task.into(),f.owner.subject.clone().into()]).await.unwrap();
+        let first = f
+            .repo
+            .discussion(
+                task,
+                &pm,
+                DiscussionQuery {
+                    limit: Some(1),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.comments.len(), 1);
+        let second = f
+            .repo
+            .discussion(
+                task,
+                &pm,
+                DiscussionQuery {
+                    limit: Some(1),
+                    snapshot: first.snapshot,
+                    after: first.next_after,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.comments.len(), 1);
+        assert_ne!(first.comments[0].author_id, second.comments[0].author_id);
+        assert!(second.next_after.is_none());
+        assert!(
+            f.repo
+                .discussion(task, &foreign, DiscussionQuery::default())
+                .await
+                .is_err()
+        );
+        exec(&f.db,"UPDATE comments SET body='Edited final comment',updated_at=clock_timestamp() WHERE id=$1",
+            vec![saved.comment_id.into()]).await.unwrap();
+        assert!(
+            f.repo
+                .stage_comment_operation(task, &pm, &final_comment.idempotency_key)
+                .await
+                .is_err()
+        );
+        assert!(
+            f.repo
+                .complete_configured_pm(task, &pm, command.clone(), receipt.clone())
+                .await
+                .is_err()
+        );
+        exec(
+            &f.db,
+            "DELETE FROM comments WHERE id=$1",
+            vec![saved.comment_id.into()],
+        )
+        .await
+        .unwrap();
+        assert!(
+            f.repo
+                .complete_configured_pm(task, &pm, command.clone(), receipt.clone())
+                .await
+                .is_err()
+        );
+        let mut replacement = final_comment;
+        replacement.idempotency_key = "configured-replacement-comment".into();
+        f.repo
+            .publish_stage_comment(task, &pm, replacement)
+            .await
+            .unwrap();
+    }
     let (left, right) = tokio::join!(
         f.repo
             .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
@@ -525,6 +694,11 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         .unwrap()
         .unwrap();
     assert_eq!(saved.result, left.0);
+    assert_eq!(f.repo.configured_pm_completion(task, &server_reader, Some(&command.idempotency_key))
+        .await.unwrap().unwrap().result, left.0);
+    // A service result read is not permission to execute the producer's command.
+    assert!(matches!(f.repo.complete_configured_pm(task, &server_reader, command.clone(), receipt.clone())
+        .await, Err(AppError::Forbidden)));
     let mut changed = command.clone();
     changed.workflow_operation_key = "changed-report".into();
     assert!(
@@ -592,6 +766,8 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         },
         LifecycleCommand::Reserve {
             expected_task_version: 1,
+
+            machine_subject: None,
             idempotency_key: "configured-no-downstream".into(),
         },
     ] {

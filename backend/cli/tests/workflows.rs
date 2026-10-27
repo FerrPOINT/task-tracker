@@ -536,7 +536,7 @@ async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_a
         .await;
     let (help, payload) = sdlc_help_payload(&output);
     let question: domain::sdlc::PublishQuestion = serde_json::from_value(payload.clone()).unwrap();
-    assert!(question.checkpoint_id.is_none());
+    assert!(payload.get("checkpoint_id").is_none());
     assert_eq!(question.expected_question_version, None);
     assert_eq!(question.mode, domain::sdlc::QuestionMode::Single);
     assert_eq!(question.options.len(), 2);
@@ -547,7 +547,7 @@ async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_a
     assert!(help.contains("current unconfirmed requirements revision must already exist"));
     assert!(help.contains("free-form brainstorming until enough substantive product facts"));
     assert!(help.contains("Never publish a placeholder merely to obtain a revision"));
-    assert!(help.contains("Legacy mode still requires the real"));
+    assert!(help.contains("without native checkpoint_id"));
     assert!(help.contains("PM cannot answer or confirm"));
     assert!(!help.contains("fixture-token"));
 
@@ -561,8 +561,7 @@ async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_a
 
     let mut legacy = payload;
     legacy["checkpoint_id"] = json!("99999999-9999-4999-8999-999999999999");
-    let legacy: domain::sdlc::PublishQuestion = serde_json::from_value(legacy).unwrap();
-    assert!(legacy.checkpoint_id.is_some());
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(legacy).is_err());
     assert!(server.requests().is_empty());
 }
 
@@ -609,7 +608,7 @@ async fn sdlc_revision_publish_help_has_typed_working_document_without_owner_aut
 
 #[tokio::test]
 async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_network() {
-    use domain::sdlc_configured_cli::{CompleteConfiguredPm, PmCompletionCommand};
+    use domain::sdlc_configured_cli::CompleteConfiguredPm;
 
     let server = Server::start(vec![]).await;
     let output = server
@@ -625,10 +624,6 @@ async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_ne
         completion.workflow_execution_ref
     );
     assert_eq!(completion.content_hash, "a".repeat(64));
-    assert!(matches!(
-        serde_json::from_value::<PmCompletionCommand>(payload.clone()).unwrap(),
-        PmCompletionCommand::Configured(_)
-    ));
     assert!(
         serde_json::from_value::<domain::sdlc_reservation::CompletePmDraft>(payload.clone())
             .is_err()
@@ -640,7 +635,7 @@ async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_ne
         "Tracker execution_id is NOT Workflow execution_ref",
         "singular",
         "server-to-server",
-        "Legacy completion remains supported",
+        "Historical completion remains readable",
         "no blind resend or replacement key",
         "completion operation --task TASK_UUID --key COMPLETION_KEY",
         "completion read --task TASK_UUID",
@@ -649,7 +644,7 @@ async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_ne
         assert!(help.contains(text), "missing help boundary: {text}");
     }
     assert!(!help.contains("fixture-token"));
-    assert!(serde_json::from_value::<PmCompletionCommand>(json!({})).is_err());
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(json!({})).is_err());
     let mut wrong = payload.clone();
     let revision = wrong
         .as_object_mut()
@@ -657,13 +652,13 @@ async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_ne
         .remove("requirement_revision")
         .unwrap();
     wrong["requirements_revision"] = revision;
-    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
     let mut wrong = payload.clone();
     wrong["terminal_receipt"] = json!({});
-    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
     let mut wrong = payload;
     wrong["lease_id"] = json!("77777777-7777-4777-8777-777777777777");
-    assert!(serde_json::from_value::<PmCompletionCommand>(wrong).is_err());
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
     assert!(server.requests().is_empty());
 }
 
@@ -681,7 +676,6 @@ async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
         "question_id": "66666666-6666-6666-6666-666666666666",
         "expected_question_version": null,
         "requirement_revision": 3,
-        "checkpoint_id": "77777777-7777-7777-7777-777777777777",
         "requirement_reference": null,
         "text": "Choose one",
         "rationale": "blocks scope",

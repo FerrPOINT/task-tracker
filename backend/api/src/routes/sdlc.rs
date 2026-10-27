@@ -6,11 +6,8 @@ use axum::{
     routing::{get, post},
 };
 use domain::sdlc::*;
-use domain::sdlc_execution_lease::*;
 use domain::sdlc_metadata::*;
-use domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand;
 use domain::sdlc_pm_draft::*;
-use domain::sdlc_terminal_idle_recovery::*;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
 use std::sync::Arc;
@@ -154,26 +151,6 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/analysis-intent", get(analysis_intent))
         .route("/issues/{id}/sdlc/pm-draft-input", get(pm_draft_input))
         .route(
-            "/issues/{id}/sdlc/pm-draft-execution-lease",
-            get(execution_lease).post(claim_execution_lease),
-        )
-        .route(
-            "/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat",
-            post(heartbeat_execution_lease),
-        )
-        .route(
-            "/issues/{id}/sdlc/pm-draft-execution-lease/resume",
-            post(resume_execution_lease),
-        )
-        .route(
-            "/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",
-            get(resume_execution_lease_operation),
-        )
-        .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted", post(recover_unsubmitted_execution_lease))
-        .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}", get(unsubmitted_execution_lease_operation))
-        .route("/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap", post(retry_pm_bootstrap))
-        .route("/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}", get(pm_bootstrap_retry_operation))
-        .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
             get(pm_draft_assignment).post(reserve_pm_draft),
         )
@@ -212,6 +189,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .merge(super::sdlc_source::router())
         .merge(super::sdlc_reservation::router())
         .merge(super::sdlc_delivery::router())
+        .merge(super::sdlc_discussion::router())
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))
@@ -393,197 +371,6 @@ pub async fn pm_draft_assignment(
             .pm_draft_assignment(id, &actor, query.idempotency_key.as_deref())
             .await?,
     ))
-}
-
-#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease", tag="sdlc",
-    params(("id"=Uuid, Path)), request_body=ClaimExecutionLease,
-    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Historical exact replay; consult current readback",body=ExecutionLeaseReceipt),
-        (status=401),(status=403),(status=404),(status=409,description="Lease claimed or source/fence inconsistent; no automatic reacquire"),(status=422),(status=503)),
-    security(("bearer"=[])))]
-pub async fn claim_execution_lease(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Json(command): Json<ClaimExecutionLease>,
-) -> Result<(axum::http::StatusCode, Json<ExecutionLeaseReceipt>), AppError> {
-    let (result, replayed) = service(&ctx)?
-        .claim_execution_lease(id, &actor, command)
-        .await?;
-    Ok((
-        if replayed {
-            axum::http::StatusCode::OK
-        } else {
-            axum::http::StatusCode::CREATED
-        },
-        Json(result),
-    ))
-}
-
-#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat", tag="sdlc",
-    params(("id"=Uuid, Path)), request_body=HeartbeatExecutionLease,
-    responses((status=200,description="Ownership renewal or historical exact replay; never runtime/admission authority",body=ExecutionLeaseReceipt),
-        (status=401),(status=403),(status=404),(status=409,description="Expired/unknown/stale lease; quiescence recovery required"),(status=422),(status=503)),
-    security(("bearer"=[])))]
-pub async fn heartbeat_execution_lease(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Json(command): Json<HeartbeatExecutionLease>,
-) -> Result<Json<ExecutionLeaseReceipt>, AppError> {
-    Ok(Json(
-        service(&ctx)?
-            .heartbeat_execution_lease(id, &actor, command)
-            .await?
-            .0,
-    ))
-}
-
-#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease", tag="sdlc",
-    params(("id"=Uuid, Path), PmDraftReadbackQuery),
-    responses((status=200,body=ExecutionLeaseReadback),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),
-    security(("bearer"=[])))]
-pub async fn execution_lease(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Query(query): Query<PmDraftReadbackQuery>,
-) -> Result<Json<ExecutionLeaseReadback>, AppError> {
-    Ok(Json(
-        service(&ctx)?
-            .execution_lease(id, &actor, query.idempotency_key.as_deref())
-            .await?,
-    ))
-}
-
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",tag="sdlc",
-    params(("id"=Uuid,Path)),request_body=PmLeaseResumeRequest,
-    responses((status=201,body=PmLeaseResumeResponse),(status=200,body=PmLeaseResumeResponse),
-        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn resume_execution_lease(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Json(command): Json<PmLeaseResumeRequest>,
-) -> Result<Response, AppError> {
-    let (receipt, replayed) = service(&ctx)?
-        .resume_pm_execution_request(id, &actor, command)
-        .await?;
-    let status = if replayed {
-        axum::http::StatusCode::OK
-    } else {
-        axum::http::StatusCode::CREATED
-    };
-    Ok((
-        status,
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(receipt),
-    )
-        .into_response())
-}
-
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",tag="sdlc",
-    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
-    responses((status=200,body=PmLeaseResumeOperationResponse),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn resume_execution_lease_operation(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path((id, key)): Path<(Uuid, String)>,
-) -> Result<Response, AppError> {
-    let receipt = service(&ctx)?
-        .pm_resume_request_operation(id, &actor, &key)
-        .await?;
-    Ok((
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(receipt),
-    )
-        .into_response())
-}
-
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted",tag="sdlc",
-    params(("id"=Uuid,Path)),request_body=RecoverUnsubmittedPmExecutionLease,
-    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Exact historical replay; never dispatch authority",body=ExecutionLeaseReceipt),
-        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn recover_unsubmitted_execution_lease(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Json(command): Json<RecoverUnsubmittedPmExecutionLease>,
-) -> Result<Response, AppError> {
-    let (receipt, replayed) = service(&ctx)?
-        .recover_unsubmitted_pm_execution_lease(id, &actor, command)
-        .await?;
-    let status = if replayed {
-        axum::http::StatusCode::OK
-    } else {
-        axum::http::StatusCode::CREATED
-    };
-    Ok((
-        status,
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(receipt),
-    )
-        .into_response())
-}
-
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}",tag="sdlc",
-    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
-    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn unsubmitted_execution_lease_operation(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path((id, key)): Path<(Uuid, String)>,
-) -> Result<Response, AppError> {
-    let operation = service(&ctx)?
-        .unsubmitted_pm_recovery_operation(id, &actor, &key)
-        .await?;
-    Ok((
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(operation),
-    )
-        .into_response())
-}
-
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap",tag="sdlc",
-    params(("id"=Uuid,Path)),request_body=BootstrapRetryCommand,
-    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Exact original-key replay; no dispatch authority",body=ExecutionLeaseReceipt),
-        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn retry_pm_bootstrap(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(id): Path<Uuid>,
-    Json(command): Json<BootstrapRetryCommand>,
-) -> Result<Response, AppError> {
-    let (receipt, replayed) = service(&ctx)?
-        .retry_pm_bootstrap(id, &actor, command)
-        .await?;
-    Ok((
-        if replayed {
-            axum::http::StatusCode::OK
-        } else {
-            axum::http::StatusCode::CREATED
-        },
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(receipt),
-    )
-        .into_response())
-}
-
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}",tag="sdlc",
-    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
-    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422)),security(("bearer"=[])))]
-pub async fn pm_bootstrap_retry_operation(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path((id, key)): Path<(Uuid, String)>,
-) -> Result<Response, AppError> {
-    let receipt = service(&ctx)?
-        .pm_bootstrap_retry_operation(id, &actor, &key)
-        .await?;
-    Ok((
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(receipt),
-    )
-        .into_response())
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext), (status=422,description="root_task_id must equal task_id; children require accepted Architect decomposition")), security(("bearer"=[])))]

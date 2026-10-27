@@ -65,6 +65,35 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError> {
+        let state = self.repository.read(task, actor).await?;
+        if state.configured_cli() {
+            // An existing operation already carries verified immutable authority.
+            // The repository still compares its exact payload hash and current ACL.
+            match self
+                .lifecycle_repository()?
+                .delivery_proposal_operation(task, actor, &command.idempotency_key)
+                .await
+            {
+                Ok(_) => {
+                    return self
+                        .lifecycle_repository()?
+                        .submit_delivery_proposal(task, actor, command)
+                        .await;
+                }
+                Err(AppError::NotFound(_)) => {}
+                Err(error) => return Err(error),
+            }
+            let lifecycle = self
+                .lifecycle_repository()?
+                .lifecycle_read(task, actor)
+                .await?;
+            let reader = self.configured_workflow.as_ref().ok_or_else(|| {
+                AppError::Unavailable("Workflow receipt reader is not configured".into())
+            })?;
+            reader
+                .read_delivery(&state, &lifecycle.receipt, &command.workflow_receipt)
+                .await?;
+        }
         self.lifecycle_repository()?
             .submit_delivery_proposal(task, actor, command)
             .await
@@ -350,6 +379,31 @@ pub fn producer(actor: &Principal, write: bool) -> Result<DeliveryGrant, AppErro
         return Err(AppError::Forbidden);
     }
     delivery_grant(actor)?.ok_or(AppError::Forbidden)
+}
+
+/// A configured agent is authorized by the permanent identity frozen in the
+/// current assignment, independently of the scheduler's lease identity.
+pub fn assigned_producer(
+    actor: &Principal,
+    head: &LifecycleReceipt,
+    write: bool,
+) -> Result<DeliveryGrant, AppError> {
+    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    if let Some(subject) = &assignment.machine_subject {
+        crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        if subject != &actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        Ok(DeliveryGrant {
+            task_id: assignment.task_id,
+            assignment_id: assignment.assignment_id,
+            execution_id: assignment.execution_id,
+            agent_id: assignment.agent_id,
+            fencing_token: assignment.fencing_token,
+        })
+    } else {
+        producer(actor, write)
+    }
 }
 
 pub fn scheduler_read(

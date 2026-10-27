@@ -69,10 +69,10 @@ fn confirmed() -> (
         operation_key: command.workflow_operation_key.clone(),
         request_sha256: "a".repeat(64),
         result_version: 4,
-        requirements_revision: 1,
-        requirements_sha256: command.content_hash.clone(),
+        requirements_revision: Some(1),
+        requirements_sha256: Some(command.content_hash.clone()),
         owner_subject: state.owner_subject.clone(),
-        confirmation_id: state.current_confirmation().unwrap().id,
+        confirmation_id: Some(state.current_confirmation().unwrap().id),
         history_id: 17,
         status: "done".into(),
     };
@@ -83,6 +83,68 @@ fn response(receipt: &ConfiguredWorkflowReceipt) -> Value {
     json!({"ok":true,"complete":true,"receipt":receipt,"workflow_receipt":{
         "reference":format!("workflow-configured-cli:{}:{}",receipt.execution_ref,receipt.history_id),
         "sha256":crate::sdlc::canonical_hash(receipt).unwrap()}})
+}
+
+#[test]
+fn old_completion_keeps_its_assignment_and_revision_after_a_later_pm_review() {
+    let (mut state, pm, command, receipt) = confirmed();
+    let old_assignment = state.assignment.clone().unwrap();
+    let expected = completion_result(
+        &state,
+        &command,
+        receipt.clone(),
+        1,
+        Uuid::new_v4(),
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    let mut later = state.revisions[0].clone();
+    later.revision += 1;
+    later.document.goal = "Later owner request".into();
+    later.content_hash = crate::sdlc::canonical_hash(&later.document).unwrap();
+    state.revisions.push(later);
+    state.confirmation_revision = None;
+    let next = state.assignment.as_mut().unwrap();
+    next.assignment_id = Uuid::new_v4();
+    next.execution_id = Uuid::new_v4();
+    next.version += 1;
+    let before = serde_json::to_value(&state).unwrap();
+    authorize_configured_pm(&state, &pm).unwrap();
+    assert!(validate_completion(&state, &pm, &command).is_err());
+    let saved = completion_history_state(&state, &old_assignment, &command).unwrap();
+    assert_eq!(
+        completion_result(
+            &saved,
+            &command,
+            receipt,
+            1,
+            expected.completion_id,
+            expected.created_at
+        )
+        .unwrap(),
+        expected
+    );
+    assert_eq!(serde_json::to_value(&state).unwrap(), before);
+    // History validation cannot grant the old assignment authority to write now.
+    assert!(validate_completion(&state, &pm, &command).is_err());
+}
+
+#[test]
+fn old_completion_requires_the_actual_original_consent_document_and_fence() {
+    let (state, _, command, _) = confirmed();
+    let assignment = state.assignment.clone().unwrap();
+    for changed in 0..5 {
+        let mut bad = state.clone();
+        let mut fence = assignment.clone();
+        match changed {
+            0 => bad.confirmations.clear(),
+            1 => bad.revisions.clear(),
+            2 => bad.revisions[0].document.goal.push('?'),
+            3 => fence.execution_id = Uuid::new_v4(),
+            _ => bad.confirmations[0].owner_subject = "foreign".into(),
+        }
+        assert!(completion_history_state(&bad, &fence, &command).is_err());
+    }
 }
 
 #[test]

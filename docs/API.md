@@ -2166,3 +2166,14 @@ publication or infrastructure readiness proof. Context stays Draft/InProgress
 until current assigned PM completion verifies the authoritative Workflow terminal
 receipt and atomically publishes Backlog/Ready. Legacy Backlog confirmation
 receipts and verifier/evidence checks are unchanged.
+
+The candidate extends this identity/assignment policy to all seven professions.
+`GET /api/v1/issues/{task}/sdlc/context` adds optional `critical_review`, read from
+the current saved PM reservation in the same transaction. Ordinary preparation
+omits it; its blocker ID/version/hash and baseline requirements select the review.
+Configured PM can read only that blocker and its referenced sealed evidence
+without a native lease. It cannot list/upload/delete general attachments.
+Discussion read pages use a stable snapshot; final discussion publication and
+operation readback are linked to the actual assignment and requirements revision.
+Completion requires that unchanged saved comment and the authoritative Workflow
+result. These candidate contracts still require PostgreSQL and live qualification.

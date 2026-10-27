@@ -36,6 +36,7 @@ async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: receipt.task.version,
+                machine_subject: None,
                 idempotency_key: format!("reserve-{key}"),
             },
         )

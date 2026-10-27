@@ -31,6 +31,9 @@ mod m20261021_0000099_pm_bootstrap_retry;
 mod m20261023_0000103_pm_settled_input_recovery;
 mod m20261026_0000104_pm_manual_recovery_budget;
 mod m20261026_0000105_configured_cli;
+pub mod m20261027_0000106_configured_stage_comments;
+pub mod m20261027_0000107_configured_business_history;
+mod m20261027_0000108_configured_critical_lifecycle;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -134,6 +137,9 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261023_0000103_pm_settled_input_recovery::Migration),
             Box::new(m20261026_0000104_pm_manual_recovery_budget::Migration),
             Box::new(m20261026_0000105_configured_cli::Migration),
+            Box::new(m20261027_0000106_configured_stage_comments::Migration),
+            Box::new(m20261027_0000107_configured_business_history::Migration),
+            Box::new(m20261027_0000108_configured_critical_lifecycle::Migration),
         ]
     }
 }

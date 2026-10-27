@@ -96,6 +96,7 @@ impl Fixture {
             expires_at: now + Duration::seconds(30),
         };
         let mut assignment = DeliveryAssignment {
+            machine_subject: None,
             assignment_id: Uuid::new_v4(),
             execution_id: Uuid::new_v4(),
             execution: Some(DeliveryExecution::from_ordinal(7).unwrap()),

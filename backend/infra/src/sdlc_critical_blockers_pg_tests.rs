@@ -127,6 +127,7 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: head.task.version,
+                machine_subject: None,
                 idempotency_key: format!("reserve-{}", head.task.version),
             },
         )
@@ -702,6 +703,8 @@ async fn critical_pg_scenario() {
             },
             LifecycleCommand::Reserve {
                 expected_task_version: r.head.task.version,
+
+                machine_subject: None,
                 idempotency_key: "held-reserve".into(),
             },
             LifecycleCommand::Complete {
@@ -1216,6 +1219,8 @@ async fn return_held_to_pm(
             },
             LifecycleCommand::Reserve {
                 expected_task_version: actual.task.version,
+
+                machine_subject: None,
                 idempotency_key: "awaiting-reserve".into(),
             },
         ] {

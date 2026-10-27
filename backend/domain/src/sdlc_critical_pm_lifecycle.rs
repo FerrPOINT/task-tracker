@@ -13,6 +13,9 @@ pub const PM_FINALIZATION_REASON: &str = "critical_pm_awaiting_finalization";
 
 #[derive(Clone, Copy)]
 pub enum CriticalPmExecutionContext<'a> {
+    /// Current configured assignment is the authority. Native leases belong to
+    /// Fleet and are not manufactured for business commands or owner answers.
+    Configured { observed_at: DateTime<Utc> },
     /// Actual current lease readback; this is not proof of native running.
     Open {
         lease: &'a ExecutionLeaseReceipt,
@@ -74,4 +77,11 @@ pub struct CriticalPmCompletionPlan {
     pub completion: PmDraftCompletionReceipt,
     pub routing: CriticalPmRoutingGeneration,
     pub analysis_intent: AnalysisIntent,
+}
+
+/// Business completion has no native receipt and does not enqueue Analyst.
+pub struct ConfiguredCriticalPmCompletionPlan {
+    pub before: CriticalPmProjection,
+    pub after: CriticalPmProjection,
+    pub routing: CriticalPmRoutingGeneration,
 }

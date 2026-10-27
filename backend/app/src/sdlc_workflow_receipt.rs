@@ -3,7 +3,7 @@ use reqwest::{Client, Url, header};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use shared::AppError;
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 fn unavailable() -> AppError {
     AppError::Unavailable("Workflow terminal readback unavailable".into())
@@ -17,6 +17,7 @@ pub struct WorkflowReceiptReader {
     client: Client,
     origin: Url,
     authorization: header::HeaderValue,
+    role_authorizations: BTreeMap<String, header::HeaderValue>,
 }
 
 impl WorkflowReceiptReader {
@@ -54,6 +55,7 @@ impl WorkflowReceiptReader {
             client,
             origin: url,
             authorization,
+            role_authorizations: BTreeMap::new(),
         })
     }
 
@@ -63,7 +65,34 @@ impl WorkflowReceiptReader {
             std::env::var("TASKTRACKER_SDLC__WORKFLOW_READ_TOKEN").ok(),
         ) {
             (None, None) => Ok(None),
-            (Some(url), Some(token)) => Self::new(&url, &token).map(Some),
+            (Some(url), Some(token)) => {
+                let mut reader = Self::new(&url, &token)?;
+                if let Ok(raw) = std::env::var("TASKTRACKER_SDLC__WORKFLOW_READ_TOKENS_JSON") {
+                    let tokens: BTreeMap<String, String> =
+                        serde_json::from_str(&raw).map_err(|_| unavailable())?;
+                    for (role, token) in tokens {
+                        if !matches!(
+                            role.as_str(),
+                            "analyst"
+                                | "architect"
+                                | "developer"
+                                | "reviewer"
+                                | "tester"
+                                | "devops"
+                        ) || token.is_empty()
+                            || token.len() > 4096
+                            || !token.bytes().all(|b| b.is_ascii_graphic())
+                        {
+                            return Err(unavailable());
+                        }
+                        let mut value = header::HeaderValue::from_str(&format!("Bearer {token}"))
+                            .map_err(|_| unavailable())?;
+                        value.set_sensitive(true);
+                        reader.role_authorizations.insert(role, value);
+                    }
+                }
+                Ok(Some(reader))
+            }
             _ => Err(unavailable()),
         }
     }
@@ -78,20 +107,72 @@ impl WorkflowReceiptReader {
             .get("workflow_task_key")
             .and_then(Value::as_str)
             .ok_or_else(mismatch)?;
-        let mut url = self.origin.clone();
-        url.set_path("/internal/runtime/terminal-receipt/readback");
         let selector = json!({"interaction_protocol":"configured-cli-v1","task":key,"namespace_id":command.namespace_id,
             "execution_ref":command.workflow_execution_ref,"operation_key":command.workflow_operation_key,
             "concrete_agent_ref":command.fence.agent_id,"assignment_ref":command.fence.assignment_id,
             "requirements_revision":command.requirement_revision,"requirements_sha256":command.content_hash,
             "result_version":command.workflow_result_version});
+        let bytes = self.request(&selector, &self.authorization).await?;
+        decode(&bytes, state, command)
+    }
+
+    pub async fn read_delivery(
+        &self,
+        state: &TaskState,
+        lifecycle: &domain::sdlc_lifecycle::LifecycleReceipt,
+        artifact: &domain::sdlc_lifecycle::ArtifactReceipt,
+    ) -> Result<ConfiguredWorkflowReceipt, AppError> {
+        let assignment = lifecycle.assignment.as_ref().ok_or_else(mismatch)?;
+        let binding = lifecycle.binding.as_ref().ok_or_else(mismatch)?;
+        let authorization = self
+            .role_authorizations
+            .get(assignment.role.key())
+            .ok_or_else(unavailable)?;
+        let bytes = self
+            .request(
+                &json!({"interaction_protocol":"configured-cli-v1", "workflow_receipt":artifact}),
+                authorization,
+            )
+            .await?;
+        let (receipt, observed) = decode_artifact(&bytes)?;
+        let key = state
+            .retained_fields
+            .get("workflow_task_key")
+            .and_then(Value::as_str)
+            .ok_or_else(mismatch)?;
+        if receipt.task != key
+            || receipt.tracker_task_id != state.task_id
+            || receipt.owner_subject != state.owner_subject
+            || receipt.assignment_ref != assignment.assignment_id
+            || receipt.tracker_execution_id != assignment.execution_id
+            || receipt.concrete_agent_ref != assignment.agent_id
+            || receipt.assignment_version != assignment.fencing_token
+            || receipt.machine_subject != binding.machine_subject
+            || receipt.requirements_revision.is_some()
+            || receipt.requirements_sha256.is_some()
+            || receipt.confirmation_id.is_some()
+            || observed.reference != artifact.reference
+            || observed.sha256 != artifact.sha256
+        {
+            return Err(mismatch());
+        }
+        Ok(receipt)
+    }
+
+    async fn request(
+        &self,
+        selector: &Value,
+        authorization: &header::HeaderValue,
+    ) -> Result<Vec<u8>, AppError> {
+        let mut url = self.origin.clone();
+        url.set_path("/internal/runtime/terminal-receipt/readback");
         // This existing POST is read-only evidence lookup. There is no retry,
         // enrollment, report, dispatch or caller-selected URL in this reader.
         let mut response = self
             .client
             .post(url)
-            .json(&selector)
-            .header(header::AUTHORIZATION, self.authorization.clone())
+            .json(selector)
+            .header(header::AUTHORIZATION, authorization.clone())
             .header(header::CACHE_CONTROL, "no-cache, no-store")
             .header(header::ACCEPT_ENCODING, "identity")
             .send()
@@ -113,7 +194,7 @@ impl WorkflowReceiptReader {
             }
             bytes.extend_from_slice(&chunk);
         }
-        decode(&bytes, state, command)
+        Ok(bytes)
     }
 }
 
@@ -137,6 +218,12 @@ pub(super) fn decode(
     state: &TaskState,
     command: &CompleteConfiguredPm,
 ) -> Result<ConfiguredWorkflowReceipt, AppError> {
+    let (receipt, _) = decode_artifact(bytes)?;
+    crate::sdlc_configured_cli::validate_receipt(state, command, &receipt)?;
+    Ok(receipt)
+}
+
+fn decode_artifact(bytes: &[u8]) -> Result<(ConfiguredWorkflowReceipt, Artifact), AppError> {
     let response: Envelope = serde_json::from_slice(bytes).map_err(|_| mismatch())?;
     if !response.ok || !response.complete {
         return Err(mismatch());
@@ -146,7 +233,18 @@ pub(super) fn decode(
     if serde_json::to_value(&receipt).map_err(AppError::internal)? != response.receipt {
         return Err(mismatch());
     }
-    crate::sdlc_configured_cli::validate_receipt(state, command, &receipt)?;
+    if receipt.interaction_protocol != domain::sdlc::InteractionProtocol::ConfiguredCliV1
+        || receipt.status != "done"
+        || receipt.history_id < 1
+        || receipt.result_version < 2
+        || receipt.request_sha256.len() != 64
+        || !receipt
+            .request_sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(mismatch());
+    }
     if response.workflow_receipt.reference
         != format!(
             "workflow-configured-cli:{}:{}",
@@ -156,5 +254,5 @@ pub(super) fn decode(
     {
         return Err(mismatch());
     }
-    Ok(receipt)
+    Ok((receipt, response.workflow_receipt))
 }

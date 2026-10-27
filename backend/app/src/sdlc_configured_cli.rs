@@ -3,16 +3,24 @@ use domain::sdlc_configured_cli::*;
 use shared::AppError;
 use uuid::Uuid;
 
-pub fn authorize_configured_pm(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
-    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
-    if !state.configured_cli()
-        || actor.human_session
+pub fn authorize_configured_identity(actor: &Principal) -> Result<(), AppError> {
+    if actor.human_session
         || actor.trusted_human
         || !actor.scopes.contains("task-tracker:read")
         || !actor.scopes.contains("task-tracker:write")
         || crate::sdlc::has_pm_grant(&actor.scopes)
         || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
         || crate::sdlc::canonical_pm_uuid(&actor.subject).is_none()
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+pub fn authorize_configured_pm(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
+    authorize_configured_identity(actor)?;
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    if !state.configured_cli()
         || assignment.agent_id.is_nil()
         || assignment.machine_subject != actor.subject
         || actor.subject == state.owner_subject
@@ -20,6 +28,20 @@ pub fn authorize_configured_pm(state: &TaskState, actor: &Principal) -> Result<(
         return Err(AppError::Forbidden);
     }
     state.require_root()
+}
+
+/// Project access is checked by the repository. A read-only service can inspect
+/// the saved business result without becoming its assigned producer.
+pub fn authorize_completion_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
+    if !state.configured_cli() {
+        return Err(AppError::Forbidden);
+    }
+    if state.owner(actor)
+        || (!actor.human_session && !actor.trusted_human && crate::sdlc_reservation::reader(actor).is_ok())
+    {
+        return state.require_root();
+    }
+    authorize_configured_pm(state, actor)
 }
 
 pub fn validate_completion(
@@ -90,9 +112,9 @@ pub fn validate_receipt(
         || receipt.machine_subject != assignment.machine_subject
         || receipt.operation_key != command.workflow_operation_key
         || receipt.result_version != command.workflow_result_version
-        || receipt.requirements_revision != command.requirement_revision
-        || receipt.requirements_sha256 != command.content_hash
-        || receipt.confirmation_id != confirmation.id
+        || receipt.requirements_revision != Some(command.requirement_revision)
+        || receipt.requirements_sha256.as_ref() != Some(&command.content_hash)
+        || receipt.confirmation_id != Some(confirmation.id)
         || receipt.owner_subject != state.owner_subject
         || receipt.status != "done"
         || receipt.history_id <= 0
@@ -130,7 +152,9 @@ pub fn completion_result(
         owner_version,
         requirement_revision: command.requirement_revision,
         content_hash: command.content_hash.clone(),
-        confirmation_id: receipt.confirmation_id,
+        confirmation_id: receipt
+            .confirmation_id
+            .ok_or_else(|| AppError::conflict("PM confirmation absent"))?,
         workflow_receipt: receipt,
         workflow_receipt_sha256,
         stage: Stage::Backlog,
@@ -142,6 +166,52 @@ pub fn completion_result(
     })
 }
 
+/// Reconstruct only the business tuple used to verify an immutable old receipt.
+/// This value is never persisted or used to authorize a new command. Authorization
+/// belongs to the current task/identity; history retains its original assignment
+/// and approved requirements when a later PM review changes them.
+pub fn completion_history_state(
+    current: &TaskState,
+    assignment: &PmAssignment,
+    command: &CompleteConfiguredPm,
+) -> Result<TaskState, AppError> {
+    crate::sdlc::validate_key(&command.idempotency_key)?;
+    crate::sdlc::validate_key(&command.workflow_operation_key)?;
+    if !current.configured_cli()
+        || command.interaction_protocol != InteractionProtocol::ConfiguredCliV1
+        || command.workflow_execution_ref.is_nil()
+        || !(1..=MAX_SAFE_VERSION).contains(&command.namespace_id)
+        || !(2..=MAX_SAFE_VERSION).contains(&command.workflow_result_version)
+        || !(1..=MAX_SAFE_VERSION).contains(&assignment.version)
+        || assignment.assignment_id.is_nil()
+        || assignment.execution_id.is_nil()
+        || assignment.agent_id.is_nil()
+        || crate::sdlc::canonical_pm_uuid(&assignment.machine_subject).is_none()
+        || assignment.machine_subject == current.owner_subject
+    {
+        return Err(AppError::conflict("invalid completion business history"));
+    }
+    let mut saved = current.clone();
+    let index = saved
+        .revisions
+        .iter()
+        .position(|revision| revision.revision == command.requirement_revision)
+        .ok_or_else(|| AppError::conflict("completion requirements history absent"))?;
+    saved.revisions.truncate(index + 1);
+    saved.assignment = Some(assignment.clone());
+    if command.fence.assignment_id != assignment.assignment_id
+        || command.fence.execution_id != assignment.execution_id
+        || command.fence.agent_id != assignment.agent_id
+        || command.fence.assignment_version != assignment.version
+        || saved.revisions[index].content_hash != command.content_hash
+        || crate::sdlc::canonical_hash(&saved.revisions[index].document)? != command.content_hash
+        || saved.current_confirmation().is_none()
+    {
+        return Err(AppError::conflict("completion business history mismatch"));
+    }
+    Ok(saved)
+}
+
 impl crate::sdlc::SdlcService {
     pub async fn complete_configured_pm(
         &self,
@@ -150,7 +220,8 @@ impl crate::sdlc::SdlcService {
         command: CompleteConfiguredPm,
     ) -> Result<(ConfiguredPmCompletionReceipt, bool), AppError> {
         let state = self.repository.read(task, actor).await?;
-        validate_completion(&state, actor, &command)?;
+        authorize_configured_pm(&state, actor)?;
+        crate::sdlc::validate_key(&command.idempotency_key)?;
         let hash = crate::sdlc::canonical_hash(&command)?;
         if let Some(saved) = self
             .repository
@@ -162,6 +233,7 @@ impl crate::sdlc::SdlcService {
             }
             return Ok((saved.result, true));
         }
+        validate_completion(&state, actor, &command)?;
         if state.stage != Stage::Draft {
             return Err(AppError::conflict(
                 "configured completion requires confirmed Draft",
@@ -308,12 +380,14 @@ mod tests {
         };
         crate::sdlc::authorize_pm_read(&state, &reader).unwrap();
         crate::sdlc_confirmation::authorize_read(&state, &reader).unwrap();
+        authorize_completion_read(&state, &reader).unwrap();
         assert!(authorize_configured_pm(&state, &reader).is_err());
         for scope in ["task-tracker:write", "project-workflow:read"] {
             let mut extra = reader.clone();
             extra.scopes.insert(scope.into());
             assert!(crate::sdlc::authorize_pm_read(&state, &extra).is_err());
             assert!(crate::sdlc_confirmation::authorize_read(&state, &extra).is_err());
+            assert!(authorize_completion_read(&state, &extra).is_err());
         }
         reader.human_session = true;
         assert!(crate::sdlc::authorize_pm_read(&state, &reader).is_err());

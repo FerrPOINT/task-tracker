@@ -229,7 +229,9 @@ pub(super) async fn bind_task(
         return Err(AppError::Forbidden);
     }
     // A task-scoped PAT cannot borrow a generic machine's native project role.
-    app::sdlc::authorize_pm_read(state, actor)?;
+    if !state.configured_cli() {
+        app::sdlc::authorize_pm_read(state, actor)?;
+    }
     super::lifecycle::authorize_read(tx, state, actor).await?;
     if application_policy {
         let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;

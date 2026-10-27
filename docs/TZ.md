@@ -1729,3 +1729,9 @@ checks but stays Draft without native or per-item verifier evidence. Configured 
 verifies a server-to-server Workflow terminal receipt and current owner consent,
 then atomically publishes Backlog/Ready without Analysis;
 its shared receipt tuple and runtime qualification are not yet live accepted.
+
+The simplification candidate covers all professions, full paged discussion and
+an unchanged final comment before handoff. Critical PM review uses the selected
+blocker from current context and the ordinary requirements/owner-consent path;
+it finishes in Backlog/Ready. Its history is append-only across repeated PM
+reviews. Candidate source/tests do not constitute live all-profession acceptance.

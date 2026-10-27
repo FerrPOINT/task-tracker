@@ -726,3 +726,12 @@ is an immutable Draft receipt. Only completion, after authoritative Workflow
 terminal readback and locked owner/assignment revalidation, projects Draft to
 Backlog/Ready in the same transaction as its ledger, admission and outbox. It
 does not activate Analysis or retrofit legacy consent/history.
+
+Critical PM business review shares this completion path. Tracker owns the saved
+review assignment, selected blocker and consent. Fleet delivers an ordinary
+message and retains actual native custody; it supplies no business checkpoint.
+The review journal records changed requirements, exact owner consent, blocker
+resolution and the next frozen routing generation. History reads reconstruct
+the original business tuple without granting an old assignment write authority.
+The candidate preserves the native resource controls for technical execution;
+permanent service identity does not bypass those guards.

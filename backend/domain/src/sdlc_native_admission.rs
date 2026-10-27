@@ -1,4 +1,4 @@
-//! Fleet owns runtime/configuration observation; Tracker owns command admission and history.
+//! Retired native observation formats, retained only to decode published history.
 use crate::sdlc_pm_draft::PmDraftReservation;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de};
@@ -338,13 +338,6 @@ impl AdmissionObservation {
                 | (Self::FleetMcpCustodyV1(_), Self::FleetMcpCustodyV1(_))
         )
     }
-}
-
-pub enum CommandAdmission {
-    Legacy,
-    Replay(serde_json::Value),
-    MachineLease(PmDraftReservation),
-    History(PmDraftReservation),
 }
 
 #[cfg(test)]

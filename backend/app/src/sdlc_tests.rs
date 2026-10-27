@@ -817,7 +817,7 @@ fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
         question_id: Uuid::new_v4(),
         expected_question_version: None,
         requirement_revision: 1,
-        checkpoint_id: Some(Uuid::new_v4()),
+
         requirement_reference: Some("scope".into()),
         text: "Choose".into(),
         rationale: "Clarify scope".into(),
@@ -840,10 +840,7 @@ fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
         recommended_option_id: None,
         idempotency_key: "question".into(),
     }
-}
-
-#[test]
-fn answered_clarification_requires_republication_even_with_fresh_evidence() {
+s_republication_even_with_fresh_evidence() {
     let (mut state, config, owner, pm, verifier, fence) = fixture();
     publish(&mut state, &config, &pm, &fence);
     let input = question(&fence, QuestionMode::Single);

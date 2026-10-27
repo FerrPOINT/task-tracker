@@ -107,7 +107,9 @@ async fn reject_journal_only(f: &Fixture, task: Uuid, command: &ReserveCriticalP
             lifecycle: &current,
             blocker: &returned,
             previous_reservation: &previous,
-            current_completed: &completed,
+            current_completed: app::sdlc_critical_pm_reservation::CompletedPmReceipt::Historical(
+                &completed,
+            ),
             original_pm_assignment: &previous.assignment,
             original_input: &input,
             pm_owner_version: owner,

@@ -11,6 +11,8 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "sdlc_commands.rs"]
+mod commands;
 #[path = "sdlc_configured_cli.rs"]
 mod configured_cli;
 #[path = "sdlc_critical_blockers.rs"]
@@ -19,30 +21,20 @@ mod critical_blockers;
 mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
+#[path = "sdlc_discussion.rs"]
+mod discussion;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
 #[path = "sdlc_lifecycle.rs"]
 mod lifecycle;
-#[path = "sdlc_native_admission.rs"]
-mod native_admission;
-#[path = "sdlc_pm_bootstrap_retry.rs"]
-mod pm_bootstrap_retry;
-#[path = "sdlc_pm_resume.rs"]
-mod pm_resume;
-#[path = "sdlc_pm_unsubmitted.rs"]
-mod pm_unsubmitted;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
 mod routing;
-#[path = "sdlc_settled_input_recovery.rs"]
-mod settled_input_recovery;
 #[path = "sdlc_source.rs"]
 mod source;
 #[path = "sdlc_spaces.rs"]
 mod spaces;
-#[path = "sdlc_terminal_idle_recovery.rs"]
-mod terminal_idle_recovery;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,
@@ -285,7 +277,7 @@ impl PostgresSdlcRepository {
             && !actor.trusted_human
             && app::sdlc_reservation::scheduler(actor, config).is_err()
         {
-            app::sdlc::authorize_pm_read(&state, actor)?;
+            lifecycle::configured_assignment(tx, &state, actor).await?;
         }
         spaces::bind_task(tx, config, &state, actor).await?;
         Ok(state)
@@ -307,10 +299,14 @@ impl PostgresSdlcRepository {
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
         let state = Self::load_with_config(tx, config, task, actor).await?;
-        app::sdlc::authorize_pm_read(&state, actor)?;
+        if !state.configured_cli() {
+            app::sdlc::authorize_pm_read(&state, actor)?;
+        }
         lifecycle::authorize_read(tx, &state, actor).await?;
         if app::sdlc::has_pm_grant(&actor.scopes)
-            || (state.configured_cli() && !actor.trusted_human)
+            || (state.configured_cli()
+                && !actor.trusted_human
+                && matches!(state.stage, Stage::Draft | Stage::Backlog))
         {
             let row = tx.query_one(statement(
                 "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",
@@ -834,6 +830,10 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
+        Some(self)
+    }
+
     async fn configured_pm_completion(
         &self,
         task: Uuid,
@@ -915,14 +915,7 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
         self.read_analysis_result_operation(task, actor, key).await
     }
-    async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
-        self.complete_pm_draft_execution(task, actor, command).await
-    }
+
     async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -987,151 +980,7 @@ impl SdlcRepository for PostgresSdlcRepository {
         tx.commit().await.map_err(map_db)?;
         Ok(intent)
     }
-    async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.claim_pm_lease(task, actor, command).await
-    }
-    async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.heartbeat_pm_lease(task, actor, command).await
-    }
-    async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
-        self.read_pm_lease(task, actor, key).await
-    }
-    async fn resume_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.resume_pm_lease(task, actor, command).await
-    }
-    async fn pm_resume_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_pm_resume_operation(task, actor, key).await
-    }
-    async fn preflight_terminal_idle_checkpoint(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
-    ) -> Result<Option<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError>
-    {
-        self.preflight_terminal_idle(task, actor, command).await
-    }
-    async fn permit_terminal_idle_checkpoint(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
-        witness: domain::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
-    ) -> Result<
-        (
-            domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse,
-            bool,
-        ),
-        AppError,
-    > {
-        self.permit_terminal_idle(task, actor, command, witness)
-            .await
-    }
-    async fn pm_terminal_idle_checkpoint_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
-        self.terminal_idle_operation(task, actor, key).await
-    }
-    async fn preflight_settled_pm_recovery(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        self.preflight_settled_input_recovery(task, actor, command)
-            .await
-    }
-    async fn recover_settled_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
-        witness: domain::sdlc_execution_lease::PmSettledInputRecoveryWitness,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.recover_settled_input_lease(task, actor, command, witness)
-            .await
-    }
-    async fn preflight_unsubmitted_pm_recovery(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        self.preflight_unsubmitted_recovery(task, actor, command)
-            .await
-    }
-    async fn recover_unsubmitted_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-        witness: domain::sdlc_execution_lease::UnsubmittedPmWitness,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.recover_unsubmitted_pm_lease(task, actor, command, witness)
-            .await
-    }
-    async fn unsubmitted_pm_recovery_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_unsubmitted_recovery(task, actor, key).await
-    }
-    async fn preflight_pm_bootstrap_retry(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        self.preflight_bootstrap_retry(task, actor, command).await
-    }
-    async fn retry_pm_bootstrap(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-        witness: domain::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.commit_bootstrap_retry(task, actor, command, witness)
-            .await
-    }
-    async fn pm_bootstrap_retry_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_bootstrap_retry(task, actor, key).await
-    }
+
     async fn reserve_pm_draft(
         &self,
         task: Uuid,
@@ -1788,6 +1637,32 @@ impl SdlcRepository for PostgresSdlcRepository {
         tx.commit().await.map_err(map_db)?;
         Ok(state)
     }
+    async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load_read(&tx, task, actor).await?;
+        let mut context = state.context(actor);
+        if state.configured_cli() {
+            context.assignment = lifecycle::configured_assignment(&tx, &state, actor).await?;
+            context.critical_review = self.configured_review_context(&tx, &state).await?;
+            if !actor.trusted_human && app::sdlc_reservation::reader(actor).is_ok() {
+                // This server read is Workflow's current execution authority,
+                // not just a view of a historical assignment. Reader membership
+                // must never keep a revoked producer authorized to execute.
+                if let Some(assignment) = &context.assignment {
+                    let producer = Principal {
+                        subject: assignment.machine_subject.clone(),
+                        human_session: false,
+                        trusted_human: false,
+                        scopes: Default::default(),
+                    };
+                    Self::project_access(&tx, state.project_id, &producer).await?;
+                }
+            }
+            context.expected_assignment_version = context.assignment.as_ref().map(|a| a.version);
+        }
+        tx.commit().await.map_err(map_db)?;
+        Ok(context)
+    }
     async fn confirmation_read(
         &self,
         task: Uuid,
@@ -1933,28 +1808,9 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<Json, AppError> {
-        self.execute_with_native(task, actor, command, None, None)
-            .await
+        self.execute_command(task, actor, command).await
     }
-    async fn prepare_native_command(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &SdlcCommand,
-    ) -> Result<domain::sdlc_native_admission::CommandAdmission, AppError> {
-        self.native_command_preflight(task, actor, command).await
-    }
-    async fn execute_verified(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: SdlcCommand,
-        expected: PmDraftReservation,
-        observed: Option<domain::sdlc_native_admission::AdmissionObservation>,
-    ) -> Result<Json, AppError> {
-        self.execute_with_native(task, actor, command, Some(expected), observed)
-            .await
-    }
+
     async fn outbox(
         &self,
         task: Uuid,

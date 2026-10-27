@@ -387,6 +387,7 @@ impl ReworkFixture {
         self.assert_current(queued).await;
         let reserve = LifecycleCommand::Reserve {
             expected_task_version: queued.task.version,
+            machine_subject: None,
             idempotency_key: format!("rework:{index}:reserve"),
         };
         let (reserved, replayed) = self
@@ -845,6 +846,8 @@ async fn one_task_persists_review_and_testing_rework_then_repeats_gates_before_d
                 &fixture.scheduler,
                 LifecycleCommand::Reserve {
                     expected_task_version: cursor.task.version,
+
+                    machine_subject: None,
                     idempotency_key: "rework:after-completed:reserve".into(),
                 }
             )

@@ -14,9 +14,23 @@ async fn snapshot(
     actor: &Principal,
     id: AttachmentId,
 ) -> Result<Snapshot, AppError> {
-    let task = app::sdlc::pm_grant_task(actor)?.ok_or(AppError::Forbidden)?;
     let tx = db.begin().await.map_err(map_db)?;
+    let model = attachment::Entity::find_by_id(id.as_uuid())
+        .one(&tx)
+        .await
+        .map_err(map_db)?
+        .ok_or(AppError::Forbidden)?;
+    let item = crate::repos::map_attachment(model);
+    let task = item.issue_id.as_uuid();
+    if let Some(granted) = app::sdlc::pm_grant_task(actor)? {
+        if granted != task {
+            return Err(AppError::Forbidden);
+        }
+    }
     let state = PostgresSdlcRepository::load_read_with_config(&tx, config, task, actor).await?;
+    if state.configured_cli() {
+        app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
+    }
     owner_access(&tx, &state).await?;
     if !config.single_task_project_ids.contains(&state.project_id) {
         return Err(AppError::Unavailable(
@@ -34,12 +48,6 @@ async fn snapshot(
         .ok_or(AppError::Forbidden)?;
     let blocker: CriticalBlockerReceipt = decode(&row, "payload")?;
     scope(&state, &blocker)?;
-    let model = attachment::Entity::find_by_id(id.as_uuid())
-        .one(&tx)
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?;
-    let item = crate::repos::map_attachment(model);
     let seal = Seal::parse(item.storage_key.as_ref())?.ok_or(AppError::Forbidden)?;
     app::attachment_pm_review::evidence(&blocker, &item, &seal)?;
     let (origin, binding) =

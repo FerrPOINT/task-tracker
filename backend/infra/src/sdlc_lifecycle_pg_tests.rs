@@ -388,6 +388,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     tx.rollback().await.unwrap();
     let reserve = LifecycleCommand::Reserve {
         expected_task_version: queued.task.version,
+
+        machine_subject: None,
         idempotency_key: "reserve-0".into(),
     };
     let legacy_ordinal = legacy_analysis_ordinal_head(&db).await;
@@ -395,6 +397,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     assert_eq!(reservation.execution.ordinal, pm_ordinal.to_string());
     let invalid = LifecycleCommand::Reserve {
         expected_task_version: queued.task.version + 1,
+
+        machine_subject: None,
         idempotency_key: "invalid-cas".into(),
     };
     assert!(
@@ -483,6 +487,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     assert_eq!(pm_ordinal_head(&db).await, allocation_head);
     let changed = LifecycleCommand::Reserve {
         expected_task_version: queued.task.version + 1,
+
+        machine_subject: None,
         idempotency_key: "reserve-0".into(),
     };
     assert!(matches!(
@@ -835,6 +841,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             &scheduler,
             LifecycleCommand::Reserve {
                 expected_task_version: recovered.task.version,
+
+                machine_subject: None,
                 idempotency_key: "retry".into(),
             },
         )
@@ -946,6 +954,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         if cursor.assignment.is_none() {
             let command = LifecycleCommand::Reserve {
                 expected_task_version: cursor.task.version,
+                machine_subject: None,
                 idempotency_key: format!("role-{i}-reserve"),
             };
             if i == 1 {

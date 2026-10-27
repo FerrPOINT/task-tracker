@@ -805,7 +805,7 @@ async fn revise_second(r: &mut ReviewFixture) -> (String, Confirmation) {
                 question_id: Uuid::new_v4(),
                 expected_question_version: None,
                 requirement_revision: 2,
-                checkpoint_id: Some(Uuid::new_v4()),
+
                 requirement_reference: None,
                 text: "Second synthetic business decision?".into(),
                 rationale: "Second actual review cycle fixture".into(),

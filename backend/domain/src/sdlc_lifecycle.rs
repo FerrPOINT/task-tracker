@@ -258,6 +258,8 @@ pub struct DeliveryAssignment {
     pub cycle: u8,
     pub attempt: u8,
     pub agent_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_subject: Option<String>,
     pub routing: TaskRoutingSnapshot,
     pub previous_result_id: Option<Uuid>,
     pub fencing_token: i64,
@@ -441,6 +443,8 @@ pub enum LifecycleCommand {
     },
     Reserve {
         expected_task_version: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        machine_subject: Option<String>,
         idempotency_key: String,
     },
     Heartbeat {

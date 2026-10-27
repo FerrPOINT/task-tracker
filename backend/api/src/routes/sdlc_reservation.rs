@@ -174,25 +174,16 @@ pub async fn result_operation(
     ))
 }
 
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="complete_pm_draft",tag="sdlc",params(("id"=Uuid,Path)),request_body=PmCompletionCommand,
-    responses((status=201,body=PmCompletionResponse),(status=200,body=PmCompletionResponse,description="Original durable replay; no duplicate completion"),(status=401),(status=403),(status=404),(status=409,description="Stale business fence, terminal receipt, lease or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="complete_pm_draft",tag="sdlc",params(("id"=Uuid,Path)),request_body=CompleteConfiguredPm,
+    responses((status=201,body=ConfiguredPmCompletionReceipt),(status=200,body=ConfiguredPmCompletionReceipt,description="Original durable replay; no duplicate completion"),(status=401),(status=403),(status=404),(status=409,description="Stale business fence, terminal receipt or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn complete_pm_draft(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(task): Path<Uuid>,
-    Json(command): Json<PmCompletionCommand>,
-) -> Result<(StatusCode, HeaderMap, Json<PmCompletionResponse>), AppError> {
+    Json(command): Json<CompleteConfiguredPm>,
+) -> Result<(StatusCode, HeaderMap, Json<ConfiguredPmCompletionReceipt>), AppError> {
     let svc = service(&ctx)?;
-    let (receipt, replay) = match command {
-        PmCompletionCommand::Configured(command) => {
-            let (result, replay) = svc.complete_configured_pm(task, &actor, command).await?;
-            (PmCompletionResponse::Configured(result), replay)
-        }
-        PmCompletionCommand::Legacy(command) => {
-            let (result, replay) = svc.complete_pm_draft(task, &actor, command).await?;
-            (PmCompletionResponse::Legacy(result), replay)
-        }
-    };
+    let (receipt, replay) = svc.complete_configured_pm(task, &actor, command).await?;
     Ok((
         if replay {
             StatusCode::OK

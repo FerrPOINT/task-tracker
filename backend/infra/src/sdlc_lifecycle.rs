@@ -77,6 +77,11 @@ pub(super) async fn authorize_read(
     state: &TaskState,
     actor: &Principal,
 ) -> Result<(), AppError> {
+    if state.configured_cli() && (actor.trusted_human || actor.scopes.contains("task-tracker:read"))
+    {
+        configured_assignment(tx, state, actor).await?;
+        return Ok(());
+    }
     let Some(grant) = app::sdlc_lifecycle::delivery_grant(actor)? else {
         return Ok(());
     };
@@ -96,6 +101,86 @@ pub(super) async fn authorize_read(
         return Err(AppError::Forbidden);
     }
     exact_revision(state, &receipt)
+}
+
+/// Project ACLs are locked by the caller. The current assignment supplies
+/// authority; no task-scoped token or caller-provided native proof is accepted.
+pub(super) async fn configured_assignment(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    actor: &Principal,
+) -> Result<Option<PmAssignment>, AppError> {
+    if !state.configured_cli() {
+        return Ok(None);
+    }
+    if state.stage == Stage::Draft || state.stage == Stage::Backlog {
+        app::sdlc::authorize_pm_read(state, actor)?;
+        return Ok(state.assignment.clone());
+    }
+    let privileged = actor.trusted_human || app::sdlc_reservation::reader(actor).is_ok();
+    let Some(receipt) = current(tx, state.task_id).await? else {
+        return if privileged {
+            Ok(None)
+        } else {
+            Err(AppError::Forbidden)
+        };
+    };
+    exact_revision(state, &receipt)?;
+    let Some(assignment) = receipt.assignment.as_ref() else {
+        return if privileged {
+            Ok(None)
+        } else {
+            Err(AppError::Forbidden)
+        };
+    };
+    let subject = assignment
+        .machine_subject
+        .as_ref()
+        .ok_or(AppError::Forbidden)?;
+    if !privileged {
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        if subject != &actor.subject || actor.subject == state.owner_subject {
+            return Err(AppError::Forbidden);
+        }
+    }
+    if assignment.task_id != state.task_id
+        || assignment.owner_subject != state.owner_subject
+        || assignment.stage != receipt.task.stage
+        || assignment.stage.role() != Some(assignment.role)
+        || assignment.agent_id.is_nil()
+        || assignment.fencing_token <= 0
+    {
+        return Err(corrupt());
+    }
+    Ok(Some(PmAssignment {
+        assignment_id: assignment.assignment_id,
+        execution_id: assignment.execution_id,
+        agent_id: assignment.agent_id,
+        version: assignment.fencing_token,
+        machine_subject: subject.clone(),
+    }))
+}
+
+pub(super) async fn producer_grant(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    actor: &Principal,
+    write: bool,
+) -> Result<DeliveryGrant, AppError> {
+    if !state.configured_cli() {
+        return app::sdlc_lifecycle::producer(actor, write);
+    }
+    app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+    let assignment = configured_assignment(tx, state, actor)
+        .await?
+        .ok_or(AppError::Forbidden)?;
+    Ok(DeliveryGrant {
+        task_id: state.task_id,
+        assignment_id: assignment.assignment_id,
+        execution_id: assignment.execution_id,
+        agent_id: assignment.agent_id,
+        fencing_token: assignment.version,
+    })
 }
 
 async fn authorize_proposal_grant(
@@ -410,6 +495,7 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         receipt: &mut LifecycleReceipt,
         expected_version: i64,
+        machine_subject: Option<&str>,
     ) -> Result<(), AppError> {
         if receipt.task.version != expected_version
             || receipt.task.status != LifecycleStatus::Ready
@@ -431,6 +517,16 @@ impl PostgresSdlcRepository {
             .ok_or_else(corrupt)?;
         if route.agent_id.is_nil() {
             return Err(corrupt());
+        }
+        if let Some(subject) = machine_subject {
+            if app::sdlc::canonical_pm_uuid(subject).is_none()
+                || subject == actor.subject
+                || subject == receipt.task.owner_subject
+                || subject == self.config.orchestrator_subject
+                || subject == self.config.verifier_subject
+            {
+                return Err(AppError::Forbidden);
+            }
         }
         exec(
             tx,
@@ -496,6 +592,7 @@ impl PostgresSdlcRepository {
             cycle: receipt.task.cycle,
             attempt: receipt.task.transient_retries + 1,
             agent_id: route.agent_id,
+            machine_subject: machine_subject.map(str::to_owned),
             routing: receipt.task.routing.clone(),
             previous_result_id: receipt.task.previous_result_id,
             fencing_token: token,
@@ -772,7 +869,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError> {
-        let grant = app::sdlc_lifecycle::producer(actor, true)?;
         app::sdlc::validate_key(&command.idempotency_key)?;
         app::sdlc_lifecycle::validate_fence(&command.fence)?;
         app::sdlc_lifecycle::validate_result(&command.result)?;
@@ -782,6 +878,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         )?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        let grant = producer_grant(&tx, &state, actor, true).await?;
         let retained = tx
             .query_one(statement(
                 "SELECT payload_hash,result FROM sdlc_delivery_proposal_operations
@@ -825,6 +922,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
         app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+        super::discussion::require_stage_comment(
+            &tx,
+            &state,
+            &actor.subject,
+            assignment.assignment_id,
+            assignment.execution_id,
+        )
+        .await?;
         let duplicate = tx
             .query_one(statement(
                 "SELECT proposal_id FROM sdlc_delivery_proposals WHERE assignment_id=$1",
@@ -876,18 +981,48 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<DeliveryProposalReceipt, AppError> {
-        let grant = app::sdlc_lifecycle::producer(actor, false)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.load(&tx, task, actor).await?;
+        let state = self.load(&tx, task, actor).await?;
+        let server_read = state.configured_cli()
+            && !actor.human_session
+            && app::sdlc_reservation::reader(actor).is_ok();
+        let server_assignment = if server_read {
+            Some(
+                configured_assignment(&tx, &state, actor)
+                    .await?
+                    .ok_or(AppError::Forbidden)?,
+            )
+        } else {
+            None
+        };
+        let grant = if server_read {
+            None
+        } else {
+            Some(producer_grant(&tx, &state, actor, false).await?)
+        };
+        let producer = server_assignment
+            .as_ref()
+            .map_or(&actor.subject, |assignment| &assignment.machine_subject);
         let row = tx.query_one(statement(
             "SELECT result FROM sdlc_delivery_proposal_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
-            vec![task.into(),actor.subject.clone().into(),key.into()],
+            vec![task.into(),producer.clone().into(),key.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("delivery proposal operation", key))?;
         let receipt: DeliveryProposalReceipt =
             serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
                 .map_err(|_| corrupt())?;
-        authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
+        if let Some(grant) = grant {
+            authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
+        } else if let Some(assignment) = server_assignment {
+            if receipt.task_id != task
+                || receipt.agent_id != assignment.agent_id
+                || receipt.assignment_id != assignment.assignment_id
+                || receipt.execution_id != assignment.execution_id
+                || assignment.machine_subject != receipt.producer_subject
+            {
+                return Err(AppError::Forbidden);
+            }
+        }
         tx.commit().await.map_err(map_db)?;
         Ok(receipt)
     }
@@ -898,13 +1033,15 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         result_id: Uuid,
     ) -> Result<DeliveryInput, AppError> {
-        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
-            app::sdlc_lifecycle::producer(actor, false)?;
-        } else {
-            app::sdlc_reservation::reader(actor)?;
-        }
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        if !state.configured_cli() {
+            if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+                app::sdlc_lifecycle::producer(actor, false)?;
+            } else {
+                app::sdlc_reservation::reader(actor)?;
+            }
+        }
         authorize_read(&tx, &state, actor).await?;
         let row = tx.query_one(statement(
             "SELECT payload,false AS legacy FROM sdlc_delivery_results WHERE task_id=$1 AND result_id=$2
@@ -940,6 +1077,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Ok((result, true));
         }
         if state.configured_cli()
+            && matches!(state.stage, Stage::Draft | Stage::Backlog)
             && matches!(
                 command,
                 LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
@@ -1030,10 +1168,22 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::EnsureQueued { .. } => {}
             LifecycleCommand::Reserve {
                 expected_task_version,
+                machine_subject,
                 ..
             } => {
-                self.delivery_reserve(&tx, actor, &mut receipt, *expected_task_version)
-                    .await?;
+                if state.configured_cli() && machine_subject.is_none() {
+                    return Err(AppError::conflict(
+                        "configured assignment requires permanent service identity",
+                    ));
+                }
+                self.delivery_reserve(
+                    &tx,
+                    actor,
+                    &mut receipt,
+                    *expected_task_version,
+                    machine_subject.as_deref(),
+                )
+                .await?;
             }
             LifecycleCommand::Heartbeat {
                 fence: expected, ..
@@ -1070,6 +1220,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         lease.expires_at = observed_at + Duration::seconds(LEASE_TTL_SECONDS);
                     }
                     LifecycleCommand::BindRun { binding, .. } => {
+                        if receipt
+                            .assignment
+                            .as_ref()
+                            .and_then(|a| a.machine_subject.as_ref())
+                            .is_some_and(|subject| subject != &binding.machine_subject)
+                        {
+                            return Err(AppError::Forbidden);
+                        }
                         if receipt
                             .task
                             .resume_chat_id
@@ -1126,6 +1284,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         {
                             return Err(AppError::conflict("terminal run does not match binding"));
                         }
+                        super::discussion::require_stage_comment(
+                            &tx,
+                            &state,
+                            &binding.machine_subject,
+                            expected.assignment_id,
+                            expected.execution_id,
+                        )
+                        .await?;
                         let previous_stage = receipt.task.stage;
                         app::sdlc_lifecycle::accept_result(&mut receipt.task, result)?;
                         let accepted = AcceptedDeliveryResult {
@@ -1202,13 +1368,15 @@ impl LifecycleRepository for PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<LifecycleReadback, AppError> {
-        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
-            app::sdlc_lifecycle::producer(actor, false)?;
-        } else {
-            app::sdlc_reservation::reader(actor)?;
-        }
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        if !state.configured_cli() {
+            if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+                app::sdlc_lifecycle::producer(actor, false)?;
+            } else {
+                app::sdlc_reservation::reader(actor)?;
+            }
+        }
         let receipt = current(&tx, task)
             .await?
             .ok_or_else(|| AppError::not_found("delivery queue", task))?;

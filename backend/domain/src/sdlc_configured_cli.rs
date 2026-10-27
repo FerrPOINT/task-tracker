@@ -1,4 +1,4 @@
-use crate::sdlc::{InteractionProtocol, MachineFence, Stage, safe_version};
+use crate::sdlc::{InteractionProtocol, MachineFence, Stage, safe_optional_version, safe_version};
 use crate::sdlc_lifecycle::LifecycleStatus;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
@@ -11,6 +11,18 @@ fn canonical_uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
         return Err(D::Error::custom("canonical nonnil UUID required"));
     }
     Ok(id)
+}
+
+fn optional_uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Uuid>, D::Error> {
+    let raw = Option::<String>::deserialize(d)?;
+    raw.map(|raw| {
+        let id = Uuid::parse_str(&raw).map_err(D::Error::custom)?;
+        if id.is_nil() || id.to_string() != raw {
+            return Err(D::Error::custom("canonical nonnil UUID required"));
+        }
+        Ok(id)
+    })
+    .transpose()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -55,12 +67,12 @@ pub struct ConfiguredWorkflowReceipt {
     pub request_sha256: String,
     #[serde(deserialize_with = "safe_version")]
     pub result_version: i64,
-    #[serde(deserialize_with = "safe_version")]
-    pub requirements_revision: i64,
-    pub requirements_sha256: String,
+    #[serde(deserialize_with = "safe_optional_version")]
+    pub requirements_revision: Option<i64>,
+    pub requirements_sha256: Option<String>,
     pub owner_subject: String,
-    #[serde(deserialize_with = "canonical_uuid")]
-    pub confirmation_id: Uuid,
+    #[serde(deserialize_with = "optional_uuid")]
+    pub confirmation_id: Option<Uuid>,
     #[serde(deserialize_with = "safe_version")]
     pub history_id: i64,
     pub status: String,
@@ -103,20 +115,6 @@ pub struct ConfiguredPmCompletionOperation {
 pub struct ConfiguredPmCompletionReadback {
     pub interaction_protocol: InteractionProtocol,
     pub current: Option<ConfiguredPmCompletionReceipt>,
-}
-
-#[derive(Clone, Debug, Deserialize, utoipa::ToSchema)]
-#[serde(untagged)]
-pub enum PmCompletionCommand {
-    Configured(CompleteConfiguredPm),
-    Legacy(crate::sdlc_reservation::CompletePmDraft),
-}
-
-#[derive(Serialize, utoipa::ToSchema)]
-#[serde(untagged)]
-pub enum PmCompletionResponse {
-    Configured(ConfiguredPmCompletionReceipt),
-    Legacy(crate::sdlc_reservation::PmDraftCompletionReceipt),
 }
 
 #[derive(Serialize, utoipa::ToSchema)]

@@ -409,8 +409,8 @@ All identities, versions, keys and hash below are illustrative, not authority.
 Send ONLY these fields; do not paste workflow_receipt/terminal_receipt objects
 or add native checkpoint/lease fields. Tracker reads the terminal receipt
 server-to-server and atomically publishes Draft -> Backlog / Ready. Stop there;
-do not queue Analysis or dispatch Analyst. Legacy completion remains supported
-with its separate existing lease/native-receipt contract, NOT this JSON shape.
+do not queue Analysis or dispatch Analyst. Historical completion remains readable;
+new submissions use only this configured command, without native checkpoints or leases.
 Pipe JSON into `task-tracker sdlc pm completion submit --task TASK_UUID --from-file -`.
 
 After success, unknown acceptance or an exact replay, read the original operation:

@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_commands.rs"]
 mod critical_commands;
+#[path = "sdlc_discussion_commands.rs"]
+mod discussion_commands;
 #[path = "sdlc_pm_commands.rs"]
 mod pm_commands;
 
@@ -211,6 +213,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Read the complete discussion or publish/reconcile an ordinary final comment
+    Discussion {
+        #[command(subcommand)]
+        command: discussion_commands::DiscussionCommand,
+    },
     /// Propose or reconcile a critical business question without advancing the task
     CriticalBlocker {
         #[command(subcommand)]
@@ -380,8 +387,8 @@ Use expected_question_version=null for a new question; updates use its current
 version and request_id. Repeat an uncertain operation with the same key/payload.
 The field is text, not question. Options are objects, not strings. Mode is
 single, multiple or text; text requires options=[] and no recommendation.
-For configured-cli-v1 omit checkpoint_id. Legacy mode still requires the real
-native checkpoint_id; never invent a checkpoint or copy the sample identities.
+Questions use the current assignment, without native checkpoint_id.
+Never invent a checkpoint or copy the sample identities.
 PM cannot answer or confirm on behalf of the human owner.
 Pipe the JSON into `task-tracker sdlc question publish --task TASK_UUID --from-file -`.
 
@@ -540,6 +547,7 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Discussion { command } => discussion_commands::execute(api, command).await,
         SdlcCommand::CriticalBlocker { command } => {
             critical_commands::critical_blocker(api, command).await
         }

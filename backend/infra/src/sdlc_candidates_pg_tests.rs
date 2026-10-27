@@ -545,6 +545,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
                 &f.writer,
                 LifecycleCommand::Reserve {
                     expected_task_version: queued.task.version + 1,
+
+                    machine_subject: None,
                     idempotency_key: "stale-reserve".into(),
                 }
             )
@@ -558,6 +560,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: queued.task.version,
+
+                machine_subject: None,
                 idempotency_key: "reserve".into(),
             },
         )

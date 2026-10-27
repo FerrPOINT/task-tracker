@@ -293,8 +293,6 @@ pub struct PublishQuestion {
     pub expected_question_version: Option<i64>,
     #[serde(deserialize_with = "safe_version")]
     pub requirement_revision: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint_id: Option<Uuid>,
     pub requirement_reference: Option<String>,
     pub text: String,
     pub rationale: String,
@@ -512,6 +510,8 @@ pub struct Permissions {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critical_review: Option<crate::sdlc_critical_pm_reservation::CriticalPmReviewContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interaction_protocol: Option<InteractionProtocol>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_task_key: Option<String>,
@@ -677,6 +677,7 @@ impl TaskState {
                 .iter()
                 .any(|q| q.state == QuestionState::Open);
         SdlcContext {
+            critical_review: None,
             interaction_protocol: self.interaction_protocol().ok().flatten(),
             workflow_task_key: self
                 .retained_fields
@@ -799,6 +800,13 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
+        None
+    }
+
+    async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
+        Ok(self.read(task, actor).await?.context(actor))
+    }
     async fn configured_pm_completion(
         &self,
         _task: Uuid,
@@ -867,12 +875,7 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
-    async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(crate::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError>;
+
     async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -912,133 +915,7 @@ pub trait SdlcRepository: Send + Sync {
         task: Uuid,
         actor: &Principal,
     ) -> Result<AnalysisIntent, AppError>;
-    async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
-    async fn resume_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn preflight_terminal_idle_checkpoint(
-        &self,
-        _task: Uuid,
-        _actor: &Principal,
-        _command: &crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
-    ) -> Result<Option<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse>, AppError>
-    {
-        Err(AppError::Unavailable(
-            "terminal-idle PM recovery is unavailable".into(),
-        ))
-    }
-    async fn permit_terminal_idle_checkpoint(
-        &self,
-        _task: Uuid,
-        _actor: &Principal,
-        _command: crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointRequest,
-        _witness: crate::sdlc_terminal_idle_recovery::PmTerminalIdleRecoveryWitness,
-    ) -> Result<
-        (
-            crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse,
-            bool,
-        ),
-        AppError,
-    > {
-        Err(AppError::Unavailable(
-            "terminal-idle PM recovery is unavailable".into(),
-        ))
-    }
-    async fn pm_terminal_idle_checkpoint_operation(
-        &self,
-        _task: Uuid,
-        _actor: &Principal,
-        _key: &str,
-    ) -> Result<crate::sdlc_terminal_idle_recovery::PermitPmIdleCheckpointResponse, AppError> {
-        Err(AppError::Unavailable(
-            "terminal-idle PM recovery is unavailable".into(),
-        ))
-    }
-    async fn preflight_settled_pm_recovery(
-        &self,
-        _task: Uuid,
-        _actor: &Principal,
-        _command: &crate::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        Err(AppError::Unavailable(
-            "settled PM recovery is unavailable".into(),
-        ))
-    }
-    async fn recover_settled_pm_execution_lease(
-        &self,
-        _task: Uuid,
-        _actor: &Principal,
-        _command: crate::sdlc_execution_lease::ResumePmExecutionLease,
-        _witness: crate::sdlc_execution_lease::PmSettledInputRecoveryWitness,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        Err(AppError::Unavailable(
-            "settled PM recovery is unavailable".into(),
-        ))
-    }
-    async fn preflight_unsubmitted_pm_recovery(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
-    async fn preflight_pm_bootstrap_retry(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
-    async fn retry_pm_bootstrap(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-        witness: crate::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn pm_bootstrap_retry_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
-    async fn recover_unsubmitted_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-        witness: crate::sdlc_execution_lease::UnsubmittedPmWitness,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn unsubmitted_pm_recovery_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
-    async fn pm_resume_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
+
     async fn reserve_pm_draft(
         &self,
         task: Uuid,
@@ -1094,20 +971,7 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<serde_json::Value, AppError>;
-    async fn prepare_native_command(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &SdlcCommand,
-    ) -> Result<crate::sdlc_native_admission::CommandAdmission, AppError>;
-    async fn execute_verified(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: SdlcCommand,
-        expected: crate::sdlc_pm_draft::PmDraftReservation,
-        observed: Option<crate::sdlc_native_admission::AdmissionObservation>,
-    ) -> Result<serde_json::Value, AppError>;
+
     async fn outbox(
         &self,
         task: Uuid,

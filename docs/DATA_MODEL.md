@@ -2320,3 +2320,15 @@ verifier evidence. The aggregate remains Draft until the configured completion
 transaction inserts its exact Workflow/owner ledger, changes the aggregate and
 issue projection to Backlog/Ready, and closes PM admission. The saved consent
 stage is never rewritten; 0105 guards reject early publication and Analysis.
+
+Forward migrations106–108 extend the candidate without editing applied files.
+106 records final discussion custody and detects edit/delete changes.107 keeps
+one immutable configured completion per execution, permitting later PM reviews
+on the same task; old operation keys retain their original assignment/revision.
+108 lets the existing review journal and routing-generation table reference the
+actual configured completion instead of a fabricated native completion. Native
+lease fields are absent together only for the configured command family; old
+rows retain their original foreign keys. Deferred guards require complete
+projection, ledger, resolution and outbox effects in one transaction. No Analysis
+intent is created by configured PM completion. Fresh/filled PostgreSQL acceptance
+of these unapplied candidate migrations remains required.

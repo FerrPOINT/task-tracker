@@ -142,16 +142,7 @@ impl SdlcService {
             .analysis_result_operation(task, actor, key)
             .await
     }
-    pub async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
-        self.repository
-            .complete_pm_draft(task, actor, command)
-            .await
-    }
+
     pub async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -214,34 +205,7 @@ impl SdlcService {
     ) -> Result<AnalysisIntent, AppError> {
         self.repository.analysis_intent(task, actor).await
     }
-    pub async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.repository
-            .claim_execution_lease(task, actor, command)
-            .await
-    }
-    pub async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.repository
-            .heartbeat_execution_lease(task, actor, command)
-            .await
-    }
-    pub async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
-        self.repository.execution_lease(task, actor, key).await
-    }
+
     pub async fn project_access(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
         self.repository.project_access_scope(actor).await
     }
@@ -265,7 +229,7 @@ impl SdlcService {
         self.repository.create_draft(project, actor, command).await
     }
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
-        Ok(self.repository.read(task, actor).await?.context(actor))
+        self.repository.context(task, actor).await
     }
     pub async fn draft_creation_operation(
         &self,
@@ -306,25 +270,7 @@ impl SdlcService {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<T, AppError> {
-        use domain::sdlc_native_admission::CommandAdmission;
-        let value = match self
-            .repository
-            .prepare_native_command(task, actor, &command)
-            .await?
-        {
-            CommandAdmission::Legacy => self.repository.execute(task, actor, command).await?,
-            CommandAdmission::Replay(value) => value,
-            CommandAdmission::History(expected) => {
-                self.repository
-                    .execute_verified(task, actor, command, expected, None)
-                    .await?
-            }
-            CommandAdmission::MachineLease(expected) => {
-                self.repository
-                    .execute_verified(task, actor, command, expected, None)
-                    .await?
-            }
-        };
+        let value = self.repository.execute(task, actor, command).await?;
         serde_json::from_value(value).map_err(AppError::internal)
     }
 }
@@ -546,12 +492,8 @@ pub fn authorize(
                 {
                     return Err(AppError::Forbidden);
                 }
-            } else if state.configured_cli() {
+            } else {
                 authorize_configured_pm(state, actor)?;
-            } else if actor.subject != assignment.machine_subject
-                || !actor.scopes.contains(&assignment.scope(state.task_id))
-            {
-                return Err(AppError::Forbidden);
             }
             Ok(())
         }
@@ -769,14 +711,10 @@ pub fn apply(
             serde_json::to_value(revision)
         }
         SdlcCommand::PublishQuestion(c) => {
-            if state.configured_cli() {
-                if c.checkpoint_id.is_some() {
-                    return Err(AppError::validation(
-                        "configured CLI questions have no native checkpoint",
-                    ));
-                }
-            } else if c.checkpoint_id.is_none_or(|id| id.is_nil()) {
-                return Err(AppError::validation("legacy question requires checkpoint"));
+            if !state.configured_cli() {
+                return Err(AppError::conflict(
+                    "new questions require a configured CLI assignment",
+                ));
             }
             if matches!(state.stage, Stage::Backlog)
                 || state.current_revision() != Some(c.requirement_revision)
@@ -841,7 +779,7 @@ pub fn apply(
                 execution_id: c.fence.execution_id,
                 agent_id: c.fence.agent_id,
                 assignment_version: c.fence.assignment_version,
-                checkpoint_id: c.checkpoint_id,
+                checkpoint_id: None,
                 text: c.text.clone(),
                 rationale: c.rationale.clone(),
                 required: c.required,
