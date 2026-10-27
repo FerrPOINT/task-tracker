@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-27: PM Publish CLI Discovery
+
+- Problem: the live PM guessed question/options JSON because nested publish help
+  described flags but not the existing strict payload; Tracker correctly rejected
+  it. A later empty prerequisites list was rejected, and changing an execution
+  UUID caused a separate correct stale-fence rejection.
+- Fix: question/revision publish help now includes typed substantive product
+  examples, actual-context fence mapping, revision/CAS/idempotency rules and
+  nonempty document prerequisites. No placeholder revision, invented checkpoint
+  or owner impersonation is permitted. API, schema, assignments and guards are
+  unchanged.
+- Checks:28 CLI workflow tests PASS on c7860d21, including both typed help examples,
+  malformed shapes, stdin forwarding and error/no-retry contracts; Rustfmt1.88
+  and diff-check PASS. Base helper v2 QA cleanup is complete.
+- Live: the same PM saved real requirements revision1 and one unanswered
+  three-option question through the existing CLI/API after explicit diagnostic
+  guidance. The updated CLI help is source-only, not installed into that retained
+  container. Human owner consent and Backlog/Ready remain unaccepted.
+
 ## 2026-10-26: Configured CLI PM — Source Verified, Tracker Installed
 
 - Problem: owner consent in Draft and ordinary preconfigured PM credentials did
