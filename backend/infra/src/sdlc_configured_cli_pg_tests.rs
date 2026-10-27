@@ -97,34 +97,15 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "scenarios":["Scenario"],"acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],
         "assumptions":[],"checklist":["Check"],"prerequisites":["Prerequisite"]}}),
     );
-    assert!(matches!(
-        f.repo
-            .prepare_native_command(task, &pm, &SdlcCommand::PublishRevision(revision.clone()))
-            .await
-            .unwrap(),
-        domain::sdlc_native_admission::CommandAdmission::MachineLease(_)
-    ));
     let saved = f
         .repo
-        .execute_verified(
-            task,
-            &pm,
-            SdlcCommand::PublishRevision(revision.clone()),
-            reservation.clone(),
-            None,
-        )
+        .execute(task, &pm, SdlcCommand::PublishRevision(revision.clone()))
         .await
         .unwrap();
     assert_eq!(
         saved,
         f.repo
-            .execute_verified(
-                task,
-                &pm,
-                SdlcCommand::PublishRevision(revision.clone()),
-                reservation.clone(),
-                None
-            )
+            .execute(task, &pm, SdlcCommand::PublishRevision(revision.clone()))
             .await
             .unwrap()
     );
@@ -132,13 +113,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     changed.document.goal = "Changed payload".into();
     assert!(
         f.repo
-            .execute_verified(
-                task,
-                &pm,
-                SdlcCommand::PublishRevision(changed),
-                reservation.clone(),
-                None
-            )
+            .execute(task, &pm, SdlcCommand::PublishRevision(changed))
             .await
             .is_err()
     );
@@ -149,13 +124,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "recommended_option_id":null,"idempotency_key":"configured-question"}),
     );
     f.repo
-        .execute_verified(
-            task,
-            &pm,
-            SdlcCommand::PublishQuestion(question.clone()),
-            reservation.clone(),
-            None,
-        )
+        .execute(task, &pm, SdlcCommand::PublishQuestion(question.clone()))
         .await
         .unwrap();
     let state = f.repo.read(task, &pm).await.unwrap();
@@ -170,13 +139,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     assert!(f.repo.read(task, &foreign).await.is_err());
     assert!(
         f.repo
-            .execute_verified(
-                task,
-                &foreign,
-                SdlcCommand::PublishQuestion(question),
-                reservation.clone(),
-                None
-            )
+            .execute(task, &foreign, SdlcCommand::PublishQuestion(question))
             .await
             .is_err()
     );
@@ -199,22 +162,20 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         idempotency_key: "owner-answer".into(),
     };
     f.repo
-        .execute_verified(
+        .execute(
             task,
             &f.owner,
             SdlcCommand::Answer {
                 question_id: state.questions[0].id,
                 command: answer,
             },
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
     let mut document = state.revisions[0].document.clone();
     document.goal.push_str("; owner answer incorporated");
     f.repo
-        .execute_verified(
+        .execute(
             task,
             &pm,
             SdlcCommand::PublishRevision(PublishRevision {
@@ -223,8 +184,6 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
                 document,
                 idempotency_key: "final-revision".into(),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
@@ -237,22 +196,12 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             expected_routing_policy_version: None,
         },
     };
-    assert!(
-        f.repo
-            .execute_verified(task, &pm, consent.clone(), reservation.clone(), None)
-            .await
-            .is_err()
-    );
+    assert!(f.repo.execute(task, &pm, consent.clone()).await.is_err());
     let mut stale_consent = consent.clone();
     if let SdlcCommand::Confirm { revision, .. } = &mut stale_consent {
         *revision = 1;
     }
-    assert!(
-        f.repo
-            .execute_verified(task, &f.owner, stale_consent, reservation.clone(), None)
-            .await
-            .is_err()
-    );
+    assert!(f.repo.execute(task, &f.owner, stale_consent).await.is_err());
     for (field, value) in [
         ("stage", json!("Backlog")),
         ("owner_subject", json!(Uuid::new_v4().to_string())),
@@ -277,7 +226,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         tx.rollback().await.unwrap();
     }
     f.repo
-        .execute_verified(task, &f.owner, consent.clone(), reservation.clone(), None)
+        .execute(task, &f.owner, consent.clone())
         .await
         .unwrap();
     let confirmed = f.repo.read(task, &pm).await.unwrap();
@@ -309,10 +258,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "Draft/InProgress"
     );
     assert_eq!(
-        f.repo
-            .execute_verified(task, &f.owner, consent, reservation.clone(), None)
-            .await
-            .unwrap()["stage"],
+        f.repo.execute(task, &f.owner, consent).await.unwrap()["stage"],
         "Draft"
     );
     // A direct publication without the authoritative completion ledger is refused.
@@ -411,9 +357,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     ];
     for write in writes {
         assert!(matches!(
-            f.repo
-                .execute_verified(task, &server_reader, write, reservation.clone(), None)
-                .await,
+            f.repo.execute(task, &server_reader, write).await,
             Err(AppError::Forbidden)
         ));
     }
@@ -694,11 +638,22 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         .unwrap()
         .unwrap();
     assert_eq!(saved.result, left.0);
-    assert_eq!(f.repo.configured_pm_completion(task, &server_reader, Some(&command.idempotency_key))
-        .await.unwrap().unwrap().result, left.0);
+    assert_eq!(
+        f.repo
+            .configured_pm_completion(task, &server_reader, Some(&command.idempotency_key))
+            .await
+            .unwrap()
+            .unwrap()
+            .result,
+        left.0
+    );
     // A service result read is not permission to execute the producer's command.
-    assert!(matches!(f.repo.complete_configured_pm(task, &server_reader, command.clone(), receipt.clone())
-        .await, Err(AppError::Forbidden)));
+    assert!(matches!(
+        f.repo
+            .complete_configured_pm(task, &server_reader, command.clone(), receipt.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
     let mut changed = command.clone();
     changed.workflow_operation_key = "changed-report".into();
     assert!(

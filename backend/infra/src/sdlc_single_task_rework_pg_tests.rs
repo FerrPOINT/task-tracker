@@ -93,7 +93,7 @@ async fn complete_initial_pm(
         "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         &pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -102,8 +102,6 @@ async fn complete_initial_pm(
             document,
             idempotency_key: "rework:pm:requirements".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
@@ -113,7 +111,7 @@ async fn complete_initial_pm(
         vec![format!("task-tracker:sdlc:evidence:{task}:1")],
     );
     for check in ["check", "prerequisite"] {
-        repo.execute_verified(
+        repo.execute(
             task,
             &verifier,
             SdlcCommand::Evidence(EvidenceCommand {
@@ -124,14 +122,12 @@ async fn complete_initial_pm(
                 evidence_reference: format!("fixture://rework-readiness-{check}"),
                 idempotency_key: format!("rework:pm:evidence:{check}"),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
     }
     let confirmation = repo
-        .execute_verified(
+        .execute(
             task,
             owner,
             SdlcCommand::Confirm {
@@ -142,8 +138,6 @@ async fn complete_initial_pm(
                     expected_routing_policy_version: Some(1),
                 },
             },
-            reservation,
-            None,
         )
         .await
         .unwrap();

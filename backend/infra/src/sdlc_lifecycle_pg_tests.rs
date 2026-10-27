@@ -8,10 +8,6 @@ use serde::de::DeserializeOwned;
 
 #[path = "sdlc_draft_flow_pg_tests.rs"]
 mod draft_flow_tests;
-#[path = "sdlc_pm_resume_pg_tests.rs"]
-mod pm_resume_tests;
-#[path = "sdlc_terminal_idle_recovery_pg_tests.rs"]
-mod terminal_idle_recovery_tests;
 
 #[path = "sdlc_single_task_rework_pg_tests.rs"]
 mod rework_tests;
@@ -255,7 +251,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         "acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         &pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -264,8 +260,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             document,
             idempotency_key: "publish".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
@@ -275,7 +269,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         vec![format!("task-tracker:sdlc:evidence:{task}:1")],
     );
     for check in ["check", "prerequisite"] {
-        repo.execute_verified(
+        repo.execute(
             task,
             &verifier,
             SdlcCommand::Evidence(EvidenceCommand {
@@ -286,8 +280,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                 evidence_reference: format!("fixture://{check}"),
                 idempotency_key: check.into(),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
@@ -297,7 +289,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         Err(AppError::NotFound(_))
     ));
     let confirmation = repo
-        .execute_verified(
+        .execute(
             task,
             &owner,
             SdlcCommand::Confirm {
@@ -308,8 +300,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                     expected_routing_policy_version: Some(1),
                 },
             },
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();

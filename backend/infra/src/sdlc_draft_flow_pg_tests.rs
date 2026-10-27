@@ -439,7 +439,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         "acceptance_criteria":["Accept"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         &pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -448,8 +448,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             document: document.clone(),
             idempotency_key: "publish".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
@@ -462,8 +460,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         },
     };
     assert!(matches!(
-        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
-            .await,
+        repo.execute(task, &owner, confirm.clone()).await,
         Err(AppError::Conflict(_))
     ));
     let verifier = actor(
@@ -475,7 +472,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         )],
     );
     for check in ["check", "prerequisite"] {
-        repo.execute_verified(
+        repo.execute(
             task,
             &verifier,
             SdlcCommand::Evidence(EvidenceCommand {
@@ -486,8 +483,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
                 evidence_reference: format!("fixture://{check}"),
                 idempotency_key: check.into(),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
@@ -495,8 +490,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     let before = checkpoint_counts(&db).await;
     let before_state = serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap();
     assert!(matches!(
-        repo.execute_verified(task, &member, confirm.clone(), reservation.clone(), None)
-            .await,
+        repo.execute(task, &member, confirm.clone()).await,
         Err(AppError::Forbidden)
     ));
     for (revision, content_hash, version) in [
@@ -513,8 +507,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             },
         };
         assert!(matches!(
-            repo.execute_verified(task, &owner, wrong, reservation.clone(), None)
-                .await,
+            repo.execute(task, &owner, wrong).await,
             Err(AppError::Conflict(_))
         ));
     }
@@ -531,8 +524,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     .await
     .unwrap();
     assert!(matches!(
-        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
-            .await,
+        repo.execute(task, &owner, confirm.clone()).await,
         Err(AppError::Conflict(_))
     ));
     assert_eq!(checkpoint_counts(&db).await, before);
@@ -552,11 +544,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     db.execute_unprepared("CREATE FUNCTION fixture_flow_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
         IF NEW.event_type='requirements.confirmed' THEN RAISE EXCEPTION 'fixture outbox failure'; END IF; RETURN NEW; END $$;
         CREATE TRIGGER fixture_flow_fail_outbox BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION fixture_flow_fail_outbox();").await.unwrap();
-    assert!(
-        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
-            .await
-            .is_err()
-    );
+    assert!(repo.execute(task, &owner, confirm.clone()).await.is_err());
     assert_eq!(checkpoint_counts(&db).await, before);
     assert_eq!(
         serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap(),
@@ -569,7 +557,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         idempotency_key: "concurrent-policy".into(),
     };
     let (accepted, policy5) = tokio::join!(
-        repo.execute_verified(task, &owner, confirm.clone(), reservation.clone(), None),
+        repo.execute(task, &owner, confirm.clone()),
         repo.set_routing_policy(project, &owner, next_policy)
     );
     let confirmation: Confirmation = parse(accepted.unwrap());
@@ -643,7 +631,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     .await
     .unwrap();
     let replay = disabled
-        .execute_verified(task, &owner, confirm.clone(), reservation.clone(), None)
+        .execute(task, &owner, confirm.clone())
         .await
         .unwrap();
     assert_eq!(replay, serde_json::to_value(&confirmation).unwrap());
@@ -683,9 +671,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         command.expected_routing_policy_version = Some(4);
     }
     assert!(matches!(
-        disabled
-            .execute_verified(task, &owner, changed, reservation, None)
-            .await,
+        disabled.execute(task, &owner, changed).await,
         Err(AppError::Conflict(_))
     ));
     assert!(
@@ -751,7 +737,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         .await
         .unwrap();
     disabled
-        .execute_verified(
+        .execute(
             legacy_task,
             &old_actor,
             SdlcCommand::PublishRevision(PublishRevision {
@@ -760,8 +746,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
                 document,
                 idempotency_key: "legacy-publish".into(),
             }),
-            old_pm.clone(),
-            None,
         )
         .await
         .unwrap();
@@ -775,7 +759,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     );
     for check in ["check", "prerequisite"] {
         disabled
-            .execute_verified(
+            .execute(
                 legacy_task,
                 &old_verifier,
                 SdlcCommand::Evidence(EvidenceCommand {
@@ -786,15 +770,13 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
                     evidence_reference: format!("fixture://legacy-{check}"),
                     idempotency_key: check.into(),
                 }),
-                old_pm.clone(),
-                None,
             )
             .await
             .unwrap();
     }
     let snapshot_count = count(&db, "sdlc_task_routing_snapshots").await;
     disabled
-        .execute_verified(
+        .execute(
             legacy_task,
             &owner,
             SdlcCommand::Confirm {
@@ -805,8 +787,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
                     expected_routing_policy_version: None,
                 },
             },
-            old_pm,
-            None,
         )
         .await
         .unwrap();

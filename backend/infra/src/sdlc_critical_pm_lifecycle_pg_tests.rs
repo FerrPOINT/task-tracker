@@ -158,12 +158,9 @@ async fn setup() -> ReviewFixture {
 }
 
 async fn command(r: &ReviewFixture, actor: &Principal, command: SdlcCommand) -> Json {
-    Box::pin(
-        r.f.repo
-            .execute_verified(r.task, actor, command, r.review.reservation.clone(), None),
-    )
-    .await
-    .unwrap()
+    Box::pin(r.f.repo.execute(r.task, actor, command))
+        .await
+        .unwrap()
 }
 
 async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation) {

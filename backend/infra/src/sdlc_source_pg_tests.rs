@@ -320,7 +320,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         "scope":["One root"],"exclusions":[],"scenarios":["Source freeze"],"acceptance_criteria":["Exact binding"],
         "constraints":[],"dependencies":[],"assumptions":[],"checklist":["source-check"],"prerequisites":["source-prerequisite"]})).unwrap();
     let content_hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         &pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -329,8 +329,6 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             document,
             idempotency_key: "source:requirements".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
@@ -342,7 +340,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
     .into_iter()
     .collect();
     for check in ["source-check", "source-prerequisite"] {
-        repo.execute_verified(
+        repo.execute(
             task,
             &verifier,
             SdlcCommand::Evidence(EvidenceCommand {
@@ -353,8 +351,6 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
                 evidence_reference: format!("fixture://{check}"),
                 idempotency_key: check.into(),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();
@@ -368,14 +364,8 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             expected_routing_policy_version: Some(1),
         },
     };
-    let confirmation = repo
-        .execute_verified(task, &owner, command.clone(), reservation.clone(), None)
-        .await
-        .unwrap();
-    let repeated = repo
-        .execute_verified(task, &owner, command, reservation, None)
-        .await
-        .unwrap();
+    let confirmation = repo.execute(task, &owner, command.clone()).await.unwrap();
+    let repeated = repo.execute(task, &owner, command).await.unwrap();
     assert_eq!(confirmation, repeated);
     assert_eq!(
         serde_json::to_value(repo.read(task, &owner).await.unwrap().assignment).unwrap(),
@@ -604,7 +594,7 @@ async fn explicit_unconfigured_draft_fixture(
     let (enrollment, confirmation) = if race {
         let (a, b) = tokio::join!(
             repo.enroll_draft_source(task, owner, command.clone()),
-            repo.execute_verified(task, owner, confirm.clone(), reservation.clone(), None)
+            repo.execute(task, owner, confirm.clone())
         );
         (a, Some(b))
     } else {
@@ -700,9 +690,7 @@ async fn explicit_unconfigured_draft_fixture(
     .await
     .unwrap();
     // If confirmation acquired the lock first it failed missing-source and rolled back, not fake-success.
-    repo.execute_verified(task, owner, confirm, reservation, None)
-        .await
-        .unwrap();
+    repo.execute(task, owner, confirm).await.unwrap();
     assert!(
         repo.enroll_draft_source(task, owner, command)
             .await
@@ -756,10 +744,7 @@ async fn assert_legacy_routed_confirmation(
     .unwrap();
     let command = prepare_enrollment_confirmation(repo, task, &reservation, &pm, &fence).await;
     let before = repo.read(task, owner).await.unwrap();
-    let saved = repo
-        .execute_verified(task, owner, command.clone(), reservation.clone(), None)
-        .await
-        .unwrap();
+    let saved = repo.execute(task, owner, command.clone()).await.unwrap();
     let snapshot = repo.task_routing_snapshot(task, owner).await.unwrap();
     assert_eq!(snapshot.policy, policy);
     assert_eq!(saved["id"], json!(snapshot.confirmation_id));
@@ -790,12 +775,7 @@ async fn assert_legacy_routed_confirmation(
     assert_eq!(inventory.try_get::<i64>("", "bindings").unwrap(), 0);
     assert_eq!(inventory.try_get::<i64>("", "snapshots").unwrap(), 1);
     assert_eq!(inventory.try_get::<i64>("", "intents").unwrap(), 0);
-    assert_eq!(
-        repo.execute_verified(task, owner, command, reservation, None)
-            .await
-            .unwrap(),
-        saved
-    );
+    assert_eq!(repo.execute(task, owner, command).await.unwrap(), saved);
     assert_eq!(
         repo.task_routing_snapshot(task, owner).await.unwrap(),
         snapshot
@@ -814,7 +794,7 @@ async fn prepare_enrollment_confirmation(
         "acceptance_criteria":["Pinned source"],"constraints":[],"dependencies":[],"assumptions":[],
         "checklist":["enrollment-check"],"prerequisites":["enrollment-prerequisite"]})).unwrap();
     let content_hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -823,8 +803,6 @@ async fn prepare_enrollment_confirmation(
             document,
             idempotency_key: "enrollment-requirements".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
@@ -836,7 +814,7 @@ async fn prepare_enrollment_confirmation(
     .into_iter()
     .collect();
     for check in ["enrollment-check", "enrollment-prerequisite"] {
-        repo.execute_verified(
+        repo.execute(
             task,
             &verifier,
             SdlcCommand::Evidence(EvidenceCommand {
@@ -847,8 +825,6 @@ async fn prepare_enrollment_confirmation(
                 evidence_reference: format!("fixture://{check}"),
                 idempotency_key: check.into(),
             }),
-            reservation.clone(),
-            None,
         )
         .await
         .unwrap();

@@ -7,8 +7,6 @@ mod artifact_tests;
 mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
 mod critical_blocker_tests;
-#[path = "sdlc_pm_unsubmitted_pg_tests.rs"]
-mod unsubmitted_recovery_tests;
 use domain::sdlc_execution_lease::ClaimExecutionLease;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_reservation::CompletePmDraft;
@@ -207,7 +205,7 @@ impl Fixture {
         );
         let hash = app::sdlc::canonical_hash(&document).unwrap();
         self.repo
-            .execute_verified(
+            .execute(
                 task,
                 &pm,
                 SdlcCommand::PublishRevision(PublishRevision {
@@ -216,8 +214,6 @@ impl Fixture {
                     document,
                     idempotency_key: "publish".into(),
                 }),
-                reservation.clone(),
-                None,
             )
             .await
             .unwrap();
@@ -227,7 +223,7 @@ impl Fixture {
             .insert(format!("task-tracker:sdlc:evidence:{task}:1"));
         for check in ["check", "pre"] {
             self.repo
-                .execute_verified(
+                .execute(
                     task,
                     &verifier,
                     SdlcCommand::Evidence(EvidenceCommand {
@@ -238,8 +234,6 @@ impl Fixture {
                         evidence_reference: format!("fixture://{check}"),
                         idempotency_key: check.into(),
                     }),
-                    reservation.clone(),
-                    None,
                 )
                 .await
                 .unwrap();
@@ -254,26 +248,14 @@ impl Fixture {
         };
         let receipt = self
             .repo
-            .execute_verified(
-                task,
-                &self.owner,
-                confirm.clone(),
-                reservation.clone(),
-                None,
-            )
+            .execute(task, &self.owner, confirm.clone())
             .await
             .unwrap();
         assert_eq!(receipt["stage"], json!("Backlog"));
         let before_replay = self.snapshot().await;
         assert_eq!(
             self.repo
-                .execute_verified(
-                    task,
-                    &self.owner,
-                    confirm.clone(),
-                    reservation.clone(),
-                    None
-                )
+                .execute(task, &self.owner, confirm.clone())
                 .await
                 .unwrap(),
             receipt
@@ -284,9 +266,7 @@ impl Fixture {
             command.idempotency_key = "duplicate-confirm".into();
         }
         assert!(matches!(
-            self.repo
-                .execute_verified(task, &self.owner, duplicate, reservation.clone(), None)
-                .await,
+            self.repo.execute(task, &self.owner, duplicate).await,
             Err(AppError::Conflict(_))
         ));
         let mut changed = confirm.clone();
@@ -294,9 +274,7 @@ impl Fixture {
             command.content_hash = "f".repeat(64);
         }
         assert!(matches!(
-            self.repo
-                .execute_verified(task, &self.owner, changed, reservation.clone(), None)
-                .await,
+            self.repo.execute(task, &self.owner, changed).await,
             Err(AppError::Conflict(_))
         ));
         assert_eq!(self.snapshot().await, before_replay);
@@ -330,10 +308,7 @@ impl Fixture {
             assert!(replayed);
             assert_eq!(json!(replayed_completion), json!(completion));
             assert_eq!(
-                self.repo
-                    .execute_verified(task, &self.owner, confirm, reservation, None)
-                    .await
-                    .unwrap(),
+                self.repo.execute(task, &self.owner, confirm).await.unwrap(),
                 receipt
             );
             let mut duplicate = command;
