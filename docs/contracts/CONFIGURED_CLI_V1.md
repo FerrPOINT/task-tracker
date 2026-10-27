@@ -1,7 +1,21 @@
 # Configured CLI V1
 
-Status: source implementation; not installed or live accepted. Focused Rust/PG
-execution and the shared Workflow receipt tuple remain integration gates.
+Recorded status (2026-10-27): Tracker backend `d5fca554` is installed as image
+`3f084e40`. Focused Rust/PG checks, forward-105 populated-history preservation
+and Rust OpenAPI/client parity passed on their recorded source revisions.
+See the [Tracker installation record](../../CHANGELOG.md#2026-10-26-configured-cli-pm--source-verified-tracker-installed).
+
+The existing PM11/FLEETQA-8 task has assisted owner-confirmed Backlog/Ready
+acceptance, including authoritative Workflow completion and exact completion
+replay, with no Analysis intent or downstream assignment. Fresh FLEETQA-9
+acceptance remains open; this is not full release or merge readiness.
+See [Fleet's recorded state](https://github.com/FerrPOINT/fleet-control/blob/39db485d1aa64f9844ecf434b7b3ad1fe90b26ef/docs/CURRENT_STATE.md#configured-cli-replacement-in-progress).
+
+The newer CLI discovery/payload help at `80f62d13` is source-qualified: all 30
+Linux CLI workflow tests passed. Its CLI-only runtime candidate is qualified,
+but the updated CLI is not yet installed or active in the retained PM runtime.
+Source qualification does not establish fresh PM acceptance.
+See the [CLI qualification record](../../CHANGELOG.md#2026-10-27-pm-publish-cli-discovery).
 
 ## Creation And Reservation
 
@@ -137,8 +151,8 @@ Closed response is `{ok:true,complete:true,receipt:{...},workflow_receipt:{refer
 The receipt includes the selectors plus tracker_task_id, request_sha256,
 owner_subject, confirmation_id, history_id, status `done`. Tracker additionally
 requires tracker_execution_id, assignment_version and machine_subject from the
-immutable Workflow enrollment. These three fields must be aligned in Fermat's
-receipt producer before integrated qualification; missing fields fail closed.
+immutable Workflow enrollment. The recorded assisted acceptance exercised this
+shared receipt tuple; missing fields still fail closed.
 The canonical hash/reference and full tuple are checked, then current assignment,
 revision/hash and real saved owner confirmation are rechecked under Tracker lock.
 No transaction spans HTTP. A completed Hermes request is not a prerequisite.
@@ -169,11 +183,11 @@ Legacy completion DTOs/readbacks remain on their original branch.
 
 ## Integration And Checks
 
-Integrator registers `m20261026_0000105_configured_cli` in both migration
-lineages, exports the Rust API and updates generated clients. The migration is
-forward-only and does not rewrite business or legacy native history.
+The installed backend includes `m20261026_0000105_configured_cli`, registered in
+both migration lineages, with the Rust API export and generated clients updated.
+The migration is forward-only and does not rewrite business or legacy native history.
 
-Prepared tests: app::sdlc_configured_cli::tests (4),
+Original focused test inventory: app::sdlc_configured_cli::tests (4),
 app::sdlc_configured_cli::completion_tests (8), CLI agent_credentials::tests (2),
 migration 105 units (3), and candidates::configured_cli_tests real owned-PG case
 (1). The latter now covers owner answers/confirmation without verifier/evidence,
@@ -191,7 +205,7 @@ Reserve after completion without data changes or queue/hold/assignment rows.
 The pure `sdlc_candidates::tests::configured_cli_pm_never_opts_in_to_downstream_discovery`
 case also refuses hypothetical downstream heads while preserving legacy eligibility.
 
-Suggested scoped commands for the integrator, after registering 105:
+Reference scoped commands (105 is registered in the installed backend):
 
 ```sh
 cargo test -p app sdlc_configured_cli::
@@ -201,4 +215,5 @@ cargo test -p infra --lib sdlc::candidates::tests::configured_cli_tests:: -- --i
 ```
 
 The PG selector requires a fresh disposable TT_CANDIDATES_TEST_DATABASE_URL
-ending `_candidates_test`. No Cargo/PG execution or installation is claimed here.
+ending `_candidates_test`. The recorded qualification above is separate from
+this status correction; no new Cargo/PG run, installation or activation was performed.
