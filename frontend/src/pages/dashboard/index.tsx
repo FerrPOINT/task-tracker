@@ -150,15 +150,15 @@ export function DashboardPage() {
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
-                          <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          <Badge tone="muted">
                             {t('board.todo')}: {project.todo_count ?? 0}
-                          </span>
-                          <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          </Badge>
+                          <Badge tone="muted">
                             {t('board.inProgress')}: {project.in_progress_count ?? 0}
-                          </span>
-                          <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          </Badge>
+                          <Badge tone="muted">
                             {t('board.done')}: {project.done_count ?? 0}
-                          </span>
+                          </Badge>
                         </div>
                       </Link>
                     </ResourceListRow>
