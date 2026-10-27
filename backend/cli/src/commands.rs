@@ -358,6 +358,57 @@ pub enum SdlcAnalysisResultCommand {
 #[derive(Subcommand)]
 pub enum SdlcQuestionCommand {
     /// Publish a clarification question JSON payload from a file or stdin
+    #[command(
+        after_long_help = r#"Read `task-tracker sdlc context --task TASK_UUID` first. Copy the current
+assignment_id, execution_id, agent_id and assignment version into fence.
+The current unconfirmed requirements revision must already exist: publish a
+working revision with `sdlc revision publish` before asking a formal question.
+Use its actual requirement_revision, not the illustrative value below.
+Generate stable request/question/option UUIDs once for this logical question.
+Use expected_question_version=null for a new question; updates use its current
+version and request_id. Repeat an uncertain operation with the same key/payload.
+The field is text, not question. Options are objects, not strings. Mode is
+single, multiple or text; text requires options=[] and no recommendation.
+For configured-cli-v1 omit checkpoint_id. Legacy mode still requires the real
+native checkpoint_id; never invent a checkpoint or copy the sample identities.
+PM cannot answer or confirm on behalf of the human owner.
+Pipe the JSON into `task-tracker sdlc question publish --task TASK_UUID --from-file -`.
+
+JSON example (configured-cli-v1):
+{
+  "fence": {
+    "assignment_id": "22222222-2222-4222-8222-222222222222",
+    "execution_id": "33333333-3333-4333-8333-333333333333",
+    "agent_id": "44444444-4444-4444-8444-444444444444",
+    "assignment_version": 1
+  },
+  "request_id": "55555555-5555-4555-8555-555555555555",
+  "question_id": "66666666-6666-4666-8666-666666666666",
+  "expected_question_version": null,
+  "requirement_revision": 1,
+  "requirement_reference": null,
+  "text": "Which audience should the first release serve?",
+  "rationale": "The audience determines the initial scope.",
+  "required": true,
+  "mode": "single",
+  "options": [
+    {
+      "id": "77777777-7777-4777-8777-777777777777",
+      "label": "Internal users",
+      "consequences": "Prioritize existing employee workflows.",
+      "is_custom": false
+    },
+    {
+      "id": "88888888-8888-4888-8888-888888888888",
+      "label": "External users",
+      "consequences": "Include public onboarding in the initial scope.",
+      "is_custom": false
+    }
+  ],
+  "recommended_option_id": "77777777-7777-4777-8777-777777777777",
+  "idempotency_key": "example-question-1"
+}"#
+    )]
     Publish {
         #[arg(long)]
         task: Uuid,
@@ -369,6 +420,43 @@ pub enum SdlcQuestionCommand {
 #[derive(Subcommand)]
 pub enum SdlcRevisionCommand {
     /// Publish a requirements revision JSON payload from a file or stdin
+    #[command(
+        after_long_help = r#"Read `task-tracker sdlc context --task TASK_UUID` first and copy the current
+assignment fence. All identities and document content below are illustrative.
+For the first working revision use expected_requirement_revision=null; for an
+update use the current revision from context. Keep the same key/payload on an
+uncertain outcome. The server returns the new revision and content_hash.
+A working revision may precede formal questions. Required open questions must
+be resolved before publishing a later revision. Document checklist/prerequisites
+are business content, not fabricated infrastructure verification receipts.
+This command publishes requirements; it does not confirm them. Confirmation is
+owner-only: PM must not call revision confirm or fabricate human consent.
+Pipe the JSON into `task-tracker sdlc revision publish --task TASK_UUID --from-file -`.
+
+JSON example (configured-cli-v1):
+{
+  "fence": {
+    "assignment_id": "22222222-2222-4222-8222-222222222222",
+    "execution_id": "33333333-3333-4333-8333-333333333333",
+    "agent_id": "44444444-4444-4444-8444-444444444444",
+    "assignment_version": 1
+  },
+  "expected_requirement_revision": null,
+  "document": {
+    "goal": "Agree the first release scope with the owner.",
+    "scope": ["Identify the intended audience and primary use case."],
+    "exclusions": [],
+    "scenarios": ["The owner reviews and clarifies the proposed scope."],
+    "acceptance_criteria": ["The agreed audience and use case are explicit."],
+    "constraints": [],
+    "dependencies": [],
+    "assumptions": [],
+    "checklist": ["The scope is consistent with the stated goal."],
+    "prerequisites": ["Mandatory business questions have been answered."]
+  },
+  "idempotency_key": "example-revision-1"
+}"#
+    )]
     Publish {
         #[arg(long)]
         task: Uuid,

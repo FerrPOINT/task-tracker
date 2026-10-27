@@ -459,6 +459,74 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
     }
 }
 
+fn sdlc_help_payload(output: &std::process::Output) -> (String, Value) {
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let help = String::from_utf8(output.stdout.clone()).unwrap();
+    let (_, example) = help
+        .split_once("JSON example (configured-cli-v1):")
+        .unwrap();
+    let payload = serde_json::Deserializer::from_str(example)
+        .into_iter::<Value>()
+        .next()
+        .unwrap()
+        .unwrap();
+    (help, payload)
+}
+
+#[tokio::test]
+async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_authority() {
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "question", "publish", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let question: domain::sdlc::PublishQuestion = serde_json::from_value(payload.clone()).unwrap();
+    assert!(question.checkpoint_id.is_none());
+    assert_eq!(question.expected_question_version, None);
+    assert_eq!(question.mode, domain::sdlc::QuestionMode::Single);
+    assert_eq!(question.options.len(), 2);
+    assert_ne!(question.options[0].id, question.options[1].id);
+    assert_eq!(question.recommended_option_id, Some(question.options[0].id));
+    assert!(!question.text.is_empty());
+    assert!(help.contains("--from-file -"));
+    assert!(help.contains("current unconfirmed requirements revision must already exist"));
+    assert!(help.contains("Legacy mode still requires the real"));
+    assert!(help.contains("PM cannot answer or confirm"));
+    assert!(!help.contains("fixture-token"));
+
+    let mut wrong = payload.clone();
+    let text = wrong.as_object_mut().unwrap().remove("text").unwrap();
+    wrong["question"] = text;
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(wrong).is_err());
+    let mut wrong = payload.clone();
+    wrong["options"] = json!(["Internal users", "External users"]);
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(wrong).is_err());
+
+    let mut legacy = payload;
+    legacy["checkpoint_id"] = json!("99999999-9999-4999-8999-999999999999");
+    let legacy: domain::sdlc::PublishQuestion = serde_json::from_value(legacy).unwrap();
+    assert!(legacy.checkpoint_id.is_some());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_revision_publish_help_has_typed_working_document_without_owner_authority() {
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "revision", "publish", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let revision: domain::sdlc::PublishRevision = serde_json::from_value(payload).unwrap();
+    assert_eq!(revision.expected_requirement_revision, None);
+    app::sdlc::validate_document(&revision.document).unwrap();
+    assert!(help.contains("--from-file -"));
+    assert!(help.contains("current revision from context"));
+    assert!(help.contains("PM must not call revision confirm"));
+    assert!(!help.contains("fixture-token"));
+    assert!(server.requests().is_empty());
+}
+
 #[tokio::test]
 async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
