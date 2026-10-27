@@ -23,7 +23,11 @@
 - Live: the same PM saved revisions1/2 and one answered question through CLI.
   The user separately confirmed revision2/hash, retained by Tracker in Draft.
   Actual final evaluation exposed a Workflow future-effect dependency, not a
-  missing Tracker permission. Backlog/Ready remains pending that Workflow fix.
+  missing Tracker permission. After that Workflow correction, PM itself submitted
+  completion01a17d1c at11:26 UTC and read back Backlog/Ready. Exact CLI replay
+  preserves its ID/time/hash; task-scoped counts remain one task, one completion,
+  zero Analysis intents and zero delivery assignments. UI reload retains the
+  result. This is assisted existing-task acceptance, not full release readiness.
   New CLI help is published source, not installed into the retained PM container.
 
 ## 2026-10-26: Configured CLI PM — Source Verified, Tracker Installed
