@@ -1,3 +1,4 @@
+import { ContentSection } from '@pdlc/ui/ui'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -425,51 +426,53 @@ export function NotificationsPage() {
                     />
                   ))}
                 </Fieldset>
-                <div className="space-y-2 border-t border-border pt-4">
-                  {(updateSettings.isPending ||
-                    updateSettings.isSuccess ||
-                    updateSettings.isError) && (
-                    <Notice
-                      role="status"
-                      aria-live="polite"
-                      appearance="inline"
-                      tone={
-                        updateSettings.isError
-                          ? 'danger'
-                          : updateSettings.isSuccess
-                            ? 'success'
-                            : 'neutral'
-                      }
-                    >
-                      {updateSettings.isPending && <span>{t('common.saving')}</span>}
-                      {updateSettings.isSuccess && <span>{t('common.saved')}</span>}
-                      {updateSettings.isError && (
-                        <span>{t('notifications.settingsSaveError')}</span>
-                      )}
-                    </Notice>
-                  )}
-                  <ActionGroup align="end">
-                    <Button
-                      type="button"
-                      variant="ghost"
+                <ContentSection asChild dividers="start">
+                  <div className="space-y-2">
+                    {(updateSettings.isPending ||
+                      updateSettings.isSuccess ||
+                      updateSettings.isError) && (
+                      <Notice
+                        role="status"
+                        aria-live="polite"
+                        appearance="inline"
+                        tone={
+                          updateSettings.isError
+                            ? 'danger'
+                            : updateSettings.isSuccess
+                              ? 'success'
+                              : 'neutral'
+                        }
+                      >
+                        {updateSettings.isPending && <span>{t('common.saving')}</span>}
+                        {updateSettings.isSuccess && <span>{t('common.saved')}</span>}
+                        {updateSettings.isError && (
+                          <span>{t('notifications.settingsSaveError')}</span>
+                        )}
+                      </Notice>
+                    )}
+                    <ActionGroup align="end">
+                      <Button
+                        type="button"
+                        variant="ghost"
 
-                      disabled={!settingsDirty || updateSettings.isPending}
-                      onClick={() => {
-                        setSettingsDraft(null)
-                        updateSettings.reset()
-                      }}
-                    >
-                      {t('common.cancel')}
-                    </Button>
-                    <Button
-                      type="submit"
+                        disabled={!settingsDirty || updateSettings.isPending}
+                        onClick={() => {
+                          setSettingsDraft(null)
+                          updateSettings.reset()
+                        }}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        type="submit"
 
-                      disabled={!settingsDirty || updateSettings.isPending}
-                    >
-                      {t('common.save')}
-                    </Button>
-                  </ActionGroup>
-                </div>
+                        disabled={!settingsDirty || updateSettings.isPending}
+                      >
+                        {t('common.save')}
+                      </Button>
+                    </ActionGroup>
+                  </div>
+                </ContentSection>
               </form>
             )}
           </CardContent>

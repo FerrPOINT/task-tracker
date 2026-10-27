@@ -1,3 +1,4 @@
+import { ContentSection } from '@pdlc/ui/ui'
 import { useClipboard } from '@pdlc/ui/lib'
 import {
   ActionGroup,
@@ -250,16 +251,18 @@ export function IssueDetailPage() {
 
         <IssueDetailLayout
           description={
-            <section className="min-w-0 border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
-              <IssueDescriptionEditor
-                issue={issue}
-                disabled={updateIssue.isPending}
-                onSubmit={async (patch) => {
-                  await updateIssue.mutateAsync(patch)
-                  toast.success(t('common.saved'))
-                }}
-              />
-            </section>
+            <ContentSection asChild dividers="start">
+              <section className="min-w-0 lg:col-start-1 lg:row-start-1">
+                <IssueDescriptionEditor
+                  issue={issue}
+                  disabled={updateIssue.isPending}
+                  onSubmit={async (patch) => {
+                    await updateIssue.mutateAsync(patch)
+                    toast.success(t('common.saved'))
+                  }}
+                />
+              </section>
+            </ContentSection>
           }
           details={
             <Card>

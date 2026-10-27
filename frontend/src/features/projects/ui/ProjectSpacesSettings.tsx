@@ -1,3 +1,4 @@
+import { ContentSection } from '@pdlc/ui/ui'
 import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
 import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useLayoutEffect, useState } from 'react'
@@ -178,160 +179,163 @@ function Management({ project, session }: { project: Project; session: SpaceSess
     projection.data.revision === links.revision &&
     projection.data.confirmed
   return (
-    <section className="max-w-3xl space-y-4 border-t border-border pt-6">
-      <SectionHeader title="Связи с пространствами" />
-      <p className="text-sm text-text-muted">
-        Ревизия связей: {links.revision}. Названия недоступных пространств не запрашиваются.
-      </p>
-      {!canChange && (
-        <Notice role="status" tone="info" appearance="inline">
-          Связи доступны только для чтения: проверяются роль, активное пространство и архив проекта.
-        </Notice>
-      )}
-      {(save.isSuccess || receiptRead.isSuccess) && (
-        <Notice role="status" tone="success" appearance="inline">
-          Сохранение подтверждено. Показан текущий набор связей.
-        </Notice>
-      )}
-      {save.isError && (
-        <ErrorState
-          message={
-            save.error instanceof SpaceRequestError && save.error.status === 409
-              ? 'Набор или состояние проекта изменились. Повтор использует исходный ключ; для нового решения загрузите актуальные связи.'
-              : 'Исход изменения не подтверждён. Исходный запрос сохранён для проверки тем же ключом.'
-          }
-        />
-      )}
-      {original && (
-        <Card>
-          <CardContent density="compact" className="space-y-2">
-            <Prose asChild>
-              <p>Есть незавершённое изменение. Его набор и ключ сохранены.</p>
-            </Prose>
-            <Button
-              type="button"
-              disabled={save.isPending || receiptRead.isPending}
-              onClick={() => receiptRead.mutate(original)}
-            >
-              Проверить сохранение
-            </Button>
-            <Button
-              type="button"
-              disabled={!canChange || save.isPending || receiptRead.isPending || !catalogReady}
-              onClick={() => save.mutate(original)}
-            >
-              Повторить исходным запросом
-            </Button>
-            {receiptRead.isError && (
-              <Notice role="alert" tone="danger" appearance="inline">
-                Квитанция не подтверждена. Исход остаётся неизвестным; журнал сохранён.
-              </Notice>
-            )}
-            {save.error instanceof SpaceRequestError && save.error.status === 409 && (
+    <ContentSection asChild dividers="start">
+      <section className="max-w-3xl space-y-4">
+        <SectionHeader title="Связи с пространствами" />
+        <p className="text-sm text-text-muted">
+          Ревизия связей: {links.revision}. Названия недоступных пространств не запрашиваются.
+        </p>
+        {!canChange && (
+          <Notice role="status" tone="info" appearance="inline">
+            Связи доступны только для чтения: проверяются роль, активное пространство и архив
+            проекта.
+          </Notice>
+        )}
+        {(save.isSuccess || receiptRead.isSuccess) && (
+          <Notice role="status" tone="success" appearance="inline">
+            Сохранение подтверждено. Показан текущий набор связей.
+          </Notice>
+        )}
+        {save.isError && (
+          <ErrorState
+            message={
+              save.error instanceof SpaceRequestError && save.error.status === 409
+                ? 'Набор или состояние проекта изменились. Повтор использует исходный ключ; для нового решения загрузите актуальные связи.'
+                : 'Исход изменения не подтверждён. Исходный запрос сохранён для проверки тем же ключом.'
+            }
+          />
+        )}
+        {original && (
+          <Card>
+            <CardContent density="compact" className="space-y-2">
+              <Prose asChild>
+                <p>Есть незавершённое изменение. Его набор и ключ сохранены.</p>
+              </Prose>
               <Button
                 type="button"
-                variant="outline"
-                disabled={save.isPending}
-                onClick={() => {
-                  journal.clear()
-                  setDraft(null)
-                  save.reset()
-                  receiptRead.reset()
-                  void query.refetch()
-                }}
+                disabled={save.isPending || receiptRead.isPending}
+                onClick={() => receiptRead.mutate(original)}
               >
-                Отменить это изменение и загрузить текущие связи
+                Проверить сохранение
               </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (
-            !canChange ||
-            !catalogReady ||
-            save.isPending ||
-            query.isFetching ||
-            original ||
-            !dirty ||
-            !draft
-          )
-            return
-          const command = projectSpaceChangeSchema.parse({
-            operation_id: crypto.randomUUID(),
-            expected_revision: draft.expectedRevision,
-            spaces: draft.spaces,
-          })
-          receiptRead.reset()
-          save.mutate(journal.capture(command))
-        }}
-      >
-        <SpaceSetField
-          value={value}
-          keepNonEmpty
-          disabled={!canChange || save.isPending || Boolean(original) || query.isFetching}
-          onAvailabilityChange={setCatalogReady}
-          onChange={(spaces) => {
-            setDraft({ expectedRevision: draft?.expectedRevision ?? links.revision, spaces })
-          }}
-        />
-        <Button
-          type="submit"
-          disabled={
-            !canChange ||
-            !catalogReady ||
-            !dirty ||
-            save.isPending ||
-            Boolean(original) ||
-            query.isFetching
-          }
-        >
-          {save.isPending ? 'Сохраняем…' : 'Сохранить связи'}
-        </Button>
-        {draft && !original && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={save.isPending}
-            onClick={() => setDraft(null)}
-          >
-            Отменить правки
-          </Button>
+              <Button
+                type="button"
+                disabled={!canChange || save.isPending || receiptRead.isPending || !catalogReady}
+                onClick={() => save.mutate(original)}
+              >
+                Повторить исходным запросом
+              </Button>
+              {receiptRead.isError && (
+                <Notice role="alert" tone="danger" appearance="inline">
+                  Квитанция не подтверждена. Исход остаётся неизвестным; журнал сохранён.
+                </Notice>
+              )}
+              {save.error instanceof SpaceRequestError && save.error.status === 409 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={save.isPending}
+                  onClick={() => {
+                    journal.clear()
+                    setDraft(null)
+                    save.reset()
+                    receiptRead.reset()
+                    void query.refetch()
+                  }}
+                >
+                  Отменить это изменение и загрузить текущие связи
+                </Button>
+              )}
+            </CardContent>
+          </Card>
         )}
-      </form>
-      <Card>
-        <CardContent density="compact" className="space-y-2">
-          <Notice
-            role="status"
-            tone={projectionConfirmed ? 'success' : projection.isError ? 'warning' : 'info'}
-            appearance="inline"
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (
+              !canChange ||
+              !catalogReady ||
+              save.isPending ||
+              query.isFetching ||
+              original ||
+              !dirty ||
+              !draft
+            )
+              return
+            const command = projectSpaceChangeSchema.parse({
+              operation_id: crypto.randomUUID(),
+              expected_revision: draft.expectedRevision,
+              spaces: draft.spaces,
+            })
+            receiptRead.reset()
+            save.mutate(journal.capture(command))
+          }}
+        >
+          <SpaceSetField
+            value={value}
+            keepNonEmpty
+            disabled={!canChange || save.isPending || Boolean(original) || query.isFetching}
+            onAvailabilityChange={setCatalogReady}
+            onChange={(spaces) => {
+              setDraft({ expectedRevision: draft?.expectedRevision ?? links.revision, spaces })
+            }}
+          />
+          <Button
+            type="submit"
+            disabled={
+              !canChange ||
+              !catalogReady ||
+              !dirty ||
+              save.isPending ||
+              Boolean(original) ||
+              query.isFetching
+            }
           >
-            {projectionConfirmed
-              ? 'Wiki подтвердила текущие связи.'
-              : projection.isError
-                ? 'Не удалось проверить подтверждение Wiki.'
-                : 'Ожидаем подтверждение текущих связей в Wiki.'}
-          </Notice>
-          {!projectionConfirmed && (
+            {save.isPending ? 'Сохраняем…' : 'Сохранить связи'}
+          </Button>
+          {draft && !original && (
             <Button
               type="button"
               variant="outline"
-              disabled={reconcile.isPending || !canChange}
-              onClick={() => reconcile.mutate()}
+              disabled={save.isPending}
+              onClick={() => setDraft(null)}
             >
-              Проверить синхронизацию
+              Отменить правки
             </Button>
           )}
-          {reconcile.isError && (
-            <Notice role="alert" tone="danger" appearance="inline">
-              Синхронизация не подтверждена. Связи и исходная операция сохранены.
+        </form>
+        <Card>
+          <CardContent density="compact" className="space-y-2">
+            <Notice
+              role="status"
+              tone={projectionConfirmed ? 'success' : projection.isError ? 'warning' : 'info'}
+              appearance="inline"
+            >
+              {projectionConfirmed
+                ? 'Wiki подтвердила текущие связи.'
+                : projection.isError
+                  ? 'Не удалось проверить подтверждение Wiki.'
+                  : 'Ожидаем подтверждение текущих связей в Wiki.'}
             </Notice>
-          )}
-        </CardContent>
-      </Card>
-    </section>
+            {!projectionConfirmed && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reconcile.isPending || !canChange}
+                onClick={() => reconcile.mutate()}
+              >
+                Проверить синхронизацию
+              </Button>
+            )}
+            {reconcile.isError && (
+              <Notice role="alert" tone="danger" appearance="inline">
+                Синхронизация не подтверждена. Связи и исходная операция сохранены.
+              </Notice>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+    </ContentSection>
   )
 }
