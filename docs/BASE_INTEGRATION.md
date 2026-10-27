@@ -291,3 +291,23 @@ IAB evidence относится к фактическим Base/CatalogProviders 
 ширинах; сохранены preview ready/error и черновик. Это не приёмка установленного
 продукта или Auth/API. Интеграционный gate, hosted CI и публикация остаются
 отдельными стадиями. Runtime не менялся.
+
+## Общая responsive-подписка UI 0.3.13 — 2026-10-27
+
+Точный UI producer `83c961379b25379e8c83ebc207eec60cfb4ebbef` принят независимо от SDK/skills.
+IssueDetailLayout использует useMediaQuery вместо локальных getDesktopLayout/subscribeDesktopLayout. Query 1024 px, grid, sticky aside, порядок слотов, запросы и формы сохранены. 62 shell/issue tests прошли, включая сохранение несохранённого ввода при переходе через breakpoint.
+
+Новый hook доступен через `@pdlc/ui/lib`; query задаёт владелец. Необязательный
+callback выполняется до React layout update только на browser event, сохраняя
+перенос focus из исчезающего control. Mount/query changes не запускают действие.
+SSR/отсутствующий matchMedia дают false. Контракт, cleanup и standalone example
+доступны через `pdlc-ui show useMediaQuery` и `pdlc-ui example useMediaQuery`.
+
+Архив 907 файлов, offline CLI, шесть frozen refresh, React singleton и сравнение
+установленных production bytes прошли. Lockfiles после подготовки не менялись;
+backend, SDK/skills pins и установленный runtime не изменялись.
+IAB source proof: 27 Tracker viewport transitions, 30 shell/drawer checks и
+12 recovery cases в трёх темах. Ширина менялась без reload; ввод, focus и journal
+сохранены. Это source-композиции, не приёмка полного authenticated приложения.
+Прежний IAB attachment gap закрыт новым успешным run; ошибки сохранены в истории.
+Полный интеграционный gate, Rust transport vectors, hosted CI и публикация отдельно.

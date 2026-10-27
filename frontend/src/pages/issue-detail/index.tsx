@@ -1,5 +1,5 @@
 import { ContentSection } from '@pdlc/ui/ui'
-import { useClipboard } from '@pdlc/ui/lib'
+import { useClipboard, useMediaQuery } from '@pdlc/ui/lib'
 import {
   ActionGroup,
   Badge,
@@ -25,7 +25,7 @@ import {
 } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 
@@ -431,21 +431,6 @@ export function IssueDetailPage() {
 
 const desktopLayoutQuery = '(min-width: 1024px)'
 
-function getDesktopLayout() {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(desktopLayoutQuery).matches
-  )
-}
-
-function subscribeDesktopLayout(onChange: () => void) {
-  if (typeof window.matchMedia !== 'function') return () => {}
-  const query = window.matchMedia(desktopLayoutQuery)
-  query.addEventListener('change', onChange)
-  return () => query.removeEventListener('change', onChange)
-}
-
 function IssueDetailLayout({
   description,
   details,
@@ -457,7 +442,7 @@ function IssueDetailLayout({
   activity: ReactNode
   supplemental: ReactNode
 }) {
-  const desktop = useSyncExternalStore(subscribeDesktopLayout, getDesktopLayout, () => false)
+  const desktop = useMediaQuery(desktopLayoutQuery)
 
   return (
     <div
