@@ -1,0 +1,659 @@
+{
+  "schema": "base-quality-product/v1",
+  "product": "task-tracker",
+  "components": {
+    "docs": [
+      "docs/**",
+      "*.md",
+      "LICENSE"
+    ],
+    "frontend": [
+      "frontend/**",
+      "openapi/**",
+      ".base-ui-revision"
+    ],
+    "backend": [
+      "backend/api/**",
+      "backend/app/**",
+      "backend/domain/**",
+      "backend/infra/**",
+      "backend/shared/**",
+      "backend/server/**",
+      "backend/migration/**",
+      "backend/migrations/**",
+      "backend/Cargo.*",
+      "backend/Dockerfile*",
+      "rust-toolchain*",
+      ".base-revision",
+      ".namespace-base-revision",
+      "openapi/**"
+    ],
+    "tooling": [
+      "scripts/tests/**",
+      "scripts/vendor/**",
+      ".quality-tooling-revision",
+      ".quality-gate.json",
+      "scripts/select_ci.py",
+      "scripts/build.py",
+      "scripts/classify_ci_changes.py",
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml",
+      "justfile",
+      ".github/workflows/qualification.yml"
+    ],
+    "cli": [
+      "backend/cli/**"
+    ]
+  },
+  "gates": [
+    {
+      "id": "tooling:quality-routes",
+      "component": "tooling",
+      "profiles": [
+        "fast",
+        "unit",
+        "build",
+        "integrated",
+        "release"
+      ],
+      "test_tier": "unit",
+      "execution_slot": "none",
+      "cacheable": false,
+      "argv": [
+        "{python}",
+        "-B",
+        "-m",
+        "unittest",
+        "scripts.tests.test_quality_routes",
+        "scripts.tests.test_ci_contract_checks",
+        "scripts.tests.test_build_pin",
+        "scripts.tests.test_verify_readme",
+        "scripts.tests.test_dockerfile_budget",
+        "-q"
+      ],
+      "inputs": [
+        "scripts/**",
+        ".quality-gate.json",
+        ".quality-tooling-revision",
+        ".github/**",
+        "frontend/package.json"
+      ]
+    },
+    {
+      "id": "docs:readme",
+      "component": "docs",
+      "profiles": [
+        "fast",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "{python}",
+        "-B",
+        "scripts/verify_readme.py"
+      ],
+      "cwd": ".",
+      "inputs": [
+        "**"
+      ],
+      "cacheable": true,
+      "test_tier": "static",
+      "execution_slot": "none"
+    },
+    {
+      "id": "frontend:types",
+      "component": "frontend",
+      "profiles": [
+        "fast",
+        "integrated",
+        "build",
+        "release"
+      ],
+      "argv": [
+        "pnpm",
+        "exec",
+        "tsc",
+        "--noEmit"
+      ],
+      "cwd": "frontend",
+      "inputs": [
+        "frontend/**",
+        "openapi/**",
+        ".base-ui-revision",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "tools": [
+        {
+          "argv": [
+            "node",
+            "--version"
+          ],
+          "pattern": "^v22\\.20\\.0\\s*$"
+        },
+        {
+          "argv": [
+            "pnpm",
+            "--version"
+          ],
+          "pattern": "^10\\.28\\.1\\s*$"
+        }
+      ],
+      "prepare_frontend": "22.20.0",
+      "test_tier": "static"
+    },
+    {
+      "id": "frontend:tests",
+      "component": "frontend",
+      "profiles": [
+        "fast",
+        "integrated",
+        "release",
+        "unit",
+        "build"
+      ],
+      "argv": [
+        "pnpm",
+        "test:unit"
+      ],
+      "cwd": "frontend",
+      "inputs": [
+        "frontend/**",
+        "openapi/**",
+        ".base-ui-revision",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "tools": [
+        {
+          "argv": [
+            "node",
+            "--version"
+          ],
+          "pattern": "^v22\\.20\\.0\\s*$"
+        },
+        {
+          "argv": [
+            "pnpm",
+            "--version"
+          ],
+          "pattern": "^10\\.28\\.1\\s*$"
+        }
+      ],
+      "prepare_frontend": "22.20.0",
+      "test_tier": "unit"
+    },
+    {
+      "id": "frontend:lint",
+      "component": "frontend",
+      "profiles": [
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "pnpm",
+        "lint"
+      ],
+      "cwd": "frontend",
+      "inputs": [
+        "frontend/**",
+        "openapi/**",
+        ".base-ui-revision",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "tools": [
+        {
+          "argv": [
+            "node",
+            "--version"
+          ],
+          "pattern": "^v22\\.20\\.0\\s*$"
+        },
+        {
+          "argv": [
+            "pnpm",
+            "--version"
+          ],
+          "pattern": "^10\\.28\\.1\\s*$"
+        }
+      ],
+      "prepare_frontend": "22.20.0",
+      "test_tier": "static"
+    },
+    {
+      "id": "backend:unit",
+      "component": "backend",
+      "profiles": [
+        "fast",
+        "release",
+        "unit",
+        "build"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "domain",
+        "--lib"
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "**"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".base-revision",
+      "test_tier": "unit"
+    },
+    {
+      "id": "backend:quality",
+      "component": "backend",
+      "profiles": [
+        "integration",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        "cargo fmt --all -- --check; cargo clippy --locked --workspace --all-targets -- -D warnings; cargo test --locked --workspace -- --test-threads=1"
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "**"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "external_state": true,
+      "requires_env": [
+        "WIKI_TEST_DATABASE_URL"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".base-revision",
+      "test_tier": "integration"
+    },
+    {
+      "id": "cli:format",
+      "component": "cli",
+      "profiles": [
+        "fast",
+        "unit",
+        "build"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "cli/src/main.rs"
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "backend/cli/src/**"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".base-revision",
+      "test_tier": "static"
+    },
+    {
+      "id": "frontend:build",
+      "component": "frontend",
+      "profiles": [
+        "build"
+      ],
+      "argv": [
+        "pnpm",
+        "exec",
+        "vite",
+        "build"
+      ],
+      "cwd": "frontend",
+      "inputs": [
+        "frontend/**",
+        "openapi/**",
+        ".base-ui-revision",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "tools": [
+        {
+          "argv": [
+            "node",
+            "--version"
+          ],
+          "pattern": "^v22\\.20\\.0\\s*$"
+        },
+        {
+          "argv": [
+            "pnpm",
+            "--version"
+          ],
+          "pattern": "^10\\.28\\.1\\s*$"
+        }
+      ],
+      "prepare_frontend": "22.20.0",
+      "outputs": [
+        "frontend/dist"
+      ],
+      "environment_inputs": [
+        "VITE_*",
+        "NODE_*",
+        "BROWSERSLIST*",
+        "npm_*",
+        "NPM_*",
+        "PNPM_*",
+        "SOURCE_DATE_EPOCH",
+        "HOME",
+        "USERPROFILE",
+        "TMPDIR",
+        "TEMP",
+        "TMP"
+      ],
+      "kind": "artifact",
+      "exclude_inputs": [
+        "frontend/src/**/*.test.ts",
+        "frontend/src/**/*.test.tsx",
+        "frontend/src/**/*.spec.ts",
+        "frontend/src/**/*.spec.tsx",
+        "frontend/src/**/*.test.mjs",
+        "frontend/src/**/*.test.cjs",
+        "frontend/src/*.test.ts",
+        "frontend/src/*.test.tsx",
+        "frontend/src/*.spec.ts",
+        "frontend/src/*.spec.tsx",
+        "frontend/src/*.test.mjs",
+        "frontend/src/*.test.cjs",
+        "frontend/src/test/**",
+        "frontend/vitest.config.ts",
+        "frontend/e2e/**",
+        "frontend/scripts/tailwind-source-inputs.test.mjs",
+        "frontend/Dockerfile*",
+        "frontend/nginx.conf"
+      ],
+      "test_tier": "artifact"
+    },
+    {
+      "id": "backend:build",
+      "component": "backend",
+      "profiles": [
+        "build"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        "cargo build --locked --release -p server --bin server\ntest -s \"$CARGO_TARGET_DIR/release/server\"\ntest -x \"$CARGO_TARGET_DIR/release/server\"\ncp -- \"$CARGO_TARGET_DIR/release/server\" \"$BASE_QUALITY_ARTIFACTS/server\""
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "backend/server/**",
+        "backend/api/**",
+        "backend/app/**",
+        "backend/domain/**",
+        "backend/infra/**",
+        "backend/shared/**",
+        "backend/migration/**",
+        "backend/migrations/**",
+        "backend/Cargo.*",
+        ".base-revision",
+        ".namespace-base-revision",
+        "rust-toolchain*",
+        ".cargo/**",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".base-revision",
+      "kind": "artifact",
+      "artifact_outputs": [
+        "server"
+      ],
+      "artifact_toolchain": "pinned-image",
+      "environment_inputs": [
+        "CARGO_*",
+        "RUST*",
+        "CC",
+        "CC_*",
+        "CFLAGS",
+        "CFLAGS_*",
+        "CXX",
+        "CXX_*",
+        "CXXFLAGS",
+        "AR",
+        "AR_*",
+        "RANLIB",
+        "LD",
+        "LD_*",
+        "LDFLAGS",
+        "PKG_CONFIG*",
+        "OPENSSL*",
+        "LIBSSL*",
+        "SQLX_*",
+        "SQLITE*",
+        "LIBSQLITE*",
+        "VCPKG*",
+        "BINDGEN*",
+        "LIBCLANG*",
+        "ZSTD*",
+        "CMAKE*",
+        "SOURCE_DATE_EPOCH",
+        "HOME",
+        "LIBRARY_PATH",
+        "LD_LIBRARY_PATH",
+        "CPATH",
+        "C_INCLUDE_PATH",
+        "CPLUS_INCLUDE_PATH"
+      ],
+      "test_tier": "artifact",
+      "exclude_inputs": [
+        "backend/**/tests/**"
+      ]
+    },
+    {
+      "id": "cli:build",
+      "component": "cli",
+      "profiles": [
+        "build"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        "cargo build --locked --release -p task-tracker-cli --bin task-tracker\ntest -s \"$CARGO_TARGET_DIR/release/task-tracker\"\ncp -- \"$CARGO_TARGET_DIR/release/task-tracker\" \"$BASE_QUALITY_ARTIFACTS/task-tracker\""
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "backend/cli/**",
+        "backend/Cargo.*",
+        ".base-revision",
+        ".namespace-base-revision",
+        "rust-toolchain*",
+        ".cargo/**",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".base-revision",
+      "kind": "artifact",
+      "artifact_outputs": [
+        "task-tracker"
+      ],
+      "artifact_toolchain": "pinned-image",
+      "environment_inputs": [
+        "CARGO_*",
+        "RUST*",
+        "CC",
+        "CC_*",
+        "CFLAGS",
+        "CFLAGS_*",
+        "CXX",
+        "CXX_*",
+        "CXXFLAGS",
+        "AR",
+        "AR_*",
+        "RANLIB",
+        "LD",
+        "LD_*",
+        "LDFLAGS",
+        "PKG_CONFIG*",
+        "OPENSSL*",
+        "LIBSSL*",
+        "SQLX_*",
+        "SQLITE*",
+        "LIBSQLITE*",
+        "VCPKG*",
+        "BINDGEN*",
+        "LIBCLANG*",
+        "ZSTD*",
+        "CMAKE*",
+        "SOURCE_DATE_EPOCH",
+        "HOME",
+        "LIBRARY_PATH",
+        "LD_LIBRARY_PATH",
+        "CPATH",
+        "C_INCLUDE_PATH",
+        "CPLUS_INCLUDE_PATH"
+      ],
+      "test_tier": "artifact",
+      "exclude_inputs": [
+        "backend/**/tests/**"
+      ]
+    }
+  ],
+  "additional_acceptance": "Manual release preserves previous http_only, PostgreSQL/ignored migrations and namespace, MSRV, packed UI/themes/security/data/live obligations; native peer qualification remains open.",
+  "frontend_generated": [
+    "src/api/generated.ts"
+  ],
+  "frontend_unit_inputs": [
+    "frontend/src/**/*.test.ts",
+    "frontend/src/**/*.test.tsx",
+    "frontend/src/**/*.spec.ts",
+    "frontend/src/**/*.spec.tsx",
+    "frontend/src/**/*.test.mjs",
+    "frontend/src/**/*.test.cjs",
+    "frontend/src/*.test.ts",
+    "frontend/src/*.test.tsx",
+    "frontend/src/*.spec.ts",
+    "frontend/src/*.spec.tsx",
+    "frontend/src/*.test.mjs",
+    "frontend/src/*.test.cjs",
+    "frontend/src/test/**",
+    "frontend/vitest.config.ts",
+    "frontend/scripts/tailwind-source-inputs.test.mjs"
+  ],
+  "test_policy": {
+    "automatic": [
+      "unit",
+      "static",
+      "artifact"
+    ],
+    "manual_release": [
+      "integration",
+      "slow",
+      "live"
+    ],
+    "release_required": true
+  },
+  "backend_unit_inputs": [
+    "backend/**/tests/**"
+  ],
+  "impacts": [
+    {
+      "paths": [
+        "backend/Cargo.*",
+        "rust-toolchain*",
+        ".base-revision",
+        ".namespace-base-revision"
+      ],
+      "components": [
+        "backend",
+        "cli"
+      ]
+    }
+  ],
+  "container_inputs": {
+    "backend": [
+      "backend/Dockerfile*"
+    ],
+    "frontend": [
+      "frontend/Dockerfile*",
+      "frontend/nginx.conf"
+    ]
+  }
+}

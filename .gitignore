@@ -19,3 +19,8 @@ cli/target
 frontend/src/api/generated.ts
 backend/target-cache*/
 .pnpm-store/
+
+# Local evidence/cache is not a changed application input.
+/.local/
+__pycache__/
+*.pyc

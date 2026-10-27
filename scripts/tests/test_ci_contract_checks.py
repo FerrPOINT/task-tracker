@@ -12,6 +12,17 @@ WORKFLOW = ROOT / ".github/workflows/ci.yml"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_full_release_delegates_to_the_original_manual_http_capable_cohort(self) -> None:
+        release = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        qualification = (ROOT / '.github/workflows/qualification.yml').read_text(encoding='utf-8')
+        self.assertIn('uses: ./.github/workflows/qualification.yml', release)
+        self.assertIn('http_only: false', release)
+        self.assertNotIn('concurrency:', release)
+        self.assertIn('workflow_call:', qualification)
+        self.assertIn('workflow_dispatch:', qualification)
+        self.assertIn('http_only:', qualification)
+        self.assertIn('concurrency:', qualification)
+
     def test_frontend_uses_ui_pin_and_backend_retains_sdk_pin(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], 1)[0]
@@ -22,7 +33,7 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn("pin=.namespace-base-revision", backend)
 
     def test_deleted_key_restore_uses_dedicated_postgres_database(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/qualification.yml").read_text(encoding="utf-8")
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
         self.assertIn("image: postgres:17.6-alpine", backend)
         self.assertIn("POSTGRES_DB: tasktracker_infra_test", backend)
@@ -36,8 +47,9 @@ class CiContractChecksTest(unittest.TestCase):
         )
         self.assertIn("cargo test --locked --workspace -- --test-threads=1", backend)
 
+
     def test_backend_explicitly_runs_disposable_postgres_sdlc_tests(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/qualification.yml").read_text(encoding="utf-8")
         backend_job = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
         self.assertIn("image: postgres:17.6", backend_job)
         self.assertIn("TT_SDLC_DRAFT_TEST_DATABASE_URL:", backend_job)
@@ -50,6 +62,7 @@ class CiContractChecksTest(unittest.TestCase):
                 backend_job,
             )
 
+
     def test_frontend_job_checks_openapi_backward_compatibility(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend_job = workflow.split("\n  frontend:\n", 1)[1]
@@ -59,7 +72,7 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn("pnpm format:check", frontend_job)
 
     def test_populated_upgrade_runs_exactly_one_ignored_test_in_fresh_database(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/qualification.yml").read_text(encoding="utf-8")
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
         self.assertIn("createdb -U tasktracker tracker_upgrade_draft_flow_test", backend)
         self.assertIn(
@@ -71,6 +84,7 @@ class CiContractChecksTest(unittest.TestCase):
             backend,
         )
         self.assertIn("test result: ok. 1 passed; 0 failed; 0 ignored;", backend)
+
 
 
 if __name__ == "__main__":

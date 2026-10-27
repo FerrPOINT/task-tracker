@@ -41,12 +41,21 @@
 - Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - Один коммит = одна логическая единица.
 - Не amend/squash без явного запроса.
-- Push только после проверки `cargo test`, `pnpm typecheck`, `pnpm test`.
+- Push после релевантных scoped unit/static проверок; полный/manual gate относится
+  к согласованной вехе. Его статус указывать отдельно, не заменяя зелёным unit.
 
 ### 4. Тестирование
 
-- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
-- Frontend: Vitest + Playwright.
+- Перед build/test/install читать Base `docs/BUILD_PERFORMANCE.md` и `docs/TESTING.md`
+  принятого quality tooling. Команды и manual исключения — [TESTING](docs/TESTING.md#быстрая-разработка-и-ручная-квалификация).
+- `.quality-gate.json` выбирает изменившиеся server/CLI/frontend. Docs/test-only
+  сохраняют production artifact при неизменных inputs. Неизвестный путь расширяет
+  проверки продукта; перед повторным heavy назвать changed inputs/missing evidence.
+- Сначала проверить artifact/environment/cache reuse, затем admission и повторную
+  проверку после очереди. Не чистить полезный cache вместо диагностики.
+- Quick Rust unit — domain --lib; CLI rustfmt — static, не доказательство CLI unit.
+  Frontend unit/typecheck выполняются до compile. PostgreSQL, HTTP CLI, integration/
+  slow, migrations, Playwright и полный release выполняются вручную отдельно.
 - После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
 - Все новые endpoint — curl-проверка.
 
@@ -65,17 +74,21 @@
 
 ### 7. Docker
 
-- Сборка: `docker compose build`.
+- Сборка конкретного контейнера: `python scripts/build.py backend` либо `frontend`.
+  Без аргументов — изменённые container producers; `--all` — намеренно оба.
+  CLI — отдельный binary producer через Root. На Windows raw heavy вызовы требуют
+  общего Base execution slot; owning Root command повторно не оборачивать.
+  Mixed SDK/UI pins требуют qualified multi-pin route, а не переписывания pins.
 - Пересоздание контейнера: `docker compose up -d` (не `docker compose restart`).
 - Проверка: `docker compose ps` и health endpoint.
 
 ### 8. Проверка перед завершением
 
-- [x] Все тесты проходят.
-- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
-- [x] Документация актуальна.
-- [x] Коммиты запушены в `origin/main`.
-- [x] Пользователь увидел результат (скриншот / curl / лог).
+- [ ] Затронутые unit/static проходят; manual/security/data/live статус указан отдельно.
+- [ ] Затронутые линтеры (`clippy`, `eslint`, `prettier`) чистые.
+- [ ] Документация актуальна.
+- [ ] Коммиты опубликованы, если публикация входит в поручение.
+- [ ] Для изменённого поведения собраны соответствующие source/runtime доказательства.
 
 ## Контакты
 

@@ -31,16 +31,18 @@ class DockerfileBudgetTests(unittest.TestCase):
             self.recipe,
         )
         self.assertIn(
-            "--mount=type=cache,id=task-tracker-cargo-target-rust-1.88,"
-            "target=/cargo-target,sharing=locked",
+            "--mount=type=cache,id=task-tracker-cargo-git-rust-1.88,"
+            "target=/usr/local/cargo/git,sharing=shared",
             self.recipe,
         )
         self.assertIn(
-            "CARGO_TARGET_DIR=/cargo-target cargo build --locked --release --bin server",
+            "CARGO_TARGET_DIR=/cargo-target cargo build --locked --release -p server --bin server",
             self.recipe,
         )
         self.assertNotIn("--jobs", self.recipe)
         self.assertNotIn(" -j", self.recipe)
+        self.assertNotIn('target=/cargo-target,sharing=', self.recipe)
+        self.assertIn('CARGO_TARGET_DIR=/cargo-target cargo test --locked --release -p domain --lib', self.recipe)
 
     def test_declared_server_target_matches_install_copy_and_runtime_command(self):
         manifest = tomllib.loads(
