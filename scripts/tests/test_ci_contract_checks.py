@@ -58,6 +58,17 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn("pnpm openapi:compat", frontend_job)
         self.assertIn("pnpm format:check", frontend_job)
 
+    def test_configured_pm_gate_executes_both_current_authority_cases(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("unsubmitted_recovery_tests::", workflow)
+        for name in (
+            "owner_can_adopt_only_an_unstarted_draft_without_rewriting_its_creation",
+            "configured_cli_business_writes_need_current_assignment_but_no_native_lease",
+        ):
+            self.assertIn(name, workflow)
+        self.assertIn('sdlc::candidates::tests::configured_cli_tests::$case_name', workflow)
+        self.assertIn('dropdb -U tasktracker tracker_pm_candidates_test', workflow)
+
     def test_populated_upgrade_runs_exactly_one_ignored_test_in_fresh_database(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]

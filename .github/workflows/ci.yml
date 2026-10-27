@@ -130,7 +130,7 @@ jobs:
         run: cargo test --locked -p domain --lib
       - run: cargo test --locked --workspace -- --test-threads=1
         if: github.event_name == 'workflow_dispatch' && (!inputs.http_only)
-      - name: Initial PM 0097 to 0098 upgrade and expired lease recovery (isolated PostgreSQL)
+      - name: Retained schema history and configured PM authority (isolated PostgreSQL)
         if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:
           TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_pm_candidates_test
@@ -139,9 +139,12 @@ jobs:
           docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_seed_contract_candidates_test
           TT_LEGACY_SCHEMA_TEST_DATABASE_URL=postgres://tasktracker@127.0.0.1:5432/tracker_seed_contract_candidates_test cargo test --locked -p infra --lib legacy_schema_fixture::tests::actual_migration_ledger_does_not_treat_current_schema_loss_as_a_predecessor -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/legacy-seed-contract.log"
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/legacy-seed-contract.log"
-          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_pm_candidates_test
-          cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
-          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
+          for case_name in owner_can_adopt_only_an_unstarted_draft_without_rewriting_its_creation configured_cli_business_writes_need_current_assignment_but_no_native_lease; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_pm_candidates_test
+            cargo test --locked -p infra --lib "sdlc::candidates::tests::configured_cli_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_pm_candidates_test
+          done
       - name: Project repository lineage and PM recovery compatibility (isolated PostgreSQL)
         if: github.event_name == 'workflow_dispatch' && (!cancelled())
         run: |
