@@ -217,6 +217,9 @@ pub enum SdlcCommand {
         command: critical_commands::CriticalBlockerCommand,
     },
     /// Read the current authoritative single-task assignment and lifecycle
+    #[command(
+        after_long_help = "This is the legacy delivery lifecycle readback, not a configured-cli-v1 PM startup prerequisite.\nFor configured PM work, read `task-tracker sdlc context --task TASK_UUID` and use its\nworkflow_task_key with `project-workflow --json step --task WORKFLOW_TASK_KEY`.\nDo not acquire a native lease, rebind or borrow another token to make this optional\nlegacy read succeed. A 403 here alone does not invalidate successful configured\ncontext/Workflow reads; authorization failures on required commands remain blockers.\nLegacy delivery callers retain this command and its existing authorization contract."
+    )]
     Lifecycle {
         #[arg(long)]
         task: Uuid,
@@ -247,6 +250,9 @@ pub enum SdlcCommand {
         command: pm_commands::PmCommand,
     },
     /// Read server-derived SDLC task context by canonical issue UUID
+    #[command(
+        after_long_help = "For interaction_protocol=configured-cli-v1, start PM work with this context read.\nUse the returned workflow_task_key (SDLC-N), not the Tracker task UUID, with\n`project-workflow --json step --task WORKFLOW_TASK_KEY` in the configured environment.\nRead the real Workflow step before work; no native lifecycle read, lease or rebind\nis required for configured PM dialogue. requirement_revision=null is expected\nbefore the first saved requirements document: continue substantive brainstorming,\nthen publish a real working revision when enough product facts are known.\npermissions.can_answer and permissions.can_confirm describe owner-only actions.\nBoth may be false for the assigned PM; they do not prohibit publishing questions\nor requirements under the current assignment. PM service identity must never\nanswer or confirm as the owner. A real 403 on publication remains a blocker.\nDo not publish a placeholder just to remove an expected absence. Missing Workflow\nbinding or denied context/Workflow access remains a blocker; never invent IDs."
+    )]
     Context {
         #[arg(long)]
         task: Uuid,
@@ -262,6 +268,9 @@ pub enum SdlcCommand {
         task: Uuid,
     },
     /// Read current requirements revision by canonical issue UUID
+    #[command(
+        after_long_help = "Read `task-tracker sdlc context --task TASK_UUID` first. For a new configured-cli-v1\nPM Draft, requirement_revision=null means no requirements document is saved yet.\nA 404 from this requirements read is expected ONLY when the successful authorized\ncontext read for the SAME task shows no first revision; it is not by itself a\ngeneral tool/configuration blocker. Continue brainstorming and publish a real\nworking revision when substantive product facts are sufficient, never a placeholder.\nIf context names a saved revision, a 404 is NOT explained by this initial absence.\nDo not ignore denied access, a missing task or other inconsistent readbacks."
+    )]
     Requirements {
         #[arg(long)]
         task: Uuid,

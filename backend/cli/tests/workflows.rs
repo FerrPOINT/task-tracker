@@ -459,6 +459,60 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
     }
 }
 
+#[tokio::test]
+async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_network() {
+    let server = Server::start(vec![]).await;
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "context",
+            &[
+                "interaction_protocol=configured-cli-v1",
+                "workflow_task_key (SDLC-N), not the Tracker task UUID",
+                "project-workflow --json step --task WORKFLOW_TASK_KEY",
+                "requirement_revision=null is expected",
+                "permissions.can_answer and permissions.can_confirm describe owner-only actions",
+                "Both may be false for the assigned PM; they do not prohibit publishing questions",
+                "answer or confirm as the owner",
+                "A real 403 on publication remains a blocker",
+                "Do not publish a placeholder",
+                "denied context/Workflow access remains a blocker",
+            ],
+        ),
+        (
+            "lifecycle",
+            &[
+                "not a configured-cli-v1 PM startup prerequisite",
+                "task-tracker sdlc context --task TASK_UUID",
+                "project-workflow --json step --task WORKFLOW_TASK_KEY",
+                "Do not acquire a native lease, rebind or borrow another token",
+                "authorization failures on required commands remain blockers",
+                "Legacy delivery callers retain this command",
+            ],
+        ),
+        (
+            "requirements",
+            &[
+                "requirement_revision=null",
+                "expected ONLY when the successful authorized",
+                "context read for the SAME task shows no first revision",
+                "never a placeholder",
+                "If context names a saved revision, a 404 is NOT explained",
+                "Do not ignore denied access, a missing task",
+            ],
+        ),
+    ];
+    for &(command, expected) in cases {
+        let output = server.run(&["sdlc", command, "--help"], None).await;
+        assert!(output.status.success(), "{command}");
+        assert!(output.stderr.is_empty(), "{command}");
+        let help = String::from_utf8(output.stdout).unwrap();
+        for &text in expected {
+            assert!(help.contains(text), "{command}: missing {text:?}");
+        }
+    }
+    assert!(server.requests().is_empty());
+}
+
 fn sdlc_help_payload(output: &std::process::Output) -> (String, Value) {
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
