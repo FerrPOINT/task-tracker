@@ -491,6 +491,8 @@ async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_a
     assert!(!question.text.is_empty());
     assert!(help.contains("--from-file -"));
     assert!(help.contains("current unconfirmed requirements revision must already exist"));
+    assert!(help.contains("free-form brainstorming until enough substantive product facts"));
+    assert!(help.contains("Never publish a placeholder merely to obtain a revision"));
     assert!(help.contains("Legacy mode still requires the real"));
     assert!(help.contains("PM cannot answer or confirm"));
     assert!(!help.contains("fixture-token"));
@@ -519,9 +521,33 @@ async fn sdlc_revision_publish_help_has_typed_working_document_without_owner_aut
     let (help, payload) = sdlc_help_payload(&output);
     let revision: domain::sdlc::PublishRevision = serde_json::from_value(payload).unwrap();
     assert_eq!(revision.expected_requirement_revision, None);
-    app::sdlc::validate_document(&revision.document).unwrap();
+    let document = &revision.document;
+    app::sdlc::validate_document(document).unwrap();
+    assert!(document.goal.contains("personal browser task list"));
+    assert!(
+        document
+            .scope
+            .iter()
+            .any(|item| item.starts_with("Create a task"))
+    );
+    assert!(
+        document
+            .scope
+            .iter()
+            .any(|item| item.starts_with("Mark an existing task"))
+    );
+    assert!(
+        document
+            .acceptance_criteria
+            .iter()
+            .any(|item| item.starts_with("Reloading restores"))
+    );
     assert!(help.contains("--from-file -"));
     assert!(help.contains("current revision from context"));
+    assert!(help.contains("free-form brainstorming until enough substantive product facts"));
+    assert!(help.contains("Never publish a placeholder merely to obtain a revision"));
+    assert!(help.contains("not a PM-process document"));
+    assert!(!help.contains("Agree the first release scope with the owner"));
     assert!(help.contains("PM must not call revision confirm"));
     assert!(!help.contains("fixture-token"));
     assert!(server.requests().is_empty());

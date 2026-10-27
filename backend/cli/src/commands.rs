@@ -363,6 +363,8 @@ pub enum SdlcQuestionCommand {
 assignment_id, execution_id, agent_id and assignment version into fence.
 The current unconfirmed requirements revision must already exist: publish a
 working revision with `sdlc revision publish` before asking a formal question.
+Continue free-form brainstorming until enough substantive product facts are known.
+Never publish a placeholder merely to obtain a revision for a question.
 Use its actual requirement_revision, not the illustrative value below.
 Generate stable request/question/option UUIDs once for this logical question.
 Use expected_question_version=null for a new question; updates use its current
@@ -426,8 +428,13 @@ assignment fence. All identities and document content below are illustrative.
 For the first working revision use expected_requirement_revision=null; for an
 update use the current revision from context. Keep the same key/payload on an
 uncertain outcome. The server returns the new revision and content_hash.
-A working revision may precede formal questions. Required open questions must
-be resolved before publishing a later revision. Document checklist/prerequisites
+A working revision may precede formal questions, but must contain real product
+requirements grounded in known facts, not a PM-process document.
+Continue free-form brainstorming until enough substantive product facts are known.
+Never publish a placeholder merely to obtain a revision for a question.
+The product below is a syntax example, not a decision for your task.
+Required open questions must be resolved before publishing a later revision.
+Document checklist/prerequisites
 are business content, not fabricated infrastructure verification receipts.
 This command publishes requirements; it does not confirm them. Confirmation is
 owner-only: PM must not call revision confirm or fabricate human consent.
@@ -443,16 +450,31 @@ JSON example (configured-cli-v1):
   },
   "expected_requirement_revision": null,
   "document": {
-    "goal": "Agree the first release scope with the owner.",
-    "scope": ["Identify the intended audience and primary use case."],
+    "goal": "Keep a personal browser task list without losing tasks after reload.",
+    "scope": [
+      "Create a task with user-entered text.",
+      "Mark an existing task as completed.",
+      "Persist task text and completion state across browser reloads."
+    ],
     "exclusions": [],
-    "scenarios": ["The owner reviews and clarifies the proposed scope."],
-    "acceptance_criteria": ["The agreed audience and use case are explicit."],
+    "scenarios": [
+      "The user enters a task and sees it in the list.",
+      "The user completes one task while other tasks remain unchanged.",
+      "The user reloads the page and continues using the saved list."
+    ],
+    "acceptance_criteria": [
+      "Creating a task adds exactly one incomplete item with the entered text.",
+      "Completing a task marks that item completed without removing other items.",
+      "Reloading restores the same task texts and completion states."
+    ],
     "constraints": [],
     "dependencies": [],
     "assumptions": [],
-    "checklist": ["The scope is consistent with the stated goal."],
-    "prerequisites": ["Mandatory business questions have been answered."]
+    "checklist": [
+      "Task text remains visible after completion.",
+      "Reload preserves both incomplete and completed tasks."
+    ],
+    "prerequisites": ["The browser permits storage for this site."]
   },
   "idempotency_key": "example-revision-1"
 }"#
