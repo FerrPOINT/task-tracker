@@ -2,6 +2,16 @@
 
 ## 2026-10-27: PM Publish CLI Discovery
 
+- Fresh PM check: FLEETQA-9 independently reads Workflow but incorrectly treats
+  optional legacy lifecycle403, expected first-revision404 and human-only
+  answer/confirmation flags as publication blockers. New context/lifecycle/
+  requirements help separates those meanings without changing API errors or
+  authorization. Required context/Workflow/publication failures remain blockers;
+  PM identity still cannot confirm for the owner. Source80f62d13 is published,
+  independently reviewed; all30 Linux CLI workflow tests pass (including the new
+  discovery case) in8.48s on that exact source. Disposable Compose resources are
+  cleaned. The retained PM still has the old binary; source verification is not
+  installation or fresh PM acceptance.
 - Problem: the live PM guessed question/options JSON because nested publish help
   described flags but not the existing strict payload; Tracker correctly rejected
   it. A later empty prerequisites list was rejected, and changing an execution
