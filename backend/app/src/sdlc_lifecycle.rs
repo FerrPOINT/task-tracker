@@ -1,4 +1,4 @@
-use domain::sdlc::{MAX_SAFE_VERSION, Principal};
+use domain::sdlc::{Principal, MAX_SAFE_VERSION};
 use domain::sdlc_lifecycle::*;
 use shared::AppError;
 use uuid::Uuid;
@@ -65,24 +65,24 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError> {
+        // Exact original-key replay is a read of retained authority. It must
+        // survive a later assignment while current project access is rechecked.
+        match self
+            .lifecycle_repository()?
+            .delivery_proposal_operation(task, actor, &command.idempotency_key)
+            .await
+        {
+            Ok(_) => {
+                return self
+                    .lifecycle_repository()?
+                    .submit_delivery_proposal(task, actor, command)
+                    .await;
+            }
+            Err(AppError::NotFound(_)) => {}
+            Err(error) => return Err(error),
+        }
         let state = self.repository.read(task, actor).await?;
         if state.configured_cli() {
-            // An existing operation already carries verified immutable authority.
-            // The repository still compares its exact payload hash and current ACL.
-            match self
-                .lifecycle_repository()?
-                .delivery_proposal_operation(task, actor, &command.idempotency_key)
-                .await
-            {
-                Ok(_) => {
-                    return self
-                        .lifecycle_repository()?
-                        .submit_delivery_proposal(task, actor, command)
-                        .await;
-                }
-                Err(AppError::NotFound(_)) => {}
-                Err(error) => return Err(error),
-            }
             let lifecycle = self
                 .lifecycle_repository()?
                 .lifecycle_read(task, actor)
@@ -319,6 +319,29 @@ pub fn delivery_grant(actor: &Principal) -> Result<Option<DeliveryGrant>, AppErr
         agent_id: parts[3].parse().map_err(|_| AppError::Forbidden)?,
         fencing_token: parts[4].parse().map_err(|_| AppError::Forbidden)?,
     }))
+}
+
+/// Validate an immutable proposal against its original permanent identity, not
+/// the later active assignment. The repository separately rechecks project ACL.
+pub fn authorize_configured_proposal_receipt(
+    actor: &Principal,
+    receipt: &DeliveryProposalReceipt,
+    assignment: &DeliveryAssignment,
+    owner: &str,
+) -> Result<(), AppError> {
+    crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
+    if receipt.producer_subject != actor.subject
+        || assignment.machine_subject.as_deref() != Some(actor.subject.as_str())
+        || assignment.owner_subject != owner
+        || actor.subject == owner
+        || receipt.task_id != assignment.task_id
+        || receipt.assignment_id != assignment.assignment_id
+        || receipt.execution_id != assignment.execution_id
+        || receipt.agent_id != assignment.agent_id
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
 }
 
 pub fn authorize_delivery_assignment(

@@ -50,11 +50,9 @@ pub(super) async fn project_issue_status(
         exec(
             tx,
             "SELECT set_config('pdlc.tracker.native_issue_projection',$1,true)",
-            vec![
-                json!({"task_id":task,"status_id":status_id})
-                    .to_string()
-                    .into(),
-            ],
+            vec![json!({"task_id":task,"status_id":status_id})
+                .to_string()
+                .into()],
         )
         .await?;
     }
@@ -190,11 +188,11 @@ pub(super) async fn producer_grant(
 
 async fn authorize_proposal_grant(
     tx: &DatabaseTransaction,
-    grant: &DeliveryGrant,
+    state: &TaskState,
     receipt: &DeliveryProposalReceipt,
     actor: &Principal,
 ) -> Result<(), AppError> {
-    if receipt.producer_subject != actor.subject || receipt.task_id != grant.task_id {
+    if receipt.producer_subject != actor.subject || receipt.task_id != state.task_id {
         return Err(AppError::Forbidden);
     }
     let row = tx
@@ -208,7 +206,17 @@ async fn authorize_proposal_grant(
     let assignment: DeliveryAssignment =
         serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
             .map_err(|_| corrupt())?;
-    app::sdlc_lifecycle::authorize_delivery_assignment(grant, &assignment)
+    if state.configured_cli() {
+        app::sdlc_lifecycle::authorize_configured_proposal_receipt(
+            actor,
+            receipt,
+            &assignment,
+            &state.owner_subject,
+        )
+    } else {
+        let grant = producer_grant(tx, state, actor, false).await?;
+        app::sdlc_lifecycle::authorize_delivery_assignment(&grant, &assignment)
+    }
 }
 
 pub(super) async fn now(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
@@ -886,7 +894,12 @@ impl LifecycleRepository for PostgresSdlcRepository {
         )?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
-        let grant = producer_grant(&tx, &state, actor, true).await?;
+        if !state.configured_cli() {
+            return Err(AppError::conflict(
+                "retired execution is read-only; a configured assignment is required",
+            ));
+        }
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         let retained = tx
             .query_one(statement(
                 "SELECT payload_hash,result FROM sdlc_delivery_proposal_operations
@@ -906,10 +919,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
             let receipt: DeliveryProposalReceipt =
                 serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
                     .map_err(|_| corrupt())?;
-            authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
+            authorize_proposal_grant(&tx, &state, &receipt, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
         }
+        let grant = producer_grant(&tx, &state, actor, true).await?;
         let receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
         exact_revision(&state, &receipt)?;
         super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
@@ -1004,11 +1018,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         } else {
             None
         };
-        let grant = if server_read {
-            None
-        } else {
-            Some(producer_grant(&tx, &state, actor, false).await?)
-        };
+        if !server_read && state.configured_cli() {
+            app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        }
         let producer = server_assignment
             .as_ref()
             .map_or(&actor.subject, |assignment| &assignment.machine_subject);
@@ -1019,8 +1031,8 @@ impl LifecycleRepository for PostgresSdlcRepository {
         let receipt: DeliveryProposalReceipt =
             serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
                 .map_err(|_| corrupt())?;
-        if let Some(grant) = grant {
-            authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
+        if !server_read {
+            authorize_proposal_grant(&tx, &state, &receipt, actor).await?;
         } else if let Some(assignment) = server_assignment {
             if receipt.task_id != task
                 || receipt.agent_id != assignment.agent_id

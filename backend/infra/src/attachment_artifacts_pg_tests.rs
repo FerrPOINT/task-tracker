@@ -4,6 +4,9 @@ use super::*;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
 
+const PRODUCER: &str = "88888888-8888-4888-8888-888888888888";
+const CONSUMER: &str = "99999999-9999-4999-8999-999999999999";
+
 fn upload(bytes: &[u8], name: &str) -> ArtifactUpload {
     ArtifactUpload {
         file_name: name.into(),
@@ -29,6 +32,11 @@ async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
         .await
         .unwrap()
         .receipt;
+    let subject = match receipt.task.stage {
+        LifecycleStage::Analysis => PRODUCER,
+        LifecycleStage::Architecture => CONSUMER,
+        _ => panic!("this artifact fixture models Analyst and Architect only"),
+    };
     let (reserved, _) = f
         .repo
         .lifecycle_command(
@@ -36,7 +44,7 @@ async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: receipt.task.version,
-                machine_subject: None,
+                machine_subject: Some(subject.into()),
                 idempotency_key: format!("reserve-{key}"),
             },
         )
@@ -52,7 +60,7 @@ async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
                 binding: RunBinding {
                     chat_id: Uuid::new_v4(),
                     run_id: Uuid::new_v4(),
-                    machine_subject: "artifact-agent".into(),
+                    machine_subject: subject.into(),
                     dispatch_receipt: ArtifactReceipt {
                         reference: "fixture://synthetic-fleet-dispatch".into(),
                         sha256: "c".repeat(64),
@@ -70,15 +78,30 @@ async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime observations"]
 async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immutable() {
     let f = Fixture::new().await;
-    let agent_id = Uuid::new_v4();
-    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'artifact-agent@example.test','artifact-agent','artifact-agent','!','artifact-agent',true)",vec![agent_id.into()]).await.unwrap();
-    exec(
-        &f.db,
-        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
-        vec![f.project.into(), agent_id.into()],
-    )
-    .await
-    .unwrap();
+    let mut service_users = std::collections::HashMap::new();
+    for (index, subject) in [PRODUCER, CONSUMER].into_iter().enumerate() {
+        let user_id = Uuid::new_v4();
+        service_users.insert(subject, user_id);
+        exec(
+            &f.db,
+            "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+            VALUES($1,$2,$3,'Artifact fixture service','!',$3,true)",
+            vec![
+                user_id.into(),
+                format!("artifact-{index}@example.test").into(),
+                subject.into(),
+            ],
+        )
+        .await
+        .unwrap();
+        exec(
+            &f.db,
+            "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+            vec![f.project.into(), user_id.into()],
+        )
+        .await
+        .unwrap();
+    }
     let task = f.queued_analysis("artifact-task", true).await;
     f.repo
         .lifecycle_command(
@@ -94,13 +117,9 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     assert_eq!(bound.lease.as_ref().unwrap().holder_subject, "scheduler");
     let assignment = bound.assignment.as_ref().unwrap();
     let producer = actor(
-        "artifact-agent",
+        PRODUCER,
         false,
-        &[
-            "task-tracker:read",
-            "task-tracker:write",
-            &assignment.scope(),
-        ],
+        &["task-tracker:read", "task-tracker:write"],
     );
     let storage = domain::InMemoryStorage::default();
     let issue = shared::IssueId::from_uuid(task);
@@ -128,7 +147,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     let two = two.unwrap();
     assert_eq!(one.id, two.id);
     assert_eq!(one.created_at, two.created_at);
-    assert_eq!(one.author_id.as_uuid(), agent_id);
+    assert_eq!(one.author_id.as_uuid(), service_users[PRODUCER]);
     let seal = Seal::parse(one.storage_key.as_ref()).unwrap().unwrap();
     assert_eq!(seal.run_id, bound.binding.as_ref().unwrap().run_id);
     let (_, actual) = artifacts::download(&f.db, config, &producer, one.id, &storage)
@@ -140,23 +159,15 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         Err(AppError::Forbidden)
     ));
     let foreign = actor(
-        "foreign",
+        CONSUMER,
         false,
-        &["task-tracker:read", &assignment.scope()],
+        &["task-tracker:read", "task-tracker:write"],
     );
     assert!(matches!(
         artifacts::download(&f.db, config, &foreign, one.id, &storage).await,
         Err(AppError::Forbidden)
     ));
-    let owner_impersonation = actor(
-        "owner",
-        false,
-        &[
-            "task-tracker:read",
-            "task-tracker:write",
-            &assignment.scope(),
-        ],
-    );
+    let owner_impersonation = actor("owner", false, &["task-tracker:read", "task-tracker:write"]);
     assert!(matches!(
         artifacts::publish(
             &f.db,
@@ -169,8 +180,8 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         .await,
         Err(AppError::Forbidden)
     ));
-    let wrong_fence = actor(
-        "artifact-agent",
+    let retired_grant = actor(
+        PRODUCER,
         false,
         &[
             "task-tracker:read",
@@ -189,9 +200,9 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         artifacts::publish(
             &f.db,
             config,
-            &wrong_fence,
+            &retired_grant,
             issue,
-            upload(bytes, "wrong-fence.json"),
+            upload(bytes, "retired-grant.json"),
             &storage
         )
         .await,
@@ -238,6 +249,14 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         reference: "fixture://synthetic-workflow-terminal".into(),
         sha256: "d".repeat(64),
     };
+    crate::sdlc::configured_test_support::delivery_comment(
+        &f.repo,
+        task,
+        &producer,
+        bound.assignment.as_ref().unwrap(),
+        "artifact:final-comment",
+    )
+    .await;
     let (proposal, _) = f
         .repo
         .submit_delivery_proposal(
@@ -287,14 +306,19 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         .await
         .unwrap();
     let architect = bind(&f, task, "architect").await;
+    assert_eq!(
+        architect
+            .assignment
+            .as_ref()
+            .unwrap()
+            .machine_subject
+            .as_deref(),
+        Some(CONSUMER)
+    );
     let consumer = actor(
-        "artifact-agent",
+        CONSUMER,
         false,
-        &[
-            "task-tracker:read",
-            "task-tracker:write",
-            &architect.assignment.as_ref().unwrap().scope(),
-        ],
+        &["task-tracker:read", "task-tracker:write"],
     );
     assert_eq!(
         artifacts::download(&f.db, config, &consumer, one.id, &storage)
@@ -314,18 +338,16 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
             .len(),
         1
     );
-    assert!(
-        artifacts::publish(
-            &f.db,
-            config,
-            &producer,
-            issue,
-            upload(bytes, "analysis.json"),
-            &storage
-        )
-        .await
-        .is_err()
-    );
+    assert!(artifacts::publish(
+        &f.db,
+        config,
+        &producer,
+        issue,
+        upload(bytes, "analysis.json"),
+        &storage
+    )
+    .await
+    .is_err());
     // Actual database clock, no trigger disabling or protected ledger edits.
     f.db.execute_unprepared("SELECT pg_sleep(31)")
         .await
@@ -345,7 +367,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     exec(
         &f.db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
-        vec![f.project.into(), agent_id.into()],
+        vec![f.project.into(), service_users[CONSUMER].into()],
     )
     .await
     .unwrap();

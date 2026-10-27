@@ -172,3 +172,30 @@ pub(super) async fn complete_pm(
     assert_eq!(same, saved);
     saved
 }
+
+pub(super) async fn delivery_comment(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    actor: &Principal,
+    assignment: &domain::sdlc_lifecycle::DeliveryAssignment,
+    key: &str,
+) {
+    repo.publish_stage_comment(
+        task,
+        actor,
+        PublishStageComment {
+            fence: MachineFence {
+                assignment_id: assignment.assignment_id,
+                execution_id: assignment.execution_id,
+                agent_id: assignment.agent_id,
+                assignment_version: assignment.fencing_token,
+            },
+            body:
+                "Synthetic final role report for current assignment; work and checks are recorded"
+                    .into(),
+            idempotency_key: key.into(),
+        },
+    )
+    .await
+    .unwrap();
+}

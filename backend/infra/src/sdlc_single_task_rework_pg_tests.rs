@@ -12,6 +12,7 @@ struct ReworkFixture {
     reader: Principal,
     frozen: TaskRoutingSnapshot,
     pm_history: Json,
+    producers: std::collections::HashMap<String, Principal>,
 }
 
 struct OriginalStep {
@@ -71,11 +72,10 @@ impl ReworkFixture {
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
         let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
-        assert!(
-            row.try_get::<String>("", "name")
-                .unwrap()
-                .ends_with("_lifecycle_test")
-        );
+        assert!(row
+            .try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_lifecycle_test"));
         assert!(
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
@@ -88,7 +88,6 @@ impl ReworkFixture {
             ("pm", Uuid::new_v4()),
             ("scheduler", Uuid::new_v4()),
             ("verifier", Uuid::new_v4()),
-            ("producer", Uuid::new_v4()),
         ] {
             exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
                 vec![id.into(),format!("rework-{subject}@example.test").into(),subject.into()]).await.unwrap();
@@ -195,6 +194,20 @@ impl ReworkFixture {
                 .len(),
             1
         );
+        let mut producers = std::collections::HashMap::new();
+        for role in [
+            "analyst",
+            "architect",
+            "developer",
+            "reviewer",
+            "tester",
+            "devops",
+        ] {
+            producers.insert(
+                role.into(),
+                crate::sdlc::configured_test_support::service(&repo, project).await,
+            );
+        }
         (
             Self {
                 db,
@@ -205,6 +218,7 @@ impl ReworkFixture {
                 reader,
                 frozen,
                 pm_history,
+                producers,
             },
             queued,
         )
@@ -264,9 +278,10 @@ impl ReworkFixture {
         assert!(queued.lease.is_none());
         assert!(queued.binding.is_none());
         self.assert_current(queued).await;
+        let producer = self.producers[output.role().key()].clone();
         let reserve = LifecycleCommand::Reserve {
             expected_task_version: queued.task.version,
-            machine_subject: None,
+            machine_subject: Some(producer.subject.clone()),
             idempotency_key: format!("rework:{index}:reserve"),
         };
         let (reserved, replayed) = self
@@ -317,7 +332,7 @@ impl ReworkFixture {
         let binding = RunBinding {
             chat_id: Uuid::new_v4(),
             run_id: Uuid::new_v4(),
-            machine_subject: "producer".into(),
+            machine_subject: producer.subject.clone(),
             dispatch_receipt: artifact(&format!("rework-{index}-dispatch")),
         };
         let (running, replayed) = self
@@ -340,11 +355,6 @@ impl ReworkFixture {
         assert_eq!(running.task.cycle, queued.task.cycle);
         assert_eq!(running.task.version, reserved.task.version + 1);
         self.assert_current(&running).await;
-        let producer = actor(
-            "producer",
-            false,
-            vec!["task-tracker:read".into(), assignment.scope()],
-        );
         if let Some(previous) = &queued.result {
             assert_eq!(assignment.previous_result_id, Some(previous.result_id));
             let DeliveryInput::Delivery(actual) = self
@@ -363,19 +373,26 @@ impl ReworkFixture {
             result: output.clone(),
             idempotency_key: format!("rework:{index}:proposal"),
         };
-        let mut foreign = assignment.clone();
-        foreign.assignment_id = Uuid::new_v4();
-        let foreign_actor = actor(
-            "producer",
-            false,
-            vec!["task-tracker:read".into(), foreign.scope()],
-        );
+        let foreign_role = if output.role().key() == "analyst" {
+            "architect"
+        } else {
+            "analyst"
+        };
+        let foreign_actor = self.producers[foreign_role].clone();
         assert!(matches!(
             self.repo
                 .submit_delivery_proposal(self.task, &foreign_actor, proposal_command.clone())
                 .await,
             Err(AppError::Forbidden)
         ));
+        crate::sdlc::configured_test_support::delivery_comment(
+            &self.repo,
+            self.task,
+            &producer,
+            assignment,
+            &format!("rework:{index}:final-comment"),
+        )
+        .await;
         let (proposal, replayed) = self
             .repo
             .submit_delivery_proposal(self.task, &producer, proposal_command.clone())
@@ -706,7 +723,11 @@ async fn one_task_persists_review_and_testing_rework_then_repeats_gates_before_d
     }
     assert_eq!(keys.len(), 13);
     assert_eq!(count(&fixture.db, "sdlc_pm_executions").await, 1);
-    assert_eq!(count(&fixture.db, "sdlc_pm_completions").await, 1);
+    assert_eq!(count(&fixture.db, "sdlc_pm_completions").await, 0);
+    assert_eq!(
+        count(&fixture.db, "sdlc_configured_pm_completions").await,
+        1
+    );
     assert_eq!(count(&fixture.db, "sdlc_task_routing_snapshots").await, 1);
     assert_eq!(count(&fixture.db, "sdlc_task_routing_generations").await, 0);
     assert_eq!(count(&fixture.db, "sdlc_analysis_reservations").await, 0);
@@ -726,7 +747,7 @@ async fn one_task_persists_review_and_testing_rework_then_repeats_gates_before_d
                 LifecycleCommand::Reserve {
                     expected_task_version: cursor.task.version,
 
-                    machine_subject: None,
+                    machine_subject: Some(fixture.producers["developer"].subject.clone()),
                     idempotency_key: "rework:after-completed:reserve".into(),
                 }
             )
