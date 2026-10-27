@@ -1227,16 +1227,9 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
     ));
     assert_eq!(canonical_hash(&state).unwrap(), saved);
 
-    // Historical/future-role fixtures must deliberately opt into Analysis; confirmation does not.
-    state.retained_fields.remove("interaction_protocol");
+    // A stage label alone cannot turn configured PM consent into legacy dispatch authority.
     state.stage = Stage::Analysis;
-    let intent =
-        analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).unwrap();
-    assert_eq!(intent.requirement_revision, 2);
-    assert_eq!(intent.status, AnalysisStatus::Ready);
-    assert_eq!(intent.workflow, "hermes-sdlc:analyst");
-    assert_eq!(intent.mode, "analysis");
-    assert_eq!(intent.scope, "business");
+    assert!(analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).is_err());
 }
 
 #[test]
