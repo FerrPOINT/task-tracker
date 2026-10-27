@@ -3,6 +3,124 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn owner_can_adopt_only_an_unstarted_draft_without_rewriting_its_creation() {
+    let f = Fixture::new().await;
+    for (key, flow) in [
+        ("unmarked", None),
+        ("marked", Some(DraftFlow::SingleTaskV1)),
+    ] {
+        let task = f.draft(key, flow).await;
+        let original: Json =
+            f.db.query_one(statement(
+                "SELECT to_jsonb(c) AS original FROM sdlc_draft_creations c WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "original")
+            .unwrap();
+        let command: ReservePmDraft = parse(json!({
+            "interaction_protocol":"configured-cli-v1","machine_subject":Uuid::new_v4().to_string(),
+            "requested_agent_id":f.roles.project_manager.agent_id,"expected_owner_version":0,
+            "expected_assignment_version":null,"idempotency_key":"adopt-first"}));
+        let before = f.snapshot().await;
+        let mut stale = command.clone();
+        stale.expected_owner_version = 1;
+        assert!(
+            f.repo
+                .reserve_pm_draft(task, &f.owner, stale)
+                .await
+                .is_err()
+        );
+        let mut legacy = command.clone();
+        legacy.interaction_protocol = None;
+        assert!(
+            f.repo
+                .reserve_pm_draft(task, &f.owner, legacy)
+                .await
+                .is_err()
+        );
+        assert_eq!(f.snapshot().await, before);
+        let (saved, replay) = f
+            .repo
+            .reserve_pm_draft(task, &f.owner, command.clone())
+            .await
+            .unwrap();
+        assert!(!replay);
+        let after = f.snapshot().await;
+        let (same, replay) = f
+            .repo
+            .reserve_pm_draft(task, &f.owner, command)
+            .await
+            .unwrap();
+        assert!(replay);
+        assert_eq!(json!(same), json!(saved));
+        assert_eq!(f.snapshot().await, after);
+        let retained: Json =
+            f.db.query_one(statement(
+                "SELECT to_jsonb(c) AS original FROM sdlc_draft_creations c WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "original")
+            .unwrap();
+        assert_eq!(retained, original);
+        let creation = f
+            .repo
+            .draft_creation_operation(f.project, &f.owner, key)
+            .await
+            .unwrap();
+        assert_eq!(json!(creation), original["result"]);
+        let (replayed_creation, replay) = f
+            .repo
+            .create_draft(
+                f.project,
+                &f.owner,
+                CreateDraftCommand {
+                    interaction_protocol: None,
+                    flow,
+                    title: key.into(),
+                    description: "Synthetic test input, not live execution".into(),
+                    idempotency_key: key.into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(replay);
+        assert_eq!(replayed_creation, creation);
+        let state = f.repo.read(task, &f.owner).await.unwrap();
+        assert!(state.configured_cli());
+        assert_eq!(state.stage, Stage::Draft);
+        assert_eq!(state.assignment, Some(saved.assignment));
+        let tx = f.db.begin().await.unwrap();
+        assert!(
+            tx.execute(statement(
+                "UPDATE sdlc_tasks SET state=state-'interaction_protocol' WHERE task_id=$1",
+                vec![task.into()]
+            ))
+            .await
+            .is_err()
+        );
+        tx.rollback().await.unwrap();
+        let count: i64 =
+            f.db.query_one(statement(
+                "SELECT count(*) AS n FROM sdlc_pm_execution_leases",
+                vec![],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "n")
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn configured_cli_business_writes_need_current_assignment_but_no_native_lease() {
     const MIGRATION: &str = "m20261026_0000105_configured_cli";
     assert!(
@@ -241,6 +359,23 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         f.repo.confirmation_read(task, &pm, 2).await.unwrap().stage,
         Stage::Draft
     );
+    // Business consent freezes the same source/routing used downstream, while
+    // execution stays in Draft until the saved Workflow result is accepted.
+    let frozen = f.repo.task_routing_snapshot(task, &f.reader).await.unwrap();
+    assert_eq!(frozen.requirement_revision, 2);
+    assert_eq!(
+        frozen.confirmation_id,
+        confirmed.current_confirmation().unwrap().id
+    );
+    let source_count: i64 = f.db.query_one(statement(
+        "SELECT count(*) AS n FROM sdlc_task_source_bindings WHERE task_id=$1 AND confirmation_id=$2",
+        vec![task.into(),frozen.confirmation_id.into()])).await.unwrap().unwrap().try_get("", "n").unwrap();
+    assert_eq!(source_count, 1);
+    assert_eq!(f.repo.read(task, &pm).await.unwrap().stage, Stage::Draft);
+    assert!(matches!(
+        f.repo.analysis_intent(task, &f.owner).await,
+        Err(AppError::NotFound(_))
+    ));
     assert_eq!(
         f.db.query_one(statement(
             // Ready is shared across stages; check the canonical pair, not a reverse status lookup.

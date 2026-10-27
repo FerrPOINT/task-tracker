@@ -388,8 +388,10 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         vec![fake.into(),project.into(),json_value(&fake_state).unwrap()]).await.unwrap();
     assert!(tx.commit().await.is_err());
     assert_eq!(checkpoint_counts(&db).await, before);
+    let pm = crate::sdlc::configured_test_support::service(&repo, project).await;
     let reserve = parse::<domain::sdlc_pm_draft::ReservePmDraft>(
-        json!({"requested_agent_id":roles.project_manager.agent_id,
+        json!({"interaction_protocol":"configured-cli-v1","machine_subject":pm.subject,
+        "requested_agent_id":roles.project_manager.agent_id,
         "expected_owner_version":0,"expected_assignment_version":null,"idempotency_key":"reserve"}),
     );
     assert!(matches!(
@@ -409,31 +411,12 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         .reserve_pm_draft(task, &owner, reserve.clone())
         .await
         .unwrap();
-    let pm = actor(
-        "pm",
-        false,
-        vec![
-            "task-tracker:read".into(),
-            reservation.assignment.scope(task),
-        ],
-    );
     let fence = MachineFence {
         assignment_id: reservation.assignment.assignment_id,
         execution_id: reservation.assignment.execution_id,
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
-    repo.claim_execution_lease(
-        task,
-        &pm,
-        ClaimExecutionLease {
-            expected_owner_version: 1,
-            fence: fence.clone(),
-            idempotency_key: "claim".into(),
-        },
-    )
-    .await
-    .unwrap();
     let document: RequirementsDocument = parse(
         json!({"goal":"Atomic flow","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],
         "acceptance_criteria":["Accept"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
@@ -459,34 +442,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             expected_routing_policy_version: None,
         },
     };
-    assert!(matches!(
-        repo.execute(task, &owner, confirm.clone()).await,
-        Err(AppError::Conflict(_))
-    ));
-    let verifier = actor(
-        "verifier",
-        false,
-        vec![format!(
-            "task-tracker:sdlc:evidence:{task}:{}",
-            fence.assignment_version
-        )],
-    );
-    for check in ["check", "prerequisite"] {
-        repo.execute(
-            task,
-            &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: fence.clone(),
-                requirement_revision: 1,
-                content_hash: hash.clone(),
-                check_id: check.into(),
-                evidence_reference: format!("fixture://{check}"),
-                idempotency_key: check.into(),
-            }),
-        )
-        .await
-        .unwrap();
-    }
     let before = checkpoint_counts(&db).await;
     let before_state = serde_json::to_value(repo.read(task, &owner).await.unwrap()).unwrap();
     assert!(matches!(
@@ -568,7 +523,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     assert_eq!(snapshot.requirement_revision, 1);
     assert_eq!(snapshot.content_hash, hash);
     assert!(snapshot.policy == policy4 || snapshot.policy == policy5);
-    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
+    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Draft);
     assert!(matches!(
         repo.analysis_intent(task, &owner).await,
         Err(AppError::NotFound(_))
@@ -697,118 +652,24 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             .unwrap(),
         None
     );
-    // Existing legacy Draft/PM reservation still confirms without automatic snapshot.
-    let legacy_task = legacy.task_id;
-    let policy = repo.routing_policy(project, &owner, None).await.unwrap();
-    let (old_pm, _) = disabled
-        .reserve_pm_draft(
-            legacy_task,
-            &owner,
-            parse(json!({
-        "requested_agent_id":policy.routes.project_manager.agent_id,"expected_owner_version":0,
-        "expected_assignment_version":null,"idempotency_key":"legacy-reserve"})),
-        )
-        .await
-        .unwrap();
-    let old_fence = MachineFence {
-        assignment_id: old_pm.assignment.assignment_id,
-        execution_id: old_pm.assignment.execution_id,
-        agent_id: old_pm.assignment.agent_id,
-        assignment_version: old_pm.assignment.version,
-    };
-    let old_actor = actor(
-        "pm",
-        false,
-        vec![
-            "task-tracker:read".into(),
-            old_pm.assignment.scope(legacy_task),
-        ],
-    );
-    disabled
-        .claim_execution_lease(
-            legacy_task,
-            &old_actor,
-            ClaimExecutionLease {
-                expected_owner_version: 1,
-                fence: old_fence.clone(),
-                idempotency_key: "legacy-claim".into(),
-            },
-        )
-        .await
-        .unwrap();
-    disabled
-        .execute(
-            legacy_task,
-            &old_actor,
-            SdlcCommand::PublishRevision(PublishRevision {
-                fence: old_fence.clone(),
-                expected_requirement_revision: None,
-                document,
-                idempotency_key: "legacy-publish".into(),
-            }),
-        )
-        .await
-        .unwrap();
-    let old_verifier = actor(
-        "verifier",
-        false,
-        vec![format!(
-            "task-tracker:sdlc:evidence:{legacy_task}:{}",
-            old_fence.assignment_version
-        )],
-    );
-    for check in ["check", "prerequisite"] {
+    // Historical creation is readable; a new native reservation is closed.
+    let before_legacy = legacy_history_snapshot(&db, legacy.task_id).await;
+    assert!(
         disabled
-            .execute(
-                legacy_task,
-                &old_verifier,
-                SdlcCommand::Evidence(EvidenceCommand {
-                    fence: old_fence.clone(),
-                    requirement_revision: 1,
-                    content_hash: hash.clone(),
-                    check_id: check.into(),
-                    evidence_reference: format!("fixture://legacy-{check}"),
-                    idempotency_key: check.into(),
-                }),
+            .reserve_pm_draft(
+                legacy.task_id,
+                &owner,
+                parse(json!({
+                    "requested_agent_id":roles.project_manager.agent_id,"expected_owner_version":0,
+                    "expected_assignment_version":null,"idempotency_key":"retired-native-reserve"
+                }))
             )
             .await
-            .unwrap();
-    }
-    let snapshot_count = count(&db, "sdlc_task_routing_snapshots").await;
-    disabled
-        .execute(
-            legacy_task,
-            &owner,
-            SdlcCommand::Confirm {
-                revision: 1,
-                command: ConfirmCommand {
-                    content_hash: hash,
-                    idempotency_key: "legacy-confirm".into(),
-                    expected_routing_policy_version: None,
-                },
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        count(&db, "sdlc_task_routing_snapshots").await,
-        snapshot_count
+            .is_err()
     );
-    assert!(matches!(
-        disabled.analysis_intent(legacy_task, &owner).await,
-        Err(AppError::NotFound(_))
-    ));
-    let old_state = disabled.read(legacy_task, &owner).await.unwrap();
-    assert_eq!(old_state.stage, Stage::Backlog);
-    assert_eq!(old_state.draft_flow().unwrap(), None);
-    assert_eq!(old_state.status, None);
     assert_eq!(
-        disabled
-            .draft_creation_operation(project, &owner, "legacy")
-            .await
-            .unwrap()
-            .task_id,
-        legacy_task
+        legacy_history_snapshot(&db, legacy.task_id).await,
+        before_legacy
     );
     exec(
         &db,

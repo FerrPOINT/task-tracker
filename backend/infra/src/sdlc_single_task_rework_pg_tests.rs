@@ -34,6 +34,7 @@ async fn pm_history(db: &DatabaseConnection, task: Uuid) -> Json {
          'executions',(SELECT jsonb_agg(to_jsonb(e) ORDER BY ordinal) FROM sdlc_pm_executions e WHERE e.task_id=t.task_id),
          'leases',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.execution_id) FROM sdlc_pm_execution_leases l JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=t.task_id),
          'completions',(SELECT jsonb_agg(to_jsonb(c) ORDER BY completion_id) FROM sdlc_pm_completions c WHERE c.task_id=t.task_id),
+         'configured_completions',(SELECT jsonb_agg(to_jsonb(c) ORDER BY completion_id) FROM sdlc_configured_pm_completions c WHERE c.task_id=t.task_id),
          'routing',(SELECT to_jsonb(s) FROM sdlc_task_routing_snapshots s WHERE s.task_id=t.task_id),
          'intent',(SELECT jsonb_agg(to_jsonb(i) ORDER BY intent_id) FROM sdlc_analysis_intents i WHERE i.task_id=t.task_id)) AS snapshot
          FROM sdlc_tasks t WHERE task_id=$1",
@@ -45,144 +46,22 @@ async fn complete_initial_pm(
     repo: &PostgresSdlcRepository,
     task: Uuid,
     owner: &Principal,
-    scheduler: &Principal,
+    _scheduler: &Principal,
     agent: Uuid,
 ) {
-    let (reservation, replayed) = repo
-        .reserve_pm_draft(
-            task,
-            owner,
-            parse(json!({
-        "requested_agent_id":agent,"expected_owner_version":0,"expected_assignment_version":null,
-        "idempotency_key":"rework:pm:reserve"})),
-        )
-        .await
-        .unwrap();
-    assert!(!replayed);
-    let pm = actor(
-        "pm",
-        false,
-        vec![
-            "task-tracker:read".into(),
-            reservation.assignment.scope(task),
-        ],
-    );
-    let fence = MachineFence {
-        assignment_id: reservation.assignment.assignment_id,
-        execution_id: reservation.assignment.execution_id,
-        agent_id: agent,
-        assignment_version: reservation.assignment.version,
-    };
-    let (lease, replayed) = repo
-        .claim_execution_lease(
-            task,
-            &pm,
-            ClaimExecutionLease {
-                expected_owner_version: reservation.owner_cas.version,
-                fence: fence.clone(),
-                idempotency_key: "rework:pm:claim".into(),
-            },
-        )
-        .await
-        .unwrap();
-    assert!(!replayed);
-    let document: RequirementsDocument = parse(
-        json!({"goal":"One task with actual persisted rework",
-        "scope":["One root task"],"exclusions":["No children"],"scenarios":["Review and testing reject work"],
-        "acceptance_criteria":["Rework repeats review and testing before deployment"],"constraints":[],
-        "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
-    );
-    let hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute(
-        task,
-        &pm,
-        SdlcCommand::PublishRevision(PublishRevision {
-            fence: fence.clone(),
-            expected_requirement_revision: None,
-            document,
-            idempotency_key: "rework:pm:requirements".into(),
-        }),
+    let document: RequirementsDocument = parse(json!({
+        "goal":"One task with actual persisted rework","scope":["One root task"],"exclusions":["No children"],
+        "scenarios":["Review and testing reject work"],
+        "acceptance_criteria":["Rework repeats review and testing before deployment"],
+        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}));
+    let (reserved, completed) = crate::sdlc::configured_test_support::confirmed_pm(
+        repo, task, owner, agent, document, true,
     )
-    .await
-    .unwrap();
-    let verifier = actor(
-        "verifier",
-        false,
-        vec![format!("task-tracker:sdlc:evidence:{task}:1")],
-    );
-    for check in ["check", "prerequisite"] {
-        repo.execute(
-            task,
-            &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: fence.clone(),
-                requirement_revision: 1,
-                content_hash: hash.clone(),
-                check_id: check.into(),
-                evidence_reference: format!("fixture://rework-readiness-{check}"),
-                idempotency_key: format!("rework:pm:evidence:{check}"),
-            }),
-        )
-        .await
-        .unwrap();
-    }
-    let confirmation = repo
-        .execute(
-            task,
-            owner,
-            SdlcCommand::Confirm {
-                revision: 1,
-                command: ConfirmCommand {
-                    content_hash: hash.clone(),
-                    idempotency_key: "rework:pm:confirm".into(),
-                    expected_routing_policy_version: Some(1),
-                },
-            },
-        )
-        .await
-        .unwrap();
+    .await;
     assert_eq!(
-        repo.confirmation_read(task, &pm, 1)
-            .await
-            .unwrap()
-            .id
-            .to_string(),
-        confirmation["id"].as_str().unwrap()
+        completed.unwrap().fence.execution_id,
+        reserved.assignment.execution_id
     );
-    // Consent alone cannot allocate or queue the first technical assignment.
-    assert!(matches!(
-        repo.lifecycle_command(
-            task,
-            scheduler,
-            LifecycleCommand::EnsureQueued {
-                idempotency_key: "rework:before-pm-complete".into(),
-            }
-        )
-        .await,
-        Err(AppError::Conflict(_))
-    ));
-    let (completed, replayed) = repo
-        .complete_pm_draft(
-            task,
-            scheduler,
-            CompletePmDraft {
-                contract_version: 1,
-                fence,
-                lease_id: lease.lease.lease_id,
-                lease_version: lease.lease.version,
-                requirement_revision: 1,
-                content_hash: hash,
-                terminal_receipt_ref: "fixture://rework-pm-terminal".into(),
-                terminal_receipt_sha256: "a".repeat(64),
-                workflow_receipt_ref: "fixture://rework-pm-workflow".into(),
-                workflow_receipt_sha256: "b".repeat(64),
-                idempotency_key: "rework:pm:complete".into(),
-            },
-        )
-        .await
-        .unwrap();
-    assert!(!replayed);
-    assert_eq!(completed.fence.execution_id, lease.fence.execution_id);
     crate::sdlc::seed_analysis_fixture(repo.db.raw(), task, owner).await;
 }
 
@@ -309,7 +188,13 @@ impl ReworkFixture {
         assert_ne!(new_policy.routing_hash, frozen.policy.routing_hash);
         let pm_history = pm_history(&db, task).await;
         assert_eq!(pm_history["pm_admission_state"], json!("completed"));
-        assert_eq!(pm_history["completions"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            pm_history["configured_completions"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         (
             Self {
                 db,

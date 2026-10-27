@@ -1,7 +1,6 @@
 //! Child of the existing critical candidates fixture. Synthetic custody, not live runtime evidence.
 use super::*;
 use domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview;
-use domain::sdlc_execution_lease::ClaimExecutionLease;
 
 #[path = "attachment_pm_review_pg_tests.rs"]
 mod sealed_evidence_tests;
@@ -17,15 +16,15 @@ async fn read_snapshot(f: &Fixture, task: Uuid) -> Json {
 
 #[tokio::test]
 #[ignore = "fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime only"]
-async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_current_lease() {
+async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_current_assignment() {
     let f = Box::pin(Fixture::new()).await;
     exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
-        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)",
+        VALUES($1,'critical-agent@example.test','77777777-7777-4777-8777-777777777777','77777777-7777-4777-8777-777777777777','!','77777777-7777-4777-8777-777777777777',true)",
         vec![Uuid::new_v4().into()]).await.unwrap();
     exec(
         &f.db,
         "INSERT INTO project_members(project_id,user_id,role)
-        SELECT $1,id,'developer' FROM users WHERE central_sub='critical-agent'",
+        SELECT $1,id,'developer' FROM users WHERE central_sub='77777777-7777-4777-8777-777777777777'",
         vec![f.project.into()],
     )
     .await
@@ -110,38 +109,19 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
     .await
     .unwrap();
     let assignment = &review.reservation.assignment;
-    let mut pm = actor(
+    let pm = actor(
         &assignment.machine_subject,
         false,
         &["task-tracker:read", "task-tracker:write"],
     );
-    pm.scopes.insert(assignment.scope(r.task));
-    // A saved review or a syntactically exact grant alone is not an active read capability.
+    let mut mixed = pm.clone();
+    mixed.scopes.insert(assignment.scope(r.task));
     assert!(
         f.repo
-            .critical_blocker(r.task, &pm, held.blocker_id)
+            .critical_blocker(r.task, &mixed, held.blocker_id)
             .await
             .is_err()
     );
-    let (_, replay) = f
-        .repo
-        .claim_execution_lease(
-            r.task,
-            &pm,
-            ClaimExecutionLease {
-                expected_owner_version: review.reservation.owner_cas.version,
-                fence: MachineFence {
-                    assignment_id: assignment.assignment_id,
-                    execution_id: assignment.execution_id,
-                    agent_id: assignment.agent_id,
-                    assignment_version: assignment.version,
-                },
-                idempotency_key: "reader-lease-original".into(),
-            },
-        )
-        .await
-        .unwrap();
-    assert!(!replay);
     let before = read_snapshot(&f, r.task).await;
     let detail = f
         .repo
@@ -155,7 +135,7 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
         assignment.execution_id
     );
     assert_eq!(detail.proposal, held.proposal);
-    // Still reached only AFTER the actual producer claim succeeds; never inject/skip its lease.
+    // Current configured assignment and fresh ACL admit only this review; no native lease is created.
     Box::pin(sealed_evidence_tests::check(
         &f, &r, &pm, &old_pm, unlisted, &storage,
     ))
@@ -214,16 +194,16 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
     )
     .await
     .unwrap();
-    exec(&f.db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",
-        vec![f.project.into()]).await.unwrap();
+    exec(&f.db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub=$2)",
+        vec![f.project.into(), assignment.machine_subject.clone().into()]).await.unwrap();
     assert!(
         f.repo
             .critical_blocker(r.task, &pm, held.blocker_id)
             .await
             .is_err()
     );
-    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",
-        vec![f.project.into()]).await.unwrap();
+    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+        vec![f.project.into(), assignment.machine_subject.clone().into()]).await.unwrap();
     exec(&f.db,"UPDATE projects SET owner_id=(SELECT id FROM users WHERE central_sub='foreign') WHERE id=$1",
         vec![f.project.into()]).await.unwrap();
     assert!(

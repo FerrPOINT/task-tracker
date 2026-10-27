@@ -127,7 +127,7 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: head.task.version,
-                machine_subject: None,
+                machine_subject: Some("77777777-7777-4777-8777-777777777777".into()),
                 idempotency_key: format!("reserve-{}", head.task.version),
             },
         )
@@ -144,7 +144,7 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
                 binding: RunBinding {
                     chat_id: Uuid::new_v4(),
                     run_id: Uuid::new_v4(),
-                    machine_subject: "critical-agent".into(),
+                    machine_subject: "77777777-7777-4777-8777-777777777777".into(),
                     dispatch_receipt: ArtifactReceipt {
                         reference: "fixture://synthetic-dispatch".into(),
                         sha256: "a".repeat(64),
@@ -165,13 +165,9 @@ async fn output(
     storage: &domain::InMemoryStorage,
 ) -> Running {
     let producer = actor(
-        "critical-agent",
+        "77777777-7777-4777-8777-777777777777",
         false,
-        &[
-            "task-tracker:read",
-            "task-tracker:write",
-            &head.assignment.as_ref().unwrap().scope(),
-        ],
+        &["task-tracker:read", "task-tracker:write"],
     );
     eprintln!("critical_pg.phase.output.publish.begin");
     let item = artifacts::publish(
@@ -384,7 +380,7 @@ async fn critical_pg_scenario() {
     );
     let user = Uuid::new_v4();
     exec(&f.db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
-        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)", vec![user.into()]).await.unwrap();
+        VALUES($1,'critical-agent@example.test','77777777-7777-4777-8777-777777777777','77777777-7777-4777-8777-777777777777','!','77777777-7777-4777-8777-777777777777',true)", vec![user.into()]).await.unwrap();
     exec(
         &f.db,
         "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
@@ -544,7 +540,7 @@ async fn critical_pg_scenario() {
     assert!(one.proposal.options.is_empty());
     assert_eq!(one.pm_review, None);
     assert_eq!(one.technical_terminal, None);
-    assert_eq!(one.producer_subject, "critical-agent");
+    assert_eq!(one.producer_subject, "77777777-7777-4777-8777-777777777777");
     assert_eq!(one.proposal, frozen_body);
     assert_eq!(
         one.blocker_sha256,
@@ -704,7 +700,7 @@ async fn critical_pg_scenario() {
             LifecycleCommand::Reserve {
                 expected_task_version: r.head.task.version,
 
-                machine_subject: None,
+                machine_subject: Some("77777777-7777-4777-8777-777777777777".into()),
                 idempotency_key: "held-reserve".into(),
             },
             LifecycleCommand::Complete {
@@ -1220,7 +1216,7 @@ async fn return_held_to_pm(
             LifecycleCommand::Reserve {
                 expected_task_version: actual.task.version,
 
-                machine_subject: None,
+                machine_subject: Some("77777777-7777-4777-8777-777777777777".into()),
                 idempotency_key: "awaiting-reserve".into(),
             },
         ] {

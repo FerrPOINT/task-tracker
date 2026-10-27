@@ -67,7 +67,8 @@ impl PostgresSdlcRepository {
         state: &TaskState,
         creator: Uuid,
     ) -> Result<(), AppError> {
-        // Called only for a newly inserted single-task Draft, never generic load/replay.
+        // Called at creation or explicit first adoption of an unmarked Draft,
+        // never generic load/replay. Existing selections are not overwritten.
         let head = tx
             .query_one(statement(
                 "SELECT source_revision FROM sdlc_source_policy_heads WHERE project_id=$1",

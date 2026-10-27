@@ -15,6 +15,9 @@ use uuid::Uuid;
 mod commands;
 #[path = "sdlc_configured_cli.rs"]
 mod configured_cli;
+#[cfg(test)]
+#[path = "sdlc_configured_test_support.rs"]
+mod configured_test_support;
 #[path = "sdlc_critical_blockers.rs"]
 mod critical_blockers;
 #[path = "sdlc_critical_pm_lifecycle.rs"]
@@ -632,9 +635,8 @@ impl PostgresSdlcRepository {
                 let confirmation: Confirmation =
                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
-                let routing_snapshot = if !state.configured_cli()
-                    && (state.draft_flow()?.is_some()
-                        || c.expected_routing_policy_version.is_some())
+                let routing_snapshot = if state.draft_flow()?.is_some()
+                    || c.expected_routing_policy_version.is_some()
                 {
                     Some(
                         self.freeze_routing(
@@ -999,13 +1001,34 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let input = Self::original_input(&tx, &state).await?;
+        if command.interaction_protocol != Some(InteractionProtocol::ConfiguredCliV1) {
+            return Err(AppError::conflict(
+                "new PM reservations require configured CLI",
+            ));
+        }
+        if state.interaction_protocol()?.is_none() {
+            let was_unmarked = state.draft_flow()?.is_none();
+            app::sdlc_configured_cli::adopt_unstarted_draft(&mut state)?;
+            // Forward migration guards this one-way transition against stored
+            // assignment/history too. The original creation/input stays intact.
+            exec(
+                &tx,
+                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+                vec![task.into(), json_value(&state)?],
+            )
+            .await?;
+            if was_unmarked {
+                let (creator, _) = Self::project_access(&tx, state.project_id, actor).await?;
+                self.select_task_source(&tx, &state, creator).await?;
+            }
+        }
         let protocol = state.interaction_protocol()?;
         if command.interaction_protocol != protocol {
             return Err(AppError::conflict(
                 "PM reservation interaction protocol mismatch",
             ));
         }
-        let machine_subject = if state.configured_cli() {
+        let machine_subject = {
             let subject = command
                 .machine_subject
                 .as_deref()
@@ -1024,13 +1047,6 @@ impl SdlcRepository for PostgresSdlcRepository {
                 ));
             }
             subject.to_owned()
-        } else {
-            if command.machine_subject.is_some() {
-                return Err(AppError::validation(
-                    "legacy reservation cannot change machine subject",
-                ));
-            }
-            self.config.orchestrator_subject.clone()
         };
         let hash =
             app::sdlc::canonical_hash(&json!({"operation":"reserve_pm_draft","payload":command}))?;
@@ -1401,7 +1417,8 @@ impl SdlcRepository for PostgresSdlcRepository {
                     || state.root_task_id != task
                     || state.task_id != task
                     || state.project_id != project
-                    || state.draft_flow()? != command.flow
+                    || (state.draft_flow()? != command.flow
+                        && !(result.interaction_protocol.is_none() && state.configured_cli()))
                     || result.task_id != task
                     || result.root_task_id != task
                     || result.project_id != project
@@ -1610,21 +1627,30 @@ impl SdlcRepository for PostgresSdlcRepository {
             || result.root_task_id != task
             || result.project_id != project
             || result.owner_subject != actor.subject
-            || result.interaction_protocol != state.interaction_protocol()?
+            || (result.interaction_protocol != state.interaction_protocol()?
+                && !(result.interaction_protocol.is_none() && state.configured_cli()))
         {
             return Err(inconsistent());
         }
         let input = Self::original_input(&tx, &state).await?;
-        let original = CreateDraftCommand {
-            interaction_protocol: state.interaction_protocol()?,
+        let mut original = CreateDraftCommand {
+            interaction_protocol: result.interaction_protocol,
             title: input.title,
             description: input.description,
             idempotency_key: key.into(),
             flow: state.draft_flow()?,
         };
-        let hash =
+        let mut hash =
             app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
-        if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
+        let saved_hash: String = row.try_get("", "payload_hash").map_err(map_db)?;
+        if hash != saved_hash && result.interaction_protocol.is_none() && state.configured_cli() {
+            // The immutable creation hash distinguishes the two historical
+            // creation formats after explicit adoption: unmarked or single-task.
+            original.flow = None;
+            hash =
+                app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
+        }
+        if saved_hash != hash {
             return Err(inconsistent());
         }
         tx.commit().await.map_err(map_db)?;

@@ -34,6 +34,7 @@ mod m20261026_0000105_configured_cli;
 pub mod m20261027_0000106_configured_stage_comments;
 pub mod m20261027_0000107_configured_business_history;
 mod m20261027_0000108_configured_critical_lifecycle;
+mod m20261028_0000109_configured_initial_adoption;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -140,6 +141,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261027_0000106_configured_stage_comments::Migration),
             Box::new(m20261027_0000107_configured_business_history::Migration),
             Box::new(m20261027_0000108_configured_critical_lifecycle::Migration),
+            Box::new(m20261028_0000109_configured_initial_adoption::Migration),
         ]
     }
 }

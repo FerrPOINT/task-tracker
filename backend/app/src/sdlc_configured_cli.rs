@@ -3,6 +3,44 @@ use domain::sdlc_configured_cli::*;
 use shared::AppError;
 use uuid::Uuid;
 
+/// Only an untouched business Draft can acquire its first execution protocol.
+/// Repository admission additionally checks retained assignment/history ledgers.
+pub fn adopt_unstarted_draft(state: &mut TaskState) -> Result<(), AppError> {
+    state.require_root()?;
+    if state.interaction_protocol()?.is_some()
+        || state.stage != Stage::Draft
+        || state
+            .status
+            .is_some_and(|value| value != domain::sdlc_lifecycle::LifecycleStatus::Ready)
+        || state.assignment.is_some()
+        || state
+            .draft_submode
+            .is_some_and(|value| value != DraftSubmode::Brainstorming)
+        || state.confirmation_revision.is_some()
+        || !state.questions.is_empty()
+        || !state.revisions.is_empty()
+        || !state.confirmations.is_empty()
+        || !state.evidence.is_empty()
+        || state.retained_fields.contains_key("lifecycle")
+        || state.retained_fields.contains_key("workflow_task_key")
+    {
+        return Err(AppError::conflict(
+            "configured adoption requires an unstarted Draft",
+        ));
+    }
+    state.draft_flow()?;
+    state.retained_fields.insert(
+        "interaction_protocol".into(),
+        serde_json::json!("configured-cli-v1"),
+    );
+    state
+        .retained_fields
+        .insert("flow".into(), serde_json::json!("single-task-v1"));
+    state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    state.draft_submode = Some(DraftSubmode::Brainstorming);
+    Ok(())
+}
+
 pub fn authorize_configured_identity(actor: &Principal) -> Result<(), AppError> {
     if actor.human_session
         || actor.trusted_human
@@ -300,6 +338,36 @@ mod tests {
             assignment_version: 1,
         };
         (state, actor, config, fence)
+    }
+
+    #[test]
+    fn initial_adoption_preserves_business_identity_and_refuses_started_work() {
+        let (mut initial, _, _, _) = fixture();
+        initial.assignment = None;
+        initial.retained_fields.remove("interaction_protocol");
+        initial.retained_fields.remove("workflow_task_key");
+        initial.retained_fields.remove("flow");
+        let original = serde_json::to_value(&initial).unwrap();
+        let mut adopted = initial.clone();
+        adopt_unstarted_draft(&mut adopted).unwrap();
+        let mut expected = original;
+        expected["interaction_protocol"] = json!("configured-cli-v1");
+        expected["flow"] = json!("single-task-v1");
+        expected["status"] = json!("Ready");
+        expected["draft_submode"] = json!("brainstorming");
+        assert_eq!(serde_json::to_value(&adopted).unwrap(), expected);
+        assert!(adopt_unstarted_draft(&mut adopted).is_err());
+        for field in ["lifecycle", "workflow_task_key"] {
+            let mut started = initial.clone();
+            started.retained_fields.insert(field.into(), json!(null));
+            assert!(adopt_unstarted_draft(&mut started).is_err());
+        }
+        let mut active = initial.clone();
+        active.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
+        assert!(adopt_unstarted_draft(&mut active).is_err());
+        let mut assigned = initial;
+        assigned.assignment = fixture().0.assignment;
+        assert!(adopt_unstarted_draft(&mut assigned).is_err());
     }
 
     #[test]
