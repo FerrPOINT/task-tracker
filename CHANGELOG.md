@@ -11,13 +11,20 @@
   nonempty document prerequisites. No placeholder revision, invented checkpoint
   or owner impersonation is permitted. API, schema, assignments and guards are
   unchanged.
-- Checks:28 CLI workflow tests PASS on c7860d21, including both typed help examples,
+- Completion discovery: nested completion submit help now gives the exact closed
+  configured JSON, actual terminal receipt/fence mapping, stdin and original-key
+  readback. Legacy lease/native completion remains a separate supported shape;
+  the help grants no authority and does not change business APIs.
+- Checks:29 CLI workflow tests PASS on c1bc6805, including all three typed help examples,
   malformed shapes, stdin forwarding and error/no-retry contracts; Rustfmt1.88
-  and diff-check PASS. Base helper v2 QA cleanup is complete.
-- Live: the same PM saved real requirements revision1 and one unanswered
-  three-option question through the existing CLI/API after explicit diagnostic
-  guidance. The updated CLI help is source-only, not installed into that retained
-  container. Human owner consent and Backlog/Ready remain unaccepted.
+  and diff-check PASS. Base helper v2 removed its own QA containers/volumes;
+  shared caches/evidence remain. Removal of five flat disposable host inputs was
+  denied by tool policy; they remain, without another deletion method.
+- Live: the same PM saved revisions1/2 and one answered question through CLI.
+  The user separately confirmed revision2/hash, retained by Tracker in Draft.
+  Actual final evaluation exposed a Workflow future-effect dependency, not a
+  missing Tracker permission. Backlog/Ready remains pending that Workflow fix.
+  New CLI help is published source, not installed into the retained PM container.
 
 ## 2026-10-26: Configured CLI PM — Source Verified, Tracker Installed
 

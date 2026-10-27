@@ -1,0 +1,23 @@
+{
+  "source": "c1bc680592d4eeac7b410d536b51a1cada04da99",
+  "scope": "CLI help and regression test only; API, DTO, migrations and authorization unchanged",
+  "command": "cargo test --release --locked --offline -j1 -p task-tracker-cli --test workflows sdlc_ -- --test-threads=1",
+  "passed": 29,
+  "failed": 0,
+  "ignored": 0,
+  "filtered_out": 12,
+  "test_seconds": 9.28,
+  "qa_project": "sdlc-qa-configured-tracker-ff57eb201f",
+  "qa_run": "run-b8446dfe7f",
+  "helper": "Base ComposeHelper v2",
+  "qa_containers_volumes_cleanup": "complete",
+  "external_caches_and_evidence": "retained",
+  "flat_disposable_host_inputs": "five retained after cleanup command was denied by tool policy; no alternate deletion attempted",
+  "rustfmt_1_88": "pass",
+  "configured_example_uses_real_dto": true,
+  "legacy_contract_preserved": true,
+  "unknown_acceptance_requires_original_key_readback": true,
+  "help_makes_no_network_requests": true,
+  "installed_in_retained_pm_runtime": false,
+  "live_backlog_ready_acceptance": false
+}
