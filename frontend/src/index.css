@@ -1,6 +1,11 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import '@pdlc/ui/tokens.css';
+@source "./";
+@source "../index.html";
 @source "../../../services-base/base-modules/ui/src";
+@source not "./**/*.test.*";
+@source not "./**/*.spec.*";
+@source not "./test";
 
 body {
   background-color: var(--color-background);

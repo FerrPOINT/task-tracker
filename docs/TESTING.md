@@ -26,6 +26,69 @@ This is source qualification, not installation, real Auth/Hermes inference,
 browser acceptance or a seven-role deployment. Those remain coordinated release
 gates. PM completion alone is still tested to leave Backlog/Ready without intent.
 
+## Быстрая разработка и ручная квалификация
+
+Container `container_inputs` отделены от binary/Vite inputs: Dockerfile, recipe
+ignore и frontend nginx выбирают упаковку сервиса, не пропуская её из-за отсутствия
+application producer. Native packaging/layer reuse проверяются отдельно.
+
+Общие правила принадлежат Base `docs/BUILD_PERFORMANCE.md` и `docs/TESTING.md`
+принятого quality tooling. Product descriptor `.quality-gate.json` задаёт команды;
+Root, automatic CI и container helper потребляют один exact Base selector.
+SDK/UI/skills/operator pins от quality pin независимы.
+
+Из корня PDLC workspace после `enter-dev.ps1`:
+
+```powershell
+./check-workspace.ps1 -Profile Build -Repository task-tracker -BaseRef HEAD -PlanOnly
+./check-workspace.ps1 -Profile Unit -Repository task-tracker -Component tooling -BaseRef HEAD
+```
+
+Учитываются staged/unstaged/untracked/deleted inputs. `-All` задаёт полный обход;
+неизвестный путь расширяет продукт. No-change означает отсутствие выбранной работы,
+не готовый image; холодную подготовку/компонент задавать явно. Docs/test-only не
+запускают production producer при неизменных build inputs.
+
+Server (`cargo build --locked --release -p server --bin server`) и официальный CLI
+(`-p task-tracker-cli --bin task-tracker`) — отдельные поставляемые binaries. CLI
+не добавляется в server graph. Quick Rust unit — `cargo test --locked -p domain --lib`;
+CLI rustfmt остаётся static. Физическое отделение pure CLI unit от HTTP harness
+ещё OPEN; domain unit его не заменяет.
+
+Frontend `pnpm test:unit` выполняет Node source tests и Vitest без integration/
+slow/e2e filename tiers. `pnpm test:all` сохраняет полный Vitest набор; Playwright
+запускается отдельно. `pnpm build` выполняет unit, typecheck и compile один раз.
+CI после unit/typecheck использует `pnpm build:compile`; postinstall по-прежнему
+генерирует OpenAPI types, независимый `openapi:check` сохраняет drift comparison.
+Explicit app/index/Base UI Tailwind roots исключают tests/setup из production
+CSS inputs. Generated types хоста не переносятся поверх prepared Docker outputs.
+
+`python scripts/build.py` без аргументов выбирает изменённые container producers,
+`backend`/`frontend` задают конкретный, `--all` — оба. При пустом выборе Base verifier
+и Docker не вызываются; это не artifact readiness. Mixed SDK/UI контекст отказывает
+до Docker. Raw heavy helper требует общего execution slot; Root owning command
+вторым slot не оборачивать. Frozen pins ради запуска не менять.
+
+Automatic CI выбирает компоненты как для push, так и PR; initial push явно выбирает
+все. Full workspace/Clippy/PostgreSQL/migrations/MSRV/packed/themes не входят в
+повседневный цикл. Полный `release.yml` вручную вызывает один reusable
+`qualification.yml` с `http_only=false`. Прежний addressed input `http_only` остаётся
+в ручном `qualification.yml`, вместе со всеми прежними условиями/тестами. Concurrency
+принадлежит callee; caller не задаёт совпадающую группу. Это не два запуска набора.
+Секрет Base передаётся по имени, без расширения permissions.
+
+Real-Git regression старого manual classifier сохранена byte-for-byte как
+`scripts/tests/test_ci_change_classifier_integration.py` и выполняется на manual
+вехе. Automatic classifier проверяется pure unit через Base plan; старый
+`classify_ci_changes.py` обслуживает manual/legacy compatibility.
+
+CI download caches сохраняются; unqualified compiled targets не восстанавливаются
+(`cache-targets: false`). Docker registry/git caches и корректные layers сохраняются;
+compiled target свежий между независимыми exports. Данные прежних caches не удаляются.
+Безопасное compiled dependency reuse, native caller/artifact handoff, реальные
+Vitest/types/Vite/Rust, resource profiles и Docker freeze qualification — OPEN.
+Integration/slow/release/live/8h запускаются отдельно вручную; NOT_RUN сообщать явно.
+
 ## PM Recovery: Миграция0098
 
 В PR169 подготовлен отдельный сценарий непустого PM upgrade: fixture доходит

@@ -23,7 +23,9 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
-RUN cargo build --locked --release --bin server
+ARG CARGO_BUILD_JOBS=1
+RUN cargo test --locked --release -p domain --lib \
+    && cargo build --locked --release -p server --bin server
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*

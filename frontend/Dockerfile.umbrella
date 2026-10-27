@@ -26,7 +26,6 @@ ARG VITE_AUTH_NAMESPACE="sdlc"
 ENV VITE_AUTH_NAMESPACE=${VITE_AUTH_NAMESPACE}
 ARG VITE_PLATFORM_ORIGIN=""
 ENV VITE_PLATFORM_ORIGIN=${VITE_PLATFORM_ORIGIN}
-RUN pnpm exec vitest run src/api/deployment-path.test.ts src/test/public-router.test.tsx --maxWorkers=1
 RUN pnpm build
 
 FROM nginx:alpine

@@ -1,0 +1,334 @@
+name: Manual Tracker qualification
+on:
+  workflow_dispatch:
+    inputs:
+      http_only:
+        description: Addressed HTTP qualification; reuse separately verified unchanged workspace and migration gates
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      http_only:
+        type: boolean
+        default: false
+    secrets:
+      SERVICES_BASE_TOKEN:
+        required: true
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+          fetch-depth: 0
+      - id: classify
+        working-directory: task-tracker
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/classify_ci_changes.py
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - name: README validator tests
+        working-directory: task-tracker
+        run: |
+          python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks scripts.tests.test_ci_change_classifier_integration scripts.tests.test_base_maintenance
+          bash -n scripts/backup.sh scripts/restore.sh
+      - name: README structural validation
+        working-directory: task-tracker
+        run: python3 scripts/verify_readme.py
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: tasktracker
+          POSTGRES_DB: tasktracker_infra_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tasktracker -d tasktracker_infra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: task-tracker/backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+          cache-targets: false
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        if: ${{ !inputs.http_only }}
+      - name: Lint affected HTTP test targets
+        if: ${{ inputs.http_only }}
+        run: cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings
+      - run: cargo test --locked --workspace -- --test-threads=1
+        if: github.event_name == 'workflow_dispatch' && (!inputs.http_only)
+      - name: Retained schema history and configured PM authority (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        env:
+          TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_pm_candidates_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_seed_contract_candidates_test
+          TT_LEGACY_SCHEMA_TEST_DATABASE_URL=postgres://tasktracker@127.0.0.1:5432/tracker_seed_contract_candidates_test cargo test --locked -p infra --lib legacy_schema_fixture::tests::actual_migration_ledger_does_not_treat_current_schema_loss_as_a_predecessor -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/legacy-seed-contract.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/legacy-seed-contract.log"
+          for case_name in owner_can_adopt_only_an_unstarted_draft_without_rewriting_its_creation configured_cli_business_writes_need_current_assignment_but_no_native_lease; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_pm_candidates_test
+            cargo test --locked -p infra --lib "sdlc::candidates::tests::configured_cli_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_pm_candidates_test
+          done
+      - name: Explicit configured Analysis start (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        env:
+          TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_start_candidates_test
+        run: |
+          set -euo pipefail
+          cases=(
+            forward_start_migration_preserves_filled_110_history_without_auto_start
+            explicit_start_is_atomic_discovered_once_and_replays_original_after_advancement
+            start_refuses_nonowners_no_opt_in_missing_consent_stale_and_foreign_receipts
+            start_race_payload_conflict_and_current_access_readback_do_not_duplicate_effects
+            start_sql_rejects_detached_command_and_direct_permit_bypass
+          )
+          for case_name in "${cases[@]}"; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_start_candidates_test
+            cargo test --locked -p infra --lib "sdlc::candidates::tests::critical_blocker_tests::configured_start_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_start_candidates_test
+          done
+      - name: Project repository lineage and PM recovery compatibility (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        run: |
+          set -euo pipefail
+          cases=(
+            'tracker_legacy_pdlc4_compat_test:project_compat_legacy_preserves_links_and_ledger_without_invented_task_links'
+            'tracker_published_pdlc4_compat_test:project_compat_published_source_history_remains_valid'
+            'tracker_fresh_pdlc4_compat_test:project_compat_fresh_and_unknown_history'
+            'tracker_catalog_pm_pdlc4_compat_test:project_compat_catalog_before_pm_history_remains_valid'
+            'tracker_legacy_catalog_pm_pdlc4_compat_test:project_compat_legacy_catalog_before_pm_history_remains_valid'
+          )
+          for entry in "${cases[@]}"; do
+            database="${entry%%:*}"
+            case_name="${entry#*:}"
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker "$database"
+            TT_PROJECT_COMPAT_TEST_DATABASE_URL="postgres://tasktracker@127.0.0.1:5432/$database" \
+              cargo test --locked -p migration --lib "project_repository_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$database.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$database.log"
+          done
+      - name: Project links pagination and project isolation (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        env:
+          TT_PROJECT_LINK_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_paging_project_links_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_paging_project_links_test
+          cargo test --locked -p infra --test repos project_repository_link_paging_preserves_scope_and_order -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/project-links-pagination.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/project-links-pagination.log"
+      - name: Populated 0033 through both 0098 migrations and strict EOL guards (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
+        env:
+          TT_DRAFT_FLOW_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_upgrade_draft_flow_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_upgrade_draft_flow_test
+          cargo test --locked -p infra --lib populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --ignored --test-threads=1 | tee "$RUNNER_TEMP/populated-upgrade.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/populated-upgrade.log"
+      - name: Deleted issue key restore (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
+        env:
+          TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
+        run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
+      - name: Namespace projection loss (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
+        env:
+          TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
+          TT_NAMESPACE__INSTANCE_ID: 11111111-1111-4111-8111-111111111111
+          TT_NAMESPACE__REGISTRY_INSTANCE_ID: 22222222-2222-4222-8222-222222222222
+        run: cargo test --locked -p infra --test repos namespace_projection_loss_cannot_offer_or_rebind_managed_project -- --ignored --test-threads=1
+      - name: Fleet MCP admission upgrade (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled() && !inputs.http_only)
+        env:
+          TRACKER_MCP_ADMISSION_TEST_URL: postgres://tasktracker@127.0.0.1:5432/tracker_mcp_qa_upgrade
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_mcp_qa_upgrade
+          cargo test --locked -p migration existing_v1_schema_upgrades_without_rewriting_history -- --ignored --test-threads=1
+      - name: Isolated PostgreSQL HTTP clarification and ownership lease
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        env:
+          TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts
+          TT_SDLC_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_clarifications
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_drafts
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_clarifications
+          cargo test -p server --test drafts --locked -- --ignored --test-threads=1
+          cargo test -p server --test sdlc --locked -- --ignored --test-threads=1
+      - name: OpenAPI drift gate
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p ../openapi
+          cargo run --locked -p api --bin gen-openapi > ../openapi/openapi.json.generated
+          diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
+
+  frontend:
+    needs: changes
+    if: ${{ !inputs.http_only && needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: task-tracker/frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+          fetch-depth: 0
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-ui-revision
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (@pdlc/ui file dep)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+          cache: pnpm
+          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        env:
+          CI: "true"
+      - run: pnpm openapi:check
+      - name: Typecheck prepared generated sources once
+        run: pnpm exec tsc --noEmit
+      - run: pnpm test:all
+      - run: pnpm lint
+      - run: pnpm format:check
+      - name: OpenAPI compatibility against target branch
+        run: |
+          git fetch origin main --depth=1
+          pnpm openapi:compat
+      - name: Generated contract and lockfile stay unchanged
+        run: git diff --exit-code -- pnpm-lock.yaml src/api/generated.ts src/api/schema.d.ts
+      - run: pnpm build:compile
+      - name: Packed Base consumer
+        run: python ../../services-base/scripts/check_ui_consumer.py
+      - name: Effective themes in the built consumer
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/theme-preview.log 2>&1 &
+          pnpm theme:check http://127.0.0.1:4173
+  minimum-rust:
+    needs: changes
+    if: ${{ !inputs.http_only && needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: ${{ steps.base.outputs.sha }}
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+          cache-targets: false
+      - name: Check declared minimum independently of release builds
+        working-directory: task-tracker/backend
+        run: cargo check --locked --workspace --all-targets
