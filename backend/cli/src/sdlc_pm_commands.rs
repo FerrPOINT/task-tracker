@@ -318,11 +318,6 @@ pub enum PmCommand {
         #[command(subcommand)]
         command: AssignmentCommand,
     },
-    /// Claim, renew or read the existing PM ownership lease
-    Lease {
-        #[command(subcommand)]
-        command: LeaseCommand,
-    },
     /// Submit or reconcile the actual PM terminal completion
     Completion {
         #[command(subcommand)]
@@ -349,28 +344,6 @@ pub enum FeedbackCommand {
 #[derive(Subcommand)]
 pub enum AssignmentCommand {
     Reserve {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long, value_name = "PATH|-")]
-        from_file: String,
-    },
-    Read {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long)]
-        key: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum LeaseCommand {
-    Claim {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long, value_name = "PATH|-")]
-        from_file: String,
-    },
-    Heartbeat {
         #[arg(long)]
         task: Uuid,
         #[arg(long, value_name = "PATH|-")]
@@ -508,26 +481,6 @@ pub async fn pm(api: &Api, command: PmCommand) -> Result<Value> {
             }
             AssignmentCommand::Read { task, key } => {
                 api.get(&readback_path(task, "/pm-draft-assignment", key))
-                    .await
-            }
-        },
-        PmCommand::Lease { command } => match command {
-            LeaseCommand::Claim { task, from_file } => {
-                api.post(
-                    &sdlc_path(task, "/pm-draft-execution-lease"),
-                    json_input(&from_file)?,
-                )
-                .await
-            }
-            LeaseCommand::Heartbeat { task, from_file } => {
-                api.post(
-                    &sdlc_path(task, "/pm-draft-execution-lease/heartbeat"),
-                    json_input(&from_file)?,
-                )
-                .await
-            }
-            LeaseCommand::Read { task, key } => {
-                api.get(&readback_path(task, "/pm-draft-execution-lease", key))
                     .await
             }
         },

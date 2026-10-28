@@ -1003,10 +1003,32 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
 }
 
 #[tokio::test]
+async fn sdlc_pm_retired_lease_commands_are_rejected_before_http() {
+    let server = Server::start(vec![]).await;
+    let output = server.run(&["sdlc", "pm", "--help"], None).await;
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    for supported in ["feedback", "assignment", "completion"] {
+        assert!(help.contains(supported));
+    }
+    assert!(!help.contains("lease"));
+    for operation in ["claim", "heartbeat", "read"] {
+        let output = server.run(&["sdlc", "pm", "lease", operation], None).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("unrecognized subcommand 'lease'")
+        );
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdlc_pm_unknown_acceptance_readbacks_preserve_keys_without_mutation() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
-    let server = Server::start(vec![(200, json!({"retained":true})); 5]).await;
+    let server = Server::start(vec![(200, json!({"retained":true})); 4]).await;
     let cases = [
         (
             vec![
@@ -1032,14 +1054,6 @@ async fn sdlc_pm_unknown_acceptance_readbacks_preserve_keys_without_mutation() {
                 "lost key",
             ],
             format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment?idempotency_key=lost%20key"),
-        ),
-        (
-            vec![
-                "sdlc", "pm", "lease", "read", "--task", TASK, "--key", "lost key",
-            ],
-            format!(
-                "/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease?idempotency_key=lost%20key"
-            ),
         ),
         (
             vec![

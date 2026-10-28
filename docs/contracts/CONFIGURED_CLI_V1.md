@@ -17,6 +17,33 @@ but the updated CLI is not yet installed or active in the retained PM runtime.
 Source qualification does not establish fresh PM acceptance.
 See the [CLI qualification record](../../CHANGELOG.md#2026-10-27-pm-publish-cli-discovery).
 
+## Coordinated Protocol Replacement
+
+The fileless replacement is a breaking change within the existing `/api/v1`
+surface. It must be qualified together with Fleet #147 and Workflow #152;
+current main Fleet still calls the retired native PM routes. A passing new
+Tracker test suite alone does not qualify that older Fleet as a caller.
+
+The following suffixes under `/issues/{task}/sdlc/` are no longer exposed:
+
+| Retired route family | Removed suffixes |
+| --- | --- |
+| Native execution lease | `pm-draft-execution-lease`, `pm-draft-execution-lease/heartbeat` |
+| Native recovery | `pm-draft-execution-lease/recover-unsubmitted`, `pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}` |
+| Native resume | `pm-draft-execution-lease/resume`, `pm-draft-execution-lease/resume/operations/{idempotency_key}` |
+| Bootstrap retry | `pm-draft-execution-lease/retry-bootstrap`, `pm-draft-execution-lease/retry-bootstrap/operations/{idempotency_key}` |
+
+PM question publication no longer accepts `checkpoint_id`. Completion submission
+uses the configured Workflow selectors below rather than a native execution
+receipt. The CLI therefore no longer offers `sdlc pm lease` commands. Stored
+legacy confirmation/completion responses retain their historical form; this
+does not restore the retired writer protocol. Applied history is not rewritten.
+Only untouched Drafts are eligible for first-assignment adoption. Started legacy
+tasks require an explicit transition decision before runtime rollout.
+
+Strict compatibility against the older main OpenAPI fails on these changes;
+this document records their impact and does not turn that check into a pass.
+
 ## Creation And Reservation
 
 Existing owner APIs and their idempotency keys are retained. There is no token
@@ -75,9 +102,11 @@ service subject and current fence. No reader registry or new permission is added
 The capability permits only the existing context, input, clarification,
 requirements, confirmation-read and completion business routes. It does not
 permit owner answers/confirmation, assignment changes, scheduler or native
-execution lease endpoints. The new marker is immutable from original creation;
-legacy histories cannot be retrofitted. Configured tasks cannot acquire a native
-execution lease. Existing applied migrations are unchanged.
+execution lease endpoints. A first owner assignment can adopt an untouched Draft
+without a protocol marker; migration 109 preserves its original creation receipt
+and input. Started legacy tasks cannot be retrofitted. Once selected, the marker
+is immutable. Configured tasks cannot acquire a native execution lease.
+Existing applied migrations are unchanged.
 
 ## Business Commands
 
@@ -86,8 +115,9 @@ expected_assignment_version and current requirement revision/content_hash.
 Requirements publication retains the existing document, assignment fence,
 expected_requirement_revision and idempotency key. An initial working revision
 can precede questions. Configured question publication retains the same business
-fields but omits checkpoint_id. Legacy publication still requires a nonnil
-checkpoint. No fabricated checkpoint is stored for configured questions.
+fields but omits checkpoint_id. The current publication command rejects that
+retired field. Retained legacy questions still expose their original checkpoint
+when present; no fabricated checkpoint is stored for configured questions.
 
 Owner answers retain AnswerCommand and version CAS. Only the owner can confirm
 the exact current revision/hash after a valid business document and resolution
