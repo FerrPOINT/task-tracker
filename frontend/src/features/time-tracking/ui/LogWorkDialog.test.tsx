@@ -57,7 +57,7 @@ describe('LogWorkDialog', () => {
     const page = render(<LogWorkDialog {...props} isPending />, { wrapper })
     const user = userEvent.setup()
     await user.keyboard('{Escape}')
-    await user.click(screen.getByRole('button', { name: 'Закрыть' }))
+    await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     page.rerender(<LogWorkDialog {...props} isPending={false} />)
