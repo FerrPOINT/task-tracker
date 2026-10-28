@@ -39,7 +39,11 @@
       ".github/workflows/ci.yml",
       ".github/workflows/release.yml",
       "justfile",
-      ".github/workflows/qualification.yml"
+      ".github/workflows/qualification.yml",
+      "backend/Dockerfile",
+      "backend/Dockerfile.umbrella",
+      "backend/Cargo.toml",
+      "backend/*/Cargo.toml"
     ],
     "cli": [
       "backend/cli/**"
@@ -76,7 +80,11 @@
         ".quality-gate.json",
         ".quality-tooling-revision",
         ".github/**",
-        "frontend/package.json"
+        "frontend/package.json",
+        "backend/Dockerfile",
+        "backend/Dockerfile.umbrella",
+        "backend/Cargo.toml",
+        "backend/*/Cargo.toml"
       ]
     },
     {
