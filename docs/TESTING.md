@@ -474,15 +474,23 @@ environment. Feature tests явно включают true через `vi.stubEnv
 `vite build` использует свой конфиг и реальный build flag. Это сохраняет
 детерминированные legacy fixtures и проверку нового режима в одном unit graph.
 
-## Одна OpenAPI generation в CI
+## Проверка generated outputs в CI
 
-В frontend job автоматического CI и ручного release `postinstall` выполняет
-generation во время frozen install; project lifecycle явно включён. Сразу после
-установки Git проверяет tracked outputs и отсутствие drift, без второго
-generator invocation. Проверяемые outputs: `src/api/generated.ts`.
-Lockfile, backward compatibility и backend OpenAPI drift gates сохраняются.
-Самостоятельный `pnpm openapi:check` остаётся проверкой для окружения, в котором
-generation ещё не выполнялась; его не добавляют повторно после postinstall.
+`postinstall` выполняется при frozen install с `--ignore-scripts=false`.
+Текущие outputs: `src/api/generated.ts`; они намеренно
+игнорируются Git. Поэтому `git diff` не доказывает их актуальность, а требование
+tracked output было ошибкой CI. Git проверяет только tracked lockfile; для outputs
+проверяются ignore policy, обычный непустой файл без symlink и прежний
+`pnpm openapi:check`. Проверки `test` записаны отдельными командами: failed
+non-final `test` внутри `&&` не гарантирует остановку Bash с `-e`.
+
+Повторный compiler в drift check здесь имеет конкретную причину: нет переданного
+проверяемого результата generation для ignored outputs. Удалять его можно после
+подключения квалифицированного postinstall handoff существующего Base owner,
+с сохранением input/output identity и corruption controls. Новый cache не нужен.
+Это не разрешает повторный application build или install. Backend schema drift,
+OpenAPI compatibility и ручной release gate сохраняются. CI contract проверяется
+штатным `base_frontend_artifact.py check-ci` до подготовки приложения.
 
 ## POSIX unit обёрток обслуживания
 

@@ -233,8 +233,13 @@ jobs:
           CI: "true"
       - name: Verify postinstall-generated contract and lockfile
         run: |
-          git ls-files --error-unmatch pnpm-lock.yaml src/api/generated.ts > /dev/null
-          git diff --exit-code -- pnpm-lock.yaml src/api/generated.ts
+          git ls-files --error-unmatch pnpm-lock.yaml > /dev/null
+          git diff --exit-code -- pnpm-lock.yaml
+          git check-ignore -q -- src/api/generated.ts
+          test -f src/api/generated.ts
+          test ! -L src/api/generated.ts
+          test -s src/api/generated.ts
+          pnpm openapi:check
       - name: Typecheck independently of application build
         run: pnpm exec tsc --noEmit
       - run: pnpm test:unit
