@@ -338,16 +338,18 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
             .len(),
         1
     );
-    assert!(artifacts::publish(
-        &f.db,
-        config,
-        &producer,
-        issue,
-        upload(bytes, "analysis.json"),
-        &storage
-    )
-    .await
-    .is_err());
+    assert!(
+        artifacts::publish(
+            &f.db,
+            config,
+            &producer,
+            issue,
+            upload(bytes, "analysis.json"),
+            &storage
+        )
+        .await
+        .is_err()
+    );
     // Actual database clock, no trigger disabling or protected ledger edits.
     f.db.execute_unprepared("SELECT pg_sleep(31)")
         .await

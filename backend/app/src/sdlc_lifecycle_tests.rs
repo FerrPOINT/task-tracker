@@ -36,10 +36,12 @@ fn delivery_execution_reference_is_canonical_and_closed() {
         "9223372036854775808",
         "",
     ] {
-        assert!(serde_json::from_value::<DeliveryExecution>(
-            serde_json::json!({"ordinal":ordinal,"key":format!("SDLC-{ordinal}")})
-        )
-        .is_err());
+        assert!(
+            serde_json::from_value::<DeliveryExecution>(
+                serde_json::json!({"ordinal":ordinal,"key":format!("SDLC-{ordinal}")})
+            )
+            .is_err()
+        );
     }
     for raw in [
         serde_json::json!({"ordinal":"1","key":"TASK-1"}),
@@ -398,20 +400,14 @@ fn configured_project_pm_default_is_authoritative_without_native_admission() {
     let project = policy.project_id;
     let agent = policy.routes.project_manager.agent_id;
     crate::sdlc_routing::validate_project_pm_default(&policy, project, "test", agent).unwrap();
-    assert!(crate::sdlc_routing::validate_project_pm_default(
-        &policy,
-        project,
-        "test",
-        Uuid::new_v4()
-    )
-    .is_err());
-    assert!(crate::sdlc_routing::validate_project_pm_default(
-        &policy,
-        Uuid::new_v4(),
-        "test",
-        agent
-    )
-    .is_err());
+    assert!(
+        crate::sdlc_routing::validate_project_pm_default(&policy, project, "test", Uuid::new_v4())
+            .is_err()
+    );
+    assert!(
+        crate::sdlc_routing::validate_project_pm_default(&policy, Uuid::new_v4(), "test", agent)
+            .is_err()
+    );
     assert!(
         crate::sdlc_routing::validate_project_pm_default(&policy, project, "foreign", agent)
             .is_err()
@@ -519,15 +515,17 @@ fn delivery_grants_are_canonical_single_task_capabilities_not_generic_permission
         assert!(delivery_request_policy(&actor, method, &result_path).is_err());
         assert!(delivery_request_policy(&actor, method, &blocker_path).is_err());
     }
-    assert!(delivery_request_policy(
-        &actor,
-        "GET",
-        &format!(
-            "/api/v1/issues/{}/sdlc/lifecycle/results/{result_id}",
-            Uuid::new_v4()
+    assert!(
+        delivery_request_policy(
+            &actor,
+            "GET",
+            &format!(
+                "/api/v1/issues/{}/sdlc/lifecycle/results/{result_id}",
+                Uuid::new_v4()
+            )
         )
-    )
-    .is_err());
+        .is_err()
+    );
     for (method, path) in [
         ("GET", "/api/v1/issues/foreign".to_owned()),
         ("GET", "/api/v1/sdlc/project-directory".into()),
@@ -727,22 +725,21 @@ fn configured_original_proposal_receipt_has_its_own_frozen_identity() {
     }
     let mut foreign = actor.clone();
     foreign.subject = Uuid::new_v4().to_string();
-    assert!(authorize_configured_proposal_receipt(
-        &foreign,
-        &receipt,
-        &assignment,
-        &task.owner_subject
-    )
-    .is_err());
+    assert!(
+        authorize_configured_proposal_receipt(&foreign, &receipt, &assignment, &task.owner_subject)
+            .is_err()
+    );
     let mut no_write = actor.clone();
     no_write.scopes.remove("task-tracker:write");
-    assert!(authorize_configured_proposal_receipt(
-        &no_write,
-        &receipt,
-        &assignment,
-        &task.owner_subject
-    )
-    .is_err());
+    assert!(
+        authorize_configured_proposal_receipt(
+            &no_write,
+            &receipt,
+            &assignment,
+            &task.owner_subject
+        )
+        .is_err()
+    );
     assert!(
         authorize_configured_proposal_receipt(&actor, &receipt, &assignment, "changed-owner")
             .is_err()

@@ -2310,7 +2310,7 @@ Configured questions omit their native checkpoint; legacy questions retain it.
 The existing execution ordinal remains authoritative for SDLC-N. See
 [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md) for integration limits.
 
-The same unapplied 0105 owns sdlc_configured_pm_completions: append-only task/
+The retained 0105 owns sdlc_configured_pm_completions: append-only task/
 execution/key, exact owner confirmation, command hash and verified Workflow
 receipt. It has the existing native task scope/namespace and deferred commit
 clock guards. Legacy completion tables and applied migration bytes are retained.
@@ -2321,14 +2321,16 @@ transaction inserts its exact Workflow/owner ledger, changes the aggregate and
 issue projection to Backlog/Ready, and closes PM admission. The saved consent
 stage is never rewritten; 0105 guards reject early publication and Analysis.
 
-Forward migrations106–108 extend the candidate without editing applied files.
+Forward migrations106–109 extend the candidate without editing applied files.
 106 records final discussion custody and detects edit/delete changes.107 keeps
 one immutable configured completion per execution, permitting later PM reviews
 on the same task; old operation keys retain their original assignment/revision.
 108 lets the existing review journal and routing-generation table reference the
 actual configured completion instead of a fabricated native completion. Native
 lease fields are absent together only for the configured command family; old
-rows retain their original foreign keys. Deferred guards require complete
+rows retain their original foreign keys. 109 permits the first configured
+assignment to adopt only an untouched Draft while preserving its original
+creation receipt and input. Deferred guards require complete
 projection, ledger, resolution and outbox effects in one transaction. No Analysis
 intent is created by configured PM completion. Fresh/filled PostgreSQL acceptance
 of these unapplied candidate migrations remains required.

@@ -99,8 +99,10 @@ readiness/evidence behavior is unchanged. PM reads the saved confirmation via
 `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`.
 The confirmation receipt truthfully reports `stage: Draft`; the aggregate remains
 Draft/InProgress with `waiting_reason: waiting_for_workflow_completion`. Confirmed
-requirements are immutable. No routing/source snapshot or Analysis is created
-by configured consent. CLI/deployment readiness is qualified separately.
+requirements are immutable. Configured consent freezes the current routing and
+source snapshots for that exact revision, while the task remains Draft. It
+creates no Analysis intent or downstream assignment. CLI/deployment readiness
+is qualified separately.
 
 Configured CLI mode is selected by FLEET_CLI_PROTOCOL. It requires canonical
 FLEET_AGENT_ID, nonempty TASKTRACKER_TOKEN and TASKTRACKER_API_URL. An alternate
@@ -193,9 +195,12 @@ migration 105 units (3), and candidates::configured_cli_tests real owned-PG case
 (1). The latter now covers owner answers/confirmation without verifier/evidence,
 Draft-only consent/readback, refusal of publication before completion, foreign/
 stale terminal tuples, competing completion replay, changed payload, append
-immutability and no lease/native/evidence/routing/source/Analysis rows.
+immutability and the unchanged consent routing/source snapshots. Completion
+creates no native lease/evidence or downstream Analysis/delivery rows.
 It uses the existing candidates fixture and synthetic service/Workflow receipts,
-not live Central Auth/provider acceptance. The HTTP unit exercises the actual
+not live Central Auth/provider acceptance. Current confirmation tests require
+the exact frozen routing/source snapshots and still refuse Analysis dispatch.
+The HTTP unit exercises the actual
 reader against a controlled server, not a real Workflow deployment.
 The PG case requires 105 in the real Migrator registry before fixture setup,
 then verifies its actual ledger row and installed function after ordinary up.

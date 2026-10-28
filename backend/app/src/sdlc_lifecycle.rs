@@ -1,4 +1,4 @@
-use domain::sdlc::{Principal, MAX_SAFE_VERSION};
+use domain::sdlc::{MAX_SAFE_VERSION, Principal};
 use domain::sdlc_lifecycle::*;
 use shared::AppError;
 use uuid::Uuid;

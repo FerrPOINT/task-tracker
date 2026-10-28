@@ -905,8 +905,6 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         "sdlc_delivery_holds",
         "sdlc_delivery_operations",
         "sdlc_evidence",
-        "sdlc_task_routing_snapshots",
-        "sdlc_task_source_bindings",
     ] {
         let sql = format!("SELECT count(*) AS n FROM {table}");
         assert_eq!(
@@ -916,7 +914,21 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
                 .unwrap()
                 .try_get::<i64>("", "n")
                 .unwrap(),
-            0
+            0,
+            "configured PM must not create native or downstream rows in {table}"
+        );
+    }
+    for table in ["sdlc_task_routing_snapshots", "sdlc_task_source_bindings"] {
+        let sql = format!("SELECT count(*) AS n FROM {table}");
+        assert_eq!(
+            f.db.query_one(statement(&sql, vec![]))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<i64>("", "n")
+                .unwrap(),
+            1,
+            "completion and replay must preserve the single consent snapshot in {table}"
         );
     }
 }

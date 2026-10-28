@@ -130,10 +130,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").expect("isolated database required");
     let db = Database::connect(&url).await.unwrap();
     let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
-    assert!(row
-        .try_get::<String>("", "name")
-        .unwrap()
-        .ends_with("_lifecycle_test"));
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_lifecycle_test")
+    );
     assert!(
         row.try_get::<bool>("", "fresh").unwrap(),
         "use a fresh disposable database"
@@ -347,10 +348,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         machine_subject: Some(producer.subject.clone()),
         idempotency_key: "invalid-cas".into(),
     };
-    assert!(repo
-        .lifecycle_command(task, &scheduler, invalid)
-        .await
-        .is_err());
+    assert!(
+        repo.lifecycle_command(task, &scheduler, invalid)
+            .await
+            .is_err()
+    );
     assert!(matches!(
         repo.lifecycle_command(task, &owner, reserve.clone()).await,
         Err(AppError::Forbidden)
@@ -361,23 +363,25 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     db.execute_unprepared("CREATE FUNCTION fixture_fail_reserve_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
         IF NEW.event_type='delivery.assignment_reserved' THEN RAISE EXCEPTION 'fixture reserve outbox failure'; END IF; RETURN NEW; END $$;
         CREATE TRIGGER fixture_fail_reserve_outbox BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
-    assert!(repo
-        .lifecycle_command(task, &scheduler, reserve.clone())
-        .await
-        .is_err());
+    assert!(
+        repo.lifecycle_command(task, &scheduler, reserve.clone())
+            .await
+            .is_err()
+    );
     let gap = pm_ordinal_head(&db).await;
     assert_eq!(gap, pm_ordinal + 1);
     assert_eq!(count(&db, "sdlc_delivery_assignments").await, 0);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     assert_eq!(count(&db, "sdlc_delivery_operations").await, operations);
     assert_eq!(count(&db, "sdlc_outbox").await, outbox);
-    assert!(repo
-        .lifecycle_read(task, &reader)
-        .await
-        .unwrap()
-        .receipt
-        .assignment
-        .is_none());
+    assert!(
+        repo.lifecycle_read(task, &reader)
+            .await
+            .unwrap()
+            .receipt
+            .assignment
+            .is_none()
+    );
     db.execute_unprepared("DROP TRIGGER fixture_fail_reserve_outbox ON sdlc_outbox; DROP FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
     let (other_draft, _) = repo
         .create_draft(
@@ -508,8 +512,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         IF NEW.event_type='delivery.run_bound' THEN RAISE EXCEPTION 'fixture outbox failure'; END IF; RETURN NEW; END $$;
         CREATE TRIGGER fixture_fail_lifecycle_outbox BEFORE INSERT ON sdlc_outbox
         FOR EACH ROW EXECUTE FUNCTION fixture_fail_lifecycle_outbox();").await.unwrap();
-    assert!(repo
-        .lifecycle_command(
+    assert!(
+        repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::BindRun {
@@ -519,7 +523,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             }
         )
         .await
-        .is_err());
+        .is_err()
+    );
     assert_eq!(count(&db, "sdlc_delivery_run_bindings").await, 0);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
     assert_eq!(
@@ -581,10 +586,12 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         "SELECT event_id,result FROM sdlc_delivery_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key='heartbeat-0'",
         vec![task.into(),scheduler.subject.clone().into()],
     )).await.unwrap().unwrap();
-    assert!(heartbeat_audit
-        .try_get::<Option<Uuid>>("", "event_id")
-        .unwrap()
-        .is_none());
+    assert!(
+        heartbeat_audit
+            .try_get::<Option<Uuid>>("", "event_id")
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         heartbeat_audit.try_get::<Json>("", "result").unwrap(),
         serde_json::to_value(&renewed).unwrap()
@@ -596,8 +603,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     );
     assert!(fresh_after_heartbeat.observed_at >= renewed.lease.as_ref().unwrap().heartbeat_at);
     assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at);
-    assert!(repo
-        .lifecycle_command(
+    assert!(
+        repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::Heartbeat {
@@ -606,7 +613,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             }
         )
         .await
-        .is_err());
+        .is_err()
+    );
     let output = DeliveryResult::Analyst {
         analysis: artifact("analysis"),
     };
@@ -674,10 +682,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .version,
         2
     );
-    assert!(repo
-        .lifecycle_operation(task, &scheduler, "heartbeat-0")
-        .await
-        .is_err());
+    assert!(
+        repo.lifecycle_operation(task, &scheduler, "heartbeat-0")
+            .await
+            .is_err()
+    );
     assert_eq!(
         repo.lifecycle_read(task, &reader)
             .await
@@ -699,10 +708,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .unwrap()
             .1
     );
-    assert!(db
-        .execute_unprepared("DELETE FROM sdlc_delivery_holds")
-        .await
-        .is_err());
+    assert!(
+        db.execute_unprepared("DELETE FROM sdlc_delivery_holds")
+            .await
+            .is_err()
+    );
     // Exercise actual server-clock expiry without disabling guards or mutating protected ledgers.
     db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
     let lease_operations_before_receipt = count(&db, "sdlc_pm_lease_operations").await;
@@ -726,8 +736,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         workflow_receipt: proposal.workflow_receipt,
         output_sha256: proposal.output_sha256,
     };
-    assert!(repo
-        .lifecycle_command(
+    assert!(
+        repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::Complete {
@@ -738,7 +748,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             }
         )
         .await
-        .is_err());
+        .is_err()
+    );
     let reconcile = LifecycleCommand::Reconcile {
         fence: stale,
         terminal: RuntimeTerminalObservation {
@@ -803,8 +814,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let mut wrong_chat = binding.clone();
     wrong_chat.chat_id = Uuid::new_v4();
     wrong_chat.run_id = Uuid::new_v4();
-    assert!(repo
-        .lifecycle_command(
+    assert!(
+        repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::BindRun {
@@ -814,7 +825,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             }
         )
         .await
-        .is_err());
+        .is_err()
+    );
     repo.config.single_task_project_ids.clear();
     let before_replay = pm_ordinal_head(&db).await;
     assert!(
@@ -1009,10 +1021,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                 repo.lifecycle_result(task, &pm, expected.result_id).await,
                 Err(AppError::Forbidden)
             ));
-            assert!(repo
-                .lifecycle_result(Uuid::new_v4(), &role_producer, expected.result_id)
-                .await
-                .is_err());
+            assert!(
+                repo.lifecycle_result(Uuid::new_v4(), &role_producer, expected.result_id)
+                    .await
+                    .is_err()
+            );
             assert!(matches!(
                 repo.lifecycle_result(task, &role_producer, Uuid::new_v4())
                     .await,

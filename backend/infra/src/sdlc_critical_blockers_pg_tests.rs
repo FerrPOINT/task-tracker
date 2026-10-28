@@ -745,22 +745,26 @@ async fn critical_pg_scenario() {
             assert_eq!(snapshot(&f, r.task).await, before_progress);
         }
         let tx = f.db.begin().await.unwrap();
-        assert!(exec(
-            &tx,
-            "DELETE FROM sdlc_delivery_holds WHERE task_id=$1",
-            vec![r.task.into()]
-        )
-        .await
-        .is_err());
+        assert!(
+            exec(
+                &tx,
+                "DELETE FROM sdlc_delivery_holds WHERE task_id=$1",
+                vec![r.task.into()]
+            )
+            .await
+            .is_err()
+        );
         tx.rollback().await.unwrap();
         let tx = f.db.begin().await.unwrap();
-        assert!(exec(
-            &tx,
-            "UPDATE sdlc_critical_blocker_operations SET result='{}' WHERE task_id=$1",
-            vec![r.task.into()]
-        )
-        .await
-        .is_err());
+        assert!(
+            exec(
+                &tx,
+                "UPDATE sdlc_critical_blocker_operations SET result='{}' WHERE task_id=$1",
+                vec![r.task.into()]
+            )
+            .await
+            .is_err()
+        );
         tx.rollback().await.unwrap();
         assert_eq!(snapshot(&f, r.task).await, before_progress);
     })
@@ -897,11 +901,12 @@ async fn return_held_to_pm(
                 8 => invalid.review.blocker_sha256 = "f".repeat(64),
                 _ => invalid.terminal.receipt.reference.clear(),
             }
-            assert!(f
-                .repo
-                .return_critical_to_pm_with_terminal(r.task, &f.writer, invalid)
-                .await
-                .is_err());
+            assert!(
+                f.repo
+                    .return_critical_to_pm_with_terminal(r.task, &f.writer, invalid)
+                    .await
+                    .is_err()
+            );
             assert_eq!(snapshot(f, r.task).await, before);
         }
         for nonterminal in ["unknown", "running", "stop_acknowledged", "timeout"] {
@@ -1175,18 +1180,20 @@ async fn return_held_to_pm(
                 .unwrap(),
             (original.clone(), true)
         );
-        assert!(f
-            .repo
-            .critical_blocker(r.task, &r.producer, original.blocker_id)
-            .await
-            .is_err());
+        assert!(
+            f.repo
+                .critical_blocker(r.task, &r.producer, original.blocker_id)
+                .await
+                .is_err()
+        );
         let mut fresh = original_body.clone();
         fresh.idempotency_key = "post-after-return".into();
-        assert!(f
-            .repo
-            .submit_critical_blocker_with_storage(r.task, &r.producer, fresh, &CorruptBytes)
-            .await
-            .is_err());
+        assert!(
+            f.repo
+                .submit_critical_blocker_with_storage(r.task, &r.producer, fresh, &CorruptBytes)
+                .await
+                .is_err()
+        );
         assert_eq!(
             f.repo
                 .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone())
@@ -1204,11 +1211,12 @@ async fn return_held_to_pm(
         ));
         let mut duplicate = command;
         duplicate.review.idempotency_key = "second-return".into();
-        assert!(f
-            .repo
-            .return_critical_to_pm_with_terminal(r.task, &f.writer, duplicate)
-            .await
-            .is_err());
+        assert!(
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, &f.writer, duplicate)
+                .await
+                .is_err()
+        );
         for command in [
             LifecycleCommand::EnsureQueued {
                 idempotency_key: "awaiting-queue".into(),
