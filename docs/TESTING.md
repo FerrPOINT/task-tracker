@@ -440,8 +440,18 @@ by the earlier 24-case bootstrap-retry qualification:
   writes are rejected before and after import. No migration or production guard
   is changed, and no test is disabled or newly skipped.
 - `cargo test -p server --test sdlc postgres_http_clarification_ownership_replay_gate_and_restart -- --exact`:
-  existing isolated HTTP/PG harness. Its confirmation checks Backlog/no intent
-  before deliberately seeding Analysis for the historical admission/restart cases.
+  isolated legacy HTTP/PG read/answer harness. Retired PM publication attempts
+  must be denied; explicitly imported predecessor snapshots provide revisions,
+  questions and cancellation history. Human answer/consent, ACL, rollback,
+  readback and restart operations still go through HTTP. A separate synthetic
+  Analysis snapshot supports retained technical admission tests. These imports
+  are neither a current PM writer nor populated-history migration acceptance.
+- `cargo test -p server --test drafts -- --ignored`: current configured PM HTTP
+  scenario uses an ordinary assigned service, current questions, human answers,
+  exact consent, final comment and authoritative Workflow readback. Consent
+  stays Draft/InProgress; completion alone publishes Backlog/Ready, with no
+  native lease or automatic Analyst. External Auth/Workflow/Forge observations
+  are explicit fixtures, so this does not replace live cohort acceptance.
 
 Focused UI case: `keeps confirmed requirements at Backlog without inventing
 Analysis or PM completion`. Historical intent readback tests remain separate.

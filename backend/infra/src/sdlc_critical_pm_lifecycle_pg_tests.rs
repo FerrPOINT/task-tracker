@@ -165,6 +165,34 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
         )
         .await,
     );
+    // Migration 110 accepts an absent checkpoint but must still reject a concrete
+    // native checkpoint in either side of the journal, independently of DTO validation.
+    for path in ["{payload,checkpoint_id}", "{checkpoint_id}"] {
+        let tx = r.f.db.begin().await.unwrap();
+        let result = tx.execute(statement(
+            "INSERT INTO sdlc_critical_pm_lifecycle_operations(operation_id,task_id,blocker_id,execution_id,actor_subject,
+                kind,idempotency_key,request_sha256,command,result,lease_id,lease_version,before_state,after_state,
+                before_execution,after_execution,before_blocker,after_blocker,outbox_event_id,completion_id,owner_version,configured_completion_id)
+             SELECT $2,o.task_id,o.blocker_id,o.execution_id,o.actor_subject,o.kind,'forged-checkpoint',o.request_sha256,
+                CASE WHEN $3::text='{payload,checkpoint_id}' THEN jsonb_set(jsonb_set(o.command,'{payload,idempotency_key}',
+                    to_jsonb('forged-checkpoint'::text)),'{payload,checkpoint_id}',to_jsonb($4::uuid))
+                    ELSE jsonb_set(o.command,'{payload,idempotency_key}',to_jsonb('forged-checkpoint'::text)) END,
+                CASE WHEN $3::text='{checkpoint_id}' THEN jsonb_set(o.result,'{checkpoint_id}',to_jsonb($4::uuid)) ELSE o.result END,
+                o.lease_id,o.lease_version,t.state,o.after_state,h.execution,o.after_execution,
+                sdlc_critical_pm_detail(o.blocker_id),o.after_blocker,$5,o.completion_id,o.owner_version,o.configured_completion_id
+             FROM sdlc_critical_pm_lifecycle_operations o JOIN sdlc_tasks t ON t.task_id=o.task_id
+             JOIN sdlc_delivery_heads h ON h.task_id=o.task_id
+             WHERE o.task_id=$1 AND o.idempotency_key='review-question'",
+            vec![r.task.into(),Uuid::new_v4().into(),path.into(),Uuid::new_v4().into(),Uuid::new_v4().into()],
+        )).await.unwrap_err();
+        assert!(
+            result
+                .to_string()
+                .contains("configured question has no native checkpoint"),
+            "{result}"
+        );
+        tx.rollback().await.unwrap();
+    }
     let answer: Answer = parse(
         command(
             r,

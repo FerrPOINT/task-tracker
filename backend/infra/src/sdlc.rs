@@ -196,7 +196,15 @@ async fn seed_analysis_fixture(
     PostgresSdlcRepository::save_delivery_projection(&tx, actor, &receipt, true)
         .await
         .unwrap();
+    // PostgreSQL forbids ALTER TABLE while deferred trigger events are pending.
+    // Validate the imported snapshot now; do not suppress its commit guards.
+    tx.execute_unprepared("SET CONSTRAINTS ALL IMMEDIATE")
+        .await
+        .unwrap();
     tx.execute_unprepared("ALTER TABLE sdlc_tasks ENABLE TRIGGER sdlc_delivery_canonical_gate")
+        .await
+        .unwrap();
+    tx.execute_unprepared("SET CONSTRAINTS ALL DEFERRED")
         .await
         .unwrap();
     let restored: String = tx
@@ -325,6 +333,35 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
+        let state = Self::load_binding(tx, config, task, actor).await?;
+        Self::bind_current_task(tx, config, &state, actor).await?;
+        Ok(state)
+    }
+
+    async fn bind_current_task(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        state: &TaskState,
+        actor: &Principal,
+    ) -> Result<(), AppError> {
+        if state.configured_cli()
+            && !actor.trusted_human
+            && app::sdlc_reservation::scheduler(actor, config).is_err()
+        {
+            lifecycle::configured_assignment(tx, state, actor).await?;
+        }
+        spaces::bind_task(tx, config, state, actor).await
+    }
+
+    // Locks current project/account ACL and validates the aggregate, but does not
+    // authorize an operation. Retained-operation callers must prove ownership of
+    // the exact immutable receipt before binding a read-only namespace scope.
+    async fn load_binding(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
         let (project, _) = Self::issue_access(tx, task, actor).await?;
         let row = tx
             .query_one(statement(
@@ -343,13 +380,6 @@ impl PostgresSdlcRepository {
         }
         state.require_root()?;
         state.interaction_protocol()?;
-        if state.configured_cli()
-            && !actor.trusted_human
-            && app::sdlc_reservation::scheduler(actor, config).is_err()
-        {
-            lifecycle::configured_assignment(tx, &state, actor).await?;
-        }
-        spaces::bind_task(tx, config, &state, actor).await?;
         Ok(state)
     }
 

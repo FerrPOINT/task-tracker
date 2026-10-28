@@ -2334,3 +2334,5 @@ creation receipt and input. Deferred guards require complete
 projection, ledger, resolution and outbox effects in one transaction. No Analysis
 intent is created by configured PM completion. Fresh/filled PostgreSQL acceptance
 of these unapplied candidate migrations remains required.
+
+Migration 110 corrects the configured critical-PM question guard: missing and JSON-null `checkpoint_id` both mean absence; non-null native checkpoints remain forbidden. Applied migrations and stored history are unchanged.

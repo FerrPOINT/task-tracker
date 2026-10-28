@@ -30,6 +30,8 @@ use uuid::Uuid;
 mod analysis_intent;
 #[path = "support/analysis_reservation.rs"]
 mod analysis_reservation;
+#[path = "support/legacy_pm_fixture.rs"]
+mod legacy_pm_fixture;
 #[path = "support/lifecycle_guard.rs"]
 mod lifecycle_guard;
 #[path = "support/metadata.rs"]
@@ -640,27 +642,13 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         403,
     )
     .await;
-    let revision = post(
-        &client,
-        &format!("{url}/requirements"),
-        "sdlc_pat_pm",
-        &publish,
-        200,
-    )
-    .await;
+    let revision = legacy_pm_fixture::revision(&db, &client, &url, task, &publish).await;
     assert_eq!(revision["goal"], "Approved goal");
     assert!(revision.get("document").is_none());
     let question_id = Uuid::new_v4();
     let option_id = Uuid::new_v4();
-    let question = json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":"scope","text":"Choose scope","rationale":"Needed for final requirements","required":true,"mode":"single","options":[{"id":option_id,"label":"Standard","consequences":"Known path","is_custom":false}],"recommended_option_id":option_id,"idempotency_key":"question"});
-    let q = post(
-        &client,
-        &format!("{url}/clarifications"),
-        "sdlc_pat_pm",
-        &question,
-        200,
-    )
-    .await;
+    let question = json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,"expected_question_version":null,"requirement_revision":1,"requirement_reference":"scope","text":"Choose scope","rationale":"Needed for final requirements","required":true,"mode":"single","options":[{"id":option_id,"label":"Standard","consequences":"Known path","is_custom":false}],"recommended_option_id":option_id,"idempotency_key":"question"});
+    let q = legacy_pm_fixture::import(&db, &client, &url, task, &question).await;
     assert!(q["answer"].is_null());
     assert_eq!(q["options"][0]["is_custom"], false);
     for suffix in [
@@ -691,7 +679,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &format!("{url}/requirements"),
         "sdlc_pat_pm",
         &premature,
-        409,
+        403,
     )
     .await;
     let answer_url = format!("{url}/clarifications/{question_id}/answers");
@@ -748,25 +736,11 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         } else {
             json!([{ "id":option,"label":"Choice","consequences":"Outcome","is_custom":mode=="single" }])
         };
-        post(
-            &client,
-            &format!("{url}/clarifications"),
-            "sdlc_pat_pm",
-            &input,
-            200,
-        )
-        .await;
+        legacy_pm_fixture::import(&db, &client, &url, task, &input).await;
         input["expected_question_version"] = json!(1);
         input["text"] = json!("Updated question");
         input["idempotency_key"] = json!(format!("question-{mode}-v2"));
-        post(
-            &client,
-            &format!("{url}/clarifications"),
-            "sdlc_pat_pm",
-            &input,
-            200,
-        )
-        .await;
+        legacy_pm_fixture::import(&db, &client, &url, task, &input).await;
         let mode_answer_url = format!("{url}/clarifications/{id}/answers");
         let selected = if mode == "text" {
             json!([])
@@ -788,22 +762,16 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     cancel_input["question_id"] = json!(cancel_id);
     cancel_input["request_id"] = json!(Uuid::new_v4());
     cancel_input["idempotency_key"] = json!("question-cancel");
-    post(
-        &client,
-        &format!("{url}/clarifications"),
-        "sdlc_pat_pm",
-        &cancel_input,
-        200,
-    )
-    .await;
+    legacy_pm_fixture::import(&db, &client, &url, task, &cancel_input).await;
     post(
         &client,
         &format!("{url}/clarifications/{cancel_id}/cancel"),
         "sdlc_pat_pm",
         &json!({"fence":fence,"expected_question_version":1,"idempotency_key":"cancel"}),
-        200,
+        403,
     )
     .await;
+    legacy_pm_fixture::cancel(&db, task, cancel_id).await;
     let confirm = json!({"content_hash":revision["content_hash"],"idempotency_key":"confirm-old"});
     post(
         &client,
@@ -839,14 +807,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let mut final_publish = publish.clone();
     final_publish["expected_requirement_revision"] = json!(1);
     final_publish["idempotency_key"] = json!("rev-2");
-    let final_revision = post(
-        &client,
-        &format!("{url}/requirements"),
-        "sdlc_pat_pm",
-        &final_publish,
-        200,
-    )
-    .await;
+    let final_revision =
+        legacy_pm_fixture::revision(&db, &client, &url, task, &final_publish).await;
     let mut final_confirm =
         json!({"content_hash":final_revision["content_hash"],"idempotency_key":"confirm-final"});
     let confirm_url = format!("{url}/requirements/2/confirm");
@@ -1165,7 +1127,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &format!("{restart_url}/requirements"),
         "sdlc_pat_pm",
         &new_revision,
-        409,
+        403,
     )
     .await;
     let mut changed_question = question.clone();
@@ -1419,8 +1381,10 @@ async fn metadata_pagination_and_blockers(
         "metadata_source_invalid"
     );
 
-    // PostgreSQL accepts this compressed synthetic identity; JSON escaping exceeds the hard cap.
-    let huge_owner = "\u{1}".repeat(190_000);
+    // Use the supported identity limit; the immutable alias ledger rejects the
+    // former 190k fixture. JSON escaping still exceeds a small HTTP page budget.
+    // The serializer's >1 MiB unrepresentable case is covered in app unit tests.
+    let huge_owner = "\u{1}".repeat(2048);
     let huge_user = Uuid::new_v4();
     let huge_task = Uuid::new_v4();
     let project = Uuid::parse_str(valid_payload["project_id"].as_str().unwrap()).unwrap();
@@ -1463,9 +1427,9 @@ async fn metadata_pagination_and_blockers(
     append_event(db, huge_task, "task.bound", payload).await;
     let huge_url = url.replace(&task.to_string(), &huge_task.to_string());
     let (bytes, impossible) =
-        metadata::get(client, &format!("{huge_url}&max_bytes=1048576"), owner, 409).await;
+        metadata::get(client, &format!("{huge_url}&max_bytes=1024"), owner, 422).await;
     assert!(bytes.len() <= 1024);
-    assert_eq!(impossible["code"], "metadata_event_unrepresentable");
+    assert_eq!(impossible["code"], "metadata_budget_too_small");
     assert_eq!(impossible["after"], "0");
-    assert!(impossible["required_bytes"].as_u64().unwrap() > 1_048_576);
+    assert!(impossible["required_bytes"].as_u64().unwrap() > 1024);
 }

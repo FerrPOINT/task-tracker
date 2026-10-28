@@ -138,7 +138,7 @@ pub(super) async fn complete_pm(
     };
     let workflow: ConfiguredWorkflowReceipt = serde_json::from_value(json!({
         "interaction_protocol":"configured-cli-v1","execution_ref":command.workflow_execution_ref,
-        "task":reservation.execution.key,"tracker_task_id":task,"namespace_id":1,
+        "task":state.retained_fields["workflow_task_key"],"tracker_task_id":task,"namespace_id":1,
         "concrete_agent_ref":assignment.agent_id,"assignment_ref":fence.assignment_id,
         "tracker_execution_id":fence.execution_id,"assignment_version":fence.assignment_version,
         "machine_subject":pm.subject,"operation_key":command.workflow_operation_key,

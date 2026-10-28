@@ -57,9 +57,9 @@ async fn reject_journal_only(f: &Fixture, task: Uuid, command: &ReserveCriticalP
     let previous = PostgresSdlcRepository::reservation(&tx, &state, previous_id)
         .await
         .unwrap();
-    let completed: domain::sdlc_reservation::PmDraftCompletionReceipt = parse(
+    let completed: domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt = parse(
         tx.query_one(statement(
-            "SELECT result FROM sdlc_pm_completions WHERE task_id=$1 AND execution_id=$2",
+            "SELECT result FROM sdlc_configured_pm_completions WHERE task_id=$1 AND execution_id=$2",
             vec![task.into(), previous_id.into()],
         ))
         .await
@@ -107,7 +107,7 @@ async fn reject_journal_only(f: &Fixture, task: Uuid, command: &ReserveCriticalP
             lifecycle: &current,
             blocker: &returned,
             previous_reservation: &previous,
-            current_completed: app::sdlc_critical_pm_reservation::CompletedPmReceipt::Historical(
+            current_completed: app::sdlc_critical_pm_reservation::CompletedPmReceipt::Configured(
                 &completed,
             ),
             original_pm_assignment: &previous.assignment,
@@ -194,7 +194,7 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
     }
     let user = Uuid::new_v4();
     exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
-        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)",
+        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','77777777-7777-4777-8777-777777777777',true)",
         vec![user.into()]).await.unwrap();
     exec(
         &f.db,
@@ -255,11 +255,11 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
         .unwrap();
     let completion = f
         .repo
-        .pm_draft_completion(r.task, &f.reader)
+        .configured_pm_completion(r.task, &f.reader, None)
         .await
         .unwrap()
-        .current
-        .unwrap();
+        .unwrap()
+        .result;
     let original_input = f.repo.pm_draft_input(r.task, &f.owner).await.unwrap();
     let command = ReserveCriticalPmReview {
         blocker_id: held.blocker_id,
@@ -520,10 +520,9 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
     assert_eq!(json!(current_pm), json!(one.reservation));
     assert!(
         f.repo
-            .pm_draft_completion(r.task, &f.reader)
+            .configured_pm_completion(r.task, &f.reader, None)
             .await
             .unwrap()
-            .current
             .is_none()
     );
     // The main-applied companion query must expose review detail without rewriting old receipts.
@@ -542,7 +541,7 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
         f.db.query_one(statement(
             "SELECT e.result AS reservation,c.result AS completion,
         b.payload AS held,r.after_blocker AS returned FROM sdlc_pm_executions e
-        JOIN sdlc_pm_completions c USING(task_id,execution_id)
+        JOIN sdlc_configured_pm_completions c USING(task_id,execution_id)
         JOIN sdlc_critical_blockers b ON b.task_id=e.task_id
         JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id
         WHERE e.task_id=$1 AND e.execution_id=$2",
@@ -562,7 +561,7 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
         f.db.query_one(statement(
             "SELECT NOT EXISTS(SELECT 1 FROM sdlc_pm_execution_leases WHERE execution_id=$1)
         AND NOT EXISTS(SELECT 1 FROM sdlc_pm_native_admissions WHERE execution_id=$1)
-        AND NOT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE execution_id=$1) AS absent",
+        AND NOT EXISTS(SELECT 1 FROM sdlc_configured_pm_completions WHERE execution_id=$1) AS absent",
             vec![one.reservation.assignment.execution_id.into()],
         ))
         .await

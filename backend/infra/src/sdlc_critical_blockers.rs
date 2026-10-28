@@ -372,11 +372,11 @@ impl PostgresSdlcRepository {
     ) -> Result<(CriticalBlockerReceipt, bool), AppError> {
         app::sdlc::validate_key(&command.idempotency_key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
-        let grant = super::lifecycle::producer_grant(&tx, &state, actor, true).await?;
-        if grant.task_id != task {
-            return Err(AppError::Forbidden);
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if !state.configured_cli() {
+            return Err(AppError::conflict("retired execution is read-only"));
         }
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         owner_access(&tx, &state).await?;
         if let Some(saved) =
             original_operation(&tx, task, &actor.subject, &command.idempotency_key).await?
@@ -384,8 +384,14 @@ impl PostgresSdlcRepository {
             scope(&state, &saved)?;
             original_producer(&tx, &state, actor, &saved, true).await?;
             let receipt = app::sdlc_critical_blockers::replay_blocker(&saved, &command)?;
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
+        }
+        Self::bind_current_task(&tx, &self.config, &state, actor).await?;
+        let grant = super::lifecycle::producer_grant(&tx, &state, actor, true).await?;
+        if grant.task_id != task {
+            return Err(AppError::Forbidden);
         }
         let current = super::lifecycle::current(&tx, task)
             .await?
@@ -476,7 +482,7 @@ impl PostgresSdlcRepository {
     ) -> Result<CriticalBlockerReceipt, AppError> {
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         owner_access(&tx, &state).await?;
         let head = if state.configured_cli()
             && app::sdlc_lifecycle::scheduler_read(actor, &self.config).is_ok()
@@ -514,6 +520,11 @@ impl PostgresSdlcRepository {
             receipt_producer(head, producer, &saved, &grant)?;
         } else {
             original_producer(&tx, &state, actor, &saved, false).await?;
+        }
+        if head.is_some() {
+            Self::bind_current_task(&tx, &self.config, &state, actor).await?;
+        } else {
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
         }
         tx.commit().await.map_err(map_db)?;
         Ok(saved)

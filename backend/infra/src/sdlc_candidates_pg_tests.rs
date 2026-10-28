@@ -263,51 +263,33 @@ async fn pm_publication_stops_at_backlog_without_analysis_on_confirmation_comple
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
-async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
+async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstream() {
     let mut f = Fixture::new().await;
     let mut expected = vec![];
     for key in ["first", "second", "third"] {
         expected.push(f.queued_analysis(key, true).await);
     }
-    let pending = f.confirmed("consent-without-completion", false).await;
+    f.confirmed("consent-without-completion", false).await;
     f.draft("unconfirmed", Some(DraftFlow::SingleTaskV1)).await;
     f.draft("legacy", None).await;
     expected.sort();
     let before = f.snapshot().await;
-    let mut cursor = None;
-    let mut actual = vec![];
-    loop {
-        let page = f
-            .repo
-            .read_delivery_candidates(&f.reader, f.query(cursor, 1))
-            .await
-            .unwrap();
-        assert_eq!(page.contract_version, 1);
-        assert_eq!(page.tracker_instance_id, "candidates-test");
-        assert_eq!(page.project_id, f.project);
-        assert_eq!(page.items.len(), 1);
-        let item = &page.items[0];
-        assert_eq!(item.root_task_id, item.task_id);
-        assert_eq!(item.requirement_revision, 1);
-        assert_eq!(item.next_operation, CandidateOperation::Reserve);
-        assert_eq!(item.task_version, Some(1));
-        assert_ne!(item.task_id, pending);
-        actual.push(item.task_id);
-        if page.next_cursor.is_none() {
-            break;
+    // Current CLI assignments do not opt into the legacy auto-dispatcher,
+    // even when a standalone technical test imports a queued snapshot.
+    for after in std::iter::once(None).chain(expected.iter().copied().map(Some)) {
+        for limit in [1, 2, 100] {
+            let page = f
+                .repo
+                .read_delivery_candidates(&f.reader, f.query(after, limit))
+                .await
+                .unwrap();
+            assert_eq!(page.contract_version, 1);
+            assert_eq!(page.tracker_instance_id, "candidates-test");
+            assert_eq!(page.project_id, f.project);
+            assert!(page.items.is_empty());
+            assert_eq!(page.next_cursor, None);
         }
-        assert_eq!(page.next_cursor, Some(item.task_id));
-        cursor = page.next_cursor;
-        assert!(actual.len() < 4, "pagination must advance");
     }
-    assert_eq!(actual, expected);
-    let empty = f
-        .repo
-        .read_delivery_candidates(&f.reader, f.query(actual.last().copied(), 100))
-        .await
-        .unwrap();
-    assert!(empty.items.is_empty());
-    assert_eq!(empty.next_cursor, None);
     assert_eq!(f.snapshot().await, before);
     let foreign_project = Uuid::new_v4();
     exec(
@@ -348,7 +330,7 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         Err(AppError::Unavailable(_))
     ));
     f.repo.config.single_task_project_ids = enabled_projects;
-    let task = actual[0];
+    let task = expected[0];
     let machine_subject = f
         .repo
         .read(task, &f.owner)
@@ -374,9 +356,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    let candidate = page.items.iter().find(|item| item.task_id == task).unwrap();
-    assert_eq!(candidate.next_operation, CandidateOperation::Reserve);
-    assert_eq!(candidate.task_version, Some(queued.task.version));
+    assert!(page.items.is_empty());
+    assert_eq!(page.next_cursor, None);
     assert_eq!(f.snapshot().await, before);
     assert!(
         f.repo
@@ -412,16 +393,12 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    assert!(
-        !page
-            .items
-            .iter()
-            .any(|item| item.task_id == task || item.task_id == pending)
-    );
-    let state = f.repo.read(actual[1], &f.owner).await.unwrap();
+    assert!(page.items.is_empty());
+    assert_eq!(page.next_cursor, None);
+    let state = f.repo.read(expected[1], &f.owner).await.unwrap();
     let snapshot = f
         .repo
-        .task_routing_snapshot(actual[1], &f.reader)
+        .task_routing_snapshot(expected[1], &f.reader)
         .await
         .unwrap();
     let mut stale = snapshot.clone();

@@ -894,7 +894,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             &json!({"operation":"submit_delivery_proposal","payload":command}),
         )?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         if !state.configured_cli() {
             return Err(AppError::conflict(
                 "retired execution is read-only; a configured assignment is required",
@@ -921,9 +921,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
                     .map_err(|_| corrupt())?;
             authorize_proposal_grant(&tx, &state, &receipt, actor).await?;
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
         }
+        Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         let grant = producer_grant(&tx, &state, actor, true).await?;
         let receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
         exact_revision(&state, &receipt)?;
@@ -1006,7 +1008,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
     ) -> Result<DeliveryProposalReceipt, AppError> {
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         let server_read = state.configured_cli()
             && !actor.human_session
             && app::sdlc_reservation::reader(actor).is_ok();
@@ -1043,6 +1045,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
             {
                 return Err(AppError::Forbidden);
             }
+        }
+        if server_read {
+            Self::bind_current_task(&tx, &self.config, &state, actor).await?;
+        } else {
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
         }
         tx.commit().await.map_err(map_db)?;
         Ok(receipt)

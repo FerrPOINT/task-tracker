@@ -810,7 +810,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             > reserved.assignment.as_ref().unwrap().fencing_token
     );
     assert_eq!(count(&db, "sdlc_delivery_assignments").await, 2);
-    assert!(repo.lifecycle_read(task, &producer).await.is_err());
+    // The permanent identity is assigned again; the old execution fence remains stale.
+    assert_eq!(
+        repo.lifecycle_read(task, &producer).await.unwrap().receipt,
+        retry
+    );
     let mut wrong_chat = binding.clone();
     wrong_chat.chat_id = Uuid::new_v4();
     wrong_chat.run_id = Uuid::new_v4();
