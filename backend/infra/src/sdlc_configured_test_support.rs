@@ -149,7 +149,7 @@ pub(super) async fn complete_pm(
     .unwrap();
     repo.publish_stage_comment(
         task,
-        &pm,
+        pm,
         PublishStageComment {
             fence,
             body: "Synthetic final fixture report; exact owner-approved requirements checked"
@@ -160,12 +160,12 @@ pub(super) async fn complete_pm(
     .await
     .unwrap();
     let (saved, replay) = repo
-        .complete_configured_pm(task, &pm, command.clone(), workflow.clone())
+        .complete_configured_pm(task, pm, command.clone(), workflow.clone())
         .await
         .unwrap();
     assert!(!replay);
     let (same, replay) = repo
-        .complete_configured_pm(task, &pm, command, workflow)
+        .complete_configured_pm(task, pm, command, workflow)
         .await
         .unwrap();
     assert!(replay);
