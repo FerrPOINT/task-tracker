@@ -165,6 +165,91 @@ struct OriginalCommand {
     result: Json,
 }
 
+// Seed only the two historical PM publications whose writer contract was retired.
+// This is data for a migration test, not a legacy authorization path. The caller
+// proves the disposable database is still at the pre-admission predecessor.
+fn predecessor_publication(
+    state: &mut TaskState,
+    actor: &Principal,
+    command: &SdlcCommand,
+    body: &mut Json,
+) -> Option<Json> {
+    let fence = match command {
+        SdlcCommand::PublishRevision(c) => &c.fence,
+        SdlcCommand::PublishQuestion(c) => &c.fence,
+        _ => return None,
+    };
+    let assignment = state.assignment.as_ref().unwrap();
+    assert!(!state.configured_cli());
+    assert!(!actor.human_session);
+    assert_eq!(actor.subject, assignment.machine_subject);
+    assert!(actor.scopes.contains(&assignment.scope(state.task_id)));
+    assert_eq!(fence.assignment_id, assignment.assignment_id);
+    assert_eq!(fence.execution_id, assignment.execution_id);
+    assert_eq!(fence.agent_id, assignment.agent_id);
+    assert_eq!(fence.assignment_version, assignment.version);
+    let now = chrono::Utc::now();
+    let result = match command {
+        SdlcCommand::PublishRevision(c) => {
+            assert_eq!(state.current_revision(), c.expected_requirement_revision);
+            assert!(
+                !state
+                    .questions
+                    .iter()
+                    .any(|q| q.required && q.state == QuestionState::Open)
+            );
+            app::sdlc::validate_document(&c.document).unwrap();
+            let revision = RequirementsRevision {
+                revision: c.expected_requirement_revision.unwrap_or(0) + 1,
+                content_hash: app::sdlc::canonical_hash(&c.document).unwrap(),
+                document: c.document.clone(),
+                author_subject: actor.subject.clone(),
+                created_at: now,
+            };
+            state.confirmation_revision = Some(revision.revision);
+            state.revisions.push(revision.clone());
+            serde_json::to_value(revision).unwrap()
+        }
+        SdlcCommand::PublishQuestion(c) => {
+            assert_eq!(state.current_revision(), Some(c.requirement_revision));
+            assert!(c.expected_question_version.is_none());
+            assert!(state.questions.is_empty());
+            let checkpoint = Uuid::new_v4();
+            body["payload"]["checkpoint_id"] = json!(checkpoint);
+            let question = Question {
+                id: c.question_id,
+                request_id: c.request_id,
+                task_id: state.task_id,
+                root_task_id: state.root_task_id,
+                version: 1,
+                requirement_revision: c.requirement_revision,
+                requirement_reference: c.requirement_reference.clone(),
+                assignment_id: c.fence.assignment_id,
+                execution_id: c.fence.execution_id,
+                agent_id: c.fence.agent_id,
+                assignment_version: c.fence.assignment_version,
+                checkpoint_id: Some(checkpoint),
+                text: c.text.clone(),
+                rationale: c.rationale.clone(),
+                required: c.required,
+                mode: c.mode.clone(),
+                options: c.options.clone(),
+                recommended_option_id: c.recommended_option_id,
+                state: QuestionState::Open,
+                answer: None,
+                author_subject: actor.subject.clone(),
+                created_at: now,
+            };
+            state.confirmation_revision = None;
+            state.questions.push(question.clone());
+            serde_json::to_value(question).unwrap()
+        }
+        _ => unreachable!(),
+    };
+    state.stage = Stage::Clarification;
+    Some(result)
+}
+
 // Historical095 confirmation queued Analysis. This fixture explicitly reconstructs
 // that predecessor policy; the current PM producer stops at Backlog instead.
 async fn finish_predecessor_confirmation(
@@ -256,23 +341,45 @@ async fn predecessor_command(
 ) -> OriginalCommand {
     app::sdlc::validate_key(command.key()).unwrap();
     let tx = repo.db.begin().await.unwrap();
-    let mut state = repo.load(&tx, task, actor).await.unwrap();
-    app::sdlc::authorize(&state, actor, &repo.config, &command).unwrap();
-    let sha256 = app::sdlc::command_hash(&command).unwrap();
+    assert!(
+        crate::legacy_schema_fixture::pre_admission_schema(&tx)
+            .await
+            .unwrap()
+    );
+    let row = tx
+        .query_one(statement(
+            "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut state = state_from(row).unwrap();
+    assert_eq!(state.task_id, task);
+    assert_eq!(state.root_task_id, task);
+    assert_eq!(state.tracker_instance_id, repo.config.instance_id);
+    assert!(matches!(state.stage, Stage::Draft | Stage::Clarification));
+    assert!(
+        state.assignment.is_none() || state.assignment.as_ref().unwrap().machine_subject == "pm"
+    );
+    assert!(!state.configured_cli());
+    let mut body = serde_json::to_value(&command).unwrap();
+    let result = predecessor_publication(&mut state, actor, &command, &mut body)
+        .unwrap_or_else(|| app::sdlc::apply(&mut state, actor, &repo.config, &command).unwrap());
+    let sha256 = app::sdlc::canonical_hash(&body).unwrap();
     assert!(
         PostgresSdlcRepository::replay(&tx, task, actor, command.key(), &sha256)
             .await
             .unwrap()
             .is_none()
     );
-    let result = app::sdlc::apply(&mut state, actor, &repo.config, &command).unwrap();
     let event = repo
         .persist_result(&tx, task, &command, &result, &state)
         .await
         .unwrap();
     let original = OriginalCommand {
         actor: actor.clone(),
-        body: serde_json::to_value(&command).unwrap(),
+        body,
         command,
         sha256,
         result,
@@ -481,16 +588,26 @@ async fn assert_original_commands(
 ) {
     let tx = repo.db.begin().await.unwrap();
     for original in originals {
+        let mut current_body = original.body.clone();
+        if matches!(original.command, SdlcCommand::PublishQuestion(_)) {
+            assert_eq!(
+                original.body["payload"]["checkpoint_id"],
+                original.result["checkpoint_id"]
+            );
+            assert!(!original.body["payload"]["checkpoint_id"].is_null());
+            current_body["payload"]
+                .as_object_mut()
+                .unwrap()
+                .remove("checkpoint_id");
+        }
         assert_eq!(
             serde_json::to_value(&original.command).unwrap(),
-            original.body
+            current_body
         );
         assert_eq!(
-            app::sdlc::command_hash(&original.command).unwrap(),
+            app::sdlc::canonical_hash(&original.body).unwrap(),
             original.sha256
         );
-        let decoded: SdlcCommand = serde_json::from_value(original.body.clone()).unwrap();
-        assert_eq!(app::sdlc::command_hash(&decoded).unwrap(), original.sha256);
         assert_eq!(
             PostgresSdlcRepository::replay(
                 &tx,
