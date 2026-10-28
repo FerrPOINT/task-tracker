@@ -192,7 +192,8 @@ BEGIN
             expected:=jsonb_set(expected,'{evidence}',(expected->'evidence')||jsonb_build_array(NEW.result));
         ELSIF op='confirm' THEN
             IF NEW.actor_subject IS DISTINCT FROM t.owner_subject OR NEW.result->>'owner_subject' IS DISTINCT FROM t.owner_subject
-                OR NEW.result->>'stage' IS DISTINCT FROM CASE WHEN configured IS TRUE THEN 'Draft' ELSE 'Backlog' END OR NEW.result->>'task_id' IS DISTINCT FROM t.task_id::text
+                OR NEW.result->>'stage' IS DISTINCT FROM (CASE WHEN configured IS TRUE THEN 'Draft' ELSE 'Backlog' END)
+                OR NEW.result->>'task_id' IS DISTINCT FROM t.task_id::text
                 OR NEW.result->'revision' IS DISTINCT FROM revision->'revision'
                 OR NEW.result->'content_hash' IS DISTINCT FROM revision->'content_hash'
                 OR body->'revision' IS DISTINCT FROM revision->'revision'
