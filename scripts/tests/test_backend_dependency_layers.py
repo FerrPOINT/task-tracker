@@ -143,8 +143,10 @@ class BackendDependencyLayerTests(unittest.TestCase):
                     member=packages[name]
                     self.assertIn('COPY '+PRODUCT+'/backend/'+member+' ./'+member,graph['builder'][1])
                 self.assertIn('cargo build --locked --release -p server --bin server',graph['builder'][1])
-                for crate in SDK:
+                for crate in (name for name in SDK if name != 'sdlc-cli-core'):
                     self.assertIn('COPY services-base/crates/'+crate+' /services-base/crates/'+crate,text)
+                self.assertIn('COPY services-base/crates/sdlc-cli-core/Cargo.toml /services-base/crates/sdlc-cli-core/Cargo.toml',text)
+                self.assertIn('compile_error!("metadata-only sdlc-cli-core must not be compiled");',text)
                 self.assertIn('USER tasktracker',graph['runtime'][1]); self.assertIn('ENV TASKTRACKER_UPLOADS_DIR=/var/lib/tasktracker/uploads',graph['runtime'][1]); self.assertIn('CMD ["task-tracker-server"]',graph['runtime'][1])
         manifest=json.loads((ROOT/'.quality-gate.json').read_bytes())
         module='scripts.tests.test_backend_dependency_layers'

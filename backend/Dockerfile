@@ -14,7 +14,7 @@ WORKDIR /app
 COPY services-base/Cargo.toml /services-base/Cargo.toml
 COPY services-base/crates/sdlc-telemetry /services-base/crates/sdlc-telemetry
 COPY services-base/crates/sdlc-auth-core /services-base/crates/sdlc-auth-core
-COPY services-base/crates/sdlc-cli-core /services-base/crates/sdlc-cli-core
+COPY services-base/crates/sdlc-cli-core/Cargo.toml /services-base/crates/sdlc-cli-core/Cargo.toml
 COPY services-base/crates/sdlc-shared /services-base/crates/sdlc-shared
 COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
 COPY task-tracker/backend/api/Cargo.toml api/Cargo.toml
@@ -28,7 +28,11 @@ COPY task-tracker/backend/migration/Cargo.toml migration/Cargo.toml
 # Product metadata is stable; actual SDK bytes remain an independent layer input.
 RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} \
     for package in api app domain infra shared server cli migration; do mkdir -p "$package/src"; printf '%s\n' '' > "$package/src/lib.rs"; printf '%s\n' 'fn main() {}' > "$package/src/main.rs"; done \
-    && mkdir -p api/src/bin && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs
+    && mkdir -p api/src/bin && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs \
+    && rm -f cli/src/lib.rs \
+    && mkdir -p /services-base/crates/sdlc-cli-core/src cli/src \
+    && printf '%s\n' 'compile_error!("metadata-only sdlc-cli-core must not be compiled");' > /services-base/crates/sdlc-cli-core/src/lib.rs \
+    && printf '%s\n' 'compile_error!("metadata-only task-tracker CLI must not be compiled");' > cli/src/main.rs
 
 FROM manifests AS unit-dependencies
 ARG PDLC_RUN_SLOT_SHARING=locked
