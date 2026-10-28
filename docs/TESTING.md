@@ -232,8 +232,8 @@ cd backend && ./scripts/run-e2e-tests.sh
 
 Скрипт проверяет строки ≥75%, регионы ≥65%, функции ≥60%. Эти пороги
 применяются к полному workspace, включая ignored PostgreSQL-тесты.
-Текущий `.github/workflows/ci.yml` запускает backend-тесты и отдельные
-PostgreSQL-сценарии; coverage выполняется отдельным локальным гейтом перед merge.
+GitHub Actions отключены. Backend, PostgreSQL и coverage проверяются локально;
+контейнерные проверки используют собственный временный Compose-проект.
 Цели по слоям ниже служат ориентиром.
 
 ## 3. Frontend тесты
@@ -425,12 +425,20 @@ by the earlier 24-case bootstrap-retry qualification:
 - `cargo check -p domain -p app -p infra --all-targets` and affected Clippy.
 - `cargo test -p infra --lib sdlc::candidates::tests::pm_publication_stops_at_backlog_without_analysis_on_confirmation_completion_or_replay -- --exact --ignored`:
   fresh `TT_CANDIDATES_TEST_DATABASE_URL` ending `_candidates_test`, one executed case.
-- Existing `sdlc::lifecycle::regression_tests::pm_resume_tests::pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history`:
-  fresh `TT_PM_RESUME_TEST_DATABASE_URL` ending `_pm_resume_test`; confirmation
-  resumes the existing PM closing step from Backlog and completion stays Backlog.
+- Native PM resume execution was retired with its writer routes. Preserve its
+  stored history and validate the populated upgrade; do not treat removed native
+  execution tests as a current configured-CLI gate.
 - Changed downstream fixtures remain executable: candidate discovery, lifecycle
   heartbeat/recovery, one-task Rework, source publication and populated095 upgrade.
-  They explicitly seed historical Analysis; no test is disabled or skipped anew.
+  Technical execution tests import a synthetic Analysis starting snapshot. They
+  qualify operations from that stage, not a production PM-to-Analyst transition.
+  The test-only importer accepts only owned disposable database names, requires
+  actual saved configured PM completion, and uses the canonical projection/head
+  writer. Only the initial canonical-transition trigger is temporarily suspended
+  inside the fixture transaction; its exact enabled definition is restored before
+  commit and before the tested operations. Other guards stay active. Unpermitted
+  writes are rejected before and after import. No migration or production guard
+  is changed, and no test is disabled or newly skipped.
 - `cargo test -p server --test sdlc postgres_http_clarification_ownership_replay_gate_and_restart -- --exact`:
   existing isolated HTTP/PG harness. Its confirmation checks Backlog/no intent
   before deliberately seeding Analysis for the historical admission/restart cases.

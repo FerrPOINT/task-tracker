@@ -76,14 +76,43 @@ fn state_from(row: QueryResult) -> Result<TaskState, AppError> {
         .map_err(AppError::internal)
 }
 
-/// Synthetic downstream/historical setup only: owner confirmation never queues Analysis.
+/// Import a synthetic starting snapshot for standalone technical-stage tests.
+/// This is NOT a production PM -> Analyst transition or historical acceptance.
+/// PM consent/completion stay at Draft/Backlog in the separate business tests.
+/// The one initial-transition trigger is restored before any action under test;
+/// all other guards and the canonical projection/head writer remain active.
 #[cfg(test)]
 async fn seed_analysis_fixture(
     db: &DatabaseConnection,
     task: Uuid,
     actor: &Principal,
 ) -> AnalysisIntent {
+    use domain::sdlc_lifecycle::{
+        LifecycleReceipt, LifecycleStage, LifecycleStatus, LifecycleTask, RuntimeState,
+    };
+    let name: String = db
+        .query_one(statement("SELECT current_database() AS name", vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "name")
+        .unwrap();
+    assert!(
+        name.ends_with("_candidates_test")
+            || name.ends_with("_lifecycle_test")
+            || name.ends_with("_draft_flow_test")
+    );
     let tx = db.begin().await.unwrap();
+    let guard_sql = "SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger
+        WHERE tgrelid='public.sdlc_tasks'::regclass
+          AND tgname='sdlc_delivery_canonical_gate' AND NOT tgisinternal AND tgenabled='O'";
+    let guard: String = tx
+        .query_one(statement(guard_sql, vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "definition")
+        .unwrap();
     let row = tx
         .query_one(statement(
             "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
@@ -94,7 +123,24 @@ async fn seed_analysis_fixture(
         .unwrap();
     let mut state = state_from(row).unwrap();
     assert_eq!(state.stage, Stage::Backlog);
+    assert!(state.configured_cli());
+    assert!(state.owner(actor));
     assert!(!state.retained_fields.contains_key("lifecycle"));
+    let completed: bool = tx.query_one(statement(
+        "SELECT sdlc_current_configured_pm_completed(task_id,pm_execution_id,state,pm_admission_state) AS completed FROM sdlc_tasks WHERE task_id=$1",
+        vec![task.into()],
+    )).await.unwrap().unwrap().try_get("", "completed").unwrap();
+    assert!(
+        completed,
+        "technical snapshots require real saved PM completion first"
+    );
+    // A normal unpermitted promotion is still forbidden before the fixture import.
+    let denied = tx.begin().await.unwrap();
+    assert!(denied.execute(statement(
+        "UPDATE sdlc_tasks SET state=jsonb_set(state,'{stage}','\"Analysis\"'::jsonb) WHERE task_id=$1",
+        vec![task.into()],
+    )).await.is_err());
+    denied.rollback().await.unwrap();
     state.stage = Stage::Analysis;
     assert_eq!(
         state.context(actor).waiting_reason.as_deref(),
@@ -114,43 +160,59 @@ async fn seed_analysis_fixture(
     assert_eq!(snapshot.confirmation_id, confirmation.id);
     assert_eq!(snapshot.requirement_revision, confirmation.revision);
     assert_eq!(snapshot.content_hash, confirmation.content_hash);
-    // Downstream ledger tests explicitly seed historical admission. Configured
-    // Draft consent must never create this legacy dispatch authority in production.
+    // The synthetic technical snapshot has the same frozen business tuple.
     let mut historical_confirmation = confirmation.clone();
     historical_confirmation.stage = Stage::Backlog;
     let mut intent =
         app::sdlc::analysis_intent(&state, &historical_confirmation, Uuid::new_v4()).unwrap();
-    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
+    intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
     exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
         vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),snapshot.snapshot_id.into()]).await.unwrap();
-    exec(&tx, "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
-        SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks WHERE task_id=$1 AND pm_execution_id IS NOT NULL",
-        vec![task.into(), json_value(&state).unwrap()]).await.unwrap();
-    exec(
-        &tx,
-        "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
-        vec![task.into(), json_value(&state).unwrap()],
-    )
-    .await
-    .unwrap();
-    let status_id = if let Some(status) = state.status {
-        lifecycle::mapped_issue_status(&tx, Stage::Analysis, status)
-            .await
-            .unwrap()
-    } else {
-        tx.query_one(statement(
-            "SELECT id FROM statuses WHERE name='SDLC Analysis' ORDER BY id LIMIT 1",
-            vec![],
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get("", "id")
-        .unwrap()
+    let receipt = LifecycleReceipt {
+        task: LifecycleTask {
+            task_id: task,
+            owner_subject: state.owner_subject.clone(),
+            version: 1,
+            stage: LifecycleStage::Analysis,
+            status: LifecycleStatus::Ready,
+            cycle: 0,
+            transient_retries: 0,
+            waiting_reason: Some("queued_for_assignment".into()),
+            runtime: RuntimeState::Queued,
+            routing: snapshot,
+            previous_result_id: None,
+            resume_chat_id: None,
+        },
+        assignment: None,
+        lease: None,
+        binding: None,
+        result: None,
     };
-    lifecycle::project_issue_status(&tx, task, actor, status_id)
+    // Snapshot import only, in an owned disposable DB and one transaction.
+    // Re-enabling before commit also makes rollback restore the original DDL.
+    tx.execute_unprepared("ALTER TABLE sdlc_tasks DISABLE TRIGGER sdlc_delivery_canonical_gate")
         .await
         .unwrap();
+    PostgresSdlcRepository::save_delivery_projection(&tx, actor, &receipt, true)
+        .await
+        .unwrap();
+    tx.execute_unprepared("ALTER TABLE sdlc_tasks ENABLE TRIGGER sdlc_delivery_canonical_gate")
+        .await
+        .unwrap();
+    let restored: String = tx
+        .query_one(statement(guard_sql, vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "definition")
+        .unwrap();
+    assert_eq!(restored, guard);
+    let forbidden = tx.begin().await.unwrap();
+    assert!(forbidden.execute(statement(
+        "UPDATE sdlc_tasks SET state=jsonb_set(state,'{lifecycle,version}','2'::jsonb) WHERE task_id=$1",
+        vec![task.into()],
+    )).await.is_err());
+    forbidden.rollback().await.unwrap();
     let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
         "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
         "owner_subject":state.owner_subject,"stage":Stage::Analysis,
