@@ -916,7 +916,11 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
                 .unwrap()
                 .try_get::<i64>("", "n")
                 .unwrap(),
-            0
+            i64::from(matches!(
+                table,
+                "sdlc_task_routing_snapshots" | "sdlc_task_source_bindings"
+            )),
+            "{table}"
         );
     }
 }
