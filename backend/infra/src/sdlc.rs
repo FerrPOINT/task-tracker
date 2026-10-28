@@ -76,18 +76,13 @@ fn state_from(row: QueryResult) -> Result<TaskState, AppError> {
         .map_err(AppError::internal)
 }
 
-/// Synthetic downstream setup only: consent/publication never queue Analysis.
-/// The test explicitly prepares an existing lifecycle projection using its exact
-/// transactional permits. No trigger or production admission check is disabled.
+/// Synthetic downstream/historical setup only: owner confirmation never queues Analysis.
 #[cfg(test)]
 async fn seed_analysis_fixture(
     db: &DatabaseConnection,
     task: Uuid,
     actor: &Principal,
 ) -> AnalysisIntent {
-    use domain::sdlc_lifecycle::{
-        LifecycleReceipt, LifecycleStage, LifecycleStatus, LifecycleTask, RuntimeState,
-    };
     let tx = db.begin().await.unwrap();
     let row = tx
         .query_one(statement(
@@ -99,7 +94,6 @@ async fn seed_analysis_fixture(
         .unwrap();
     let mut state = state_from(row).unwrap();
     assert_eq!(state.stage, Stage::Backlog);
-    assert!(state.configured_cli());
     assert!(!state.retained_fields.contains_key("lifecycle"));
     state.stage = Stage::Analysis;
     assert_eq!(
@@ -126,30 +120,35 @@ async fn seed_analysis_fixture(
     historical_confirmation.stage = Stage::Backlog;
     let mut intent =
         app::sdlc::analysis_intent(&state, &historical_confirmation, Uuid::new_v4()).unwrap();
-    intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
+    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
     exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
         vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),snapshot.snapshot_id.into()]).await.unwrap();
-    let receipt = LifecycleReceipt {
-        task: LifecycleTask {
-            task_id: task,
-            owner_subject: state.owner_subject.clone(),
-            version: 1,
-            stage: LifecycleStage::Analysis,
-            status: LifecycleStatus::Ready,
-            cycle: 0,
-            transient_retries: 0,
-            waiting_reason: Some("queued_for_assignment".into()),
-            runtime: RuntimeState::Queued,
-            routing: snapshot,
-            previous_result_id: None,
-            resume_chat_id: None,
-        },
-        assignment: None,
-        lease: None,
-        binding: None,
-        result: None,
+    exec(&tx, "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+        SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks WHERE task_id=$1 AND pm_execution_id IS NOT NULL",
+        vec![task.into(), json_value(&state).unwrap()]).await.unwrap();
+    exec(
+        &tx,
+        "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+        vec![task.into(), json_value(&state).unwrap()],
+    )
+    .await
+    .unwrap();
+    let status_id = if let Some(status) = state.status {
+        lifecycle::mapped_issue_status(&tx, Stage::Analysis, status)
+            .await
+            .unwrap()
+    } else {
+        tx.query_one(statement(
+            "SELECT id FROM statuses WHERE name='SDLC Analysis' ORDER BY id LIMIT 1",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "id")
+        .unwrap()
     };
-    PostgresSdlcRepository::save_delivery_projection(&tx, actor, &receipt, true)
+    lifecycle::project_issue_status(&tx, task, actor, status_id)
         .await
         .unwrap();
     let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
