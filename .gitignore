@@ -19,3 +19,7 @@ cli/target
 frontend/src/api/generated.ts
 backend/target-cache*/
 .pnpm-store/
+
+# Generated Python bytecode
+__pycache__/
+*.py[cod]
