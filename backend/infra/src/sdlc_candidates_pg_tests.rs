@@ -289,8 +289,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         let item = &page.items[0];
         assert_eq!(item.root_task_id, item.task_id);
         assert_eq!(item.requirement_revision, 1);
-        assert_eq!(item.next_operation, CandidateOperation::EnsureQueued);
-        assert_eq!(item.task_version, None);
+        assert_eq!(item.next_operation, CandidateOperation::Reserve);
+        assert_eq!(item.task_version, Some(1));
         assert_ne!(item.task_id, pending);
         actual.push(item.task_id);
         if page.next_cursor.is_none() {

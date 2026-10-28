@@ -532,7 +532,10 @@ async fn draft_flow_seed() {
         repo.analysis_intent(task, &owner).await,
         Err(AppError::NotFound(_))
     ));
-    // The following routing-shape regressions deliberately seed historical Analysis data.
+    crate::sdlc::configured_test_support::complete_pm(&repo, task, &owner, &pm, &reservation).await;
+    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
+    // The remaining routing-shape checks explicitly prepare a technical lifecycle.
+    // Neither the owner consent nor PM completion above creates an Analysis intent.
     let intent = crate::sdlc::seed_analysis_fixture(&db, task, &owner).await;
     assert_eq!(intent.workflow, "single-task-v1:analyst");
     for version in [json!(1), json!(3), json!("2"), json!(null)] {

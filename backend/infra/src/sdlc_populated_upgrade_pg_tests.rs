@@ -1219,10 +1219,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     for entry in ledger_retry.as_array().unwrap() {
         assert!(ledger_spaces.as_array().unwrap().contains(entry));
     }
-    assert_eq!(
-        ledger_spaces.as_array().unwrap().len(),
-        ledger_retry.as_array().unwrap().len() + 5
-    );
+    assert_eq!(ledger_spaces.as_array().unwrap().len(), names.len());
     // Compare every original project column separately from the two additive
     // lifecycle fields, whose exact initial values are also required.
     assert_eq!(scalar_json(&db,
