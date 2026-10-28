@@ -532,3 +532,13 @@ Fast для source validator также сохраняет `docs:readme`; Unit/B
 Source command: `python -B -m unittest scripts.tests.test_verify_readme`.
 Mixed backend и неизвестные source paths сохраняют своих consumers; actual CI
 и ручные release gates остаются прежними.
+
+## Server image CLI metadata: 2026-10-29
+
+Server recipes сохраняют три SDK дерева и только manifests/guard targets для
+невыбранных CLI. Принятый pin: `.namespace-base-revision` / `33ce7042`;
+реальная CLI implementation и её отдельные/manual команды прежние.
+Быстрый source contract: `python -B -m unittest
+scripts.tests.test_ci_contract_checks.ServerCliMetadataContractTest`.
+Native locked/poison/layer/old-mtime и CLI qualification — общая финальная
+веха. Канонический контракт: Base `docs/plans/tracker-server-cli-metadata-20261029.md`.

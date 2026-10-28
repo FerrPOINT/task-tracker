@@ -14,7 +14,9 @@
       ".github/workflows/ci.yml",
       "scripts/tests/test_ci_contract_checks.py",
       "backend/Dockerfile",
-      "backend/Dockerfile.umbrella"
+      "backend/Dockerfile.umbrella",
+      "backend/Cargo.toml",
+      "backend/*/Cargo.toml"
     ],
     "docs": [
       "scripts/verify_readme.py",
@@ -141,7 +143,9 @@
         ".github/workflows/release.yml",
         "backend/Dockerfile",
         "backend/Dockerfile.umbrella",
-        "backend/domain/**"
+        "backend/domain/**",
+        "backend/Cargo.toml",
+        "backend/*/Cargo.toml"
       ],
       "cacheable": true,
       "test_tier": "static"
