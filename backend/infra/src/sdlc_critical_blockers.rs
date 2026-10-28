@@ -502,7 +502,7 @@ impl PostgresSdlcRepository {
             .ok_or_else(|| AppError::not_found("critical blocker operation", key))?;
         scope(&state, &saved)?;
         if let Some(head) = &head {
-            super::lifecycle::exact_revision(&state, &head)?;
+            super::lifecycle::exact_revision(&state, head)?;
             let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
             let grant = DeliveryGrant {
                 task_id: task,
@@ -511,7 +511,7 @@ impl PostgresSdlcRepository {
                 agent_id: assignment.agent_id,
                 fencing_token: assignment.fencing_token,
             };
-            receipt_producer(&head, producer, &saved, &grant)?;
+            receipt_producer(head, producer, &saved, &grant)?;
         } else {
             original_producer(&tx, &state, actor, &saved, false).await?;
         }

@@ -348,7 +348,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
         }
         let app=api::router(ctx.clone()).with_state(ctx);
         // Route admission is not evidence authority: the real service has no saved artifact custody.
-        for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER),("GET",download.as_str(),PM)] {
+        for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER),("GET",download.as_str(),PM),("GET",task_path.as_str(),SCHEDULER)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::SERVICE_UNAVAILABLE);
         }
         // Unbounded legacy introspection must never authorize a generic human route.
@@ -359,7 +359,7 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
         for (method,path,token) in [("POST",task_path.as_str(),PM),("GET",task_path.as_str(),PM),
             ("HEAD",download.as_str(),PM),
             ("GET",download.as_str(),PM_NO_READ),("GET",download.as_str(),PM_MIXED),
-            ("POST",task_path.as_str(),SCHEDULER),("GET",task_path.as_str(),SCHEDULER),
+            ("POST",task_path.as_str(),SCHEDULER),
             ("GET",foreign.as_str(),DELIVERY),("POST",foreign.as_str(),DELIVERY)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::FORBIDDEN);
         }

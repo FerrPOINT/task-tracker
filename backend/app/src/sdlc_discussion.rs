@@ -12,6 +12,92 @@ pub fn authorize(actor: &Principal, task: Uuid, _write: bool) -> Result<(), AppE
     crate::sdlc_configured_cli::authorize_configured_identity(actor)
 }
 
+pub fn validate_query(query: &DiscussionQuery) -> Result<u16, AppError> {
+    let limit = query.limit.unwrap_or(100);
+    if !(1..=500).contains(&limit)
+        || (query.after.is_some() && query.snapshot.is_none())
+        || query.after.is_some_and(|id| id.is_nil())
+        || query.snapshot.is_some_and(|id| id.is_nil())
+    {
+        return Err(AppError::validation("invalid discussion page or cursor"));
+    }
+    Ok(limit)
+}
+
+pub fn validate_comment(command: &PublishStageComment) -> Result<(), AppError> {
+    validate_key(&command.idempotency_key)?;
+    if command.body.trim().is_empty()
+        || command.body.chars().count() > 100_000
+        || command.body.contains('\0')
+    {
+        return Err(AppError::validation(
+            "comment body must contain 1..100000 characters",
+        ));
+    }
+    let fence = &command.fence;
+    if fence.assignment_id.is_nil()
+        || fence.execution_id.is_nil()
+        || fence.agent_id.is_nil()
+        || !(1..=domain::sdlc::MAX_SAFE_VERSION).contains(&fence.assignment_version)
+    {
+        return Err(AppError::validation("invalid comment assignment fence"));
+    }
+    Ok(())
+}
+
+pub fn validate_key(key: &str) -> Result<(), AppError> {
+    if !domain::sdlc_critical_blockers::valid_operation_key(key) {
+        return Err(AppError::validation(
+            "invalid route-safe stage comment operation key",
+        ));
+    }
+    Ok(())
+}
+
+impl SdlcService {
+    fn discussion_repository(&self) -> Result<&dyn DiscussionRepository, AppError> {
+        self.repository.discussion_repository().ok_or_else(|| {
+            AppError::Unavailable("task discussion repository not configured".into())
+        })
+    }
+    pub async fn discussion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        query: DiscussionQuery,
+    ) -> Result<TaskDiscussion, AppError> {
+        authorize(actor, task, false)?;
+        validate_query(&query)?;
+        self.discussion_repository()?
+            .discussion(task, actor, query)
+            .await
+    }
+    pub async fn publish_stage_comment(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: PublishStageComment,
+    ) -> Result<(StageCommentReceipt, bool), AppError> {
+        authorize(actor, task, true)?;
+        validate_comment(&command)?;
+        self.discussion_repository()?
+            .publish_stage_comment(task, actor, command)
+            .await
+    }
+    pub async fn stage_comment_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<StageCommentReceipt, AppError> {
+        authorize(actor, task, false)?;
+        validate_key(key)?;
+        self.discussion_repository()?
+            .stage_comment_operation(task, actor, key)
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,91 +189,5 @@ mod tests {
         let mut invalid = value;
         invalid["native_run_id"] = serde_json::json!(Uuid::new_v4());
         assert!(serde_json::from_value::<PublishStageComment>(invalid).is_err());
-    }
-}
-
-pub fn validate_query(query: &DiscussionQuery) -> Result<u16, AppError> {
-    let limit = query.limit.unwrap_or(100);
-    if !(1..=500).contains(&limit)
-        || (query.after.is_some() && query.snapshot.is_none())
-        || query.after.is_some_and(|id| id.is_nil())
-        || query.snapshot.is_some_and(|id| id.is_nil())
-    {
-        return Err(AppError::validation("invalid discussion page or cursor"));
-    }
-    Ok(limit)
-}
-
-pub fn validate_comment(command: &PublishStageComment) -> Result<(), AppError> {
-    validate_key(&command.idempotency_key)?;
-    if command.body.trim().is_empty()
-        || command.body.chars().count() > 100_000
-        || command.body.contains('\0')
-    {
-        return Err(AppError::validation(
-            "comment body must contain 1..100000 characters",
-        ));
-    }
-    let fence = &command.fence;
-    if fence.assignment_id.is_nil()
-        || fence.execution_id.is_nil()
-        || fence.agent_id.is_nil()
-        || !(1..=domain::sdlc::MAX_SAFE_VERSION).contains(&fence.assignment_version)
-    {
-        return Err(AppError::validation("invalid comment assignment fence"));
-    }
-    Ok(())
-}
-
-pub fn validate_key(key: &str) -> Result<(), AppError> {
-    if !domain::sdlc_critical_blockers::valid_operation_key(key) {
-        return Err(AppError::validation(
-            "invalid route-safe stage comment operation key",
-        ));
-    }
-    Ok(())
-}
-
-impl SdlcService {
-    fn discussion_repository(&self) -> Result<&dyn DiscussionRepository, AppError> {
-        self.repository.discussion_repository().ok_or_else(|| {
-            AppError::Unavailable("task discussion repository not configured".into())
-        })
-    }
-    pub async fn discussion(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        query: DiscussionQuery,
-    ) -> Result<TaskDiscussion, AppError> {
-        authorize(actor, task, false)?;
-        validate_query(&query)?;
-        self.discussion_repository()?
-            .discussion(task, actor, query)
-            .await
-    }
-    pub async fn publish_stage_comment(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: PublishStageComment,
-    ) -> Result<(StageCommentReceipt, bool), AppError> {
-        authorize(actor, task, true)?;
-        validate_comment(&command)?;
-        self.discussion_repository()?
-            .publish_stage_comment(task, actor, command)
-            .await
-    }
-    pub async fn stage_comment_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<StageCommentReceipt, AppError> {
-        authorize(actor, task, false)?;
-        validate_key(key)?;
-        self.discussion_repository()?
-            .stage_comment_operation(task, actor, key)
-            .await
     }
 }

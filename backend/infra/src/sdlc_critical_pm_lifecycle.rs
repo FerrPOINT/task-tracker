@@ -299,9 +299,7 @@ impl PostgresSdlcRepository {
         Ok(Some(plan.result))
     }
 
-    /// Replaces only the old unconditional delivery-head overlap and stage validation for this review.
-
-    /// Parent has verified actual Workflow/native terminal and prepared THIS receipt in THIS transaction.
+    /// Parent has verified the saved Workflow result and prepared this receipt in this transaction.
     /// The common configured completion row is already inserted by the caller.
     /// Its lifecycle effects share that transaction and never enqueue Analyst.
     pub(super) async fn finalize_configured_critical_pm_review(
