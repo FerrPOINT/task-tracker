@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+Current fileless PM contract: [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
+The native PM lease, heartbeat, resume, unsubmitted recovery and bootstrap retry
+sections below describe retained historical contracts. Their eight routes are
+removed by the coordinated protocol replacement. New question publication and
+completion use the configured request shapes; stored history keeps its original
+shape. Use the current Rust-generated OpenAPI for the exposed routes.
+
 ## Terminal-Idle Checkpoint Permit (Source Candidate)
 
 The existing resume POST/operation GET additionally support the closed
