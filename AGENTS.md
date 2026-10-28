@@ -186,3 +186,10 @@ service_account factory и сохранять исходный proof до кон
 [PROJECT_SPACES_V2](docs/PROJECT_SPACES_V2.md#machine-context-reader-kind-revision-и-http-lifetime).
 Legacy registered reader не заменяет эту проверку kind. Known policy revision
 выбирает cache entry, но не является полномочием или owner revision.
+
+## Проверка Git-гигиены
+
+Перед коммитом: `python3 -B scripts/check_repository_hygiene.py --index`.
+Перед публикацией проверять точный кандидат через `--ref <commit>`. Установка
+hooks и допустимые артефакты: [правила](docs/REPOSITORY_HYGIENE.md).
+Копии проверки принадлежат Base; SDK/UI pins не меняются.
