@@ -1,4 +1,3 @@
-import { CurrentApplicationAccess } from '@/shared/auth/current-application-access'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -58,15 +57,13 @@ function Boot() {
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <CurrentApplicationAccess>
-            <PlatformProvider configUrl={import.meta.env.VITE_PLATFORM_BRANDING_URL ?? null}>
-              <PlatformServicesProvider
-                catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}
-              >
-                <RouterProvider router={router} />
-              </PlatformServicesProvider>
-            </PlatformProvider>
-          </CurrentApplicationAccess>
+          <PlatformProvider configUrl={import.meta.env.VITE_PLATFORM_BRANDING_URL ?? null}>
+            <PlatformServicesProvider
+              catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}
+            >
+              <RouterProvider router={router} />
+            </PlatformServicesProvider>
+          </PlatformProvider>
           <AppToaster />
         </ThemeProvider>
       </QueryClientProvider>

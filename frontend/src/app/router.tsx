@@ -1,3 +1,4 @@
+import { CurrentApplicationAccess } from '@/shared/auth/current-application-access'
 import { LoadingState } from '@pdlc/ui/ui'
 import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
@@ -65,7 +66,11 @@ export const router = createProductRouter(
       element: <RequireAuth />,
       children: [
         {
-          element: <AppShell />,
+          element: (
+            <CurrentApplicationAccess>
+              <AppShell />
+            </CurrentApplicationAccess>
+          ),
           children: [
             { path: '/namespace', element: withSuspense(<NamespacePage />) },
             { path: '/', element: withSuspense(<DashboardPage />) },
