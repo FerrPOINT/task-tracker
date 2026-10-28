@@ -838,10 +838,9 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     );
     assert!(f.repo.config.single_task_project_ids.contains(&f.project));
     let before_scheduler = f.snapshot().await;
-    assert!(matches!(
-        f.repo.read(task, &f.writer).await,
-        Err(AppError::Forbidden)
-    ));
+    // The scheduler can inspect the settled business result, without acquiring
+    // producer authority or queueing the next profession.
+    assert_eq!(f.repo.read(task, &f.writer).await.unwrap(), after);
     assert!(
         f.repo
             .read_delivery_candidates(&f.reader, f.query(None, 100))

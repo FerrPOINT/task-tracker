@@ -72,10 +72,11 @@ impl ReworkFixture {
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
         let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
-        assert!(row
-            .try_get::<String>("", "name")
-            .unwrap()
-            .ends_with("_lifecycle_test"));
+        assert!(
+            row.try_get::<String>("", "name")
+                .unwrap()
+                .ends_with("_lifecycle_test")
+        );
         assert!(
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
@@ -111,6 +112,7 @@ impl ReworkFixture {
         .await
         .unwrap();
         let owner = actor("owner", true, vec![]);
+        crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
         let scheduler = actor("scheduler", false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();

@@ -114,7 +114,12 @@ async fn seed_analysis_fixture(
     assert_eq!(snapshot.confirmation_id, confirmation.id);
     assert_eq!(snapshot.requirement_revision, confirmation.revision);
     assert_eq!(snapshot.content_hash, confirmation.content_hash);
-    let mut intent = app::sdlc::analysis_intent(&state, confirmation, Uuid::new_v4()).unwrap();
+    // Downstream ledger tests explicitly seed historical admission. Configured
+    // Draft consent must never create this legacy dispatch authority in production.
+    let mut historical_confirmation = confirmation.clone();
+    historical_confirmation.stage = Stage::Backlog;
+    let mut intent =
+        app::sdlc::analysis_intent(&state, &historical_confirmation, Uuid::new_v4()).unwrap();
     intent.workflow = snapshot.policy.routes.analyst.workflow_key;
     exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
         vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),snapshot.snapshot_id.into()]).await.unwrap();

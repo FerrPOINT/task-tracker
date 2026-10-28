@@ -107,6 +107,10 @@ async fn assert_policy_constraint_rejects(
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay() {
+    crate::legacy_schema_fixture::scope(draft_flow_seed()).await;
+}
+
+async fn draft_flow_seed() {
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("isolated Draft flow database required");
     let db = Database::connect(&url).await.unwrap();
