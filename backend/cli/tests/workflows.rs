@@ -905,7 +905,7 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
     let payload = json!({"idempotency_key":"stable-key","content_hash":"a".repeat(64)});
-    let server = Server::start(vec![(201, json!({"task_id":TASK})); 6]).await;
+    let server = Server::start(vec![(201, json!({"task_id":TASK})); 4]).await;
     let cases = [
         (
             vec![
@@ -931,32 +931,6 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
                 "-",
             ],
             format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment"),
-        ),
-        (
-            vec![
-                "sdlc",
-                "pm",
-                "lease",
-                "claim",
-                "--task",
-                TASK,
-                "--from-file",
-                "-",
-            ],
-            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease"),
-        ),
-        (
-            vec![
-                "sdlc",
-                "pm",
-                "lease",
-                "heartbeat",
-                "--task",
-                TASK,
-                "--from-file",
-                "-",
-            ],
-            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease/heartbeat"),
         ),
         (
             vec![
@@ -1011,7 +985,11 @@ async fn sdlc_pm_retired_lease_commands_are_rejected_before_http() {
     for supported in ["feedback", "assignment", "completion"] {
         assert!(help.contains(supported));
     }
-    assert!(!help.contains("lease"));
+    assert!(
+        !help
+            .lines()
+            .any(|line| line.split_whitespace().next() == Some("lease"))
+    );
     for operation in ["claim", "heartbeat", "read"] {
         let output = server.run(&["sdlc", "pm", "lease", operation], None).await;
         assert_eq!(output.status.code(), Some(2));
