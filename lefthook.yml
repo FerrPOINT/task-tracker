@@ -4,6 +4,8 @@
 pre-commit:
   parallel: true
   commands:
+    repository-hygiene:
+      run: python3 -B scripts/check_repository_hygiene.py --index
     rust-fmt:
       glob: "backend/**/*.rs"
       run: cd backend && cargo fmt --all -- --check
@@ -22,6 +24,9 @@ pre-commit:
 
 pre-push:
   commands:
+    repository-hygiene:
+      run: sh scripts/check_repository_hygiene_push.sh
+      use_stdin: true
     backend-test:
       run: cd backend && cargo test --workspace -- --test-threads=1
     frontend-build:

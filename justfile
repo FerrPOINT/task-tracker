@@ -101,7 +101,7 @@ e2e:
     cd frontend && pnpm exec playwright test
 
 # Full quality gate (CI-like)
-gate: fmt-check-rust clippy typecheck lint test-frontend test-backend
+gate: repository-hygiene fmt-check-rust clippy typecheck lint test-frontend test-backend
 
 # Lint frontend
 lint:
@@ -142,3 +142,9 @@ git-status:
 clean:
     cd backend && cargo clean
     cd frontend && rm -rf dist node_modules/.vitest
+
+repository-hygiene:
+    python3 -B scripts/check_repository_hygiene.py --index
+
+repository-hygiene-ref:
+    python3 -B scripts/check_repository_hygiene.py --ref HEAD
