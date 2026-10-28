@@ -50,9 +50,11 @@ pub(super) async fn project_issue_status(
         exec(
             tx,
             "SELECT set_config('pdlc.tracker.native_issue_projection',$1,true)",
-            vec![json!({"task_id":task,"status_id":status_id})
-                .to_string()
-                .into()],
+            vec![
+                json!({"task_id":task,"status_id":status_id})
+                    .to_string()
+                    .into(),
+            ],
         )
         .await?;
     }
@@ -75,8 +77,7 @@ pub(super) async fn authorize_read(
     state: &TaskState,
     actor: &Principal,
 ) -> Result<(), AppError> {
-    if state.configured_cli() && (actor.trusted_human || actor.scopes.contains("task-tracker:read"))
-    {
+    if state.configured_cli() {
         configured_assignment(tx, state, actor).await?;
         return Ok(());
     }
