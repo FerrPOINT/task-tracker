@@ -324,5 +324,25 @@ class ServerCliMetadataContractTest(unittest.TestCase):
                 self.assertTrue(builds)
                 self.assertTrue(all('--bin server' in value for value in builds))
 
+
+class PnpmLifecyclePolicyTests(unittest.TestCase):
+    def test_esbuild_has_one_explicit_dependency_build_policy(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        lines = (root / 'frontend/pnpm-workspace.yaml').read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines.count('allowBuilds:'), 1)
+        body = []
+        for line in lines[lines.index('allowBuilds:') + 1:]:
+            if line and not line.startswith(' '):
+                break
+            if line.strip():
+                body.append(line)
+        self.assertEqual(body, ['  esbuild: true'])
+        for legacy in ('onlyBuiltDependencies:', 'onlyBuiltDependenciesFile:',
+                       'ignoredBuiltDependencies:', 'neverBuiltDependencies:',
+                       'dangerouslyAllowAllBuilds:'):
+            self.assertNotIn(legacy, lines)
+
+
 if __name__ == "__main__":
     unittest.main()

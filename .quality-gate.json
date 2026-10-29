@@ -16,7 +16,8 @@
       "backend/Dockerfile",
       "backend/Dockerfile.umbrella",
       "backend/Cargo.toml",
-      "backend/*/Cargo.toml"
+      "backend/*/Cargo.toml",
+      "frontend/pnpm-workspace.yaml"
     ],
     "docs": [
       "scripts/verify_readme.py",
@@ -145,7 +146,8 @@
         "backend/Dockerfile.umbrella",
         "backend/domain/**",
         "backend/Cargo.toml",
-        "backend/*/Cargo.toml"
+        "backend/*/Cargo.toml",
+        "frontend/pnpm-workspace.yaml"
       ],
       "cacheable": true,
       "test_tier": "static"
