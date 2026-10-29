@@ -18,6 +18,7 @@ LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
 WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb
+  AND t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'
   AND ($3::uuid IS NULL OR t.task_id>$3)
   AND s.payload->'contract_version'='2'::jsonb AND s.payload->'policy'->'contract_version'='2'::jsonb
   AND s.requirement_revision::text=t.state->'revisions'->-1->>'revision'

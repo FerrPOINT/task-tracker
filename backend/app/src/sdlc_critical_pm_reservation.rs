@@ -1,5 +1,6 @@
 //! Pure fresh planning only. The caller owns persisted reads, replay and one task transaction.
 use domain::sdlc::*;
+use domain::sdlc_configured_cli::{CompleteConfiguredPm, ConfiguredPmCompletionReceipt};
 use domain::sdlc_critical_blockers::*;
 use domain::sdlc_critical_pm_reservation::*;
 use domain::sdlc_lifecycle::*;
@@ -8,12 +9,19 @@ use domain::sdlc_reservation::{CompletePmDraft, PmDraftCompletionReceipt};
 use shared::AppError;
 use uuid::Uuid;
 
+/// Old receipts are read as history, never converted into invented native proof.
+#[derive(Clone, Copy)]
+pub enum CompletedPmReceipt<'a> {
+    Historical(&'a PmDraftCompletionReceipt),
+    Configured(&'a ConfiguredPmCompletionReceipt),
+}
+
 pub struct CriticalPmReservationSource<'a> {
     pub state: &'a TaskState,
     pub lifecycle: &'a LifecycleReceipt,
     pub blocker: &'a CriticalBlockerReceipt,
     pub previous_reservation: &'a PmDraftReservation,
-    pub current_completed: &'a PmDraftCompletionReceipt,
+    pub current_completed: CompletedPmReceipt<'a>,
     /// Original persisted PM assignment, not a current project-default selection.
     pub original_pm_assignment: &'a PmAssignment,
     pub original_input: &'a PmDraftInputResponse,
@@ -55,7 +63,6 @@ fn verify_source(
     let current = source.lifecycle;
     let blocker = source.blocker;
     let previous = source.previous_reservation;
-    let completion = source.current_completed;
     let input = source.original_input;
     let routing = &current.task.routing;
     let revision = state.revisions.last().ok_or_else(conflict)?;
@@ -168,7 +175,7 @@ fn verify_source(
         || (previous.assignment.version > source.original_pm_assignment.version
             && (previous.assignment.assignment_id == source.original_pm_assignment.assignment_id
                 || previous.assignment.execution_id == source.original_pm_assignment.execution_id))
-        || previous.assignment.machine_subject != config.orchestrator_subject
+        || previous.interaction_protocol != state.interaction_protocol()?
         || previous.assignment.machine_subject.trim().is_empty()
         || previous.assignment.machine_subject == state.owner_subject
         || previous.assignment.machine_subject == config.verifier_subject
@@ -194,7 +201,74 @@ fn verify_source(
         || input.input.sha256 != previous.input.sha256
         || input.input.sha256
             != crate::sdlc::pm_draft_input_hash(&input.input.title, &input.input.description)?
-        || completion.contract_version != 1
+    {
+        return Err(conflict());
+    }
+    if state.configured_cli() {
+        if previous.assignment.machine_subject == config.orchestrator_subject
+            || crate::sdlc::canonical_pm_uuid(&previous.assignment.machine_subject).is_none()
+        {
+            return Err(conflict());
+        }
+    } else if previous.assignment.machine_subject != config.orchestrator_subject {
+        return Err(conflict());
+    }
+    verify_completion(source)
+}
+
+fn verify_completion(source: &CriticalPmReservationSource<'_>) -> Result<(), AppError> {
+    let state = source.state;
+    let previous = source.previous_reservation;
+    let revision = state.revisions.last().ok_or_else(conflict)?;
+    let completion = match source.current_completed {
+        CompletedPmReceipt::Configured(saved) => {
+            if !state.configured_cli()
+                || saved.interaction_protocol != InteractionProtocol::ConfiguredCliV1
+                || saved.completion_id.is_nil()
+                || saved.stage != Stage::Backlog
+                || saved.status != LifecycleStatus::Ready
+            {
+                return Err(conflict());
+            }
+            let command = CompleteConfiguredPm {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                fence: saved.fence.clone(),
+                requirement_revision: saved.requirement_revision,
+                content_hash: saved.content_hash.clone(),
+                namespace_id: saved.workflow_receipt.namespace_id,
+                workflow_execution_ref: saved.workflow_receipt.execution_ref,
+                workflow_operation_key: saved.workflow_receipt.operation_key.clone(),
+                workflow_result_version: saved.workflow_receipt.result_version,
+                idempotency_key: saved.idempotency_key.clone(),
+            };
+            crate::sdlc::validate_key(&command.idempotency_key)?;
+            crate::sdlc::validate_key(&command.workflow_operation_key)?;
+            let snapshot = crate::sdlc_configured_cli::completion_history_state(
+                state,
+                &previous.assignment,
+                &command,
+            )?;
+            let expected = crate::sdlc_configured_cli::completion_result(
+                &snapshot,
+                &command,
+                saved.workflow_receipt.clone(),
+                source.pm_owner_version,
+                saved.completion_id,
+                saved.created_at,
+            )?;
+            return if &expected == saved
+                && saved.requirement_revision == revision.revision
+                && saved.content_hash == revision.content_hash
+            {
+                Ok(())
+            } else {
+                Err(conflict())
+            };
+        }
+        CompletedPmReceipt::Historical(saved) if !state.configured_cli() => saved,
+        CompletedPmReceipt::Historical(_) => return Err(conflict()),
+    };
+    if completion.contract_version != 1
         || completion.completion_id.is_nil()
         || completion.lease_id.is_nil()
         || !(1..=MAX_SAFE_VERSION).contains(&completion.lease_version)
@@ -290,6 +364,7 @@ pub fn prepare_critical_pm_reservation(
     )?;
     state = serde_json::from_value(canonical).map_err(AppError::internal)?;
     let reservation = PmDraftReservation {
+        interaction_protocol: previous.interaction_protocol,
         contract_version: 1,
         variant: PmDraftVariant::Reserved,
         binding: previous.binding.clone(),
@@ -432,6 +507,7 @@ mod tests {
                 },
             };
             let previous = PmDraftReservation {
+                interaction_protocol: None,
                 contract_version: 1,
                 variant: PmDraftVariant::Reserved,
                 binding: PmDraftBinding {
@@ -630,12 +706,73 @@ mod tests {
                 lifecycle: &self.lifecycle,
                 blocker: &self.blocker,
                 previous_reservation: &self.previous,
-                current_completed: &self.completion,
+                current_completed: CompletedPmReceipt::Historical(&self.completion),
                 original_pm_assignment: &self.original_pm_assignment,
                 original_input: &self.input,
                 pm_owner_version: self.previous.owner_cas.version,
                 pm_admission_state: "completed",
             }
+        }
+
+        fn configured_completion(&mut self) -> ConfiguredPmCompletionReceipt {
+            use domain::sdlc_configured_cli::ConfiguredWorkflowReceipt;
+            let subject = Uuid::new_v4().to_string();
+            self.previous.interaction_protocol = Some(InteractionProtocol::ConfiguredCliV1);
+            self.previous.assignment.machine_subject = subject.clone();
+            self.original_pm_assignment.machine_subject = subject.clone();
+            self.state.assignment = Some(self.previous.assignment.clone());
+            self.state
+                .retained_fields
+                .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+            self.state.retained_fields.insert(
+                "workflow_task_key".into(),
+                json!(self.previous.execution.key),
+            );
+            for confirmation in &mut self.state.confirmations {
+                confirmation.stage = Stage::Draft;
+            }
+            let confirmation = self.state.current_confirmation().unwrap();
+            let workflow = ConfiguredWorkflowReceipt {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                execution_ref: Uuid::new_v4(),
+                task: self.previous.execution.key.clone(),
+                tracker_task_id: self.state.task_id,
+                namespace_id: 1,
+                concrete_agent_ref: self.previous.assignment.agent_id,
+                assignment_ref: self.previous.assignment.assignment_id,
+                tracker_execution_id: self.previous.assignment.execution_id,
+                assignment_version: self.previous.assignment.version,
+                machine_subject: subject,
+                operation_key: "approved-final-phase".into(),
+                request_sha256: "a".repeat(64),
+                result_version: 4,
+                requirements_revision: Some(confirmation.revision),
+                requirements_sha256: Some(confirmation.content_hash.clone()),
+                owner_subject: self.state.owner_subject.clone(),
+                confirmation_id: Some(confirmation.id),
+                history_id: 7,
+                status: "done".into(),
+            };
+            let command = CompleteConfiguredPm {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                fence: self.completion.fence.clone(),
+                requirement_revision: confirmation.revision,
+                content_hash: confirmation.content_hash.clone(),
+                namespace_id: workflow.namespace_id,
+                workflow_execution_ref: workflow.execution_ref,
+                workflow_operation_key: workflow.operation_key.clone(),
+                workflow_result_version: workflow.result_version,
+                idempotency_key: "approved-pm-completion".into(),
+            };
+            crate::sdlc_configured_cli::completion_result(
+                &self.state,
+                &command,
+                workflow,
+                self.previous.owner_cas.version,
+                Uuid::new_v4(),
+                self.completion.created_at,
+            )
+            .unwrap()
         }
 
         fn completed_generation(&mut self, version: i64) {
@@ -683,6 +820,72 @@ mod tests {
                 &self.command,
                 Self::allocation(),
             )
+        }
+    }
+
+    #[test]
+    fn configured_review_uses_the_saved_business_receipt_and_permanent_identity() {
+        let mut f = Fixture::new();
+        let completed = f.configured_completion();
+        let mut source = f.source();
+        source.current_completed = CompletedPmReceipt::Configured(&completed);
+        let plan = prepare_critical_pm_reservation(
+            source,
+            &f.scheduler,
+            &f.config,
+            &f.command,
+            Fixture::allocation(),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.result.reservation.interaction_protocol,
+            Some(InteractionProtocol::ConfiguredCliV1)
+        );
+        assert_eq!(
+            plan.result.reservation.assignment.machine_subject,
+            completed.workflow_receipt.machine_subject
+        );
+        assert_eq!(
+            plan.state.retained_fields["workflow_task_key"],
+            json!(completed.workflow_receipt.task)
+        );
+        assert_ne!(
+            plan.result.reservation.execution.key,
+            completed.workflow_receipt.task
+        );
+        assert!(plan.lifecycle.lease.is_none() && plan.lifecycle.binding.is_none());
+        // A legacy native receipt is history, not authority for configured work.
+        assert!(f.plan().is_err());
+    }
+
+    #[test]
+    fn configured_review_rejects_a_changed_completion_or_machine_identity() {
+        for changed in 0..6 {
+            let mut f = Fixture::new();
+            let mut completed = f.configured_completion();
+            match changed {
+                0 => completed.workflow_receipt.assignment_ref = Uuid::new_v4(),
+                1 => completed.workflow_receipt.confirmation_id = Some(Uuid::new_v4()),
+                2 => completed.workflow_receipt_sha256 = "b".repeat(64),
+                3 => completed.content_hash = "c".repeat(64),
+                4 => completed.owner_subject = "foreign".into(),
+                _ => {
+                    f.previous.assignment.machine_subject = f.config.orchestrator_subject.clone();
+                    f.state.assignment = Some(f.previous.assignment.clone());
+                }
+            }
+            let mut source = f.source();
+            source.current_completed = CompletedPmReceipt::Configured(&completed);
+            assert!(
+                prepare_critical_pm_reservation(
+                    source,
+                    &f.scheduler,
+                    &f.config,
+                    &f.command,
+                    Fixture::allocation()
+                )
+                .is_err()
+            );
         }
     }
 
@@ -920,7 +1123,7 @@ mod tests {
         let older_reservation = f.previous.clone();
         f.completed_generation(2);
         let mut source = f.source();
-        source.current_completed = &older_completion;
+        source.current_completed = CompletedPmReceipt::Historical(&older_completion);
         assert!(
             prepare_critical_pm_reservation(
                 source,

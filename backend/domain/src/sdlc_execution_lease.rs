@@ -191,6 +191,59 @@ pub struct ResumePmExecutionLease {
     pub previous_run_id: Uuid,
     pub previous_run_terminal: ArtifactReceipt,
     pub idempotency_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<PmSettledInputRecovery>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PmSettledInputRecoveryKind {
+    SettledInputExpiry,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmSettledInputRecovery {
+    pub kind: PmSettledInputRecoveryKind,
+    pub original_key: String,
+    pub original_request_sha256: String,
+    pub predecessor_key: String,
+    pub predecessor_request_sha256: String,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub barrier_id: Uuid,
+}
+
+/// Immutable owner budget, accepted only inside the existing trusted Fleet callback.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PmSettledInputManualBudget {
+    pub contract_version: u8,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub root_operation_id: Uuid,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub control_operation_id: Uuid,
+    pub retry_operation_key: String,
+    pub retry_request_sha256: String,
+    pub original_resume_request_sha256: String,
+    pub prefix_count: usize,
+    pub prefix_sha256: String,
+    pub allowance: usize,
+}
+
+/// Authenticated Fleet journal/barrier observation, never caller-supplied authority.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PmSettledInputRecoveryWitness {
+    pub contract_version: u8,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub session_run_id: Uuid,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub barrier_id: Uuid,
+    pub identity: PmExecutionIdentity,
+    pub request_sha256: String,
+    pub command: ResumePmExecutionLease,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_budget: Option<PmSettledInputManualBudget>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema, PartialEq)]
 #[serde(deny_unknown_fields)]

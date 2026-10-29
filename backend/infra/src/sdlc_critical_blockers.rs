@@ -72,12 +72,12 @@ async fn current_producer(
     saved: &CriticalBlockerReceipt,
     write: bool,
 ) -> Result<(), AppError> {
-    let grant = app::sdlc_lifecycle::producer(actor, write)?;
     let current = super::lifecycle::current(tx, state.task_id)
         .await?
         .ok_or(AppError::Forbidden)?;
     super::lifecycle::exact_revision(state, &current)?;
-    receipt_producer(&current, actor, saved, &grant)
+    let grant = app::sdlc_lifecycle::assigned_producer(actor, &current, write)?;
+    receipt_producer(&current, &actor.subject, saved, &grant)
 }
 
 // No separate connection/readback: task, current selector, journal and lease share this lock.
@@ -124,27 +124,39 @@ async fn current_pm_reader(
     {
         return Err(AppError::Forbidden);
     }
-    let lease = PostgresSdlcRepository::lease_current(tx, &current)
-        .await?
-        .ok_or(AppError::Forbidden)?;
+    let lease = if state.configured_cli() {
+        None
+    } else {
+        Some(
+            PostgresSdlcRepository::lease_current(tx, &current)
+                .await?
+                .ok_or(AppError::Forbidden)?,
+        )
+    };
     // lease_current validates the retained operation/fence, row columns, holder and TTL.
     let now = super::execution_lease::clock(tx).await?;
     app::sdlc_critical_blockers::authorize_critical_pm_blocker_read(
-        state, actor, saved, &review, &current, &lease, now,
+        state,
+        actor,
+        saved,
+        &review,
+        &current,
+        lease.as_ref(),
+        now,
     )
 }
 
 fn receipt_producer(
     current: &LifecycleReceipt,
-    actor: &Principal,
+    producer_subject: &str,
     saved: &CriticalBlockerReceipt,
     grant: &DeliveryGrant,
 ) -> Result<(), AppError> {
     let assignment = current.assignment.as_ref().ok_or(AppError::Forbidden)?;
     app::sdlc_lifecycle::authorize_delivery_assignment(grant, assignment)?;
     let binding = current.binding.as_ref().ok_or(AppError::Forbidden)?;
-    if saved.producer_subject != actor.subject
-        || binding.machine_subject != actor.subject
+    if saved.producer_subject != producer_subject
+        || binding.machine_subject != producer_subject
         || saved.proposal.fence.assignment_id != assignment.assignment_id
         || saved.proposal.fence.execution_id != assignment.execution_id
         || saved.proposal.fence.fencing_token != assignment.fencing_token
@@ -177,10 +189,10 @@ async fn original_producer(
         .await
         .map_err(map_db)?;
     if let Some(row) = row {
-        let grant = app::sdlc_lifecycle::producer(actor, write)?;
         let archived: LifecycleReceipt = decode(&row, "before_receipt")?;
+        let grant = app::sdlc_lifecycle::assigned_producer(actor, &archived, write)?;
         exact_history(tx, &archived).await?;
-        receipt_producer(&archived, actor, saved, &grant)
+        receipt_producer(&archived, &actor.subject, saved, &grant)
     } else {
         current_producer(tx, state, actor, saved, write).await
     }
@@ -189,14 +201,14 @@ async fn original_producer(
 async fn original_operation(
     tx: &DatabaseTransaction,
     task: Uuid,
-    actor: &Principal,
+    producer_subject: &str,
     key: &str,
 ) -> Result<Option<CriticalBlockerReceipt>, AppError> {
     let row = tx
         .query_one(statement(
             "SELECT payload_hash,result FROM sdlc_critical_blocker_operations
          WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
-            vec![task.into(), actor.subject.clone().into(), key.into()],
+            vec![task.into(), producer_subject.into(), key.into()],
         ))
         .await
         .map_err(map_db)?;
@@ -204,7 +216,7 @@ async fn original_operation(
         let receipt: CriticalBlockerReceipt = decode(&row, "result")?;
         if receipt.blocker_sha256 != row.try_get::<String>("", "payload_hash").map_err(map_db)?
             || receipt.proposal.idempotency_key != key
-            || receipt.producer_subject != actor.subject
+            || receipt.producer_subject != producer_subject
         {
             return Err(invalid_history());
         }
@@ -358,20 +370,28 @@ impl PostgresSdlcRepository {
         command: SubmitCriticalBlocker,
         storage: &dyn domain::FileStorage,
     ) -> Result<(CriticalBlockerReceipt, bool), AppError> {
-        let grant = app::sdlc_lifecycle::producer(actor, true)?;
-        if grant.task_id != task {
-            return Err(AppError::Forbidden);
-        }
         app::sdlc::validate_key(&command.idempotency_key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if !state.configured_cli() {
+            return Err(AppError::conflict("retired execution is read-only"));
+        }
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         owner_access(&tx, &state).await?;
-        if let Some(saved) = original_operation(&tx, task, actor, &command.idempotency_key).await? {
+        if let Some(saved) =
+            original_operation(&tx, task, &actor.subject, &command.idempotency_key).await?
+        {
             scope(&state, &saved)?;
             original_producer(&tx, &state, actor, &saved, true).await?;
             let receipt = app::sdlc_critical_blockers::replay_blocker(&saved, &command)?;
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
+        }
+        Self::bind_current_task(&tx, &self.config, &state, actor).await?;
+        let grant = super::lifecycle::producer_grant(&tx, &state, actor, true).await?;
+        if grant.task_id != task {
+            return Err(AppError::Forbidden);
         }
         let current = super::lifecycle::current(&tx, task)
             .await?
@@ -460,16 +480,52 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<CriticalBlockerReceipt, AppError> {
-        app::sdlc_lifecycle::producer(actor, false)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         owner_access(&tx, &state).await?;
-        let saved = original_operation(&tx, task, actor, key)
+        let head = if state.configured_cli()
+            && app::sdlc_lifecycle::scheduler_read(actor, &self.config).is_ok()
+        {
+            Some(
+                super::lifecycle::current(&tx, task)
+                    .await?
+                    .ok_or(AppError::Forbidden)?,
+            )
+        } else {
+            None
+        };
+        let producer = match &head {
+            Some(head) => head
+                .assignment
+                .as_ref()
+                .and_then(|a| a.machine_subject.as_deref())
+                .ok_or(AppError::Forbidden)?,
+            None => &actor.subject,
+        };
+        let saved = original_operation(&tx, task, producer, key)
             .await?
             .ok_or_else(|| AppError::not_found("critical blocker operation", key))?;
         scope(&state, &saved)?;
-        original_producer(&tx, &state, actor, &saved, false).await?;
+        if let Some(head) = &head {
+            super::lifecycle::exact_revision(&state, head)?;
+            let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
+            let grant = DeliveryGrant {
+                task_id: task,
+                assignment_id: assignment.assignment_id,
+                execution_id: assignment.execution_id,
+                agent_id: assignment.agent_id,
+                fencing_token: assignment.fencing_token,
+            };
+            receipt_producer(head, producer, &saved, &grant)?;
+        } else {
+            original_producer(&tx, &state, actor, &saved, false).await?;
+        }
+        if head.is_some() {
+            Self::bind_current_task(&tx, &self.config, &state, actor).await?;
+        } else {
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
+        }
         tx.commit().await.map_err(map_db)?;
         Ok(saved)
     }
@@ -488,6 +544,10 @@ impl PostgresSdlcRepository {
         } else {
             self.load(&tx, task, actor).await?
         };
+        let pm = pm
+            || (state.configured_cli()
+                && state.stage == Stage::Draft
+                && app::sdlc_configured_cli::authorize_configured_pm(&state, actor).is_ok());
         owner_access(&tx, &state).await?;
         let row = tx
             .query_one(statement(
@@ -503,7 +563,10 @@ impl PostgresSdlcRepository {
         scope(&state, &saved)?;
         if pm {
             current_pm_reader(&tx, &state, actor, &saved).await?;
-        } else if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+        } else if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+            || (state.configured_cli()
+                && app::sdlc_configured_cli::authorize_configured_identity(actor).is_ok())
+        {
             current_producer(&tx, &state, actor, &saved, false).await?;
         } else if !(actor.human_session
             && actor.trusted_human

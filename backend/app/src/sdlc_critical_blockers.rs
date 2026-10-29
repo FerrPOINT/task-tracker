@@ -246,7 +246,7 @@ fn prepare_blocker(
     allocation: BlockerAllocation,
 ) -> Result<CriticalBlockerReceipt, AppError> {
     configured(current, config)?;
-    let grant = crate::sdlc_lifecycle::producer(actor, true)?;
+    let grant = crate::sdlc_lifecycle::assigned_producer(actor, current, true)?;
     let (assignment, binding) = current_custody(
         current,
         &proposal.fence,
@@ -479,10 +479,15 @@ pub fn authorize_critical_pm_blocker_read(
     blocker: &CriticalBlockerReceipt,
     review: &domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
     current: &domain::sdlc_pm_draft::PmDraftReservation,
-    lease: &domain::sdlc_execution_lease::ExecutionLeaseReceipt,
+    lease: Option<&domain::sdlc_execution_lease::ExecutionLeaseReceipt>,
     observed_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), AppError> {
-    if crate::sdlc::pm_grant_task(actor)? != Some(state.task_id)
+    if state.configured_cli() {
+        crate::sdlc_configured_cli::authorize_configured_pm(state, actor)?;
+        if lease.is_some() || current.interaction_protocol != state.interaction_protocol()? {
+            return Err(AppError::Forbidden);
+        }
+    } else if crate::sdlc::pm_grant_task(actor)? != Some(state.task_id)
         || !actor.scopes.contains("task-tracker:read")
         || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
     {
@@ -516,7 +521,14 @@ pub fn authorize_critical_pm_blocker_read(
         || review.context.blocker_sha256 != blocker.blocker_sha256
         || review.context.requirements.revision != blocker.proposal.requirement_revision
         || review.context.requirements.content_hash != blocker.proposal.content_hash
-        || lease.contract_version != 1
+    {
+        return Err(AppError::Forbidden);
+    }
+    if state.configured_cli() {
+        return Ok(());
+    }
+    let lease = lease.ok_or(AppError::Forbidden)?;
+    if lease.contract_version != 1
         || lease.dispatch_allowed
         || lease.binding != *binding
         || lease.owner_version != current.owner_cas.version

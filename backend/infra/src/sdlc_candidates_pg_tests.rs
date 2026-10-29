@@ -1,15 +1,12 @@
 //! Existing PostgreSQL owner ledgers; Fleet/Workflow observations below are explicitly synthetic.
 use super::*;
-use domain::sdlc_source::{SetSourcePolicy, TaskSourceRepository};
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
+#[path = "sdlc_configured_cli_pg_tests.rs"]
+mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
 mod critical_blocker_tests;
-#[path = "sdlc_pm_unsubmitted_pg_tests.rs"]
-mod unsubmitted_recovery_tests;
-use domain::sdlc_execution_lease::ClaimExecutionLease;
 use domain::sdlc_lifecycle::*;
-use domain::sdlc_reservation::CompletePmDraft;
 use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
 use sea_orm_migration::MigratorTrait;
 use serde::de::DeserializeOwned;
@@ -151,6 +148,7 @@ impl Fixture {
                 self.project,
                 &self.owner,
                 CreateDraftCommand {
+                    interaction_protocol: None,
                     flow,
                     title: key.into(),
                     description: "Synthetic test input, not live execution".into(),
@@ -165,183 +163,20 @@ impl Fixture {
 
     async fn confirmed(&self, key: &str, completed: bool) -> Uuid {
         let task = self.draft(key, Some(DraftFlow::SingleTaskV1)).await;
-        let (reservation, _) = self
-            .repo
-            .reserve_pm_draft(
-                task,
-                &self.owner,
-                parse(json!({
-            "requested_agent_id":self.roles.project_manager.agent_id,"expected_owner_version":0,
-            "expected_assignment_version":null,"idempotency_key":"pm-reserve"})),
-            )
-            .await
-            .unwrap();
-        let mut pm = actor("pm", false, &["task-tracker:read", "task-tracker:write"]);
-        pm.scopes.insert(reservation.assignment.scope(task));
-        let fence = MachineFence {
-            assignment_id: reservation.assignment.assignment_id,
-            execution_id: reservation.assignment.execution_id,
-            agent_id: reservation.assignment.agent_id,
-            assignment_version: reservation.assignment.version,
-        };
-        let (lease, _) = self
-            .repo
-            .claim_execution_lease(
-                task,
-                &pm,
-                ClaimExecutionLease {
-                    expected_owner_version: reservation.owner_cas.version,
-                    fence: fence.clone(),
-                    idempotency_key: "claim".into(),
-                },
-            )
-            .await
-            .unwrap();
-        let document: RequirementsDocument = parse(
-            json!({"goal":"Candidate fixture","scope":["scope"],"exclusions":[],
-            "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],
-            "checklist":["check"],"prerequisites":["pre"]}),
-        );
-        let hash = app::sdlc::canonical_hash(&document).unwrap();
-        self.repo
-            .execute_verified(
-                task,
-                &pm,
-                SdlcCommand::PublishRevision(PublishRevision {
-                    fence: fence.clone(),
-                    expected_requirement_revision: None,
-                    document,
-                    idempotency_key: "publish".into(),
-                }),
-                reservation.clone(),
-                None,
-            )
-            .await
-            .unwrap();
-        let mut verifier = actor("verifier", false, &["task-tracker:write"]);
-        verifier
-            .scopes
-            .insert(format!("task-tracker:sdlc:evidence:{task}:1"));
-        for check in ["check", "pre"] {
-            self.repo
-                .execute_verified(
-                    task,
-                    &verifier,
-                    SdlcCommand::Evidence(EvidenceCommand {
-                        fence: fence.clone(),
-                        requirement_revision: 1,
-                        content_hash: hash.clone(),
-                        check_id: check.into(),
-                        evidence_reference: format!("fixture://{check}"),
-                        idempotency_key: check.into(),
-                    }),
-                    reservation.clone(),
-                    None,
-                )
-                .await
-                .unwrap();
-        }
-        let confirm = SdlcCommand::Confirm {
-            revision: 1,
-            command: ConfirmCommand {
-                content_hash: hash.clone(),
-                idempotency_key: "confirm".into(),
-                expected_routing_policy_version: Some(1),
-            },
-        };
-        let receipt = self
-            .repo
-            .execute_verified(
-                task,
-                &self.owner,
-                confirm.clone(),
-                reservation.clone(),
-                None,
-            )
-            .await
-            .unwrap();
-        assert_eq!(receipt["stage"], json!("Backlog"));
-        let before_replay = self.snapshot().await;
-        assert_eq!(
-            self.repo
-                .execute_verified(
-                    task,
-                    &self.owner,
-                    confirm.clone(),
-                    reservation.clone(),
-                    None
-                )
-                .await
-                .unwrap(),
-            receipt
-        );
-        assert_eq!(self.snapshot().await, before_replay);
-        let mut duplicate = confirm.clone();
-        if let SdlcCommand::Confirm { command, .. } = &mut duplicate {
-            command.idempotency_key = "duplicate-confirm".into();
-        }
-        assert!(matches!(
-            self.repo
-                .execute_verified(task, &self.owner, duplicate, reservation.clone(), None)
-                .await,
-            Err(AppError::Conflict(_))
-        ));
-        let mut changed = confirm.clone();
-        if let SdlcCommand::Confirm { command, .. } = &mut changed {
-            command.content_hash = "f".repeat(64);
-        }
-        assert!(matches!(
-            self.repo
-                .execute_verified(task, &self.owner, changed, reservation.clone(), None)
-                .await,
-            Err(AppError::Conflict(_))
-        ));
-        assert_eq!(self.snapshot().await, before_replay);
-        self.assert_backlog_without_analysis(task).await;
+        let document: RequirementsDocument = parse(json!({
+            "goal":"Candidate fixture","scope":["scope"],"exclusions":[],
+            "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],
+            "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]}));
+        crate::sdlc::configured_test_support::confirmed_pm(
+            &self.repo,
+            task,
+            &self.owner,
+            self.roles.project_manager.agent_id,
+            document,
+            completed,
+        )
+        .await;
         if completed {
-            let command = CompletePmDraft {
-                contract_version: 1,
-                fence,
-                lease_id: lease.lease.lease_id,
-                lease_version: lease.lease.version,
-                requirement_revision: 1,
-                content_hash: hash,
-                terminal_receipt_ref: "fixture://synthetic-native-terminal".into(),
-                terminal_receipt_sha256: "a".repeat(64),
-                workflow_receipt_ref: "fixture://synthetic-workflow-complete".into(),
-                workflow_receipt_sha256: "b".repeat(64),
-                idempotency_key: "complete".into(),
-            };
-            let (completion, replayed) = self
-                .repo
-                .complete_pm_draft(task, &self.writer, command.clone())
-                .await
-                .unwrap();
-            assert!(!replayed);
-            let before_replay = self.snapshot().await;
-            let (replayed_completion, replayed) = self
-                .repo
-                .complete_pm_draft(task, &self.writer, command.clone())
-                .await
-                .unwrap();
-            assert!(replayed);
-            assert_eq!(json!(replayed_completion), json!(completion));
-            assert_eq!(
-                self.repo
-                    .execute_verified(task, &self.owner, confirm, reservation, None)
-                    .await
-                    .unwrap(),
-                receipt
-            );
-            let mut duplicate = command;
-            duplicate.idempotency_key = "second-completion".into();
-            assert!(matches!(
-                self.repo
-                    .complete_pm_draft(task, &self.writer, duplicate)
-                    .await,
-                Err(AppError::Conflict(_))
-            ));
-            assert_eq!(self.snapshot().await, before_replay);
             self.assert_backlog_without_analysis(task).await;
         }
         task
@@ -398,10 +233,10 @@ async fn pm_publication_stops_at_backlog_without_analysis_on_confirmation_comple
     f.assert_backlog_without_analysis(task).await;
     let completion = f
         .repo
-        .read_pm_draft_completion(task, &f.reader)
+        .configured_pm_completion(task, &f.reader, None)
         .await
         .unwrap();
-    assert!(completion.current.is_some());
+    assert!(completion.is_some());
     let before = f.snapshot().await;
     assert!(
         f.repo
@@ -428,51 +263,33 @@ async fn pm_publication_stops_at_backlog_without_analysis_on_confirmation_comple
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
-async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
+async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstream() {
     let mut f = Fixture::new().await;
     let mut expected = vec![];
     for key in ["first", "second", "third"] {
         expected.push(f.queued_analysis(key, true).await);
     }
-    let pending = f.queued_analysis("consent-without-completion", false).await;
+    f.confirmed("consent-without-completion", false).await;
     f.draft("unconfirmed", Some(DraftFlow::SingleTaskV1)).await;
     f.draft("legacy", None).await;
     expected.sort();
     let before = f.snapshot().await;
-    let mut cursor = None;
-    let mut actual = vec![];
-    loop {
-        let page = f
-            .repo
-            .read_delivery_candidates(&f.reader, f.query(cursor, 1))
-            .await
-            .unwrap();
-        assert_eq!(page.contract_version, 1);
-        assert_eq!(page.tracker_instance_id, "candidates-test");
-        assert_eq!(page.project_id, f.project);
-        assert_eq!(page.items.len(), 1);
-        let item = &page.items[0];
-        assert_eq!(item.root_task_id, item.task_id);
-        assert_eq!(item.requirement_revision, 1);
-        assert_eq!(item.next_operation, CandidateOperation::EnsureQueued);
-        assert_eq!(item.task_version, None);
-        assert_ne!(item.task_id, pending);
-        actual.push(item.task_id);
-        if page.next_cursor.is_none() {
-            break;
+    // Current CLI assignments do not opt into the legacy auto-dispatcher,
+    // even when a standalone technical test imports a queued snapshot.
+    for after in std::iter::once(None).chain(expected.iter().copied().map(Some)) {
+        for limit in [1, 2, 100] {
+            let page = f
+                .repo
+                .read_delivery_candidates(&f.reader, f.query(after, limit))
+                .await
+                .unwrap();
+            assert_eq!(page.contract_version, 1);
+            assert_eq!(page.tracker_instance_id, "candidates-test");
+            assert_eq!(page.project_id, f.project);
+            assert!(page.items.is_empty());
+            assert_eq!(page.next_cursor, None);
         }
-        assert_eq!(page.next_cursor, Some(item.task_id));
-        cursor = page.next_cursor;
-        assert!(actual.len() < 4, "pagination must advance");
     }
-    assert_eq!(actual, expected);
-    let empty = f
-        .repo
-        .read_delivery_candidates(&f.reader, f.query(actual.last().copied(), 100))
-        .await
-        .unwrap();
-    assert!(empty.items.is_empty());
-    assert_eq!(empty.next_cursor, None);
     assert_eq!(f.snapshot().await, before);
     let foreign_project = Uuid::new_v4();
     exec(
@@ -513,7 +330,15 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         Err(AppError::Unavailable(_))
     ));
     f.repo.config.single_task_project_ids = enabled_projects;
-    let task = actual[0];
+    let task = expected[0];
+    let machine_subject = f
+        .repo
+        .read(task, &f.owner)
+        .await
+        .unwrap()
+        .assignment
+        .unwrap()
+        .machine_subject;
     let (queued, _) = f
         .repo
         .lifecycle_command(
@@ -531,9 +356,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    let candidate = page.items.iter().find(|item| item.task_id == task).unwrap();
-    assert_eq!(candidate.next_operation, CandidateOperation::Reserve);
-    assert_eq!(candidate.task_version, Some(queued.task.version));
+    assert!(page.items.is_empty());
+    assert_eq!(page.next_cursor, None);
     assert_eq!(f.snapshot().await, before);
     assert!(
         f.repo
@@ -542,6 +366,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
                 &f.writer,
                 LifecycleCommand::Reserve {
                     expected_task_version: queued.task.version + 1,
+
+                    machine_subject: Some(machine_subject.clone()),
                     idempotency_key: "stale-reserve".into(),
                 }
             )
@@ -555,6 +381,8 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
             &f.writer,
             LifecycleCommand::Reserve {
                 expected_task_version: queued.task.version,
+
+                machine_subject: Some(machine_subject),
                 idempotency_key: "reserve".into(),
             },
         )
@@ -565,16 +393,12 @@ async fn actual_owner_discovery_is_read_only_paginated_and_pm_terminal_gated() {
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    assert!(
-        !page
-            .items
-            .iter()
-            .any(|item| item.task_id == task || item.task_id == pending)
-    );
-    let state = f.repo.read(actual[1], &f.owner).await.unwrap();
+    assert!(page.items.is_empty());
+    assert_eq!(page.next_cursor, None);
+    let state = f.repo.read(expected[1], &f.owner).await.unwrap();
     let snapshot = f
         .repo
-        .task_routing_snapshot(actual[1], &f.reader)
+        .task_routing_snapshot(expected[1], &f.reader)
         .await
         .unwrap();
     let mut stale = snapshot.clone();

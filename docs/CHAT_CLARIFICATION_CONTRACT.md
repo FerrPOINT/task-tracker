@@ -1,5 +1,11 @@
 # Tracker clarification API v1
 
+For current PM writes, use [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
+Native PM lease/checkpoint and native completion descriptions in this document
+are historical. Their writer routes have been retired; new question publication
+does not accept `checkpoint_id`. Historical question/confirmation/completion
+payloads are retained and must not be rewritten to the new format.
+
 Implementation contract for the approved PM clarification slice. Runtime acceptance
 with Fleet/Workflow and a real PM has not been performed. Rust DTOs and generated
 `openapi/openapi.json` are the schema source of truth.

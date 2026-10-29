@@ -182,12 +182,10 @@ pub async fn check(
         "execution_id":assignment["execution_id"],"agent_id":assignment["agent_id"],
         "assignment_version":assignment["version"]});
     let lease_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/pm-draft-execution-lease");
-    let rejected = post(client, &lease_url, "sdlc_pat_pm",
-        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"legacy-cannot-claim-reserved-lease"}),409).await;
-    assert_eq!(
-        rejected["error"]["message"],
-        "PM reservation is not current"
-    );
+    // The native PM lease route is retired for every task, including retained
+    // legacy history. The rejected request cannot manufacture execution authority.
+    post(client, &lease_url, "sdlc_pat_pm",
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"legacy-cannot-claim-reserved-lease"}),404).await;
     assert_eq!(count(db, "sdlc_pm_execution_leases").await, 0);
     assert_eq!(count(db, "sdlc_pm_completions").await, 0);
     let mut after_rejected_claim = read(client, &path(pm_task), reader, 200).await;

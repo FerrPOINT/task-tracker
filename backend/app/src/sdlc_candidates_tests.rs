@@ -218,6 +218,53 @@ fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
 }
 
 #[test]
+fn configured_cli_pm_never_opts_in_to_downstream_discovery() {
+    let (mut state, mut head) = fixture();
+    state
+        .retained_fields
+        .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+    for stage in [
+        Stage::Draft,
+        Stage::Backlog,
+        Stage::Analysis,
+        Stage::Architecture,
+        Stage::Development,
+        Stage::Review,
+        Stage::Testing,
+        Stage::Rework,
+        Stage::Deployment,
+    ] {
+        state.stage = stage;
+        head.task.stage = LifecycleStage::from_legacy(stage);
+        assert!(
+            candidate(&state, None, true).unwrap().is_none(),
+            "{stage:?}"
+        );
+        assert!(
+            candidate(&state, Some(&head), true).unwrap().is_none(),
+            "{stage:?}"
+        );
+    }
+    state.retained_fields.remove("interaction_protocol");
+    state.stage = Stage::Analysis;
+    head.task.stage = LifecycleStage::Analysis;
+    assert_eq!(
+        candidate(&state, None, true)
+            .unwrap()
+            .unwrap()
+            .next_operation,
+        CandidateOperation::EnsureQueued
+    );
+    assert_eq!(
+        candidate(&state, Some(&head), true)
+            .unwrap()
+            .unwrap()
+            .next_operation,
+        CandidateOperation::Reserve
+    );
+}
+
+#[test]
 fn uuid_keyset_uses_last_returned_not_lookahead_and_empty_pages_have_null_cursor() {
     let query = DeliveryCandidatesQuery {
         project_id: Uuid::new_v4(),

@@ -293,7 +293,6 @@ pub struct PublishQuestion {
     pub expected_question_version: Option<i64>,
     #[serde(deserialize_with = "safe_version")]
     pub requirement_revision: i64,
-    pub checkpoint_id: Uuid,
     pub requirement_reference: Option<String>,
     pub text: String,
     pub rationale: String,
@@ -333,6 +332,12 @@ pub struct BindCommand {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateDraftCommand {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "interaction_protocol"
+    )]
+    pub interaction_protocol: Option<InteractionProtocol>,
     #[schema(min_length = 1, max_length = 500)]
     pub title: String,
     #[schema(max_length = 100000)]
@@ -354,6 +359,18 @@ pub enum DraftFlow {
     SingleTaskV1,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum InteractionProtocol {
+    #[serde(rename = "configured-cli-v1")]
+    ConfiguredCliV1,
+}
+
+pub fn interaction_protocol<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<InteractionProtocol>, D::Error> {
+    InteractionProtocol::deserialize(d).map(Some)
+}
+
 fn draft_flow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<DraftFlow>, D::Error> {
     DraftFlow::deserialize(d).map(Some)
 }
@@ -366,6 +383,8 @@ pub enum DraftStage {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CreatedDraft {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub tracker_instance_id: String,
     pub project_id: Uuid,
     pub task_id: Uuid,
@@ -447,7 +466,8 @@ pub struct Question {
     pub execution_id: Uuid,
     pub agent_id: Uuid,
     pub assignment_version: i64,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     pub text: String,
     pub rationale: String,
     pub required: bool,
@@ -489,6 +509,16 @@ pub struct Permissions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critical_review: Option<crate::sdlc_critical_pm_reservation::CriticalPmReviewContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_task_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_assignment_version: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
     pub contract_version: u8,
     pub tracker_instance_id: String,
     pub project_id: Uuid,
@@ -538,6 +568,22 @@ pub struct TaskState {
 }
 
 impl TaskState {
+    pub fn interaction_protocol(&self) -> Result<Option<InteractionProtocol>, AppError> {
+        self.retained_fields
+            .get("interaction_protocol")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid immutable interaction protocol"))
+            })
+            .transpose()
+    }
+
+    pub fn configured_cli(&self) -> bool {
+        matches!(
+            self.interaction_protocol(),
+            Ok(Some(InteractionProtocol::ConfiguredCliV1))
+        )
+    }
     pub fn draft_flow(&self) -> Result<Option<DraftFlow>, AppError> {
         self.retained_fields
             .get("flow")
@@ -586,20 +632,31 @@ impl TaskState {
                 .questions
                 .iter()
                 .any(|q| q.required && q.state == QuestionState::Open)
-            && revision
-                .document
-                .checklist
-                .iter()
-                .chain(&revision.document.prerequisites)
-                .all(|check| {
-                    self.evidence.iter().any(|e| {
-                        e.requirement_revision == revision.revision
-                            && e.content_hash == revision.content_hash
-                            && &e.check_id == check
-                            && latest_answered_clarification_at
-                                .is_none_or(|answered_at| e.created_at >= answered_at)
+            && (if self.configured_cli() {
+                self.assignment.is_some()
+            } else {
+                revision
+                    .document
+                    .checklist
+                    .iter()
+                    .chain(&revision.document.prerequisites)
+                    .all(|check| {
+                        self.evidence.iter().any(|e| {
+                            e.requirement_revision == revision.revision
+                                && e.content_hash == revision.content_hash
+                                && &e.check_id == check
+                                && latest_answered_clarification_at
+                                    .is_none_or(|answered_at| e.created_at >= answered_at)
+                        })
                     })
-                })
+            })
+    }
+    pub fn confirmation_stage(&self) -> Stage {
+        if self.configured_cli() {
+            Stage::Draft
+        } else {
+            Stage::Backlog
+        }
     }
     pub fn current_confirmation(&self) -> Option<&Confirmation> {
         let revision = self.revisions.last()?;
@@ -608,7 +665,7 @@ impl TaskState {
                 && confirmation.owner_subject == self.owner_subject
                 && confirmation.revision == revision.revision
                 && confirmation.content_hash == revision.content_hash
-                && confirmation.stage == Stage::Backlog
+                && confirmation.stage == self.confirmation_stage()
         })
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
@@ -620,6 +677,21 @@ impl TaskState {
                 .iter()
                 .any(|q| q.state == QuestionState::Open);
         SdlcContext {
+            critical_review: None,
+            interaction_protocol: self.interaction_protocol().ok().flatten(),
+            workflow_task_key: self
+                .retained_fields
+                .get("workflow_task_key")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            expected_assignment_version: self
+                .configured_cli()
+                .then(|| self.assignment.as_ref().map(|a| a.version))
+                .flatten(),
+            content_hash: self
+                .configured_cli()
+                .then(|| self.revisions.last().map(|r| r.content_hash.clone()))
+                .flatten(),
             contract_version: 1,
             tracker_instance_id: self.tracker_instance_id.clone(),
             project_id: self.project_id,
@@ -638,6 +710,11 @@ impl TaskState {
                 reason.as_str().map(str::to_owned)
             } else {
                 match self.stage {
+                    Stage::Draft
+                        if self.configured_cli() && self.current_confirmation().is_some() =>
+                    {
+                        Some("waiting_for_workflow_completion".into())
+                    }
                     Stage::Draft if !self.clarifying() => Some("waiting_for_pm".into()),
                     Stage::Draft
                         if self
@@ -647,9 +724,11 @@ impl TaskState {
                     {
                         Some("waiting_for_owner_answers".into())
                     }
-                    Stage::Draft if !self.ready() => {
-                        Some("waiting_for_requirements_or_evidence".into())
-                    }
+                    Stage::Draft if !self.ready() => Some(if self.configured_cli() {
+                        "waiting_for_requirements".into()
+                    } else {
+                        "waiting_for_requirements_or_evidence".into()
+                    }),
                     Stage::Draft => Some("waiting_for_owner_confirmation".into()),
                     Stage::Backlog => None,
                     Stage::Analysis => Some("queued_for_analysis".into()),
@@ -721,6 +800,40 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
+        None
+    }
+
+    async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
+        Ok(self.read(task, actor).await?.context(actor))
+    }
+    async fn configured_pm_completion(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: Option<&str>,
+    ) -> Result<Option<crate::sdlc_configured_cli::ConfiguredPmCompletionOperation>, AppError> {
+        Err(AppError::Unavailable(
+            "configured PM completion is unavailable".into(),
+        ))
+    }
+    async fn complete_configured_pm(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_configured_cli::CompleteConfiguredPm,
+        _receipt: crate::sdlc_configured_cli::ConfiguredWorkflowReceipt,
+    ) -> Result<
+        (
+            crate::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        Err(AppError::Unavailable(
+            "configured PM completion is unavailable".into(),
+        ))
+    }
     fn source_repository(&self) -> Option<&dyn crate::sdlc_source::TaskSourceRepository> {
         None
     }
@@ -762,12 +875,7 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
-    async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(crate::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError>;
+
     async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -807,74 +915,7 @@ pub trait SdlcRepository: Send + Sync {
         task: Uuid,
         actor: &Principal,
     ) -> Result<AnalysisIntent, AppError>;
-    async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
-    async fn resume_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn preflight_unsubmitted_pm_recovery(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
-    async fn preflight_pm_bootstrap_retry(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-    ) -> Result<Option<crate::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError>;
-    async fn retry_pm_bootstrap(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-        witness: crate::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn pm_bootstrap_retry_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
-    async fn recover_unsubmitted_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: crate::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-        witness: crate::sdlc_execution_lease::UnsubmittedPmWitness,
-    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
-    async fn unsubmitted_pm_recovery_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
-    async fn pm_resume_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
+
     async fn reserve_pm_draft(
         &self,
         task: Uuid,
@@ -930,20 +971,7 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<serde_json::Value, AppError>;
-    async fn prepare_native_command(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &SdlcCommand,
-    ) -> Result<crate::sdlc_native_admission::CommandAdmission, AppError>;
-    async fn execute_verified(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: SdlcCommand,
-        expected: crate::sdlc_pm_draft::PmDraftReservation,
-        observed: Option<crate::sdlc_native_admission::AdmissionObservation>,
-    ) -> Result<serde_json::Value, AppError>;
+
     async fn outbox(
         &self,
         task: Uuid,

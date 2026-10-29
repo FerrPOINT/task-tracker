@@ -669,3 +669,79 @@ fn fresh_server_clock_is_separate_from_retained_receipt_and_nullable_fields_are_
     }
     assert_eq!(serde_json::to_value(receipt).unwrap(), original);
 }
+
+#[test]
+fn configured_original_proposal_receipt_has_its_own_frozen_identity() {
+    let task = task();
+    let subject = Uuid::new_v4().to_string();
+    let actor = Principal {
+        subject: subject.clone(),
+        human_session: false,
+        trusted_human: false,
+        scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+    };
+    let assignment: DeliveryAssignment = serde_json::from_value(serde_json::json!({
+        "assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),"task_id":task.task_id,
+        "owner_subject":task.owner_subject,"role":"analyst","stage":"Analysis","cycle":0,"attempt":1,
+        "agent_id":task.routing.policy.routes.analyst.agent_id,"routing":task.routing,"previous_result_id":null,
+        "machine_subject":subject,"fencing_token":1,"lease_id":Uuid::new_v4(),"assignment_hash":"a".repeat(64)
+    })).unwrap();
+    let receipt = DeliveryProposalReceipt {
+        proposal_id: Uuid::new_v4(),
+        task_id: assignment.task_id,
+        assignment_id: assignment.assignment_id,
+        execution_id: assignment.execution_id,
+        agent_id: assignment.agent_id,
+        producer_subject: actor.subject.clone(),
+        workflow_receipt: artifact("workflow"),
+        result: DeliveryResult::Analyst {
+            analysis: artifact("analysis"),
+        },
+        output_sha256: "b".repeat(64),
+        created_at: Utc::now(),
+    };
+    authorize_configured_proposal_receipt(&actor, &receipt, &assignment, &task.owner_subject)
+        .unwrap();
+    for field in ["task", "assignment", "execution", "agent", "producer"] {
+        let mut changed = receipt.clone();
+        match field {
+            "task" => changed.task_id = Uuid::new_v4(),
+            "assignment" => changed.assignment_id = Uuid::new_v4(),
+            "execution" => changed.execution_id = Uuid::new_v4(),
+            "agent" => changed.agent_id = Uuid::new_v4(),
+            "producer" => changed.producer_subject = Uuid::new_v4().to_string(),
+            _ => unreachable!(),
+        }
+        assert!(
+            authorize_configured_proposal_receipt(
+                &actor,
+                &changed,
+                &assignment,
+                &task.owner_subject
+            )
+            .is_err(),
+            "{field}"
+        );
+    }
+    let mut foreign = actor.clone();
+    foreign.subject = Uuid::new_v4().to_string();
+    assert!(
+        authorize_configured_proposal_receipt(&foreign, &receipt, &assignment, &task.owner_subject)
+            .is_err()
+    );
+    let mut no_write = actor.clone();
+    no_write.scopes.remove("task-tracker:write");
+    assert!(
+        authorize_configured_proposal_receipt(
+            &no_write,
+            &receipt,
+            &assignment,
+            &task.owner_subject
+        )
+        .is_err()
+    );
+    assert!(
+        authorize_configured_proposal_receipt(&actor, &receipt, &assignment, "changed-owner")
+            .is_err()
+    );
+}

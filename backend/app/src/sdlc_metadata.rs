@@ -10,6 +10,8 @@ type ProjectionResult<T> = Result<T, MetadataErrorCode>;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SourcePayload {
+    #[serde(default)]
+    interaction_protocol: Option<InteractionProtocol>,
     contract_version: u8,
     tracker_instance_id: String,
     project_id: Uuid,
@@ -72,7 +74,11 @@ fn question(
     source: &SourcePayload,
     refs: &MetadataReferences,
 ) -> ProjectionResult<()> {
-    valid(!q.id.is_nil() && !q.request_id.is_nil() && !q.checkpoint_id.is_nil())?;
+    valid(!q.id.is_nil() && !q.request_id.is_nil())?;
+    valid(match source.interaction_protocol {
+        Some(InteractionProtocol::ConfiguredCliV1) => q.checkpoint_id.is_none(),
+        None => q.checkpoint_id.is_some_and(|id| !id.is_nil()),
+    })?;
     valid(q.task_id == source.task_id && q.root_task_id == source.root_task_id)?;
     version(q.version)?;
     version(q.requirement_revision)?;
@@ -122,6 +128,36 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
             hash(&selected.policy_hash)?;
             hash(&selected.request_sha256)?;
             value(selected)?
+        }
+        "pm.completed"
+            if source.interaction_protocol == Some(InteractionProtocol::ConfiguredCliV1) =>
+        {
+            let receipt: domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt =
+                decode(&source.result)?;
+            valid(
+                receipt.completion_id == event.event_id
+                    && receipt.task_id == event.task_id
+                    && receipt.root_task_id == source.root_task_id
+                    && receipt.project_id == source.project_id
+                    && receipt.owner_subject == source.owner_subject
+                    && receipt.tracker_instance_id == source.tracker_instance_id
+                    && receipt.stage == Stage::Backlog
+                    && receipt.status == domain::sdlc_lifecycle::LifecycleStatus::Ready
+                    && source.requirement_revision == Some(receipt.requirement_revision)
+                    && canonical_hash(&receipt.workflow_receipt)
+                        .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                        == receipt.workflow_receipt_sha256,
+            )?;
+            revision(receipt.requirement_revision, &receipt.content_hash, &refs)?;
+            value(ConfiguredPmCompletionResource {
+                interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+                completion_id: receipt.completion_id,
+                fence: receipt.fence,
+                requirement_revision: receipt.requirement_revision,
+                content_hash: receipt.content_hash,
+                confirmation_id: receipt.confirmation_id,
+                workflow_receipt_sha256: receipt.workflow_receipt_sha256,
+            })?
         }
         "pm.completed" => {
             let receipt: domain::sdlc_reservation::PmDraftCompletionReceipt =
@@ -321,6 +357,7 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                         && source.requirement_revision == Some(q.requirement_revision),
                 )?;
                 value(QuestionResource {
+                    interaction_protocol: source.interaction_protocol,
                     question_id: q.id,
                     question_version: q.version,
                     request_id: q.request_id,
@@ -332,6 +369,7 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
             } else {
                 valid(q.state == QuestionState::Cancelled && q.answer.is_none())?;
                 value(QuestionResource {
+                    interaction_protocol: source.interaction_protocol,
                     question_id: q.id,
                     question_version: q.version,
                     request_id: q.request_id,
@@ -360,6 +398,7 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                     && answer.author_subject == source.owner_subject,
             )?;
             value(AnswerResource {
+                interaction_protocol: source.interaction_protocol,
                 answer_id: answer.id,
                 question_id: answer.question_id,
                 question_version: answer.question_version,
@@ -400,12 +439,18 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
         "requirements.confirmed" => {
             let confirmation: Confirmation = decode(&source.result)?;
             revision(confirmation.revision, &confirmation.content_hash, &refs)?;
+            let stage = if source.interaction_protocol == Some(InteractionProtocol::ConfiguredCliV1)
+            {
+                Stage::Draft
+            } else {
+                Stage::Backlog
+            };
             valid(
                 !confirmation.id.is_nil()
                     && confirmation.task_id == event.task_id
                     && confirmation.owner_subject == source.owner_subject
-                    && matches!(confirmation.stage, Stage::Backlog)
-                    && matches!(source.stage, Stage::Backlog)
+                    && confirmation.stage == stage
+                    && source.stage == stage
                     && source.requirement_revision == Some(confirmation.revision),
             )?;
             value(ConfirmationResource {
@@ -684,6 +729,204 @@ mod tests {
             input: None,
             question: None,
             requirement_hash: None,
+        }
+    }
+
+    fn clarification_source(kind: &str, configured: bool) -> (OutboxEvent, MetadataReferences) {
+        let mut event = source(1, "owner");
+        event.event_type = kind.into();
+        event.payload["requirement_revision"] = json!(1);
+        if configured {
+            event.payload["interaction_protocol"] = json!("configured-cli-v1");
+        }
+        let q = Question {
+            id: Uuid::from_u128(31),
+            request_id: Uuid::from_u128(32),
+            task_id: event.task_id,
+            root_task_id: event.task_id,
+            version: 1,
+            requirement_revision: 1,
+            requirement_reference: None,
+            assignment_id: Uuid::from_u128(33),
+            execution_id: Uuid::from_u128(34),
+            agent_id: Uuid::from_u128(35),
+            assignment_version: 1,
+            checkpoint_id: (!configured).then(|| Uuid::from_u128(36)),
+            text: "Business question".into(),
+            rationale: "Owner choice".into(),
+            required: true,
+            mode: QuestionMode::Text,
+            options: vec![],
+            recommended_option_id: None,
+            state: if kind == "clarification.cancelled" {
+                QuestionState::Cancelled
+            } else {
+                QuestionState::Open
+            },
+            answer: None,
+            author_subject: "pm".into(),
+            created_at: event.created_at,
+        };
+        if kind == "clarification.answered" {
+            event.payload["result"] = json!(Answer {
+                id: Uuid::from_u128(37),
+                question_id: q.id,
+                question_version: q.version,
+                requirement_revision: q.requirement_revision,
+                selected_option_ids: vec![],
+                text: Some("Owner answer".into()),
+                comment: None,
+                author_subject: "owner".into(),
+                created_at: event.created_at,
+            });
+        } else {
+            event.payload["result"] = json!(q);
+        }
+        (
+            event,
+            MetadataReferences {
+                input: None,
+                question: Some(q),
+                requirement_hash: Some("a".repeat(64)),
+            },
+        )
+    }
+
+    fn clarification_resource(kind: &str, configured: bool) -> Value {
+        let mut resource = json!({"question_id":Uuid::from_u128(31),"question_version":1,
+            "request_id":Uuid::from_u128(32),"requirement_revision":1,
+            "fence":{"assignment_id":Uuid::from_u128(33),"execution_id":Uuid::from_u128(34),
+                "agent_id":Uuid::from_u128(35),"assignment_version":1}});
+        if kind == "clarification.answered" {
+            resource["answer_id"] = json!(Uuid::from_u128(37));
+        } else {
+            resource["state"] = json!(if kind == "clarification.cancelled" {
+                "cancelled"
+            } else {
+                "open"
+            });
+        }
+        if configured {
+            resource["interaction_protocol"] = json!("configured-cli-v1");
+        } else {
+            resource["checkpoint_id"] = json!(Uuid::from_u128(36));
+        }
+        resource
+    }
+
+    #[test]
+    fn configured_clarification_resources_have_explicit_protocol_and_exact_paired_wire() {
+        for kind in [
+            "clarification.published",
+            "clarification.cancelled",
+            "clarification.answered",
+        ] {
+            let (event, refs) = clarification_source(kind, true);
+            let actual = value(project(&event, refs).unwrap()).unwrap();
+            assert_eq!(
+                actual["payload"]["resource"],
+                clarification_resource(kind, true),
+                "{kind}"
+            );
+            assert!(
+                !actual["payload"]["resource"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("checkpoint_id")
+            );
+            let mut sealed = actual.clone();
+            sealed.as_object_mut().unwrap().remove("metadata_sha256");
+            assert_eq!(
+                actual["metadata_sha256"],
+                canonical_hash(&json!({
+                "contract_version":1,"projection":"metadata_v1","event":sealed}))
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn configured_old_question_cancellation_preserves_revision_and_protocol() {
+        let (mut event, refs) = clarification_source("clarification.cancelled", true);
+        event.payload["requirement_revision"] = json!(2);
+        let actual = value(project(&event, refs).unwrap()).unwrap();
+        assert_eq!(actual["payload"]["current_requirement_revision"], json!(2));
+        assert_eq!(
+            actual["payload"]["resource"],
+            clarification_resource("clarification.cancelled", true)
+        );
+        let mut sealed = actual.clone();
+        sealed.as_object_mut().unwrap().remove("metadata_sha256");
+        assert_eq!(
+            actual["metadata_sha256"],
+            canonical_hash(&json!({
+                "contract_version":1,"projection":"metadata_v1","event":sealed
+            }))
+            .unwrap()
+        );
+        for kind in ["clarification.published", "clarification.answered"] {
+            let (mut event, refs) = clarification_source(kind, true);
+            event.payload["requirement_revision"] = json!(2);
+            assert!(project(&event, refs).is_err(), "{kind}/stale-question");
+        }
+    }
+
+    #[test]
+    fn legacy_clarification_resource_bytes_and_digests_remain_unchanged() {
+        for kind in [
+            "clarification.published",
+            "clarification.cancelled",
+            "clarification.answered",
+        ] {
+            let (event, refs) = clarification_source(kind, false);
+            let actual = value(project(&event, refs).unwrap()).unwrap();
+            let mut expected = json!({"sequence":"1","event_id":event.event_id,"task_id":event.task_id,
+                "event_type":kind,"created_at":"2026-10-02T01:02:03.123456000Z",
+                "payload":{"tracker_instance_id":"test","project_id":Uuid::from_u128(2),
+                    "root_task_id":event.task_id,"owner_subject":"owner","stage":"Draft",
+                    "current_requirement_revision":1,"resource":clarification_resource(kind, false)}});
+            let digest = canonical_hash(&json!({
+                "contract_version":1,"projection":"metadata_v1","event":expected}))
+            .unwrap();
+            expected["metadata_sha256"] = json!(digest);
+            assert_eq!(
+                serde_json::to_vec(&actual).unwrap(),
+                serde_json::to_vec(&expected).unwrap(),
+                "{kind}"
+            );
+            assert!(
+                !actual["payload"]["resource"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("interaction_protocol")
+            );
+        }
+    }
+
+    #[test]
+    fn configured_clarification_without_marker_or_with_native_checkpoint_is_refused() {
+        for kind in [
+            "clarification.published",
+            "clarification.cancelled",
+            "clarification.answered",
+        ] {
+            let (mut event, refs) = clarification_source(kind, true);
+            event
+                .payload
+                .as_object_mut()
+                .unwrap()
+                .remove("interaction_protocol");
+            assert!(project(&event, refs).is_err(), "{kind}/missing-protocol");
+            let (mut event, mut refs) = clarification_source(kind, true);
+            if kind == "clarification.answered" {
+                refs.question.as_mut().unwrap().checkpoint_id = Some(Uuid::from_u128(36));
+            } else {
+                event.payload["result"]["checkpoint_id"] = json!(Uuid::from_u128(36));
+            }
+            assert!(project(&event, refs).is_err(), "{kind}/native-checkpoint");
+            let (mut event, refs) = clarification_source(kind, true);
+            event.payload["interaction_protocol"] = json!("configured-cli-v2");
+            assert!(project(&event, refs).is_err(), "{kind}/unknown-protocol");
         }
     }
 

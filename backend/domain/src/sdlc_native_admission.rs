@@ -1,4 +1,4 @@
-//! Fleet owns runtime/configuration observation; Tracker owns command admission and history.
+//! Retired native observation formats, retained only to decode published history.
 use crate::sdlc_pm_draft::PmDraftReservation;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de};
@@ -340,13 +340,6 @@ impl AdmissionObservation {
     }
 }
 
-pub enum CommandAdmission {
-    Legacy,
-    Replay(serde_json::Value),
-    MachineLease(PmDraftReservation),
-    History(PmDraftReservation),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,6 +354,7 @@ mod tests {
         let assignment = Uuid::new_v4();
         let project = Uuid::new_v4();
         let reservation = PmDraftReservation {
+            interaction_protocol: None,
             contract_version: 1,
             variant: PmDraftVariant::Reserved,
             binding: PmDraftBinding {

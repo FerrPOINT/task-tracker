@@ -1,5 +1,29 @@
 # Дата-модель Task Tracker
 
+Terminal-idle checkpoint permits reuse the existing `sdlc_idempotency` ledger;
+no migration, canonical lease update, business-state save or outbox write is
+introduced. Replay preserves permit identity/expiry and refreshes only readback
+time. [Source candidate](contracts/pm-terminal-idle-recovery.md).
+
+Additive0103 adds narrow SQL guards for settled-input expiry recovery using
+existing sdlc_pm_lease_operations.recovery. No consumed input/result or original
+receipt is rewritten. The task-locked key namespace covers both resume inputs
+and all lease-operation inserts, including reverse-order collisions.
+[Source candidate and verification boundary](contracts/pm-settled-input-recovery.md).
+
+Forward104 `m20261026_0000104_pm_manual_recovery_budget` зарегистрирован в Main
+`fb5ef353` поверх103, без редактирования applied103 и без новой таблицы. Optional
+closed nine-field budget сохраняется только в существующем
+`sdlc_pm_lease_operations.recovery.witness.manual_budget` из trusted callback.
+Legacy `None` отсутствует в JSON. SQL сохраняет старые guards и default cap3;
+budget допускает только `prefix_count <= n < prefix_count + 3`, где `n` относится
+к committed Tracker recovery chain того же original request. Fleet prefix hash
+не равен Tracker row projection. Старые receipts остаются immutable; historical
+replay не выдаёт новую lease/ACK. Девять actual scoped tests на c8/ed61, включая
+real PostgreSQL219s, проходят; после7b test-only lint fix fmt/strict Clippy также
+проходят. Старые overall FAIL сохраняются; image/live qualification ещё нет.
+[Контракт104](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Source candidate0099 reuses immutable `sdlc_pm_lease_operations.recovery` for one
 initial terminal/no-enrollment bootstrap retry. Original task/assignment/execution,
 owner, input, lease ID/claimedAt and old keys are retained; only exact expired
@@ -2277,3 +2301,38 @@ transaction-local native caller/task scope, проверки фактическ�
 Rollback требует совместимого защищённого cohort с сохранением каталогов и grants.
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+
+## Configured CLI V1
+
+Migration 0105 adds immutable creation-only protocol guards to the existing
+aggregate and creation/reservation JSON ledgers, without historical backfill.
+Configured questions omit their native checkpoint; legacy questions retain it.
+The existing execution ordinal remains authoritative for SDLC-N. See
+[CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md) for integration limits.
+
+The retained 0105 owns sdlc_configured_pm_completions: append-only task/
+execution/key, exact owner confirmation, command hash and verified Workflow
+receipt. It has the existing native task scope/namespace and deferred commit
+clock guards. Legacy completion tables and applied migration bytes are retained.
+
+Configured consent is stored as an immutable Draft receipt without per-item
+verifier evidence. The aggregate remains Draft until the configured completion
+transaction inserts its exact Workflow/owner ledger, changes the aggregate and
+issue projection to Backlog/Ready, and closes PM admission. The saved consent
+stage is never rewritten; 0105 guards reject early publication and Analysis.
+
+Forward migrations106–109 extend the candidate without editing applied files.
+106 records final discussion custody and detects edit/delete changes.107 keeps
+one immutable configured completion per execution, permitting later PM reviews
+on the same task; old operation keys retain their original assignment/revision.
+108 lets the existing review journal and routing-generation table reference the
+actual configured completion instead of a fabricated native completion. Native
+lease fields are absent together only for the configured command family; old
+rows retain their original foreign keys. 109 permits the first configured
+assignment to adopt only an untouched Draft while preserving its original
+creation receipt and input. Deferred guards require complete
+projection, ledger, resolution and outbox effects in one transaction. No Analysis
+intent is created by configured PM completion. Fresh/filled PostgreSQL acceptance
+of these unapplied candidate migrations remains required.
+
+Migration 110 corrects the configured critical-PM question guard: missing and JSON-null `checkpoint_id` both mean absence; non-null native checkpoints remain forbidden. Applied migrations and stored history are unchanged.

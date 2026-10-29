@@ -28,6 +28,9 @@ fn selector<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
         Ok(id)
     }
 }
+fn service_subject<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    selector(d).map(|id| Some(id.to_string()))
+}
 fn no_dispatch<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     if bool::deserialize(d)? {
         Err(D::Error::custom("reservation cannot authorize dispatch"))
@@ -45,6 +48,18 @@ fn no_dispatch_schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schem
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReservePmDraft {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::sdlc::interaction_protocol"
+    )]
+    pub interaction_protocol: Option<crate::sdlc::InteractionProtocol>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "service_subject"
+    )]
+    pub machine_subject: Option<String>,
     #[serde(deserialize_with = "owner_version")]
     #[schema(minimum = 0, maximum = 9007199254740991i64)]
     pub expected_owner_version: i64,
@@ -100,6 +115,8 @@ pub enum PmDraftAdmissionState {
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PmDraftReservation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<crate::sdlc::InteractionProtocol>,
     #[schema(minimum = 1, maximum = 1)]
     pub contract_version: u8,
     pub variant: PmDraftVariant,

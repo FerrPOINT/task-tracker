@@ -1,5 +1,9 @@
 # Initial PM bootstrap technical retry
 
+Historical source contract: native PM retry routes are retired by the
+[configured CLI replacement](CONFIGURED_CLI_V1.md#coordinated-protocol-replacement).
+The qualification below remains evidence about its recorded source revision.
+
 Source contract; scoped callback qualification is recorded below. No installed
 or live business acceptance is claimed by the reader tests.
 The canonical Tracker task, owner, assignment/execution/revision, business input

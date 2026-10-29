@@ -1,5 +1,51 @@
 # API v1 Specification — Task Tracker
 
+Current fileless PM contract: [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
+The native PM lease, heartbeat, resume, unsubmitted recovery and bootstrap retry
+sections below describe retained historical contracts. Their eight routes are
+removed by the coordinated protocol replacement. New question publication and
+completion use the configured request shapes; stored history keeps its original
+shape. Use the current Rust-generated OpenAPI for the exposed routes.
+
+Rollout is a coordinated writer replacement: stop new legacy dispatch, drain
+active legacy executions and reconcile unknown effects by their original keys
+on the compatible old cohort before replacing Tracker/Fleet/Workflow and the
+packaged CLIs. Saved legacy confirmation/completion/history remains read-only
+in its original shape through retained readback routes; removed native routes
+are not restored. New configured tasks use persistent service identities and
+the existing owner/project/fence checks. No automatic conversion of started
+legacy tasks is supported. See [local rollout boundary](LOCAL_SETUP.md#31-configured-cli-cohort).
+
+## Terminal-Idle Checkpoint Permit (Source Candidate)
+
+The existing resume POST/operation GET additionally support the closed
+terminal-idle variant. It issues only a short-lived exact checkpoint permit,
+not a renewed execution lease. Ordinary resume requests and receipts stay
+unchanged. [Contract and open gates](contracts/pm-terminal-idle-recovery.md).
+
+## Settled PM Input Recovery (Source Candidate)
+
+The existing resume POST accepts the optional typed recovery variant and its
+existing operation GET reads both immutable ledgers with collision detection.
+The authenticated Fleet callback proves the exact retained no-successor barrier;
+the producer rechecks current authority and expired CAS after the callback.
+Original requests without recovery keep their existing serialization/hash.
+[Contract, replay and unrun gates](contracts/pm-settled-input-recovery.md).
+
+Optional trusted callback budget (source only): Fleet witness может содержать
+закрытый девятиполевой `manual_budget`; при `None` поле не сериализуется.
+Публичный resume POST/body/hash и существующие endpoints не меняются. Без proof
+сохраняется cap3; с валидным proof commit требует `prefix_count <= n < prefix_count + 3`
+и повторяет все текущие custody/CAS guards. Historical exact-key GET/replay
+использует сохранённый witness, не требует нового callback после completion parent
+и не продлевает lease. Новых Auth roles, CLI или MCP нет. Forward104/source
+qualification включает девять actual scoped tests на c8/ed61, включая PostgreSQL.
+После test-only lint correction7b пройдены fmt и strict workspace/all-target Clippy.
+Настоящий Rust export принят byte-identical; generated client проходит parity и
+standalone strict TypeScript, не полный frontend gate. Image/live остаются OPEN;
+установленный Tracker533 пока блокирует четвёртую recovery.
+[Точная форма и границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
 project source-policy CAS, explicit owner Draft enrollment and typed readback.
 Migration/schema and Forge source verification qualification are required.
@@ -598,6 +644,18 @@ password/register/refresh endpoints являются legacy-контрактом
 |---|---|---|
 | GET, POST | `/projects/{project_key}/members` | Участники проекта / добавление (upsert роли) |
 | DELETE | `/projects/{project_key}/members/{user_id}` | Удаление участника |
+
+Configured SDLC отдельно проверяет действующего пользователя и project ACL,
+независимо от legacy central-auth поведения обычных карточек. Для первоначального
+допуска PM владелец проекта может явно передать Central Auth subject UUID
+служебной учётки в `POST .../members` с проектной ролью `member`. Профессия агента
+не является проектной ролью (`developer` здесь не принимается).
+
+До lookup/JIT проверяются owner и допустимая роль. Служебная запись ищется через
+существующий административный Auth API с исходным session JWT; нужны точные UUID,
+тип service_account, active status и действующее SDK-подтверждение identity.
+Обычный владелец без административного допуска Auth не получает этот lookup.
+Human directory и селекторы исполнителей не расширяются служебными записями.
 
 ### Issues
 
@@ -2109,3 +2167,36 @@ human допуск не получают. Страница использует 
 `openapi/openapi.json` и `frontend/src/api/generated.ts`; существующие
 `openapi:check` и `openapi:compat` проверяют frontend-контракт. Реальные private
 RPC/cohort/Kubernetes остаются отдельными gates, перечисленными в связанном документе.
+
+## Configured CLI V1 Producer
+
+New single-task Draft creation and reservation accept an explicit immutable
+interaction_protocol and a persistent assigned PM service subject. Existing
+business commands retain fence/CAS/idempotency. The existing completion endpoint
+also accepts the closed configured command without native lease fields and reads
+Workflow evidence server-to-server. See the exact wire and integration gates in
+[CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).
+
+Configured-only confirmation is exact owner consent with `stage: Draft`, not
+publication or infrastructure readiness proof. Context stays Draft/InProgress
+until current assigned PM completion verifies the authoritative Workflow terminal
+receipt and atomically publishes Backlog/Ready. Legacy Backlog confirmation
+receipts and verifier/evidence checks are unchanged.
+
+The candidate extends this identity/assignment policy to all seven professions.
+`GET /api/v1/issues/{task}/sdlc/context` adds optional `critical_review`, read from
+the current saved PM reservation in the same transaction. Ordinary preparation
+omits it; its blocker ID/version/hash and baseline requirements select the review.
+Configured PM can read only that blocker and its referenced sealed evidence
+without a native lease. It cannot list/upload/delete general attachments.
+Discussion read pages use a stable snapshot; final discussion publication and
+operation readback are linked to the actual assignment and requirements revision.
+Completion requires that unchanged saved comment and the authoritative Workflow
+result. These candidate contracts still require PostgreSQL and live qualification.
+
+
+Critical blocker submission uses the same dedicated configured service identity
+as other agent business commands. Historical delivery grants can read retained
+results; they cannot authorize a new proposal. Global `admin` scope does not
+turn a service account into an assigned producer. Standard scopes for other
+products remain compatible with the ordinary CLI credential.

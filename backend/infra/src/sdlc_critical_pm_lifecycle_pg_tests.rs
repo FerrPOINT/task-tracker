@@ -2,20 +2,13 @@
 //! Native terminal, Workflow receipts and business evidence are SYNTHETIC, not live proofs.
 use super::*;
 use domain::sdlc_critical_pm_reservation::{CriticalPmReservationResult, ReserveCriticalPmReview};
-use domain::sdlc_execution_lease::{
-    ExecutionLeaseReceipt, PmResumeCheckpoint, PmResumeInput, ResumePmExecutionLease,
-};
-use domain::sdlc_reservation::PmDraftCompletionReceipt;
-
-#[path = "sdlc_critical_pm_cycles_pg_tests.rs"]
-mod cycles_tests;
 
 struct ReviewFixture {
     f: Fixture,
     task: Uuid,
     review: CriticalPmReservationResult,
     pm: Principal,
-    lease: ExecutionLeaseReceipt,
+    fence: MachineFence,
     original: Json,
 }
 
@@ -24,7 +17,7 @@ async fn frozen_history(f: &Fixture, task: Uuid) -> Json {
         'initial',(SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1),
         'initial_assignment',(SELECT payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version LIMIT 1),
         'initial_pm',(SELECT result FROM sdlc_pm_executions WHERE task_id=$1 ORDER BY assignment_version LIMIT 1),
-        'initial_completion',(SELECT result FROM sdlc_pm_completions WHERE task_id=$1 ORDER BY assignment_version LIMIT 1),
+        'initial_completion',(SELECT result FROM sdlc_configured_pm_completions WHERE task_id=$1 ORDER BY created_at LIMIT 1),
         'held',(SELECT jsonb_agg(payload ORDER BY blocker_id) FROM sdlc_critical_blockers WHERE task_id=$1),
         'return',(SELECT jsonb_agg(after_blocker ORDER BY return_id) FROM sdlc_critical_pm_returns WHERE task_id=$1),
         'review',(SELECT jsonb_agg(result ORDER BY review_id) FROM sdlc_critical_pm_reviews WHERE task_id=$1)) AS value",
@@ -46,11 +39,11 @@ async fn setup() -> ReviewFixture {
         "main must include the companion in its unreleased096"
     );
     exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
-        VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)",vec![Uuid::new_v4().into()]).await.unwrap();
+        VALUES($1,'critical-agent@example.test','77777777-7777-4777-8777-777777777777','77777777-7777-4777-8777-777777777777','!','77777777-7777-4777-8777-777777777777',true)",vec![Uuid::new_v4().into()]).await.unwrap();
     exec(
         &f.db,
         "INSERT INTO project_members(project_id,user_id,role)
-        SELECT $1,id,'developer' FROM users WHERE central_sub='critical-agent'",
+        SELECT $1,id,'developer' FROM users WHERE central_sub='77777777-7777-4777-8777-777777777777'",
         vec![f.project.into()],
     )
     .await
@@ -119,51 +112,33 @@ async fn setup() -> ReviewFixture {
     ))
     .await
     .unwrap();
-    let pm = actor(
-        "pm",
-        false,
-        &[
-            "task-tracker:read",
-            "task-tracker:write",
-            &review.reservation.assignment.scope(r.task),
-        ],
-    );
     let a = &review.reservation.assignment;
-    let (lease, replay) = Box::pin(f.repo.claim_execution_lease(
-        r.task,
-        &pm,
-        ClaimExecutionLease {
-            expected_owner_version: review.reservation.owner_cas.version,
-            fence: MachineFence {
-                assignment_id: a.assignment_id,
-                execution_id: a.execution_id,
-                agent_id: a.agent_id,
-                assignment_version: a.version,
-            },
-            idempotency_key: "review-claim".into(),
-        },
-    ))
-    .await
-    .unwrap();
-    assert!(!replay);
+    let pm = actor(
+        &a.machine_subject,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    let fence = MachineFence {
+        assignment_id: a.assignment_id,
+        execution_id: a.execution_id,
+        agent_id: a.agent_id,
+        assignment_version: a.version,
+    };
     let original = frozen_history(&f, r.task).await;
     ReviewFixture {
         f,
         task: r.task,
         review,
         pm,
-        lease,
+        fence,
         original,
     }
 }
 
 async fn command(r: &ReviewFixture, actor: &Principal, command: SdlcCommand) -> Json {
-    Box::pin(
-        r.f.repo
-            .execute_verified(r.task, actor, command, r.review.reservation.clone(), None),
-    )
-    .await
-    .unwrap()
+    Box::pin(r.f.repo.execute(r.task, actor, command))
+        .await
+        .unwrap()
 }
 
 async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation) {
@@ -172,12 +147,12 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
             r,
             &r.pm,
             SdlcCommand::PublishQuestion(PublishQuestion {
-                fence: r.lease.fence.clone(),
+                fence: r.fence.clone(),
                 request_id: Uuid::new_v4(),
                 question_id: Uuid::new_v4(),
                 expected_question_version: None,
                 requirement_revision: 1,
-                checkpoint_id: Uuid::new_v4(),
+
                 requirement_reference: None,
                 text: "Synthetic business decision?".into(),
                 rationale: "Synthetic critical review".into(),
@@ -190,6 +165,34 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
         )
         .await,
     );
+    // Migration 110 accepts an absent checkpoint but must still reject a concrete
+    // native checkpoint in either side of the journal, independently of DTO validation.
+    for path in ["{payload,checkpoint_id}", "{checkpoint_id}"] {
+        let tx = r.f.db.begin().await.unwrap();
+        let result = tx.execute(statement(
+            "INSERT INTO sdlc_critical_pm_lifecycle_operations(operation_id,task_id,blocker_id,execution_id,actor_subject,
+                kind,idempotency_key,request_sha256,command,result,lease_id,lease_version,before_state,after_state,
+                before_execution,after_execution,before_blocker,after_blocker,outbox_event_id,completion_id,owner_version,configured_completion_id)
+             SELECT $2,o.task_id,o.blocker_id,o.execution_id,o.actor_subject,o.kind,'forged-checkpoint',o.request_sha256,
+                CASE WHEN $3::text='{payload,checkpoint_id}' THEN jsonb_set(jsonb_set(o.command,'{payload,idempotency_key}',
+                    to_jsonb('forged-checkpoint'::text)),'{payload,checkpoint_id}',to_jsonb($4::uuid))
+                    ELSE jsonb_set(o.command,'{payload,idempotency_key}',to_jsonb('forged-checkpoint'::text)) END,
+                CASE WHEN $3::text='{checkpoint_id}' THEN jsonb_set(o.result,'{checkpoint_id}',to_jsonb($4::uuid)) ELSE o.result END,
+                o.lease_id,o.lease_version,t.state,o.after_state,h.execution,o.after_execution,
+                sdlc_critical_pm_detail(o.blocker_id),o.after_blocker,$5,o.completion_id,o.owner_version,o.configured_completion_id
+             FROM sdlc_critical_pm_lifecycle_operations o JOIN sdlc_tasks t ON t.task_id=o.task_id
+             JOIN sdlc_delivery_heads h ON h.task_id=o.task_id
+             WHERE o.task_id=$1 AND o.idempotency_key='review-question'",
+            vec![r.task.into(),Uuid::new_v4().into(),path.into(),Uuid::new_v4().into(),Uuid::new_v4().into()],
+        )).await.unwrap_err();
+        assert!(
+            result
+                .to_string()
+                .contains("configured question has no native checkpoint"),
+            "{result}"
+        );
+        tx.rollback().await.unwrap();
+    }
     let answer: Answer = parse(
         command(
             r,
@@ -208,45 +211,13 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
         )
         .await,
     );
-    let resume = ResumePmExecutionLease {
-        expected_owner_version: r.review.reservation.owner_cas.version,
-        lease_id: r.lease.lease.lease_id,
-        expected_lease_version: r.lease.lease.version,
-        input: PmResumeInput::Answer {
-            input_id: answer.id,
-        },
-        checkpoint: PmResumeCheckpoint {
-            checkpoint_id: q.checkpoint_id,
-            checkpoint_revision: 1,
-            checkpoint_sha256: "c".repeat(64),
-            fence: r.lease.fence.clone(),
-            requirement_revision: Some(1),
-            content_hash: Some(r.review.context.requirements.content_hash.clone()),
-        },
-        previous_run_id: Uuid::new_v4(),
-        previous_run_terminal: ArtifactReceipt {
-            reference: "fixture://synthetic-old-run-terminal".into(),
-            sha256: "d".repeat(64),
-        },
-        idempotency_key: "review-answer-resume".into(),
-    };
-    let (renewed, replay) = Box::pin(r.f.repo.resume_pm_execution_lease(
-        r.task,
-        &r.f.writer,
-        resume.clone(),
-    ))
-    .await
-    .unwrap();
-    assert!(!replay);
-    let (same, replay) = Box::pin(
-        r.f.repo
-            .resume_pm_execution_lease(r.task, &r.f.writer, resume),
-    )
-    .await
-    .unwrap();
-    assert!(replay);
-    assert_eq!(json!(same), json!(renewed));
-    r.lease = renewed;
+    assert!(q.checkpoint_id.is_none());
+    assert!(
+        serde_json::to_value(&answer)
+            .unwrap()
+            .get("checkpoint_id")
+            .is_none()
+    );
     let tx = r.f.db.begin().await.unwrap();
     let state = r.f.repo.load(&tx, r.task, &r.f.owner).await.unwrap();
     let mut document = state.revisions.last().unwrap().document.clone();
@@ -257,7 +228,7 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
             r,
             &r.pm,
             SdlcCommand::PublishRevision(PublishRevision {
-                fence: r.lease.fence.clone(),
+                fence: r.fence.clone(),
                 expected_requirement_revision: Some(1),
                 document: document.clone(),
                 idempotency_key: "review-revision".into(),
@@ -291,32 +262,6 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
         Err(AppError::Conflict(_))
     ));
     tx.rollback().await.unwrap();
-    let verifier = actor(
-        "verifier",
-        false,
-        &[
-            "task-tracker:write",
-            &format!(
-                "task-tracker:sdlc:evidence:{}:{}",
-                r.task, r.lease.fence.assignment_version
-            ),
-        ],
-    );
-    for check in document.checklist.iter().chain(&document.prerequisites) {
-        command(
-            r,
-            &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: r.lease.fence.clone(),
-                requirement_revision: 2,
-                content_hash: revision.content_hash.clone(),
-                check_id: check.clone(),
-                evidence_reference: "fixture://synthetic-readiness".into(),
-                idempotency_key: format!("review-evidence:{check}"),
-            }),
-        )
-        .await;
-    }
     let confirm = SdlcCommand::Confirm {
         revision: 2,
         command: ConfirmCommand {
@@ -333,7 +278,7 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
             (SELECT count(*) FROM sdlc_critical_pm_lifecycle_operations
                 WHERE task_id=$1 AND execution_id=$2 AND kind='command' AND idempotency_key='review-confirm') AS journals
          FROM sdlc_confirmations c WHERE c.task_id=$1 AND c.revision=2",
-        vec![r.task.into(), r.lease.fence.execution_id.into()],
+        vec![r.task.into(), r.fence.execution_id.into()],
     )).await.unwrap().unwrap();
     assert_eq!(
         confirmed.try_get::<Json>("", "payload").unwrap(),
@@ -341,42 +286,10 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
     );
     assert_eq!(confirmed.try_get::<i64>("", "confirmations").unwrap(), 1);
     assert_eq!(confirmed.try_get::<i64>("", "journals").unwrap(), 1);
-    let before_resume = frozen_history(&r.f, r.task).await;
-    let (renewed, replay) = Box::pin(r.f.repo.resume_pm_execution_lease(
-        r.task,
-        &r.f.writer,
-        ResumePmExecutionLease {
-            expected_owner_version: r.review.reservation.owner_cas.version,
-            lease_id: r.lease.lease.lease_id,
-            expected_lease_version: r.lease.lease.version,
-            input: PmResumeInput::Confirmation {
-                input_id: confirmation.id,
-            },
-            checkpoint: PmResumeCheckpoint {
-                checkpoint_id: Uuid::new_v4(),
-                checkpoint_revision: 1,
-                checkpoint_sha256: "e".repeat(64),
-                fence: r.lease.fence.clone(),
-                requirement_revision: Some(2),
-                content_hash: Some(revision.content_hash.clone()),
-            },
-            previous_run_id: Uuid::new_v4(),
-            previous_run_terminal: ArtifactReceipt {
-                reference: "fixture://synthetic-confirm-run-terminal".into(),
-                sha256: "f".repeat(64),
-            },
-            idempotency_key: "review-confirm-resume".into(),
-        },
-    ))
-    .await
-    .unwrap();
-    assert!(!replay);
-    r.lease = renewed;
-    assert_eq!(before_resume, frozen_history(&r.f, r.task).await);
     let row=r.f.db.query_one(statement("SELECT state->>'stage' AS stage,state->>'waiting_reason' AS reason,
         NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=2) AS no_intent,
-        NOT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE execution_id=$2) AS no_completion FROM sdlc_tasks WHERE task_id=$1",
-        vec![r.task.into(),r.lease.fence.execution_id.into()])).await.unwrap().unwrap();
+        NOT EXISTS(SELECT 1 FROM sdlc_configured_pm_completions WHERE execution_id=$2) AS no_completion FROM sdlc_tasks WHERE task_id=$1",
+        vec![r.task.into(),r.fence.execution_id.into()])).await.unwrap().unwrap();
     assert_eq!(row.try_get::<String>("", "stage").unwrap(), "Draft");
     assert_eq!(
         row.try_get::<String>("", "reason").unwrap(),
@@ -388,47 +301,29 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
 }
 
 async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation) {
-    let c = CompletePmDraft {
-        contract_version: 1,
-        fence: r.lease.fence.clone(),
-        lease_id: r.lease.lease.lease_id,
-        lease_version: r.lease.lease.version,
-        requirement_revision: 2,
-        content_hash: hash,
-        terminal_receipt_ref: "fixture://synthetic-current-pm-terminal".into(),
-        terminal_receipt_sha256: "a".repeat(64),
-        workflow_receipt_ref: "fixture://synthetic-current-pm-workflow".into(),
-        workflow_receipt_sha256: "b".repeat(64),
-        idempotency_key: "review-complete".into(),
-    };
-    Box::pin(cycles_tests::incomplete_packets(r, &c)).await;
-    let mut stale = c.clone();
-    stale.lease_version -= 1;
-    assert!(matches!(
-        Box::pin(r.f.repo.complete_pm_draft(r.task, &r.f.writer, stale)).await,
-        Err(AppError::Conflict(_))
-    ));
-    let (a, b) = tokio::join!(
-        Box::pin(r.f.repo.complete_pm_draft(r.task, &r.f.writer, c.clone())),
-        Box::pin(r.f.repo.complete_pm_draft(r.task, &r.f.writer, c.clone()))
-    );
-    let (a, ar) = a.unwrap();
-    let (b, br) = b.unwrap();
-    assert_ne!(ar, br);
-    assert_eq!(json!(a), json!(b));
-    let operation =
-        r.f.repo
-            .pm_draft_completion_operation(r.task, &r.f.reader, &c.idempotency_key)
-            .await
-            .unwrap();
-    assert_eq!(json!(operation.result), json!(a));
-    let row=r.f.db.query_one(statement("SELECT g.payload,g.generation,g.previous_snapshot_id,g.confirmation_id,
-        i.routing_snapshot_id,i.review_routing_snapshot_id,s.snapshot_id AS initial,
-        s.payload->'policy'=g.payload->'policy' AS frozen,
-        (SELECT count(*) FROM sdlc_routing_snapshot_inventory WHERE task_id=$1) AS inventory_count,
-        sdlc_critical_pm_detail(g.blocker_id)->>'state' AS resolved FROM sdlc_task_routing_generations g
-        JOIN sdlc_task_routing_snapshots s USING(task_id)
-        JOIN sdlc_analysis_intents i ON i.review_routing_snapshot_id=g.snapshot_id WHERE g.task_id=$1",vec![r.task.into()])).await.unwrap().unwrap();
+    let saved = crate::sdlc::configured_test_support::complete_pm(
+        &r.f.repo,
+        r.task,
+        &r.f.owner,
+        &r.pm,
+        &r.review.reservation,
+    )
+    .await;
+    assert_eq!(saved.requirement_revision, 2);
+    assert_eq!(saved.content_hash, hash);
+    assert_eq!(saved.confirmation_id, confirmation.id);
+    let state = r.f.repo.read(r.task, &r.f.owner).await.unwrap();
+    assert_eq!(state.stage, Stage::Backlog);
+    assert_eq!(state.status, Some(LifecycleStatus::Ready));
+    let row = r.f.db.query_one(statement(
+        "SELECT g.generation,g.previous_snapshot_id,g.confirmation_id,g.configured_completion_id,
+            s.snapshot_id AS initial,s.payload->'policy'=g.payload->'policy' AS frozen,
+            (SELECT count(*) FROM sdlc_routing_snapshot_inventory WHERE task_id=$1) AS inventory_count,
+            sdlc_critical_pm_detail(g.blocker_id)->>'state' AS resolved,
+            NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=2) AS no_automatic_intent
+         FROM sdlc_task_routing_generations g JOIN sdlc_task_routing_snapshots s USING(task_id)
+         WHERE g.task_id=$1", vec![r.task.into()]
+    )).await.unwrap().unwrap();
     assert_eq!(row.try_get::<i64>("", "generation").unwrap(), 2);
     assert_eq!(
         row.try_get::<Uuid>("", "previous_snapshot_id").unwrap(),
@@ -438,57 +333,28 @@ async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation)
         row.try_get::<Uuid>("", "confirmation_id").unwrap(),
         confirmation.id
     );
-    assert!(
-        row.try_get::<Option<Uuid>>("", "routing_snapshot_id")
-            .unwrap()
-            .is_none()
-    );
     assert_eq!(
-        row.try_get::<Uuid>("", "review_routing_snapshot_id")
-            .unwrap()
-            .to_string(),
-        row.try_get::<Json>("", "payload").unwrap()["snapshot_id"]
-            .as_str()
-            .unwrap()
+        row.try_get::<Uuid>("", "configured_completion_id").unwrap(),
+        saved.completion_id
     );
     assert!(row.try_get::<bool>("", "frozen").unwrap());
+    assert!(row.try_get::<bool>("", "no_automatic_intent").unwrap());
     assert_eq!(row.try_get::<i64>("", "inventory_count").unwrap(), 2);
     assert_eq!(row.try_get::<String>("", "resolved").unwrap(), "resolved");
     assert_eq!(r.original, frozen_history(&r.f, r.task).await);
-    let tx = r.f.db.begin().await.unwrap();
-    let state = r.f.repo.load(&tx, r.task, &r.f.owner).await.unwrap();
-    let receipt = crate::sdlc::lifecycle::current(&tx, r.task)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        r.f.repo
-            .review_snapshot(&tx, &state, &receipt)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    crate::sdlc::lifecycle::exact_revision(&state, &receipt).unwrap();
-    tx.rollback().await.unwrap();
-    let error=r.f.db.execute(statement("INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,
-        operation_key,payload,routing_snapshot_id,routing_generation,review_routing_snapshot_id)
-        SELECT intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,$2,routing_generation,review_routing_snapshot_id
-        FROM sdlc_analysis_intents WHERE task_id=$1 AND review_routing_snapshot_id IS NOT NULL",vec![r.task.into(),row.try_get::<Uuid>("","initial").unwrap().into()])).await.unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("SDLC exactly one routed intent FK required"),
-        "{error}"
-    );
-    assert!(
-        r.f.db
-            .execute(statement(
-                "UPDATE sdlc_task_routing_generations SET payload=payload WHERE task_id=$1",
-                vec![r.task.into()]
-            ))
-            .await
-            .is_err()
-    );
+    for sql in [
+        "UPDATE sdlc_task_routing_generations SET payload=payload WHERE task_id=$1",
+        "UPDATE sdlc_configured_pm_completions SET result=result WHERE task_id=$1",
+        "DELETE FROM sdlc_configured_pm_completions WHERE task_id=$1",
+    ] {
+        let tx = r.f.db.begin().await.unwrap();
+        assert!(
+            tx.execute(statement(sql, vec![r.task.into()]))
+                .await
+                .is_err()
+        );
+        tx.rollback().await.unwrap();
+    }
 }
 
 #[tokio::test]

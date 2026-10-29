@@ -108,6 +108,9 @@ pub async fn run(
         );
         ctx.sdlc = Some(app::sdlc::SdlcService {
             repository: Arc::new(repository),
+            configured_workflow:
+                app::sdlc_workflow_receipt::WorkflowReceiptReader::from_deployment()
+                    .expect("invalid configured Workflow receipt reader"),
             fleet_configuration: app::sdlc_configuration::FleetConfigurationReader::new(
                 &std::env::var("TASKTRACKER_SDLC__FLEET_URL").unwrap_or_default(),
                 &std::env::var("TASKTRACKER_SDLC__FLEET_READ_TOKEN").unwrap_or_default(),

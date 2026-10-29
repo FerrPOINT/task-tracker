@@ -198,6 +198,34 @@ pub(super) async fn bind_task(
     state: &TaskState,
     actor: &Principal,
 ) -> Result<(), AppError> {
+    bind_task_scope(tx, config, state, actor, TaskScope::Current).await
+}
+
+/// Only after the caller has authorized its exact immutable operation receipt.
+/// Current ACL, owner proof, namespace and validity still apply; this scope can
+/// never authorize a fresh write, even when the original request was a POST.
+pub(super) async fn bind_retained_task(
+    tx: &DatabaseTransaction,
+    config: &SdlcConfig,
+    state: &TaskState,
+    actor: &Principal,
+) -> Result<(), AppError> {
+    bind_task_scope(tx, config, state, actor, TaskScope::RetainedRead).await
+}
+
+#[derive(Clone, Copy)]
+enum TaskScope {
+    Current,
+    RetainedRead,
+}
+
+async fn bind_task_scope(
+    tx: &DatabaseTransaction,
+    config: &SdlcConfig,
+    state: &TaskState,
+    actor: &Principal,
+    scope: TaskScope,
+) -> Result<(), AppError> {
     #[cfg(test)]
     if crate::legacy_schema_fixture::pre_admission_schema(tx)
         .await
@@ -220,6 +248,7 @@ pub(super) async fn bind_task(
     let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
     if native.identity().subject != actor.subject
         || (!app::sdlc::has_pm_grant(&actor.scopes)
+            && !state.configured_cli()
             && !app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
             && actor.subject != config.orchestrator_subject
             && actor.subject != config.verifier_subject
@@ -228,8 +257,12 @@ pub(super) async fn bind_task(
         return Err(AppError::Forbidden);
     }
     // A task-scoped PAT cannot borrow a generic machine's native project role.
-    app::sdlc::authorize_pm_read(state, actor)?;
-    super::lifecycle::authorize_read(tx, state, actor).await?;
+    if !state.configured_cli() {
+        app::sdlc::authorize_pm_read(state, actor)?;
+    }
+    if matches!(scope, TaskScope::Current) {
+        super::lifecycle::authorize_read(tx, state, actor).await?;
+    }
     if application_policy {
         let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
         if owner.to_string() != state.owner_subject {
@@ -250,7 +283,7 @@ pub(super) async fn bind_task(
     let scope = serde_json::json!({
         "schema_version":1,"task_id":state.task_id,"project_id":state.project_id,
         "identity":native.identity(),"validity":native.validity()?,
-        "writable":native.may_write()
+        "writable":matches!(scope, TaskScope::Current) && native.may_write()
     });
     tx.execute(statement(
         "SELECT tracker_bind_native_task($1::jsonb)",

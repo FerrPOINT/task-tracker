@@ -8,6 +8,7 @@ use domain::sdlc_routing::{
 use serde_json::json;
 
 // All identities, evidence and terminal observations are synthetic. No live runtime is exercised.
+const PRODUCER: &str = "11111111-1111-4111-8111-111111111111";
 struct Fixture {
     current: LifecycleReceipt,
     config: SdlcConfig,
@@ -96,6 +97,7 @@ impl Fixture {
             expires_at: now + Duration::seconds(30),
         };
         let mut assignment = DeliveryAssignment {
+            machine_subject: Some(PRODUCER.into()),
             assignment_id: Uuid::new_v4(),
             execution_id: Uuid::new_v4(),
             execution: Some(DeliveryExecution::from_ordinal(7).unwrap()),
@@ -121,15 +123,10 @@ impl Fixture {
             expected_lease_version: 1,
         };
         let producer = Principal {
-            subject: "child".into(),
+            subject: PRODUCER.into(),
             human_session: false,
             trusted_human: false,
-            scopes: [
-                "task-tracker:read".into(),
-                "task-tracker:write".into(),
-                assignment.scope(),
-            ]
-            .into(),
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
         };
         let proposal = SubmitCriticalBlocker {
             fence,
@@ -182,7 +179,7 @@ impl Fixture {
                 binding: Some(RunBinding {
                     chat_id: Uuid::new_v4(),
                     run_id: Uuid::new_v4(),
-                    machine_subject: "child".into(),
+                    machine_subject: PRODUCER.into(),
                     dispatch_receipt: artifact("synthetic-dispatch"),
                 }),
                 result: None,
@@ -420,7 +417,7 @@ fn return_transport_actor_shapes_and_keys_fail_closed_without_rewriting_input() 
     }
     // Shape-only preflight is not scheduler authorization; the repository's configured policy is required.
     let foreign = Principal {
-        subject: "foreign-machine".into(),
+        subject: Uuid::new_v4().to_string(),
         ..f.scheduler.clone()
     };
     validate_return_request(f.current.task.task_id, &foreign, &command).unwrap();
@@ -446,9 +443,7 @@ fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
                 f.producer.scopes.remove("task-tracker:write");
             }
             5 => {
-                f.producer
-                    .scopes
-                    .retain(|s| !s.starts_with(DELIVERY_GRANT_PREFIX));
+                f.producer.scopes.remove("task-tracker:read");
             }
             _ => f.proposal.fence.execution_id = Uuid::new_v4(),
         }
@@ -591,7 +586,7 @@ fn current_producer_fence_survives_heartbeat_without_renewing_or_changing_lease_
 }
 
 #[test]
-fn empty_and_single_options_hold_v1_with_own_grant_without_scheduler_impersonation() {
+fn empty_and_single_options_hold_with_permanent_identity_without_scheduler_impersonation() {
     for count in [0, 1] {
         let mut f = Fixture::new(LifecycleStage::Architecture);
         f.proposal.options.truncate(count);
@@ -743,4 +738,18 @@ fn legacy_lifecycle_wire_is_unchanged() {
     let heartbeat = json!({"operation":"heartbeat", "fence":f.proposal.fence, "idempotency_key":"legacy-heartbeat"});
     let old: LifecycleCommand = serde_json::from_value(heartbeat.clone()).unwrap();
     assert_eq!(serde_json::to_value(old).unwrap(), heartbeat);
+}
+
+#[test]
+fn retired_native_grant_cannot_replace_a_current_permanent_producer() {
+    let mut f = Fixture::new(LifecycleStage::Development);
+    assert!(f.plan().is_ok());
+    let old_grant = f.current.assignment.as_ref().unwrap().scope();
+    f.producer.scopes.insert(old_grant);
+    assert!(
+        f.plan().is_err(),
+        "task-scoped capability cannot enter the configured path"
+    );
+    f.current.assignment.as_mut().unwrap().machine_subject = None;
+    assert!(crate::sdlc_lifecycle::assigned_producer(&f.producer, &f.current, true).is_err());
 }

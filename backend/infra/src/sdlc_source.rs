@@ -67,7 +67,8 @@ impl PostgresSdlcRepository {
         state: &TaskState,
         creator: Uuid,
     ) -> Result<(), AppError> {
-        // Called only for a newly inserted single-task Draft, never generic load/replay.
+        // Called at creation or explicit first adoption of an unmarked Draft,
+        // never generic load/replay. Existing selections are not overwritten.
         let head = tx
             .query_one(statement(
                 "SELECT source_revision FROM sdlc_source_policy_heads WHERE project_id=$1",
@@ -372,6 +373,10 @@ impl TaskSourceRepository for PostgresSdlcRepository {
     ) -> Result<TaskSourceReadback, AppError> {
         if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
             app::sdlc_lifecycle::producer(actor, false)?;
+        } else if actor.scopes.contains("task-tracker:write") && !actor.trusted_human {
+            // load_read below verifies current configured assignment and project
+            // ACL. Ordinary agent credentials do not carry a native grant.
+            app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         } else {
             app::sdlc_reservation::reader(actor)?;
         }

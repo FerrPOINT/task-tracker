@@ -29,6 +29,20 @@ pub fn delivery_attachment_route(
     method: &str,
     path: &str,
 ) -> Result<bool, AppError> {
+    if crate::sdlc_configured_cli::authorize_configured_identity(actor).is_ok() {
+        let task_route = path
+            .strip_prefix("/api/v1/issues/")
+            .and_then(|part| part.strip_suffix("/attachments"))
+            .is_some_and(|id| crate::sdlc::canonical_pm_uuid(id).is_some());
+        // This grants only dispatch to the repository's current-assignment port.
+        // The URL supplies no authority; metadata and bytes are checked there.
+        if (task_route && matches!(method, "GET" | "POST"))
+            || (method == "GET" && is_download_path(path))
+        {
+            return Ok(true);
+        }
+        return Err(AppError::Forbidden);
+    }
     let Some(grant) = crate::sdlc_lifecycle::delivery_grant(actor)? else {
         return Ok(false);
     };

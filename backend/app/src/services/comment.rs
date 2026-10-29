@@ -84,6 +84,22 @@ impl CommentServiceImpl {
 
 #[async_trait]
 impl crate::context::CommentService for CommentServiceImpl {
+    async fn notify_committed(&self, id: shared::CommentId, author: UserId) {
+        if let Ok(comment) = self.comments.get_by_id(id).await
+            && comment.author_id == author
+            && let Ok(issue) = self.issues.get_by_id(comment.issue_id).await
+        {
+            self.publish_comment_event(&issue).await;
+            self.notify_comment_event(
+                &issue,
+                author,
+                "issue_commented",
+                format!("New comment on {}", issue.key),
+                id,
+            )
+            .await;
+        }
+    }
     async fn list(
         &self,
         issue_id: IssueId,

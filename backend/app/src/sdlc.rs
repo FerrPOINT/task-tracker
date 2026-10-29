@@ -1,3 +1,4 @@
+use crate::sdlc_configured_cli::authorize_configured_pm;
 use domain::sdlc::*;
 use domain::sdlc_pm_draft::{PmDraftReadback, PmDraftReservation, ReservePmDraft};
 use serde::Serialize;
@@ -18,6 +19,7 @@ mod tests;
 pub struct SdlcService {
     pub repository: Arc<dyn SdlcRepository>,
     pub fleet_configuration: Option<crate::sdlc_configuration::FleetConfigurationReader>,
+    pub configured_workflow: Option<crate::sdlc_workflow_receipt::WorkflowReceiptReader>,
 }
 
 impl SdlcService {
@@ -140,16 +142,7 @@ impl SdlcService {
             .analysis_result_operation(task, actor, key)
             .await
     }
-    pub async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
-        self.repository
-            .complete_pm_draft(task, actor, command)
-            .await
-    }
+
     pub async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -212,34 +205,7 @@ impl SdlcService {
     ) -> Result<AnalysisIntent, AppError> {
         self.repository.analysis_intent(task, actor).await
     }
-    pub async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.repository
-            .claim_execution_lease(task, actor, command)
-            .await
-    }
-    pub async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.repository
-            .heartbeat_execution_lease(task, actor, command)
-            .await
-    }
-    pub async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
-        self.repository.execution_lease(task, actor, key).await
-    }
+
     pub async fn project_access(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
         self.repository.project_access_scope(actor).await
     }
@@ -263,7 +229,7 @@ impl SdlcService {
         self.repository.create_draft(project, actor, command).await
     }
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
-        Ok(self.repository.read(task, actor).await?.context(actor))
+        self.repository.context(task, actor).await
     }
     pub async fn draft_creation_operation(
         &self,
@@ -304,25 +270,7 @@ impl SdlcService {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<T, AppError> {
-        use domain::sdlc_native_admission::CommandAdmission;
-        let value = match self
-            .repository
-            .prepare_native_command(task, actor, &command)
-            .await?
-        {
-            CommandAdmission::Legacy => self.repository.execute(task, actor, command).await?,
-            CommandAdmission::Replay(value) => value,
-            CommandAdmission::History(expected) => {
-                self.repository
-                    .execute_verified(task, actor, command, expected, None)
-                    .await?
-            }
-            CommandAdmission::MachineLease(expected) => {
-                self.repository
-                    .execute_verified(task, actor, command, expected, None)
-                    .await?
-            }
-        };
+        let value = self.repository.execute(task, actor, command).await?;
         serde_json::from_value(value).map_err(AppError::internal)
     }
 }
@@ -372,6 +320,15 @@ pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
 
 pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     state.require_root()?;
+    if state.configured_cli() && !actor.trusted_human {
+        if !actor.human_session && crate::sdlc_reservation::reader(actor).is_ok() {
+            return Ok(());
+        }
+        return authorize_configured_pm(state, actor);
+    }
+    if state.configured_cli() && has_pm_grant(&actor.scopes) {
+        return Err(AppError::Forbidden);
+    }
     let Some(task) = pm_grant_task(actor)? else {
         return Ok(());
     };
@@ -434,6 +391,11 @@ pub fn validate_draft(actor: &Principal, command: &CreateDraftCommand) -> Result
         return Err(AppError::Forbidden);
     }
     validate_key(&command.idempotency_key)?;
+    if command.interaction_protocol.is_some() && command.flow != Some(DraftFlow::SingleTaskV1) {
+        return Err(AppError::validation(
+            "configured CLI requires single-task-v1 Draft",
+        ));
+    }
     if command.title.trim().is_empty()
         || command.title.chars().count() > 500
         || command.title.chars().any(char::is_control)
@@ -530,10 +492,8 @@ pub fn authorize(
                 {
                     return Err(AppError::Forbidden);
                 }
-            } else if actor.subject != assignment.machine_subject
-                || !actor.scopes.contains(&assignment.scope(state.task_id))
-            {
-                return Err(AppError::Forbidden);
+            } else {
+                authorize_configured_pm(state, actor)?;
             }
             Ok(())
         }
@@ -751,6 +711,11 @@ pub fn apply(
             serde_json::to_value(revision)
         }
         SdlcCommand::PublishQuestion(c) => {
+            if !state.configured_cli() {
+                return Err(AppError::conflict(
+                    "new questions require a configured CLI assignment",
+                ));
+            }
             if matches!(state.stage, Stage::Backlog)
                 || state.current_revision() != Some(c.requirement_revision)
             {
@@ -814,7 +779,7 @@ pub fn apply(
                 execution_id: c.fence.execution_id,
                 agent_id: c.fence.agent_id,
                 assignment_version: c.fence.assignment_version,
-                checkpoint_id: c.checkpoint_id,
+                checkpoint_id: None,
                 text: c.text.clone(),
                 rationale: c.rationale.clone(),
                 required: c.required,
@@ -878,7 +843,7 @@ pub fn apply(
             revision,
             command: c,
         } => {
-            if config.verifier_subject.is_empty() {
+            if !state.configured_cli() && config.verifier_subject.is_empty() {
                 return Err(AppError::Unavailable(
                     "trusted readiness verifier is not configured".into(),
                 ));
@@ -895,6 +860,15 @@ pub fn apply(
                     "requirements are not ready for confirmation",
                 ));
             }
+            if state.configured_cli() {
+                if state.stage != Stage::Draft {
+                    return Err(AppError::conflict("configured consent requires Draft"));
+                }
+                validate_document(&current.document)?;
+                if canonical_hash(&current.document)? != current.content_hash {
+                    return Err(AppError::conflict("requirements document hash differs"));
+                }
+            }
             let confirmation = Confirmation {
                 id: Uuid::new_v4(),
                 task_id: state.task_id,
@@ -902,10 +876,12 @@ pub fn apply(
                 content_hash: c.content_hash.clone(),
                 owner_subject: actor.subject.clone(),
                 created_at: now,
-                stage: Stage::Backlog,
+                stage: state.confirmation_stage(),
             };
             state.confirmations.push(confirmation.clone());
-            state.stage = Stage::Backlog;
+            if !state.configured_cli() {
+                state.stage = Stage::Backlog;
+            }
             serde_json::to_value(confirmation)
         }
         SdlcCommand::Evidence(c) => {
@@ -972,8 +948,12 @@ pub fn apply(
                 );
             }
             SdlcCommand::Confirm { .. } => {
-                state.status = Some(LifecycleStatus::Ready);
-                state.draft_submode = None;
+                if state.configured_cli() {
+                    state.status = Some(LifecycleStatus::InProgress);
+                } else {
+                    state.status = Some(LifecycleStatus::Ready);
+                    state.draft_submode = None;
+                }
             }
             SdlcCommand::Evidence(_) => {}
         }

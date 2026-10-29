@@ -1,4 +1,4 @@
-use crate::sdlc::{MachineFence, Stage};
+use crate::sdlc::{InteractionProtocol, MachineFence, Stage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -59,11 +59,14 @@ pub enum CancelledQuestionState {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QuestionResource<S> {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub question_id: Uuid,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub question_version: i64,
     pub request_id: Uuid,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub requirement_revision: i64,
     #[schema(inline)]
@@ -74,12 +77,15 @@ pub struct QuestionResource<S> {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AnswerResource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interaction_protocol: Option<InteractionProtocol>,
     pub answer_id: Uuid,
     pub question_id: Uuid,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub question_version: i64,
     pub request_id: Uuid,
-    pub checkpoint_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<Uuid>,
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub requirement_revision: i64,
     pub fence: MachineFence,
@@ -234,6 +240,25 @@ pub struct PmCompletionResource {
     pub workflow_receipt_sha256: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConfiguredPmCompletionResource {
+    pub interaction_protocol: crate::sdlc::InteractionProtocol,
+    pub completion_id: Uuid,
+    pub fence: MachineFence,
+    pub requirement_revision: i64,
+    pub content_hash: String,
+    pub confirmation_id: Uuid,
+    pub workflow_receipt_sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum PmCompletionResourceFormat {
+    Configured(ConfiguredPmCompletionResource),
+    Legacy(PmCompletionResource),
+}
+
 // Enum derive does not preserve strict keys or macro variant wire names in OpenAPI.
 #[derive(utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -260,7 +285,7 @@ metadata_events! {
     DeliveryResultAccepted, "delivery.result_accepted", LifecycleResource;
     DeliveryProposalSubmitted, "delivery.proposal_submitted", DeliveryProposalResource;
     PmFeedbackRecorded, "pm.feedback_recorded", PmFeedbackResource;
-    PmCompleted, "pm.completed", PmCompletionResource;
+    PmCompleted, "pm.completed", PmCompletionResourceFormat;
     TaskCreated, "task.created", CreatedResource;
     TaskBound, "task.bound", BoundResource;
     PmAssigned, "pm.assigned", MachineFence;
