@@ -179,6 +179,19 @@ pub fn validate_start(
     state: &domain::sdlc::TaskState,
     completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
 ) -> Result<(), AppError> {
+    if state.stage != domain::sdlc::Stage::Backlog
+        || state.status != Some(LifecycleStatus::Ready)
+        || state.retained_fields.contains_key("lifecycle")
+    {
+        return Err(AppError::conflict("initial approved Backlog required"));
+    }
+    validate_start_binding(state, completion)
+}
+
+fn validate_start_binding(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+) -> Result<(), AppError> {
     use domain::sdlc::{DraftFlow, Stage};
     let assignment = state
         .assignment
@@ -193,9 +206,6 @@ pub fn validate_start(
         || completion.stage != Stage::Backlog
         || completion.status != LifecycleStatus::Ready
         || completion.next_pm_admission_state != "completed"
-        || state.stage != Stage::Backlog
-        || state.status != Some(LifecycleStatus::Ready)
-        || state.retained_fields.contains_key("lifecycle")
         || completion.task_id != state.task_id
         || completion.root_task_id != state.root_task_id
         || completion.project_id != state.project_id
@@ -228,6 +238,40 @@ pub fn configured_start_intent(
     intent_id: Uuid,
 ) -> Result<domain::sdlc::AnalysisIntent, AppError> {
     validate_start(state, completion)?;
+    let confirmation = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;
+    crate::sdlc::analysis_intent_payload(state, confirmation, intent_id)
+}
+
+pub fn configured_started_intent(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    original: &LifecycleReceipt,
+    intent_id: Uuid,
+) -> Result<domain::sdlc::AnalysisIntent, AppError> {
+    validate_start_binding(state, completion)?;
+    let task = &original.task;
+    if state.stage != domain::sdlc::Stage::Analysis
+        || task.task_id != state.task_id
+        || task.owner_subject != state.owner_subject
+        || task.version != 1
+        || task.stage != LifecycleStage::Analysis
+        || task.status != LifecycleStatus::Ready
+        || task.runtime != RuntimeState::Queued
+        || task.routing.task_id != state.task_id
+        || task.routing.confirmation_id != completion.confirmation_id
+        || task.routing.requirement_revision != completion.requirement_revision
+        || task.routing.content_hash != completion.content_hash
+        || original.assignment.is_some()
+        || original.lease.is_some()
+        || original.binding.is_some()
+        || original.result.is_some()
+    {
+        return Err(AppError::conflict(
+            "saved configured Analysis start differs",
+        ));
+    }
     let confirmation = state
         .current_confirmation()
         .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;

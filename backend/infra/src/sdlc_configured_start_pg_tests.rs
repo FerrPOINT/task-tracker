@@ -59,6 +59,21 @@ async fn explicit_start_is_atomic_discovered_once_and_replays_original_after_adv
         let intent = f.repo.analysis_intent(task, &f.owner).await.unwrap();
         assert_eq!(intent.confirmation_id, initial.task.routing.confirmation_id);
         assert_eq!(intent.workflow, initial.task.routing.policy.routes.analyst.workflow_key);
+        let state = f.repo.read(task, &f.owner).await.unwrap();
+        let completed = f.repo.configured_pm_completion(task, &f.owner, None).await.unwrap().unwrap().result;
+        assert!(app::sdlc::analysis_intent(&state, state.current_confirmation().unwrap(), intent.intent_id).is_err());
+        for field in ["task_id", "owner_subject", "version", "stage", "runtime"] {
+            let mut raw = json!(initial);
+            raw["task"][field] = match field {
+                "task_id" => json!(Uuid::new_v4()),
+                "version" => json!(2),
+                "stage" => json!("Backlog"),
+                "runtime" => json!("running"),
+                _ => json!("foreign"),
+            };
+            let wrong: LifecycleReceipt = parse(raw);
+            assert!(app::sdlc_lifecycle::configured_started_intent(&state, &completed, &wrong, intent.intent_id).is_err(), "{field}");
+        }
         let before_discovery = f.snapshot().await;
         let page = f.repo.read_delivery_candidates(&f.reader, f.query(None, 1)).await.unwrap();
         assert_eq!(page.items.len(), 1);
