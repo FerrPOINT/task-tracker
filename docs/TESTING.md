@@ -64,6 +64,10 @@ generator копируются после install и один явный postins
 Source checks не доказывают реальные BuildKit cache hits или ускорение.
 Общие правила — Base `docs/BUILD_PERFORMANCE.md`, раздел «Frontend, Python и Java».
 
+Docker install использует зарегистрированный Node22/architecture download store
+Base в `/pnpm/store`; integrity check включён, side-effects cache выключен.
+`node_modules` остаётся локальным; реальные cache hits и ускорение пока не измерены.
+
 CI после unit/typecheck использует `pnpm build:compile`; postinstall по-прежнему
 генерирует OpenAPI types, независимый `openapi:check` сохраняет drift comparison.
 Explicit app/index/Base UI Tailwind roots исключают tests/setup из production
