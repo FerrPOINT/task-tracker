@@ -91,6 +91,12 @@ async fn explicit_start_is_atomic_discovered_once_and_replays_original_after_adv
         assert_eq!(counts.try_get::<i64>("", "events").unwrap(), 2);
         assert_eq!(counts.try_get::<i64>("", "permits").unwrap(), 0);
         // Existing configured role-result path advances the same task without another human action.
+        let producer_user = Uuid::new_v4();
+        exec(&f.db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+            VALUES($1,'start-agent@example.test','start-agent','Start Agent','!','77777777-7777-4777-8777-777777777777',true)",
+            vec![producer_user.into()]).await.unwrap();
+        exec(&f.db, "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+            vec![f.project.into(), producer_user.into()]).await.unwrap();
         let storage = domain::InMemoryStorage::default();
         let running = Box::pin(output(&f, task, Box::pin(bind(&f, task)).await, &storage)).await;
         let terminal = Box::pin(proposal(&f, &running)).await;

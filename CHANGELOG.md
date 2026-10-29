@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-29: Explicit Configured Delivery Start (Draft)
+
+- Problem: configured PM correctly finishes in Backlog / Ready, but there was no
+  explicit producer command to start the existing downstream lifecycle.
+- Fix: the current owner can start Analysis through the existing lifecycle API
+  and `sdlc start` CLI on an enabled project. Migration0111 preserves old rows;
+  intent, initial queue and outbox commit together. PM completion alone still
+  creates no downstream work. Original-key replay never resets later stages.
+- Readback verifies the saved configured start and PM completion instead of
+  applying the legacy Backlog-confirmation rule to Draft owner consent. The
+  legacy rule remains tested and unchanged. Synthetic role fixtures must also
+  retain real local membership; tests do not bypass the artifact access guard.
+- Verification: source is published in PR197; targeted PostgreSQL and actual
+  HTTP/contract gates are in progress. Generated API/client and final repository
+  gates remain open. This package is neither installed nor seven-role live
+  acceptance; PM rollout remains independent.
+
 ## 2026-10-29: Fileless Writer Rollout Boundary
 
 - Native PM writers are retired by the coordinated Tracker/Fleet/Workflow/CLI
