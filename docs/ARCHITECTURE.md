@@ -695,3 +695,12 @@ expiry закрывает операцию. Включение берётся и
 [человеческие роли и приложения](HUMAN_APPLICATION_ACCESS.md).
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
+
+
+### Подписи ресурсных коллекций
+
+Audit log и корзина проекта используют ResourceListHeader/Row Base с общей
+плотностью. Колонки определяет одна родительская grid; дочерний subgrid
+сохраняет выравнивание при разной длине подписей и действий. Mobile visibility,
+данные, права, mutation и фильтры остаются в Tracker. Новый UI pin требуется
+для ResourceListHeader; это source-изменение, не установка runtime.

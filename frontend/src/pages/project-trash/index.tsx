@@ -4,6 +4,7 @@ import {
   EmptyState,
   PageNavigation,
   ResourceListRow,
+  ResourceListHeader,
   ResourceList,
   PageHeader,
   ProjectAvatar,
@@ -125,17 +126,17 @@ export function ProjectTrashPage() {
       )}
 
       {trashedIssues.length > 0 && (
-        <ResourceList variant="bordered" className="text-sm">
-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
+        <ResourceList variant="bordered" className="text-sm lg:grid lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto]">
+          <ResourceListHeader className="hidden gap-3 lg:col-span-full lg:grid lg:grid-cols-subgrid">
             <span>{t('trash.key')}</span>
             <span>{t('trash.summary')}</span>
             <span>{t('trash.type')}</span>
             <span>{t('trash.priority')}</span>
             <span className="text-right">{t('trash.actions')}</span>
-          </div>
+          </ResourceListHeader>
           {trashedIssues.map((issue) => (
             <ResourceListRow asChild key={issue.id}>
-              <article className="grid gap-2 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3">
+              <article className="grid gap-2 lg:col-span-full lg:grid-cols-subgrid lg:items-center lg:gap-3">
                 <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
                 <div className="min-w-0 break-words font-medium lg:font-normal">
                   {issue.summary}

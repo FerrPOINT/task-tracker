@@ -320,3 +320,9 @@ scrollIntoView к предметной записи не требует ново
 Перед публикацией проверять точный кандидат через `--ref <commit>`. Установка
 hooks и допустимые артефакты: [правила](docs/REPOSITORY_HYGIENE.md).
 Копии проверки принадлежат Base; SDK/UI pins не меняются.
+
+
+Подписи колонок ResourceList используют ResourceListHeader после проверки UI pin.
+Base задаёт фон, шрифт и те же density insets, что строки. Product grid columns,
+responsive visibility, права и действия сохраняются; при auto tracks используйте
+одну родительскую сетку и subgrid строк, чтобы содержимое не сдвигало колонки.

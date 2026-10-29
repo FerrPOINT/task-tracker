@@ -13,6 +13,7 @@ import {
   Button,
   ResourceList,
   ResourceListRow,
+  ResourceListHeader,
   Label,
   Tabs,
   TabsContent,
@@ -283,19 +284,19 @@ export function AdminPage() {
                 errorMessage={t('admin.audit.loadError')}
                 onRetry={() => void auditLog.refetch()}
               >
-                <ResourceList role="list" variant="bordered">
-                  <div className="hidden gap-3 bg-surface-raised px-3 py-2 text-xs font-semibold text-text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem]">
+                <ResourceList role="list" variant="bordered" className="lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem]">
+                  <ResourceListHeader className="hidden gap-3 lg:col-span-full lg:grid lg:grid-cols-subgrid">
                     <span>{t('admin.audit.action')}</span>
                     <span>{t('admin.audit.entity')}</span>
                     <span>{t('admin.audit.actor')}</span>
                     <span>{t('admin.audit.changes')}</span>
                     <span>{t('admin.audit.time')}</span>
-                  </div>
+                  </ResourceListHeader>
                   {auditLog.data?.map((entry) => (
                     <ResourceListRow asChild key={entry.id}>
                       <div
                         role="listitem"
-                        className="grid min-w-0 gap-2 text-sm lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem] lg:gap-3"
+                        className="grid min-w-0 gap-2 text-sm lg:col-span-full lg:grid-cols-subgrid lg:gap-3"
                       >
                         <div className="min-w-0 break-all font-mono text-xs font-semibold">
                           {entry.action}
