@@ -342,7 +342,13 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   })
 }
 
-export function useProjects(offset = 0, limit = 100, search = '', workingOnly = false) {
+export function useProjects(
+  offset = 0,
+  limit = 100,
+  search = '',
+  workingOnly = false,
+  { allPages = false }: { allPages?: boolean } = {},
+) {
   const context = readSpaceLocation(useLocation().search)
   const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
   const visible = useVisibleProjects(
@@ -350,8 +356,16 @@ export function useProjects(offset = 0, limit = 100, search = '', workingOnly = 
     v2 && !context.invalid,
   )
   const legacy = useQuery({
-    queryKey: [...projectKeys.all, offset, limit],
-    queryFn: ({ signal }) => listProjects(offset, limit, signal),
+    queryKey: allPages ? [...projectKeys.all, 'navigation'] : [...projectKeys.all, offset, limit],
+    queryFn: async ({ signal }) => {
+      if (!allPages) return listProjects(offset, limit, signal)
+      const projects: Project[] = []
+      for (let start = 0; ; start += 100) {
+        const page = await listProjects(start, 100, signal)
+        projects.push(...page)
+        if (page.length < 100) return projects
+      }
+    },
     enabled: !v2,
   })
   if (!v2) return { ...legacy, catalog: undefined }
