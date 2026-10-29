@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-10-29: Explicit Configured Delivery Start (Draft)
+## 2026-10-29: Explicit Configured Delivery Start
 
 - Problem: configured PM correctly finishes in Backlog / Ready, but there was no
   explicit producer command to start the existing downstream lifecycle.
@@ -12,10 +12,16 @@
   applying the legacy Backlog-confirmation rule to Draft owner consent. The
   legacy rule remains tested and unchanged. Synthetic role fixtures must also
   retain real local membership; tests do not bypass the artifact access guard.
-- Verification: source is published in PR197; targeted PostgreSQL and actual
-  HTTP/contract gates are in progress. Generated API/client and final repository
-  gates remain open. This package is neither installed nor seven-role live
-  acceptance; PM rollout remains independent.
+- Verification:13 selected PostgreSQL scenarios, actual HTTP creation/start,
+  538 backend unit tests and44 CLI tests pass. Workspace check, strict Clippy,
+  Rustfmt and actual generated OpenAPI pass. Frontend typecheck,724 tests,
+  lint/format/build and generated-client parity/compatibility pass on pinned UI.
+  Five pre-existing format violations received mechanical corrections only.
+  The retained first frontend run had one worker startup error; the missing
+  file's59 tests passed separately, not a claimed single green full run.
+  See [verification boundary](docs/TESTING.md#configured-analysis-start-2026-10-29).
+  This package is neither installed nor seven-role live acceptance; PM rollout
+  remains independent. Next: coordinated test-project activation and role checks.
 
 ## 2026-10-29: Fileless Writer Rollout Boundary
 
