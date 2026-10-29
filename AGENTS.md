@@ -326,3 +326,12 @@ hooks и допустимые артефакты: [правила](docs/REPOSITO
 Base задаёт фон, шрифт и те же density insets, что строки. Product grid columns,
 responsive visibility, права и действия сохраняются; при auto tracks используйте
 одну родительскую сетку и subgrid строк, чтобы содержимое не сдвигало колонки.
+
+
+## Источник классов Base UI
+
+Tailwind должен сканировать тот же установленный @pdlc/ui, из которого приложение
+импортирует компоненты. Для frontend/src/index.css используйте
+`@source "../node_modules/@pdlc/ui/src";`. Соседний checkout Base не заменяет
+принятый UI pin. При workspace link допустим один и тот же физический пакет;
+общий UI contract guard проверяет владельца пакета, а не имя папки.
