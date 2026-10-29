@@ -9,6 +9,7 @@ WORKDIR /app
 COPY task-tracker/frontend/package.json task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
 COPY services-base/base-modules/ui /services-base/base-modules/ui
 COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
+COPY task-tracker/frontend/scripts/base-generate-openapi.mjs ./scripts/base-generate-openapi.mjs
 RUN pnpm install --frozen-lockfile
 
 COPY task-tracker/frontend/ ./
