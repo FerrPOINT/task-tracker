@@ -432,6 +432,10 @@ pub struct TerminalReceipt {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LifecycleCommand {
+    StartAnalysis {
+        pm_completion_id: Uuid,
+        idempotency_key: String,
+    },
     Reconcile {
         fence: DeliveryFence,
         terminal: RuntimeTerminalObservation,
@@ -467,6 +471,9 @@ pub enum LifecycleCommand {
 impl LifecycleCommand {
     pub fn key(&self) -> &str {
         match self {
+            Self::StartAnalysis {
+                idempotency_key, ..
+            } => idempotency_key,
             Self::Reconcile {
                 idempotency_key, ..
             } => idempotency_key,

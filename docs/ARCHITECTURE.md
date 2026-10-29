@@ -735,3 +735,15 @@ resolution and the next frozen routing generation. History reads reconstruct
 the original business tuple without granting an old assignment write authority.
 The candidate preserves the native resource controls for technical execution;
 permanent service identity does not bypass those guards.
+
+## Explicit Configured Start Boundary
+
+The existing lifecycle command port accepts owner-only `start_analysis` with an
+immutable PM completion selector and operation key. Tracker derives the current
+authority tuple under the issue/task locks, then uses the existing delivery
+projection permits, canonical queue, intent and outbox transaction. Only this
+explicitly started configured queue enters existing scheduler discovery; PM
+completion alone stays Backlog/Ready with zero intents. Role transitions retain
+the existing result/lease/fencing path, not a second planner. Historical operation
+readback rechecks current access without reapplying stale transition CAS.
+See [API](API.md#explicit-configured-analysis-start-source-candidate).

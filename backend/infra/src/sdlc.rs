@@ -38,6 +38,8 @@ mod routing;
 mod source;
 #[path = "sdlc_spaces.rs"]
 mod spaces;
+#[path = "sdlc_start.rs"]
+mod start;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,

@@ -7,6 +7,7 @@ use domain::sdlc_routing::TaskRoutingSnapshot;
 // Filter business eligibility before LIMIT, including current PM completion, not consent alone.
 const CANDIDATES_SQL: &str = r#"
 SELECT t.state, s.payload AS routing, d.receipt,
+       started.task_id IS NOT NULL AS configured_started,
        COALESCE(sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state),false) AS pm_completed
 FROM sdlc_tasks t
 JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND issue.deleted_at IS NULL
@@ -15,10 +16,14 @@ JOIN sdlc_confirmations c ON c.task_id=t.task_id AND c.id=s.confirmation_id
 JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id
  AND COALESCE(intent.routing_snapshot_id,intent.review_routing_snapshot_id)=s.snapshot_id
 LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
+LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
+ AND started.command IS NOT NULL AND started.actor_subject=t.owner_subject
 WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb
-  AND t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'
+  AND (t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'
+       OR (started.task_id IS NOT NULL AND d.task_id IS NOT NULL
+           AND sdlc_current_configured_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)))
   AND ($3::uuid IS NULL OR t.task_id>$3)
   AND s.payload->'contract_version'='2'::jsonb AND s.payload->'policy'->'contract_version'='2'::jsonb
   AND s.requirement_revision::text=t.state->'revisions'->-1->>'revision'
@@ -106,6 +111,8 @@ impl PostgresSdlcRepository {
                 &state,
                 current.as_ref(),
                 row.try_get::<bool>("", "pm_completed").map_err(map_db)?,
+                row.try_get::<bool>("", "configured_started")
+                    .map_err(map_db)?,
             )?
             .ok_or_else(|| AppError::conflict("delivery candidate projection inconsistent"))?;
             items.push(item);

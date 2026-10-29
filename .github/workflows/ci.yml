@@ -145,6 +145,25 @@ jobs:
             grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
             docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_pm_candidates_test
           done
+      - name: Explicit configured Analysis start (isolated PostgreSQL)
+        if: github.event_name == 'workflow_dispatch' && (!cancelled())
+        env:
+          TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_start_candidates_test
+        run: |
+          set -euo pipefail
+          cases=(
+            forward_start_migration_preserves_filled_110_history_without_auto_start
+            explicit_start_is_atomic_discovered_once_and_replays_original_after_advancement
+            start_refuses_nonowners_no_opt_in_missing_consent_stale_and_foreign_receipts
+            start_race_payload_conflict_and_current_access_readback_do_not_duplicate_effects
+            start_sql_rejects_detached_command_and_direct_permit_bypass
+          )
+          for case_name in "${cases[@]}"; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_start_candidates_test
+            cargo test --locked -p infra --lib "sdlc::candidates::tests::critical_blocker_tests::configured_start_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_start_candidates_test
+          done
       - name: Project repository lineage and PM recovery compatibility (isolated PostgreSQL)
         if: github.event_name == 'workflow_dispatch' && (!cancelled())
         run: |

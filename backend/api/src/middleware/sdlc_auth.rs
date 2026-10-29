@@ -98,7 +98,7 @@ fn requires_fleet_application(method: &str, path: &str) -> bool {
     };
     matches!(
         action,
-        "assignment" | "pm-draft-assignment" | "pm-draft-execution-lease"
+        "assignment" | "pm-draft-assignment" | "pm-draft-execution-lease" | "lifecycle"
     ) || action.starts_with("pm-draft-execution-lease/")
 }
 
@@ -118,6 +118,7 @@ mod chained_application_routes {
                 "pm-draft-execution-lease/resume",
                 "pm-draft-execution-lease/retry-bootstrap",
                 "pm-draft-execution-lease/recover-unsubmitted",
+                "lifecycle",
             ] {
                 let path = format!("/api/v1/issues/{id}/sdlc/{action}");
                 assert!(requires_fleet_application("POST", &path));
