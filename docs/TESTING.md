@@ -545,3 +545,16 @@ Native locked/poison/layer/old-mtime и CLI qualification — общая фин�
 
 Frontend dependency hooks: единственная policy — `allowBuilds.esbuild: true` в
 `frontend/pnpm-workspace.yaml`. Source command: `python -B -m unittest scripts.tests.test_ci_contract_checks.PnpmLifecyclePolicyTests -q`.
+
+## Scoped standalone container helper
+
+`python scripts/build.py` использует existing Base plan относительно HEAD.
+Явный service задаёт один scope; `--all` выбирает все buildable services.
+Пустой clean/docs/test-only выбор не вызывает verifier/Docker и не является
+readiness/artifact proof. Cold bootstrap выбирает service явно. Packaging
+recipes/nginx имеют отдельную карту; unknown paths сохраняют product fallback.
+Invalid ref или unsupported map отказывают до подготовки. SDK/UI pins независимы;
+несовместимый single-context mixed build требует qualified multi-pin route.
+Raw heavy остаётся под общим host slot, Root owner вторым slot не оборачивать.
+Source команда: `python -B -m unittest scripts.tests.test_build_scope -q`.
+Контракт/границы: [план](plans/container-selection-20261030.md).

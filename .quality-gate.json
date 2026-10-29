@@ -17,7 +17,10 @@
       "backend/Dockerfile.umbrella",
       "backend/Cargo.toml",
       "backend/*/Cargo.toml",
-      "frontend/pnpm-workspace.yaml"
+      "frontend/pnpm-workspace.yaml",
+      "scripts/build.py",
+      "scripts/select_build.py",
+      "scripts/tests/test_build_scope.py"
     ],
     "docs": [
       "scripts/verify_readme.py",
@@ -97,6 +100,7 @@
         "scripts.tests.test_verify_readme",
         "scripts.tests.test_ci_change_classifier",
         "scripts.tests.test_tooling_ownership",
+        "scripts.tests.test_build_scope",
         "-q"
       ],
       "cwd": ".",
@@ -110,7 +114,9 @@
         "scripts/classify_ci_changes.py",
         "scripts/vendor/base_quality_selection.py",
         ".quality-gate.json",
-        ".github/workflows/ci.yml"
+        ".github/workflows/ci.yml",
+        "scripts/select_build.py",
+        "scripts/tests/test_build_scope.py"
       ],
       "cacheable": true,
       "execution_slot": "none",
@@ -567,6 +573,16 @@
         "gates": [
           "tooling:build-contracts"
         ]
+      },
+      {
+        "paths": [
+          "scripts/build.py",
+          "scripts/select_build.py",
+          "scripts/tests/test_build_scope.py"
+        ],
+        "gates": [
+          "tooling:python-helpers"
+        ]
       }
     ]
   },
@@ -627,5 +643,14 @@
     ],
     "commands_sha256": "9e4fcc50c190137927126c3d8de6281dc0f1bfb6961e32dbe662d7cf576a8cee",
     "environment_input_contract": "frontend-agent-presence-v1"
+  },
+  "container_inputs": {
+    "backend": [
+      "backend/Dockerfile*"
+    ],
+    "frontend": [
+      "frontend/Dockerfile*",
+      "frontend/nginx.conf"
+    ]
   }
 }

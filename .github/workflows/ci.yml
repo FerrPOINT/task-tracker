@@ -86,7 +86,7 @@ jobs:
       - name: Python tooling contracts
         working-directory: task-tracker
         run: |-
-          python3 -m unittest scripts.tests.test_ci_contract_checks scripts.tests.test_build_pin scripts.tests.test_verify_readme scripts.tests.test_ci_change_classifier scripts.tests.test_tooling_ownership scripts.tests.test_base_maintenance
+          python3 -m unittest scripts.tests.test_ci_contract_checks scripts.tests.test_build_pin scripts.tests.test_verify_readme scripts.tests.test_ci_change_classifier scripts.tests.test_tooling_ownership scripts.tests.test_base_maintenance scripts.tests.test_build_scope
           bash -n scripts/backup.sh scripts/restore.sh
       - name: README structural validation
         working-directory: task-tracker

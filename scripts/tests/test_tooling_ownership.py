@@ -6,7 +6,7 @@ from unittest.mock import patch
 from scripts.vendor import base_quality_selection as selection
 
 ROOT = Path(__file__).resolve().parents[2]
-TESTS = ('test_build_pin', 'test_verify_readme', 'test_ci_change_classifier', 'test_tooling_ownership')
+TESTS = ('test_build_pin', 'test_verify_readme', 'test_ci_change_classifier', 'test_tooling_ownership', 'test_build_scope')
 
 
 class PythonToolingOwnershipTests(unittest.TestCase):
@@ -85,7 +85,7 @@ class PythonToolingOwnershipTests(unittest.TestCase):
     def test_contract_test_keeps_its_existing_gate_and_unknown_script_stays_wide(self):
         contract = selection.plan(ROOT, profile='build', changed=['scripts/tests/test_ci_contract_checks.py'])
         self.assertEqual([g['id'] for g in contract['gates']], ['tooling:build-contracts'])
-        for path, owner in [('scripts/new_generator.py', None), ('scripts/build.py', None),
+        for path, owner in [('scripts/new_generator.py', None),
                             ('frontend/src/product.tsx', 'frontend'), ('backend/src/lib.rs', 'backend')]:
             with self.subTest(path=path):
                 candidate = selection.plan(ROOT, profile='build', changed=[path])
