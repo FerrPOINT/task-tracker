@@ -29,6 +29,7 @@
       "openapi/**"
     ],
     "tooling": [
+      "frontend/Dockerfile*",
       "scripts/tests/**",
       "scripts/vendor/**",
       ".quality-tooling-revision",
@@ -76,6 +77,7 @@
         "-q"
       ],
       "inputs": [
+        "frontend/Dockerfile*",
         "frontend/scripts/base-generate-openapi.mjs",
         "scripts/**",
         ".quality-gate.json",

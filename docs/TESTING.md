@@ -32,6 +32,12 @@ CLI rustfmt остаётся static. Физическое отделение pur
 Frontend `pnpm test:unit` выполняет Node source tests и Vitest без integration/
 slow/e2e filename tiers. `pnpm test:all` сохраняет полный Vitest набор; Playwright
 запускается отдельно. `pnpm build` выполняет unit, typecheck и compile один раз.
+Оба frontend Docker recipes отделяют dependency install от OpenAPI generation:
+manifest установки исключает root scripts, dependency hooks сохранены; schema и
+generator копируются после install и один явный postinstall готовит types.
+Source checks не доказывают реальные BuildKit cache hits или ускорение.
+Общие правила — Base `docs/BUILD_PERFORMANCE.md`, раздел «Frontend, Python и Java».
+
 CI после unit/typecheck использует `pnpm build:compile`; postinstall по-прежнему
 генерирует OpenAPI types, независимый `openapi:check` сохраняет drift comparison.
 Explicit app/index/Base UI Tailwind roots исключают tests/setup из production
