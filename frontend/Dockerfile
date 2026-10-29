@@ -1,16 +1,29 @@
 # Umbrella build for PDLC root Compose (context = the parent source workspace).
 # Stages the sibling services-base frontend so the `@pdlc/ui` file dependency
 # (../../services-base/base-modules/ui) resolves.
-FROM node:22.22.2-bookworm-slim AS builder
+FROM node:22.22.2-bookworm-slim AS toolchain
 
 RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 WORKDIR /app
-COPY task-tracker/frontend/package.json task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
+
+# Product scripts are generation inputs, not dependency installation inputs.
+FROM toolchain AS install-manifest
+COPY task-tracker/frontend/package.json ./
+RUN node -e 'const fs = require("node:fs"); const pkg = JSON.parse(fs.readFileSync("package.json", "utf8")); delete pkg.scripts; fs.writeFileSync("package.json", JSON.stringify(pkg) + "\n");'
+
+FROM toolchain AS builder
+COPY --from=install-manifest /app/package.json ./
+COPY task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
 COPY services-base/base-modules/ui /services-base/base-modules/ui
+# Keep dependency lifecycle scripts (including native tooling) enabled.
+RUN pnpm install --frozen-lockfile
+
+# Generation inputs enter only after dependencies have been installed.
+COPY task-tracker/frontend/package.json ./
 COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 COPY task-tracker/frontend/scripts/base-generate-openapi.mjs ./scripts/base-generate-openapi.mjs
-RUN pnpm install --frozen-lockfile
+RUN pnpm run postinstall && test -s src/api/generated.ts
 
 COPY task-tracker/frontend/ ./
 ARG VITE_NAMESPACE_ENABLED="false"
