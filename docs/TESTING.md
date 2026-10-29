@@ -521,3 +521,6 @@ Server recipes сохраняют три SDK дерева и только manife
 scripts.tests.test_ci_contract_checks.ServerCliMetadataContractTest`.
 Native locked/poison/layer/old-mtime и CLI qualification — общая финальная
 веха. Канонический контракт: Base `docs/plans/tracker-server-cli-metadata-20261029.md`.
+
+Frontend dependency hooks: единственная policy — `allowBuilds.esbuild: true` в
+`frontend/pnpm-workspace.yaml`. Source command: `python -B -m unittest scripts.tests.test_ci_contract_checks.PnpmLifecyclePolicyTests -q`.

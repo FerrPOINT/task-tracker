@@ -44,7 +44,8 @@
       "backend/Dockerfile",
       "backend/Dockerfile.umbrella",
       "backend/Cargo.toml",
-      "backend/*/Cargo.toml"
+      "backend/*/Cargo.toml",
+      "frontend/pnpm-workspace.yaml"
     ],
     "cli": [
       "backend/cli/**"
@@ -87,7 +88,8 @@
         "backend/Dockerfile",
         "backend/Dockerfile.umbrella",
         "backend/Cargo.toml",
-        "backend/*/Cargo.toml"
+        "backend/*/Cargo.toml",
+        "frontend/pnpm-workspace.yaml"
       ]
     },
     {
