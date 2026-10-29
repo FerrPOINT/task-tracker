@@ -56,7 +56,7 @@ afterEach(() => {
 describe('project choice catalog', () => {
   it('requests a bounded sentinel and presents only the actual page without a fabricated total', () => {
     const { result } = mount()
-    expect(projects).toHaveBeenLastCalledWith(0, 21, '', true)
+    expect(projects).toHaveBeenLastCalledWith(0, 21, '', true, { allPages: false })
     expect(result.current.data).toHaveLength(20)
     expect(result.current.data?.some((value) => value.key === 'P20')).toBe(false)
     expect(result.current.hasMore).toBe(true)
@@ -76,7 +76,7 @@ describe('project choice catalog', () => {
     expect(details).toHaveBeenCalledWith('P350')
     expect(result.current.selected?.key).toBe('P350')
     expect(result.current.selectedUnavailable).toBe(false)
-    expect(projects).toHaveBeenLastCalledWith(100, 21, '', true)
+    expect(projects).toHaveBeenLastCalledWith(100, 21, '', true, { allPages: false })
   })
 
   it('does not display an old detail after access to that selected key fails', () => {
@@ -133,7 +133,7 @@ describe('project choice catalog', () => {
       unavailable: false,
     })
     const { result } = mount('P350', 20, 'team')
-    expect(projects).toHaveBeenLastCalledWith(20, 21, 'team', true)
+    expect(projects).toHaveBeenLastCalledWith(20, 21, 'team', true, { allPages: false })
     expect(exact).toHaveBeenLastCalledWith(
       expect.objectContaining({ projectKey: 'P350', limit: 1, workingOnly: true }),
       true,

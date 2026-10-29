@@ -10,12 +10,9 @@ export const PROJECT_CHOICE_PAGE_SIZE = 20
 export function useProjectChoiceCatalog(selectedKey: string, offset: number, search: string) {
   const v2 = import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
   const context = readSpaceLocation(useLocation().search)
-  const projects = useActiveProjects(
-    offset,
-    PROJECT_CHOICE_PAGE_SIZE + 1,
-    search,
-    PROJECT_CHOICE_PAGE_SIZE,
-  )
+  const projects = useActiveProjects(offset, PROJECT_CHOICE_PAGE_SIZE + 1, search, {
+    visibleLimit: PROJECT_CHOICE_PAGE_SIZE,
+  })
   const listed = projects.isError
     ? undefined
     : projects.data?.find((project) => project.key === selectedKey)

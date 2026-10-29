@@ -2,8 +2,13 @@ import { useProjects } from '@/shared/api/hooks'
 import { isUnarchivedProject, useNamespaceCatalog } from './namespace-context'
 
 /** Keep the full ownership catalog; only working lists exclude archived bindings. */
-export function useActiveProjects(offset = 0, limit = 100, search = '', visibleLimit = limit) {
-  const projects = useProjects(offset, limit, search, true)
+export function useActiveProjects(
+  offset = 0,
+  limit = 100,
+  search = '',
+  { allPages = false, visibleLimit = limit }: { allPages?: boolean; visibleLimit?: number } = {},
+) {
+  const projects = useProjects(offset, limit, search, true, { allPages })
   const enabled =
     import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
     import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'
@@ -20,8 +25,9 @@ export function useActiveProjects(offset = 0, limit = 100, search = '', visibleL
     ...projects,
     unfilteredCount: projects.data?.length ?? 0,
     projectIsActive,
-    hasMore:
-      total !== undefined
+    hasMore: allPages
+      ? false
+      : total !== undefined
         ? offset + visibleLimit < total
         : rawCount === undefined
           ? undefined
@@ -33,7 +39,9 @@ export function useActiveProjects(offset = 0, limit = 100, search = '', visibleL
     data:
       enabled && !catalog.isSuccess
         ? undefined
-        : projects.data?.slice(0, visibleLimit).filter((project) => projectIsActive(project.id)),
+        : (allPages ? projects.data : projects.data?.slice(0, visibleLimit))?.filter((project) =>
+            projectIsActive(project.id),
+          ),
     isLoading: projects.isLoading || (enabled && catalog.isPending),
     isPending: projects.isPending || (enabled && catalog.isPending),
     isError: projects.isError || (enabled && catalog.isError),

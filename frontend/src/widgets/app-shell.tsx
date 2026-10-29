@@ -1,6 +1,6 @@
 import { useApplicationAccess } from '@pdlc/ui/auth'
 import { SpaceShellContext, SpaceRouteOutlet } from './space-context'
-import { isUnarchivedProject } from './namespace-context'
+import { projectNavigationCatalog, type NavigationProject } from './project-navigation-catalog'
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import {
   SidebarList,
@@ -41,7 +41,7 @@ import {
 
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
-import { useLocation, Outlet } from 'react-router'
+import { useLocation, Outlet, Link as RouterLink } from 'react-router'
 import {
   LayoutDashboard,
   FolderKanban,
@@ -106,18 +106,22 @@ function SidebarLink({
   active,
   onClick,
   compact = false,
+  namespace,
 }: {
   to: string
+  namespace?: NamespaceLocation | null
   icon: React.ElementType
   label: string
   active: boolean
   onClick?: () => void
   compact?: boolean
 }) {
+  const { search } = useLocation()
+  const NavigationLink = namespace === undefined ? Link : RouterLink
   return (
     <SidebarItem asChild active={active} compact={compact}>
-      <Link
-        to={to}
+      <NavigationLink
+        to={namespace === undefined ? to : withNamespaceLocation(to, namespace, search)}
         onClick={onClick}
         title={compact ? label : undefined}
         aria-label={compact ? label : undefined}
@@ -125,17 +129,12 @@ function SidebarLink({
       >
         <Icon aria-hidden="true" />
         {!compact && <SidebarItemLabel>{label}</SidebarItemLabel>}
-      </Link>
+      </NavigationLink>
     </SidebarItem>
   )
 }
 
-type ProjectNavigationGroup = {
-  id: string
-  key: string
-  name: string
-  namespace?: NamespaceLocation
-}
+type ProjectNavigationGroup = NavigationProject
 
 function ProjectNavigation({
   groups,
@@ -145,7 +144,9 @@ function ProjectNavigation({
   compact = false,
   onNavigate,
   catalogStatus,
+  namespaceEnabled = false,
 }: {
+  namespaceEnabled?: boolean
   groups: ProjectNavigationGroup[]
   collapsed: Set<string>
   onToggle: (id: string) => void
@@ -206,6 +207,7 @@ function ProjectNavigation({
                   <SidebarLink
                     key={item.to}
                     to={target}
+                    namespace={namespaceEnabled ? (project.namespace ?? null) : undefined}
                     icon={item.icon}
                     label={t(item.labelKey)}
                     active={isActive(target)}
@@ -250,7 +252,13 @@ export function AppShell() {
       : undefined
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
-  const { data: projects = [] } = useProjects()
+  const projectQuery = useProjects(0, 100, '', { allPages: namespaceEnabled })
+  const projects = projectQuery.data ?? []
+  const navigationCatalog = projectNavigationCatalog(projects, catalog.data ?? [])
+  const selectedProjectKey =
+    namespaceEnabled && !namespace.ref && !new URLSearchParams(location.search).has('project_scope')
+      ? routeProjectKey
+      : undefined
   const currentProject = projects.find((project) => project.key === projectKey)
   const contexts =
     namespace.malformed || (!allProjects && namespace.query.isError)
@@ -263,12 +271,13 @@ export function AppShell() {
           ? []
           : (catalog.data ?? [])
   const projectGroups: ProjectNavigationGroup[] = namespaceEnabled
-    ? contexts.filter(isUnarchivedProject).map((context) => ({
-        id: `${context.binding.resource.instance_id}/${context.binding.resource.resource_id}`,
-        key: context.resource_key,
-        name: context.label,
-        namespace: context.binding.namespace,
-      }))
+    ? namespace.malformed || catalog.isError || projectQuery.isError
+      ? []
+      : namespace.ref && !allProjects
+        ? projectNavigationCatalog([], contexts)
+        : selectedProjectKey
+          ? navigationCatalog.filter((project) => project.key === selectedProjectKey)
+          : navigationCatalog
     : projectKey
       ? [
           {
@@ -373,11 +382,12 @@ export function AppShell() {
           </SidebarList>
           <ProjectNavigation
             groups={projectGroups}
+            namespaceEnabled={namespaceEnabled}
             catalogStatus={
               namespaceEnabled
-                ? catalog.isPending
+                ? catalog.isPending || projectQuery.isPending
                   ? 'loading'
-                  : catalog.isError
+                  : catalog.isError || projectQuery.isError
                     ? 'error'
                     : undefined
                 : undefined
@@ -408,7 +418,12 @@ export function AppShell() {
             spaceEnabled ? (
               <SpaceShellContext projectKey={projectKey} />
             ) : namespaceEnabled ? (
-              <NamespaceShellContext />
+              <NamespaceShellContext
+                projects={projects}
+                projectKey={selectedProjectKey}
+                projectPending={projectQuery.isPending}
+                projectUnavailable={projectQuery.isError}
+              />
             ) : (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>

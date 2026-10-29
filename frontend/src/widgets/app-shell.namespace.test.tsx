@@ -131,11 +131,11 @@ describe('project sidebar and Namespace selection', () => {
     })
     expect(within(a).getByRole('link', { name: 'Доска' })).toHaveAttribute(
       'href',
-      `/projects/A/board${search(0)}&project_scope=all`,
+      `/projects/A/board?project_scope=all&registry_instance_id=${registry}&namespace_id=${refs[0]}`,
     )
     expect(within(b).getByRole('link', { name: 'Доска' })).toHaveAttribute(
       'href',
-      `/projects/B/board${search(1)}&project_scope=all`,
+      `/projects/B/board?project_scope=all&registry_instance_id=${registry}&namespace_id=${refs[1]}`,
     )
     const toggle = within(a).getByRole('button', { name: 'Одинаковый проект · A' })
     await user.click(toggle)
@@ -147,7 +147,7 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getByRole('region', { name: 'Одинаковый проект · A' })).toBeInTheDocument()
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Current URL')).toHaveTextContent(
-      `/projects/B/board${search(1)}&project_scope=all`,
+      `/projects/B/board?project_scope=all&registry_instance_id=${registry}&namespace_id=${refs[1]}`,
     )
     await user.click(screen.getByRole('link', { name: 'Task detail' }))
     expect(screen.getByLabelText('Current URL')).toHaveTextContent('tab=worklog&project_scope=all')
@@ -159,7 +159,7 @@ describe('project sidebar and Namespace selection', () => {
     )
     expect(
       within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
-    ).toHaveLength(2)
+    ).toHaveLength(3)
   })
 
   it('updates navigation and task creation on top selection, restores all and preserves a selected collapsed group', async () => {
@@ -248,7 +248,7 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue('')
     expect(
       within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
-    ).toHaveLength(2)
+    ).toHaveLength(3)
   })
 
   it('restores the filter through history and a copied all-project resource URL', async () => {
@@ -272,7 +272,7 @@ describe('project sidebar and Namespace selection', () => {
         within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole(
           'region',
         ),
-      ).toHaveLength(2),
+      ).toHaveLength(3),
     )
     expect(picker).toHaveValue('')
     await user.click(screen.getByRole('button', { name: 'Forward' }))
@@ -416,9 +416,12 @@ describe('project sidebar and Namespace selection', () => {
     await screen.findByRole('button', { name: 'Одинаковый проект · B' })
     expect(
       within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
-    ).toHaveLength(101)
+    ).toHaveLength(102)
     await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
-    expect(screen.getAllByRole('menuitemradio')).toHaveLength(102)
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(103)
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Wrong fallback · WRONG' }),
+    ).toBeInTheDocument()
   })
   it.each([0, 1])(
     'excludes archived identity %s from navigation and project choices',
@@ -448,7 +451,7 @@ describe('project sidebar and Namespace selection', () => {
         screen.queryByRole('button', { name: `Одинаковый проект · ${archivedKey}` }),
       ).toBeNull()
       await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
-      expect(screen.getAllByRole('menuitemradio')).toHaveLength(2)
+      expect(screen.getAllByRole('menuitemradio')).toHaveLength(3)
     },
   )
 })
