@@ -524,3 +524,8 @@ Native locked/poison/layer/old-mtime и CLI qualification — общая фин�
 
 Frontend dependency hooks: единственная policy — `allowBuilds.esbuild: true` в
 `frontend/pnpm-workspace.yaml`. Source command: `python -B -m unittest scripts.tests.test_ci_contract_checks.PnpmLifecyclePolicyTests -q`.
+
+Docker разделяет полный unit/typecheck context и production COPY по `frontend:build.exclude_inputs`.
+Один `pnpm run postinstall` обслуживает оба consumers; `pnpm run build:compile`
+зависит от успешного unit-маркера. Native cache-hit/time qualification пока не выполнена.
+Unit context сохраняет `nginx.conf`, который читает routing test.

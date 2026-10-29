@@ -148,6 +148,33 @@ class QualityRouteTests(unittest.TestCase):
         self.assertTrue(outputs(ROOT, 'push', '0' * 40, 'b' * 40)['frontend_build'])
 
 
+    def test_docker_unit_and_compile_stages_have_distinct_inputs_and_a_required_gate(self):
+        manifest = json.loads((ROOT / '.quality-gate.json').read_bytes())
+        excludes = next(g['exclude_inputs'] for g in manifest['gates'] if g['id'] == 'frontend:build')
+        for name in ('Dockerfile', 'Dockerfile.umbrella'):
+            source = (ROOT / 'frontend' / name).read_text(encoding='utf-8')
+            unit = source.split('FROM dependencies AS unit\n', 1)[1].split('FROM dependencies AS builder\n', 1)[0]
+            compile_stage = source.split('FROM dependencies AS builder\n', 1)[1].split('FROM nginx:', 1)[0]
+            self.assertIn('RUN pnpm run test:unit && ', unit)
+            self.assertIn('pnpm run typecheck', unit)
+            self.assertIn("printf 'passed\\n' > /tmp/frontend-unit-check", unit)
+            self.assertNotIn('build:compile', unit)
+            self.assertNotIn('--exclude=', unit)
+            filtered_copy = next(line for line in compile_stage.splitlines() if line.startswith('COPY --exclude='))
+            actual = [arg.removeprefix('--exclude=') for arg in filtered_copy.split() if arg.startswith('--exclude=')]
+            self.assertEqual(actual, [path.removeprefix('frontend/') for path in excludes])
+            gate = '--mount=type=bind,from=unit,source=/tmp/frontend-unit-check,target=/tmp/frontend-unit-check'
+            self.assertIn(gate, compile_stage)
+            self.assertIn('= passed', compile_stage)
+            self.assertLess(compile_stage.index(gate), compile_stage.index('RUN pnpm run build:compile'))
+            self.assertNotIn('test:unit', compile_stage)
+            self.assertEqual(source.count('RUN pnpm run postinstall'), 1)
+            self.assertEqual(source.count('pnpm install --frozen-lockfile'), 1)
+            for consumer in (unit, compile_stage):
+                self.assertIn('COPY --from=generated /app/src/api/generated.ts', consumer)
+            self.assertEqual([line for line in unit.splitlines() if line.startswith(('ARG VITE_', 'ENV VITE_'))],
+                             [line for line in compile_stage.splitlines() if line.startswith(('ARG VITE_', 'ENV VITE_'))])
+
     def test_docker_install_consumes_registered_store_without_shared_node_modules(self):
         for name in ('Dockerfile', 'Dockerfile.umbrella'):
             source = (ROOT / 'frontend' / name).read_text(encoding='utf-8')
@@ -182,7 +209,7 @@ class QualityRouteTests(unittest.TestCase):
             self.assertIn('tooling:quality-routes', [gate['id'] for gate in plan['gates']])
             self.assertFalse([gate for gate in plan['gates'] if gate.get('kind') == 'artifact'])
             source = (ROOT / 'frontend' / name).read_text(encoding='utf-8')
-            manifest, dependency = source.split('FROM toolchain AS builder\n', 1)
+            manifest, dependency = source.split('FROM toolchain AS dependencies\n', 1)
             self.assertIn('delete pkg.scripts;', manifest)
             before_install, after_install = dependency.split('pnpm install --frozen-lockfile', 1)
             self.assertIn('COPY --from=install-manifest /app/package.json', before_install)
