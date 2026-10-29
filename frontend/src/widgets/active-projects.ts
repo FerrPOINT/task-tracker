@@ -2,8 +2,13 @@ import { useProjects } from '@/shared/api/hooks'
 import { isUnarchivedProject, useNamespaceCatalog } from './namespace-context'
 
 /** Keep the full ownership catalog; only working lists exclude archived bindings. */
-export function useActiveProjects(offset = 0, limit = 100, search = '') {
-  const projects = useProjects(offset, limit, search, true)
+export function useActiveProjects(
+  offset = 0,
+  limit = 100,
+  search = '',
+  { allPages = false }: { allPages?: boolean } = {},
+) {
+  const projects = useProjects(offset, limit, search, true, { allPages })
   const enabled =
     import.meta.env.VITE_NAMESPACE_ENABLED === 'true' &&
     import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true'

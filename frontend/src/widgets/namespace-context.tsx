@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { NamespacePicker } from '@pdlc/ui/ui'
+import type { Project } from '@/api/project'
+import { projectNavigationCatalog, projectSelectionValue } from './project-navigation-catalog'
 import {
   projectNavigationScope,
   projectIdentity,
@@ -59,7 +61,17 @@ export function useNamespaceCatalog(enabled = true) {
     },
   })
 }
-export function NamespaceShellContext() {
+export function NamespaceShellContext({
+  projects = [],
+  projectKey,
+  projectPending = false,
+  projectUnavailable = false,
+}: {
+  projects?: readonly Project[]
+  projectKey?: string
+  projectPending?: boolean
+  projectUnavailable?: boolean
+}) {
   const location = useLocation()
   const navigate = useNavigate()
   const { ref, malformed, query } = useNamespaceContext()
@@ -76,30 +88,39 @@ export function NamespaceShellContext() {
     )
   )
     items.push(query.data)
+  const navigation = projectNavigationCatalog(projects, items)
+  const selectedProject = navigation.find((project) => project.key === projectKey)
   const value = malformed
     ? 'invalid'
-    : allProjects
-      ? ''
-      : ref
-        ? `${ref.registry_instance_id}/${ref.namespace_id}`
-        : ''
+    : selectedProject
+      ? projectSelectionValue(selectedProject)
+      : allProjects
+        ? ''
+        : ref
+          ? `${ref.registry_instance_id}/${ref.namespace_id}`
+          : ''
   return (
     <NamespacePicker
       projectIcons
       value={value}
-      loading={catalog.isPending}
-      unavailable={catalog.isError}
-      options={items.filter(isUnarchivedProject).map((item) => ({
-        value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
-        label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
-        projectKey: item.resource_key,
+      loading={catalog.isPending || projectPending}
+      unavailable={catalog.isError || projectUnavailable}
+      options={navigation.map((project) => ({
+        value: projectSelectionValue(project),
+        label: `${project.name} · ${project.key}`,
+        projectKey: project.key,
       }))}
       onChange={(next) => {
-        const [registry_instance_id = '', namespace_id = ''] = next.split('/')
+        if (!next) {
+          navigate(withNamespaceLocation('/projects?project_scope=all', null))
+          return
+        }
+        const project = navigation.find((item) => projectSelectionValue(item) === next)
+        if (!project) return
         navigate(
           withNamespaceLocation(
-            next ? '/namespace' : '/projects?project_scope=all',
-            next ? { registry_instance_id, namespace_id } : null,
+            project.namespace ? '/namespace' : `/projects/${encodeURIComponent(project.key)}/board`,
+            project.namespace ?? null,
           ),
         )
       }}
