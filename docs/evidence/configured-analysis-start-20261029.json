@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-29",
+  "scope": "explicit configured Analysis start; source qualification only",
+  "backend_source": "70ae3aae8cd70c9ffabab13fd4b298d259f43cd4",
+  "backend_tree": "1458e3abfd17f62aa94411a4d602dbcc3bd76987",
+  "ui_source": "03a35d80e7d10dce5ec4cf1df07860b7bca4fa72",
+  "openapi_sha256": "a947d8c107260311d2edf1c8939c46df753c3b73a7faab6f978ca2f03c379a3c",
+  "generated_client_sha256": "54cf86e001c9c7863f26eee555c62f37ffeecf4b97c1d6b4495ab56ca39dd2de",
+  "backend": {
+    "selected_postgresql_passed": 13,
+    "http_draft_and_configured_start_passed": true,
+    "unit_passed": 538,
+    "cli_passed": 44,
+    "workspace_all_targets": true,
+    "strict_clippy": true,
+    "rustfmt": true,
+    "actual_rust_openapi": true,
+    "results": [
+      {
+        "local_run": "run-c2a9dc38a2",
+        "result_sha256": "53d76f30e937175af5fc56dcf955a23b1e34583d988df735e27a3f132ec6fd63",
+        "scope": "12 passing PG cases; final incorrect selector returned zero tests and failed the run"
+      },
+      {
+        "local_run": "run-a4fbec1d58",
+        "result_sha256": "2d5665ebf1d6bc5ab5c8aab5c157313bdf727c9a859cf0b3c8c15761cc50ba8c",
+        "scope": "corrected thirteenth PG case, actual HTTP, unit/CLI/workspace/Clippy/OpenAPI"
+      }
+    ]
+  },
+  "frontend": {
+    "test_files": 77,
+    "tests_passed": 724,
+    "composed_results": true,
+    "initial_result_sha256": "8e52bc8cdd36511816e8625c2ecb23f4d58987067c121897e54fda8b6048e27c",
+    "initial_scope": "typecheck and665 tests pass; one worker startup failure retained",
+    "followup_result_sha256": "c868984de42fe5879775c4476fae55de0bf13b01fbda40715c02ef87fd4db9bd",
+    "followup_scope": "missing59 tests and lint pass; pre-existing format failures retained",
+    "final_result_sha256": "ac47c477ecdbe1deeaf3a98cb559f10928303c25e50cdc3afe746c3512d5eb5f",
+    "final_scope": "mechanical formatting repair; format/build/schema/compatibility pass"
+  },
+  "qa_data": "fresh synthetic fixtures only; no runtime database copies",
+  "owned_compose_cleanup_verified": true,
+  "installed": false,
+  "browser_acceptance": false,
+  "real_auth_or_hermes_acceptance": false,
+  "seven_role_acceptance": false,
+  "pm_completion_automatically_starts_analysis": false
+}

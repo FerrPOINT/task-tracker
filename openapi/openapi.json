@@ -14100,6 +14100,29 @@
           {
             "type": "object",
             "required": [
+              "pm_completion_id",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "start_analysis"
+                ]
+              },
+              "pm_completion_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "fence",
               "terminal",
               "recovery",

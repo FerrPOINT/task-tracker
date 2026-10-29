@@ -161,9 +161,134 @@ fn sha256(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
 
+pub fn start_owner(state: &domain::sdlc::TaskState, actor: &Principal) -> Result<(), AppError> {
+    state.require_root()?;
+    if !state.owner(actor)
+        || crate::sdlc::has_pm_grant(&actor.scopes)
+        || has_delivery_grant(&actor.scopes)
+    {
+        return Err(AppError::Forbidden);
+    }
+    if !state.configured_cli() {
+        return Err(AppError::conflict("explicit start requires configured CLI"));
+    }
+    Ok(())
+}
+
+pub fn validate_start(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+) -> Result<(), AppError> {
+    if state.stage != domain::sdlc::Stage::Backlog
+        || state.status != Some(LifecycleStatus::Ready)
+        || state.retained_fields.contains_key("lifecycle")
+    {
+        return Err(AppError::conflict("initial approved Backlog required"));
+    }
+    validate_start_binding(state, completion)
+}
+
+fn validate_start_binding(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+) -> Result<(), AppError> {
+    use domain::sdlc::{DraftFlow, Stage};
+    let assignment = state
+        .assignment
+        .as_ref()
+        .ok_or_else(|| AppError::conflict("PM assignment absent"))?;
+    let consent = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;
+    if !state.configured_cli()
+        || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
+        || completion.interaction_protocol != domain::sdlc::InteractionProtocol::ConfiguredCliV1
+        || completion.stage != Stage::Backlog
+        || completion.status != LifecycleStatus::Ready
+        || completion.next_pm_admission_state != "completed"
+        || completion.task_id != state.task_id
+        || completion.root_task_id != state.root_task_id
+        || completion.project_id != state.project_id
+        || completion.tracker_instance_id != state.tracker_instance_id
+        || completion.owner_subject != state.owner_subject
+        || completion.confirmation_id != consent.id
+        || completion.requirement_revision != consent.revision
+        || completion.content_hash != consent.content_hash
+        || consent.owner_subject != state.owner_subject
+        || consent.stage != Stage::Draft
+        || state.current_revision() != Some(completion.requirement_revision)
+        || state.confirmation_revision != Some(completion.requirement_revision)
+        || state.revisions.last().map(|r| &r.content_hash) != Some(&completion.content_hash)
+        || completion.fence.assignment_id != assignment.assignment_id
+        || completion.fence.execution_id != assignment.execution_id
+        || completion.fence.agent_id != assignment.agent_id
+        || completion.fence.assignment_version != assignment.version
+        || consent.task_id != state.task_id
+    {
+        return Err(AppError::conflict(
+            "PM completion is not the current approved Backlog",
+        ));
+    }
+    Ok(())
+}
+
+pub fn configured_start_intent(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    intent_id: Uuid,
+) -> Result<domain::sdlc::AnalysisIntent, AppError> {
+    validate_start(state, completion)?;
+    let confirmation = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;
+    crate::sdlc::analysis_intent_payload(state, confirmation, intent_id)
+}
+
+pub fn configured_started_intent(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    original: &LifecycleReceipt,
+    intent_id: Uuid,
+) -> Result<domain::sdlc::AnalysisIntent, AppError> {
+    validate_start_binding(state, completion)?;
+    let task = &original.task;
+    if state.stage != domain::sdlc::Stage::Analysis
+        || task.task_id != state.task_id
+        || task.owner_subject != state.owner_subject
+        || task.version != 1
+        || task.stage != LifecycleStage::Analysis
+        || task.status != LifecycleStatus::Ready
+        || task.runtime != RuntimeState::Queued
+        || task.routing.task_id != state.task_id
+        || task.routing.confirmation_id != completion.confirmation_id
+        || task.routing.requirement_revision != completion.requirement_revision
+        || task.routing.content_hash != completion.content_hash
+        || original.assignment.is_some()
+        || original.lease.is_some()
+        || original.binding.is_some()
+        || original.result.is_some()
+    {
+        return Err(AppError::conflict(
+            "saved configured Analysis start differs",
+        ));
+    }
+    let confirmation = state
+        .current_confirmation()
+        .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;
+    crate::sdlc::analysis_intent_payload(state, confirmation, intent_id)
+}
+
 pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
     crate::sdlc::validate_key(command.key())?;
     let fence = match command {
+        LifecycleCommand::StartAnalysis {
+            pm_completion_id, ..
+        } => {
+            if pm_completion_id.is_nil() {
+                return Err(AppError::validation("exact PM completion ID required"));
+            }
+            return Ok(());
+        }
         LifecycleCommand::Reconcile {
             fence,
             terminal,

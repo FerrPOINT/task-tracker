@@ -69,6 +69,25 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn('sdlc::candidates::tests::configured_cli_tests::$case_name', workflow)
         self.assertIn('dropdb -U tasktracker tracker_pm_candidates_test', workflow)
 
+    def test_configured_start_gate_executes_each_case_in_a_fresh_database(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        for name in (
+            "forward_start_migration_preserves_filled_110_history_without_auto_start",
+            "explicit_start_is_atomic_discovered_once_and_replays_original_after_advancement",
+            "start_refuses_nonowners_no_opt_in_missing_consent_stale_and_foreign_receipts",
+            "start_race_payload_conflict_and_current_access_readback_do_not_duplicate_effects",
+            "start_sql_rejects_detached_command_and_direct_permit_bypass",
+        ):
+            self.assertIn(name, workflow)
+        self.assertIn(
+            'sdlc::candidates::tests::critical_blocker_tests::configured_start_tests::$case_name',
+            workflow,
+        )
+        self.assertIn("createdb -U tasktracker tracker_start_candidates_test", workflow)
+        self.assertIn("dropdb -U tasktracker tracker_start_candidates_test", workflow)
+        self.assertIn("--exact --ignored --test-threads=1", workflow)
+        self.assertIn("test result: ok. 1 passed; 0 failed; 0 ignored;", workflow)
+
     def test_populated_upgrade_runs_exactly_one_ignored_test_in_fresh_database(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]

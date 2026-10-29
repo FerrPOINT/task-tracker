@@ -491,6 +491,41 @@ pub async fn verify(
     let final_context = get_json(f.client, &format!("{root}/context"), f.owner, 200).await;
     assert_eq!(final_context["stage"], "Backlog");
     assert_eq!(final_context["status"], "Ready");
+    let start_url = format!("{root}/lifecycle");
+    let operation_url = format!("{root}/lifecycle/operations/configured-http:start");
+    let start_command = json!({"operation":"start_analysis", "pm_completion_id":completed["completion_id"],
+        "idempotency_key":"configured-http:start"});
+    get_json(f.client, &operation_url, f.owner, 404).await;
+    for token in [pm.as_str(), f.operator] {
+        expect(f.client, &start_url, token, &start_command, 403).await;
+    }
+    let mut wrong_start = start_command.clone();
+    wrong_start["pm_completion_id"] = json!(Uuid::new_v4());
+    expect(f.client, &start_url, f.owner, &wrong_start, 409).await;
+    let started = expect(f.client, &start_url, f.owner, &start_command, 201).await;
+    assert_eq!(started["task"]["stage"], "Analysis");
+    assert_eq!(started["task"]["status"], "Ready");
+    assert_eq!(started["task"]["runtime"], "queued");
+    assert!(started["assignment"].is_null());
+    assert_eq!(
+        expect(f.client, &start_url, f.owner, &start_command, 200).await,
+        started
+    );
+    assert_eq!(
+        get_json(f.client, &operation_url, f.owner, 200).await,
+        started
+    );
+    expect(f.client, &start_url, f.owner, &wrong_start, 409).await;
+    let counts = f.db.query_one(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT (SELECT count(*) FROM sdlc_analysis_intents WHERE task_id=$1) AS intents,
+         (SELECT count(*) FROM sdlc_delivery_operations WHERE task_id=$1 AND command IS NOT NULL) AS starts,
+         (SELECT count(*) FROM sdlc_delivery_assignments WHERE task_id=$1) AS assignments",
+        [task.into()],
+    )).await.unwrap().unwrap();
+    assert_eq!(counts.try_get::<i64>("", "intents").unwrap(), 1);
+    assert_eq!(counts.try_get::<i64>("", "starts").unwrap(), 1);
+    assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
     for suffix in [
         "",
         "/heartbeat",

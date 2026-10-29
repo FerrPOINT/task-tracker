@@ -213,6 +213,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Explicit owner start after PM completion; never a PM completion side effect
+    Start {
+        #[command(subcommand)]
+        command: StartCommand,
+    },
     /// Read the complete discussion or publish/reconcile an ordinary final comment
     Discussion {
         #[command(subcommand)]
@@ -301,6 +306,26 @@ pub enum SdlcCommand {
     Revision {
         #[command(subcommand)]
         command: SdlcRevisionCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum StartCommand {
+    /// Queue Analysis using the exact immutable current PM completion
+    Analysis {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        pm_completion_id: Uuid,
+        #[arg(long)]
+        key: String,
+    },
+    /// Read the original start receipt without repeating or advancing work
+    Operation {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        key: String,
     },
 }
 
@@ -547,6 +572,15 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Start { command } => match command {
+            StartCommand::Analysis { task, pm_completion_id, key } => api.post(
+                &sdlc_path(task, "/lifecycle"),
+                json!({"operation":"start_analysis","pm_completion_id":pm_completion_id,"idempotency_key":key}),
+            ).await,
+            StartCommand::Operation { task, key } => api.get(
+                &sdlc_path(task, &format!("/lifecycle/operations/{}", enc(&key))),
+            ).await,
+        },
         SdlcCommand::Discussion { command } => discussion_commands::execute(api, command).await,
         SdlcCommand::CriticalBlocker { command } => {
             critical_commands::critical_blocker(api, command).await

@@ -275,6 +275,80 @@ fn success(output: &std::process::Output) -> Value {
 }
 
 #[tokio::test]
+async fn sdlc_explicit_start_uses_existing_lifecycle_post_and_original_key_get() {
+    const TASK: &str = "11111111-1111-4111-8111-111111111111";
+    const COMPLETION: &str = "22222222-2222-4222-8222-222222222222";
+    let receipt = json!({"task":{"task_id":TASK,"stage":"Analysis","version":1},"assignment":null});
+    let server = Server::start(vec![(201, receipt.clone()), (200, receipt.clone())]).await;
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "start",
+                        "analysis",
+                        "--task",
+                        TASK,
+                        "--pm-completion-id",
+                        COMPLETION,
+                        "--key",
+                        "owner start"
+                    ],
+                    None
+                )
+                .await
+        ),
+        receipt
+    );
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "start",
+                        "operation",
+                        "--task",
+                        TASK,
+                        "--key",
+                        "owner start"
+                    ],
+                    None
+                )
+                .await
+        ),
+        receipt
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/lifecycle")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        json!({"operation":"start_analysis","pm_completion_id":COMPLETION,"idempotency_key":"owner start"})
+    );
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].path,
+        format!("/api/v1/issues/{TASK}/sdlc/lifecycle/operations/owner%20start")
+    );
+    for args in [
+        vec!["sdlc", "start", "--help"],
+        vec!["sdlc", "start", "analysis", "--help"],
+        vec!["sdlc", "start", "operation", "--help"],
+    ] {
+        let output = server.run(&args, None).await;
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+    }
+    assert_eq!(server.requests().len(), 2, "help must not contact an API");
+}
+
+#[tokio::test]
 async fn task_input_pagination_restore_and_json_success() {
     let server = Server::start(vec![
         (200, json!({"id":"uuid","key":"TT-1"})),

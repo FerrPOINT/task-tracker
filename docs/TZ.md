@@ -1735,3 +1735,14 @@ an unchanged final comment before handoff. Critical PM review uses the selected
 blocker from current context and the ordinary requirements/owner-consent path;
 it finishes in Backlog/Ready. Its history is append-only across repeated PM
 reviews. Candidate source/tests do not constitute live all-profession acceptance.
+
+## Explicit Configured Start (Source Candidate)
+
+After accepted configured PM completion, only a separate current human-owner
+`start_analysis` action may activate an opt-in Backlog/Ready task. It checks the
+exact saved completion/owner/requirements/confirmation/source tuple server-side,
+is atomic and idempotent, and never grants agents or administrators owner consent.
+Without the action there is no Analysis intent or configured discovery candidate.
+After start, existing accepted role results advance the same task; seven roles /
+eight modes remain one root task, with no children or manual per-role advance.
+Synthetic source tests are not full seven-role native/live acceptance.

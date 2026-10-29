@@ -482,6 +482,15 @@ impl PostgresSdlcRepository {
             result: None,
         };
         exact_revision(state, &receipt)?;
+        Self::ensure_initial_delivery_idle(tx, state.task_id).await?;
+        Self::save_delivery_projection(tx, actor, &receipt, true).await?;
+        Ok(receipt)
+    }
+
+    pub(super) async fn ensure_initial_delivery_idle(
+        tx: &DatabaseTransaction,
+        task: Uuid,
+    ) -> Result<(), AppError> {
         // Existing producers share this mutex. Never overlap a live legacy execution.
         exec(
             tx,
@@ -494,13 +503,12 @@ impl PostgresSdlcRepository {
              OR EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=$1
                 AND (t.pm_execution_id IS NOT NULL OR t.state->'assignment' IS DISTINCT FROM 'null'::jsonb)
                 AND NOT sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)) AS busy",
-            vec![state.task_id.into()],
+            vec![task.into()],
         )).await.map_err(map_db)?.ok_or_else(corrupt)?;
         if row.try_get::<bool>("", "busy").map_err(map_db)? {
             return Err(AppError::conflict("previous execution quiescence unknown"));
         }
-        Self::save_delivery_projection(tx, actor, &receipt, true).await?;
-        Ok(receipt)
+        Ok(())
     }
 
     async fn delivery_reserve(
@@ -1092,6 +1100,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: LifecycleCommand,
     ) -> Result<(LifecycleReceipt, bool), AppError> {
+        if matches!(command, LifecycleCommand::StartAnalysis { .. }) {
+            return self.start_configured_analysis(task, actor, command).await;
+        }
         app::sdlc_reservation::scheduler(actor, &self.config)?;
         app::sdlc_lifecycle::validate_command(&command)?;
         let hash = app::sdlc::canonical_hash(&command)?;
@@ -1146,6 +1157,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
         }
         match &command {
+            LifecycleCommand::StartAnalysis { .. } => {
+                unreachable!("handled before scheduler admission")
+            }
             LifecycleCommand::Reconcile {
                 fence: expected,
                 terminal,
@@ -1361,6 +1375,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
         }
         let event = match &command {
+            LifecycleCommand::StartAnalysis { .. } => {
+                unreachable!("handled before scheduler admission")
+            }
             LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
             LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
             LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
@@ -1435,6 +1452,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<LifecycleReceipt, AppError> {
+        if actor.human_session {
+            return self.configured_start_operation(task, actor, key).await;
+        }
         app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;

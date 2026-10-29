@@ -38,6 +38,8 @@ mod routing;
 mod source;
 #[path = "sdlc_spaces.rs"]
 mod spaces;
+#[path = "sdlc_start.rs"]
+mod start;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,
@@ -551,7 +553,31 @@ impl PostgresSdlcRepository {
         let intent: AnalysisIntent =
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
                 .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
-        let mut expected = app::sdlc::analysis_intent(state, confirmation, intent.intent_id)?;
+        let mut expected = if state.configured_cli() {
+            let started = tx
+                .query_one(statement(
+                    "SELECT result FROM sdlc_delivery_operations WHERE task_id=$1
+                     AND actor_subject=$2 AND command->>'operation'='start_analysis'",
+                    vec![state.task_id.into(), state.owner_subject.clone().into()],
+                ))
+                .await
+                .map_err(map_db)?
+                .ok_or_else(|| AppError::conflict("saved configured start absent"))?;
+            let original: domain::sdlc_lifecycle::LifecycleReceipt =
+                serde_json::from_value(started.try_get::<Json>("", "result").map_err(map_db)?)
+                    .map_err(|_| AppError::conflict("saved configured start invalid"))?;
+            let completed = Self::configured_saved(tx, state, None)
+                .await?
+                .ok_or_else(|| AppError::conflict("saved PM completion absent"))?;
+            app::sdlc_lifecycle::configured_started_intent(
+                state,
+                &completed.result,
+                &original,
+                intent.intent_id,
+            )?
+        } else {
+            app::sdlc::analysis_intent(state, confirmation, intent.intent_id)?
+        };
         if row
             .try_get::<Option<Json>>("", "routing_payload")
             .map_err(map_db)?
