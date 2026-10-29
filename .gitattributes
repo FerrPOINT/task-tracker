@@ -15,3 +15,5 @@ NOTICE text eol=lf
 
 # Canonical bytes for the exact Base selector.
 scripts/vendor/base_quality_selection.py text eol=lf
+
+frontend/scripts/base-generate-openapi.mjs text eol=lf

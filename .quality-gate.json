@@ -66,6 +66,7 @@
         "-q"
       ],
       "inputs": [
+        "frontend/scripts/base-generate-openapi.mjs",
         "scripts/verify_readme.py",
         "scripts/tests/test_verify_readme.py",
         "scripts/tests/test_quality_routes.py",

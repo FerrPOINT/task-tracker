@@ -27,6 +27,7 @@ FROM dependencies AS generated
 ARG PDLC_RUN_SLOT_SHARING=locked
 COPY task-tracker/frontend/package.json ./
 COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
+COPY task-tracker/frontend/scripts/base-generate-openapi.mjs ./scripts/base-generate-openapi.mjs
 RUN --mount=type=cache,id=pdlc-host-run-slot-v1,target=/.__pdlc_build_slot__,sharing=${PDLC_RUN_SLOT_SHARING} pnpm run postinstall && test -s src/api/generated.ts
 
 FROM dependencies AS unit
