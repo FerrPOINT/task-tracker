@@ -38,7 +38,10 @@
       "backend/Dockerfile.umbrella.dockerignore",
       "backend/Cargo.toml",
       "backend/*/Cargo.toml",
-      "frontend/pnpm-workspace.yaml"
+      "frontend/pnpm-workspace.yaml",
+      "scripts/build.py",
+      "scripts/select_build.py",
+      "scripts/tests/test_build_scope.py"
     ]
   },
   "gates": [
@@ -64,6 +67,7 @@
         "scripts.tests.test_ci_contract_checks",
         "scripts.tests.test_backend_dependency_layers",
         "scripts.tests.test_verify_readme",
+        "scripts.tests.test_build_scope",
         "-q"
       ],
       "inputs": [
@@ -85,7 +89,10 @@
         "backend/Dockerfile.umbrella.dockerignore",
         "backend/Cargo.toml",
         "backend/*/Cargo.toml",
-        "frontend/pnpm-workspace.yaml"
+        "frontend/pnpm-workspace.yaml",
+        "scripts/build.py",
+        "scripts/select_build.py",
+        "scripts/tests/test_build_scope.py"
       ]
     },
     {
@@ -491,5 +498,14 @@
       "live"
     ],
     "release_required": true
+  },
+  "container_inputs": {
+    "backend": [
+      "backend/Dockerfile*"
+    ],
+    "frontend": [
+      "frontend/Dockerfile*",
+      "frontend/nginx.conf"
+    ]
   }
 }
