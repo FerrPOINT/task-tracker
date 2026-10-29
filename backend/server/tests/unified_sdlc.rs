@@ -664,7 +664,10 @@ async fn ordinary_spaces_guard_sdlc_catalog_resources_roles_and_original_deadlin
         403,
     )
     .await;
-    read(&client, &base, "sdlc/project-access", &machine_token, 403).await;
+    // Permanent configured service identities discover their current explicit
+    // project memberships; this is not a historical task grant or a human role.
+    let machine_projects = read(&client, &base, "sdlc/project-access", &machine_token, 200).await;
+    assert_eq!(machine_projects["project_ids"], json!([projects[0]]));
     // The portfolio has no project links of its own; only explicit hierarchy groups children.
     space_catalog(&client, &base, &tokens[0], &a, 0, projects.to_vec(), 200).await;
     space_catalog(&client, &base, &tokens[1], &a, 0, vec![], 403).await;

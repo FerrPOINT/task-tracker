@@ -460,6 +460,209 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
 }
 
 #[tokio::test]
+async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_network() {
+    let server = Server::start(vec![]).await;
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "context",
+            &[
+                "interaction_protocol=configured-cli-v1",
+                "workflow_task_key (SDLC-N), not the Tracker task UUID",
+                "project-workflow --json step --task WORKFLOW_TASK_KEY",
+                "requirement_revision=null is expected",
+                "permissions.can_answer and permissions.can_confirm describe owner-only actions",
+                "Both may be false for the assigned PM; they do not prohibit publishing questions",
+                "answer or confirm as the owner",
+                "A real 403 on publication remains a blocker",
+                "Do not publish a placeholder",
+                "denied context/Workflow access remains a blocker",
+            ],
+        ),
+        (
+            "lifecycle",
+            &[
+                "not a configured-cli-v1 PM startup prerequisite",
+                "task-tracker sdlc context --task TASK_UUID",
+                "project-workflow --json step --task WORKFLOW_TASK_KEY",
+                "Do not acquire a native lease, rebind or borrow another token",
+                "authorization failures on required commands remain blockers",
+                "Legacy delivery callers retain this command",
+            ],
+        ),
+        (
+            "requirements",
+            &[
+                "requirement_revision=null",
+                "expected ONLY when the successful authorized",
+                "context read for the SAME task shows no first revision",
+                "never a placeholder",
+                "If context names a saved revision, a 404 is NOT explained",
+                "Do not ignore denied access, a missing task",
+            ],
+        ),
+    ];
+    for &(command, expected) in cases {
+        let output = server.run(&["sdlc", command, "--help"], None).await;
+        assert!(output.status.success(), "{command}");
+        assert!(output.stderr.is_empty(), "{command}");
+        let help = String::from_utf8(output.stdout).unwrap();
+        for &text in expected {
+            assert!(help.contains(text), "{command}: missing {text:?}");
+        }
+    }
+    assert!(server.requests().is_empty());
+}
+
+fn sdlc_help_payload(output: &std::process::Output) -> (String, Value) {
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let help = String::from_utf8(output.stdout.clone()).unwrap();
+    let (_, example) = help
+        .split_once("JSON example (configured-cli-v1):")
+        .unwrap();
+    let payload = serde_json::Deserializer::from_str(example)
+        .into_iter::<Value>()
+        .next()
+        .unwrap()
+        .unwrap();
+    (help, payload)
+}
+
+#[tokio::test]
+async fn sdlc_question_publish_help_has_typed_example_without_network_or_owner_authority() {
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "question", "publish", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let question: domain::sdlc::PublishQuestion = serde_json::from_value(payload.clone()).unwrap();
+    assert!(payload.get("checkpoint_id").is_none());
+    assert_eq!(question.expected_question_version, None);
+    assert_eq!(question.mode, domain::sdlc::QuestionMode::Single);
+    assert_eq!(question.options.len(), 2);
+    assert_ne!(question.options[0].id, question.options[1].id);
+    assert_eq!(question.recommended_option_id, Some(question.options[0].id));
+    assert!(!question.text.is_empty());
+    assert!(help.contains("--from-file -"));
+    assert!(help.contains("current unconfirmed requirements revision must already exist"));
+    assert!(help.contains("free-form brainstorming until enough substantive product facts"));
+    assert!(help.contains("Never publish a placeholder merely to obtain a revision"));
+    assert!(help.contains("without native checkpoint_id"));
+    assert!(help.contains("PM cannot answer or confirm"));
+    assert!(!help.contains("fixture-token"));
+
+    let mut wrong = payload.clone();
+    let text = wrong.as_object_mut().unwrap().remove("text").unwrap();
+    wrong["question"] = text;
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(wrong).is_err());
+    let mut wrong = payload.clone();
+    wrong["options"] = json!(["Internal users", "External users"]);
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(wrong).is_err());
+
+    let mut legacy = payload;
+    legacy["checkpoint_id"] = json!("99999999-9999-4999-8999-999999999999");
+    assert!(serde_json::from_value::<domain::sdlc::PublishQuestion>(legacy).is_err());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_revision_publish_help_has_typed_working_document_without_owner_authority() {
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "revision", "publish", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let revision: domain::sdlc::PublishRevision = serde_json::from_value(payload).unwrap();
+    assert_eq!(revision.expected_requirement_revision, None);
+    let document = &revision.document;
+    app::sdlc::validate_document(document).unwrap();
+    assert!(document.goal.contains("personal browser task list"));
+    assert!(
+        document
+            .scope
+            .iter()
+            .any(|item| item.starts_with("Create a task"))
+    );
+    assert!(
+        document
+            .scope
+            .iter()
+            .any(|item| item.starts_with("Mark an existing task"))
+    );
+    assert!(
+        document
+            .acceptance_criteria
+            .iter()
+            .any(|item| item.starts_with("Reloading restores"))
+    );
+    assert!(help.contains("--from-file -"));
+    assert!(help.contains("current revision from context"));
+    assert!(help.contains("free-form brainstorming until enough substantive product facts"));
+    assert!(help.contains("Never publish a placeholder merely to obtain a revision"));
+    assert!(help.contains("not a PM-process document"));
+    assert!(!help.contains("Agree the first release scope with the owner"));
+    assert!(help.contains("PM must not call revision confirm"));
+    assert!(!help.contains("fixture-token"));
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_pm_completion_submit_help_has_closed_configured_example_without_network() {
+    use domain::sdlc_configured_cli::CompleteConfiguredPm;
+
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(&["sdlc", "pm", "completion", "submit", "--help"], None)
+        .await;
+    let (help, payload) = sdlc_help_payload(&output);
+    let completion: CompleteConfiguredPm = serde_json::from_value(payload.clone()).unwrap();
+    assert_eq!(completion.fence.assignment_version, 1);
+    assert_eq!(completion.requirement_revision, 2);
+    assert_eq!(completion.workflow_result_version, 4);
+    assert_ne!(
+        completion.fence.execution_id,
+        completion.workflow_execution_ref
+    );
+    assert_eq!(completion.content_hash, "a".repeat(64));
+    assert!(
+        serde_json::from_value::<domain::sdlc_reservation::CompletePmDraft>(payload.clone())
+            .is_err()
+    );
+    for text in [
+        "--from-file -",
+        "exact saved human-owner confirmation",
+        "complete=true result with the real terminal_receipt",
+        "Tracker execution_id is NOT Workflow execution_ref",
+        "singular",
+        "server-to-server",
+        "Historical completion remains readable",
+        "no blind resend or replacement key",
+        "completion operation --task TASK_UUID --key COMPLETION_KEY",
+        "completion read --task TASK_UUID",
+        "do not queue Analysis or dispatch Analyst",
+    ] {
+        assert!(help.contains(text), "missing help boundary: {text}");
+    }
+    assert!(!help.contains("fixture-token"));
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(json!({})).is_err());
+    let mut wrong = payload.clone();
+    let revision = wrong
+        .as_object_mut()
+        .unwrap()
+        .remove("requirement_revision")
+        .unwrap();
+    wrong["requirements_revision"] = revision;
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
+    let mut wrong = payload.clone();
+    wrong["terminal_receipt"] = json!({});
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
+    let mut wrong = payload;
+    wrong["lease_id"] = json!("77777777-7777-4777-8777-777777777777");
+    assert!(serde_json::from_value::<CompleteConfiguredPm>(wrong).is_err());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     let question = json!({
@@ -473,7 +676,6 @@ async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
         "question_id": "66666666-6666-6666-6666-666666666666",
         "expected_question_version": null,
         "requirement_revision": 3,
-        "checkpoint_id": "77777777-7777-7777-7777-777777777777",
         "requirement_reference": null,
         "text": "Choose one",
         "rationale": "blocks scope",
@@ -703,7 +905,7 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
     let payload = json!({"idempotency_key":"stable-key","content_hash":"a".repeat(64)});
-    let server = Server::start(vec![(201, json!({"task_id":TASK})); 6]).await;
+    let server = Server::start(vec![(201, json!({"task_id":TASK})); 4]).await;
     let cases = [
         (
             vec![
@@ -729,32 +931,6 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
                 "-",
             ],
             format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment"),
-        ),
-        (
-            vec![
-                "sdlc",
-                "pm",
-                "lease",
-                "claim",
-                "--task",
-                TASK,
-                "--from-file",
-                "-",
-            ],
-            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease"),
-        ),
-        (
-            vec![
-                "sdlc",
-                "pm",
-                "lease",
-                "heartbeat",
-                "--task",
-                TASK,
-                "--from-file",
-                "-",
-            ],
-            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease/heartbeat"),
         ),
         (
             vec![
@@ -801,10 +977,36 @@ async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
 }
 
 #[tokio::test]
+async fn sdlc_pm_retired_lease_commands_are_rejected_before_http() {
+    let server = Server::start(vec![]).await;
+    let output = server.run(&["sdlc", "pm", "--help"], None).await;
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    for supported in ["feedback", "assignment", "completion"] {
+        assert!(help.contains(supported));
+    }
+    assert!(
+        !help
+            .lines()
+            .any(|line| line.split_whitespace().next() == Some("lease"))
+    );
+    for operation in ["claim", "heartbeat", "read"] {
+        let output = server.run(&["sdlc", "pm", "lease", operation], None).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("unrecognized subcommand 'lease'")
+        );
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdlc_pm_unknown_acceptance_readbacks_preserve_keys_without_mutation() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
-    let server = Server::start(vec![(200, json!({"retained":true})); 5]).await;
+    let server = Server::start(vec![(200, json!({"retained":true})); 4]).await;
     let cases = [
         (
             vec![
@@ -830,14 +1032,6 @@ async fn sdlc_pm_unknown_acceptance_readbacks_preserve_keys_without_mutation() {
                 "lost key",
             ],
             format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment?idempotency_key=lost%20key"),
-        ),
-        (
-            vec![
-                "sdlc", "pm", "lease", "read", "--task", TASK, "--key", "lost key",
-            ],
-            format!(
-                "/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease?idempotency_key=lost%20key"
-            ),
         ),
         (
             vec![

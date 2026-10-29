@@ -127,10 +127,65 @@ impl ReadFixture {
             &self.blocker,
             &self.review,
             &self.review.reservation,
-            &self.lease,
+            if self.state.configured_cli() {
+                None
+            } else {
+                Some(&self.lease)
+            },
             self.now,
         )
     }
+}
+
+#[test]
+fn configured_pm_reads_only_the_selected_current_blocker_without_native_authority() {
+    let mut f = ReadFixture::new();
+    let subject = Uuid::new_v4().to_string();
+    f.state
+        .retained_fields
+        .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+    f.state.assignment.as_mut().unwrap().machine_subject = subject.clone();
+    f.review.reservation.assignment = f.state.assignment.clone().unwrap();
+    f.review.reservation.interaction_protocol =
+        Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1);
+    f.actor.subject = subject;
+    f.actor.scopes = ["task-tracker:read".into(), "task-tracker:write".into()].into();
+    f.lease.lease.expires_at = f.now - Duration::days(1);
+    assert!(f.allowed().is_ok());
+    for change in 0..4 {
+        let mut blocker = f.blocker.clone();
+        let mut actor = f.actor.clone();
+        match change {
+            0 => blocker.blocker_id = Uuid::new_v4(),
+            1 => blocker.pm_review.as_mut().unwrap().execution_id = Uuid::new_v4(),
+            2 => blocker.state = CriticalBlockerState::Resolved,
+            _ => actor.subject = Uuid::new_v4().to_string(),
+        }
+        assert!(
+            authorize_critical_pm_blocker_read(
+                &f.state,
+                &actor,
+                &blocker,
+                &f.review,
+                &f.review.reservation,
+                None,
+                f.now,
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        authorize_critical_pm_blocker_read(
+            &f.state,
+            &f.actor,
+            &f.blocker,
+            &f.review,
+            &f.review.reservation,
+            Some(&f.lease),
+            f.now,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -225,7 +280,13 @@ fn lease_expiry_future_time_wrong_holder_owner_and_every_fence_component_deny() 
     changed.owner_cas.version += 1;
     assert!(
         authorize_critical_pm_blocker_read(
-            &f.state, &f.actor, &f.blocker, &f.review, &changed, &f.lease, f.now
+            &f.state,
+            &f.actor,
+            &f.blocker,
+            &f.review,
+            &changed,
+            Some(&f.lease),
+            f.now
         )
         .is_err()
     );

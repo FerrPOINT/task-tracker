@@ -61,13 +61,14 @@ async fn session(
     let subject = claims["sub"].as_str().ok_or(StatusCode::UNAUTHORIZED)?;
     // Match the fresh role Auth assigns to the explicitly configured native
     // subjects. A machine JWT alone must never prove this role.
-    let machine = [
-        "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
-        "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
-        "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
-    ]
-    .iter()
-    .any(|key| std::env::var(key).is_ok_and(|value| value == subject));
+    let machine = subject == reservation::PM_SUBJECT
+        || [
+            "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
+            "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
+            "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+        ]
+        .iter()
+        .any(|key| std::env::var(key).is_ok_and(|value| value == subject));
     let role = if machine { "service_account" } else { "member" };
     Ok(Json(
         json!({"id":subject,"display_name":subject,"status":"active","role":role,"email":"owner@example.test"}),
@@ -255,6 +256,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         )
         .await;
     }
+    let (configured_project, configured_agent) = reservation::prepare(&db, &database_url).await;
     let unavailable = Arc::new(AtomicBool::new(false));
     let secret = SecretKey::from_slice(&[9u8; 32]).unwrap();
     let point = secret.public_key().to_encoded_point(false);
@@ -1120,6 +1122,14 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     stop.send(()).unwrap();
     handle.await.unwrap();
     unavailable.store(false, Ordering::SeqCst);
+    for member in [owner_id, operator_id] {
+        sql(
+            &db,
+            "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+            vec![configured_project.into(), member.into()],
+        )
+        .await;
+    }
     reservation::verify(
         config,
         reservation::Fixture {
@@ -1130,9 +1140,10 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
             owner: &owner,
             operator: &operator,
             owner_id,
-            project,
+            project: configured_project,
             unavailable,
         },
+        configured_agent,
     )
     .await;
     auth_handle.abort();

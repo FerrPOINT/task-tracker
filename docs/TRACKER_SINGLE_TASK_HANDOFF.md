@@ -1,5 +1,9 @@
 # Tracker single-task lifecycle: producer handoff
 
+Historical producer handoff. Its native PM lease CLI/API examples no longer
+apply to the current fileless producer. See the [current configured contract](contracts/CONFIGURED_CLI_V1.md),
+including the coordinated Fleet/Workflow replacement and retained-history limits.
+
 Baseline: `9eac790a332d9501511d8cac2a3ef0f3ac7ddc23`.
 This is source implementation for parent integration, not live acceptance.
 No Cargo, PostgreSQL, Docker, Fleet run or Workflow run was executed here.

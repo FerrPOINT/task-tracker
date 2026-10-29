@@ -28,6 +28,14 @@ mod m20261013_0000096_single_task_delivery;
 mod m20261017_0000097_task_source_binding;
 mod m20261018_0000098_pm_unsubmitted_recovery;
 mod m20261021_0000099_pm_bootstrap_retry;
+mod m20261023_0000103_pm_settled_input_recovery;
+mod m20261026_0000104_pm_manual_recovery_budget;
+mod m20261026_0000105_configured_cli;
+pub mod m20261027_0000106_configured_stage_comments;
+pub mod m20261027_0000107_configured_business_history;
+mod m20261027_0000108_configured_critical_lifecycle;
+mod m20261028_0000109_configured_initial_adoption;
+mod m20261028_0000110_configured_checkpoint_absence;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -128,6 +136,14 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261021_0000101_native_sdlc_spaces::Migration),
             Box::new(m20261022_0000102_request_commit_clock::Migration),
             Box::new(m20261022_0000103_identity_deletion::Migration),
+            Box::new(m20261023_0000103_pm_settled_input_recovery::Migration),
+            Box::new(m20261026_0000104_pm_manual_recovery_budget::Migration),
+            Box::new(m20261026_0000105_configured_cli::Migration),
+            Box::new(m20261027_0000106_configured_stage_comments::Migration),
+            Box::new(m20261027_0000107_configured_business_history::Migration),
+            Box::new(m20261027_0000108_configured_critical_lifecycle::Migration),
+            Box::new(m20261028_0000109_configured_initial_adoption::Migration),
+            Box::new(m20261028_0000110_configured_checkpoint_absence::Migration),
         ]
     }
 }

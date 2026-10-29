@@ -75,17 +75,12 @@ async fn authority(
     actor: &Principal,
     write: bool,
 ) -> Result<Authority, AppError> {
-    let grant = if write {
-        Some(app::sdlc_lifecycle::producer(actor, true)?)
-    } else if let Some(grant) = app::sdlc_lifecycle::delivery_grant(actor)? {
-        app::sdlc_lifecycle::producer(actor, false)?;
-        Some(grant)
-    } else {
-        app::sdlc_lifecycle::scheduler_read(actor, config)?;
-        None
-    };
-    if grant.as_ref().is_some_and(|grant| grant.task_id != task) {
+    let scheduler = app::sdlc_lifecycle::scheduler_read(actor, config).is_ok();
+    if scheduler && write {
         return Err(AppError::Forbidden);
+    }
+    if !scheduler && !app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
     }
     let issue = tx
         .query_one(statement(
@@ -141,6 +136,15 @@ async fn authority(
         "receipt",
     )?;
     super::lifecycle::exact_revision(&state, &head)?;
+    let grant = if scheduler {
+        None
+    } else {
+        Some(app::sdlc_lifecycle::assigned_producer(actor, &head, write)?)
+    };
+    if grant.as_ref().is_some_and(|grant| grant.task_id != task) {
+        return Err(AppError::Forbidden);
+    }
+    super::spaces::bind_task(tx, config, &state, actor).await?;
     if head.task.routing.contract_version != 2 {
         return Err(AppError::conflict("single-task artifact routing required"));
     }
@@ -458,7 +462,6 @@ pub(crate) async fn list(
     actor: &Principal,
     issue: IssueId,
 ) -> Result<Vec<domain::Attachment>, AppError> {
-    app::sdlc_lifecycle::producer(actor, false)?;
     let tx = db.begin().await.map_err(map_db)?;
     let auth = authority(&tx, config, issue.as_uuid(), actor, false).await?;
     let models = attachment::Entity::find()
@@ -488,6 +491,26 @@ pub(crate) async fn download(
     if app::sdlc::has_pm_grant(&actor.scopes) {
         return super::critical_blockers::pm_evidence::download(db, config, actor, id, storage)
             .await;
+    }
+    if app::sdlc_configured_cli::authorize_configured_identity(actor).is_ok() {
+        // Select the read policy from current business state, not a display role
+        // or a failed technical read. The PM policy rechecks full custody and
+        // fresh ACL on both sides of blob I/O before returning any data.
+        let row = db
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM attachments a
+            JOIN sdlc_tasks t ON t.task_id=a.issue_id WHERE a.id=$1
+            AND t.state->>'interaction_protocol'='configured-cli-v1' AND t.state->>'stage'='Draft'
+            AND t.state->'assignment'->>'machine_subject'=$2) AS pm",
+                vec![id.as_uuid().into(), actor.subject.clone().into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        if row.try_get::<bool>("", "pm").map_err(map_db)? {
+            return super::critical_blockers::pm_evidence::download(db, config, actor, id, storage)
+                .await;
+        }
     }
     let tx = db.begin().await.map_err(map_db)?;
     let model = attachment::Entity::find_by_id(id.as_uuid())

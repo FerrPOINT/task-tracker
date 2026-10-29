@@ -35,6 +35,7 @@ enum DuringIo {
 struct ObservedStorage<'a> {
     storage: &'a dyn domain::FileStorage,
     f: &'a Fixture,
+    pm_subject: &'a str,
     action: DuringIo,
     calls: AtomicUsize,
 }
@@ -64,8 +65,8 @@ impl domain::FileStorage for ObservedStorage<'_> {
                     exec(
                         &self.f.db,
                         "DELETE FROM project_members WHERE project_id=$1
-                    AND user_id=(SELECT id FROM users WHERE central_sub='pm')",
-                        vec![self.f.project.into()],
+                    AND user_id=(SELECT id FROM users WHERE central_sub=$2)",
+                        vec![self.f.project.into(), self.pm_subject.into()],
                     )
                     .await?
                 }
@@ -101,6 +102,7 @@ pub(super) async fn check(
     let observed = ObservedStorage {
         storage,
         f,
+        pm_subject: &pm.subject,
         action: DuringIo::None,
         calls: AtomicUsize::new(0),
     };
@@ -184,6 +186,7 @@ pub(super) async fn check(
         let observed = ObservedStorage {
             storage,
             f,
+            pm_subject: &pm.subject,
             action,
             calls: AtomicUsize::new(0),
         };
@@ -204,8 +207,8 @@ pub(super) async fn check(
             DuringIo::ProjectRevoked => exec(
                 &f.db,
                 "INSERT INTO project_members(project_id,user_id,role)
-                SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",
-                vec![f.project.into()],
+                SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+                vec![f.project.into(), pm.subject.clone().into()],
             )
             .await
             .unwrap(),

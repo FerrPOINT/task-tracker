@@ -1,0 +1,57 @@
+{
+  "scope": "Synthetic project repository migration compatibility; test-only correction for 105-110",
+  "candidate": "1bf15ce324913a6dc58f083f39337a0a7b569fc5",
+  "candidate_tree": "3ce0dbdc7e9ccbff01c7ad12759a3593f2b29fcb",
+  "parent": "c2a8696f4d9f175beea0f5429e68cfef7aa8b788",
+  "test_file": "backend/migration/src/project_repository_tests.rs",
+  "test_file_git_blob": "d3ff9a1da8c3ffd0dfbb9b012488eaea748f9f25",
+  "cargo_lock_git_blob": "e235cb6c92aa606577d967253df8ffe72da4c17c",
+  "sdk": "ed61ec63b58fe9b60d8669c85de5ac6b5bec872b",
+  "runner_image": "sha256:aafd9cdb24687f9bd7142b8f9270ceafb179f3efb9f3b9ee352fa644bb3cc55b",
+  "postgres_image": "sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94",
+  "command": "cargo test --release --locked --offline -j2 -p migration --lib project_repository_tests::<case> -- --exact --ignored --test-threads=1",
+  "database_policy": "Five distinct fresh disposable *_pdlc4_compat_test databases; synthetic seeds only; no database copies",
+  "cases": [
+    {
+      "name": "project_compat_legacy_preserves_links_and_ledger_without_invented_task_links",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "d9e11174b5f9e54a22e64c181ff1a8a272c222565a1c37ce0c8a6d0c5cd5ecf6"
+    },
+    {
+      "name": "project_compat_published_source_history_remains_valid",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "50b764ee5df77ba9e60846bdd822a431f2e74fd65051adab4793d06dc8c8ad21"
+    },
+    {
+      "name": "project_compat_fresh_and_unknown_history",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "db0c48f571247d80338fe9325a8965630aa0662ec3a64ce29a7bc776670807ae"
+    },
+    {
+      "name": "project_compat_catalog_before_pm_history_remains_valid",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "d0f6bf5efff4ed69e4e7fdd06bb2f7dd8ec75cb0b998bbdb8820991a503464a9"
+    },
+    {
+      "name": "project_compat_legacy_catalog_before_pm_history_remains_valid",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "b62eb945aacc06e3910311a40f468c50f0df17c74e3bc05d5d588859dfb8d82a"
+    }
+  ],
+  "migration_fmt_exit_code": 0,
+  "compose_project": "sdlc-qa-tracker193-compat-7aab52b386",
+  "cleanup": "ComposeHelper v2 completed; own containers, network and disposable database/source/work volumes removed; external caches preserved",
+  "logs": ".local/project-compat-qa/run-dab94a4bc4/evidence",
+  "production_changes": false,
+  "runtime_acceptance_claimed": false
+}

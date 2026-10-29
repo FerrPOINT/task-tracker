@@ -1,4 +1,4 @@
-use domain::sdlc::{Confirmation, MAX_SAFE_VERSION, Principal, Stage, TaskState};
+use domain::sdlc::{Confirmation, MAX_SAFE_VERSION, Principal, TaskState};
 use shared::AppError;
 use uuid::Uuid;
 
@@ -31,7 +31,9 @@ pub fn is_confirmation_read(method: &str, resource: &[&str]) -> bool {
 
 pub fn authorize_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
     crate::sdlc::authorize_pm_read(state, actor)?;
-    if crate::sdlc::pm_grant_task(actor)?.is_some() {
+    if crate::sdlc::pm_grant_task(actor)?.is_some()
+        || (state.configured_cli() && !actor.trusted_human)
+    {
         if !actor.scopes.contains("task-tracker:read") {
             return Err(AppError::Forbidden);
         }
@@ -75,7 +77,7 @@ pub fn exact_receipt(
         || receipt.id.is_nil()
         || receipt.task_id != state.task_id
         || receipt.revision != revision
-        || receipt.stage != Stage::Backlog
+        || receipt.stage != state.confirmation_stage()
         || receipt.owner_subject.trim().is_empty()
         || receipt.owner_subject != state.owner_subject
         || receipt.content_hash != requirement.content_hash

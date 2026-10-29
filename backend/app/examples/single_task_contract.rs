@@ -123,6 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cycle,
             attempt: 1,
             agent_id: route.agent_id,
+            machine_subject: None,
             routing: routing.clone(),
             previous_result_id,
             fencing_token: 1,

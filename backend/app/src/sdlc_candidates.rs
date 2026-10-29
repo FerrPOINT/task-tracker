@@ -31,7 +31,7 @@ pub fn candidate(
     current: Option<&LifecycleReceipt>,
     pm_completed: bool,
 ) -> Result<Option<DeliveryCandidate>, AppError> {
-    if state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
+    if state.configured_cli() || state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
         return Ok(None);
     }
     state.require_root()?;

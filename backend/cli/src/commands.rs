@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_commands.rs"]
 mod critical_commands;
+#[path = "sdlc_discussion_commands.rs"]
+mod discussion_commands;
 #[path = "sdlc_pm_commands.rs"]
 mod pm_commands;
 
@@ -211,12 +213,20 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Read the complete discussion or publish/reconcile an ordinary final comment
+    Discussion {
+        #[command(subcommand)]
+        command: discussion_commands::DiscussionCommand,
+    },
     /// Propose or reconcile a critical business question without advancing the task
     CriticalBlocker {
         #[command(subcommand)]
         command: critical_commands::CriticalBlockerCommand,
     },
     /// Read the current authoritative single-task assignment and lifecycle
+    #[command(
+        after_long_help = "This is the legacy delivery lifecycle readback, not a configured-cli-v1 PM startup prerequisite.\nFor configured PM work, read `task-tracker sdlc context --task TASK_UUID` and use its\nworkflow_task_key with `project-workflow --json step --task WORKFLOW_TASK_KEY`.\nDo not acquire a native lease, rebind or borrow another token to make this optional\nlegacy read succeed. A 403 here alone does not invalidate successful configured\ncontext/Workflow reads; authorization failures on required commands remain blockers.\nLegacy delivery callers retain this command and its existing authorization contract."
+    )]
     Lifecycle {
         #[arg(long)]
         task: Uuid,
@@ -247,6 +257,9 @@ pub enum SdlcCommand {
         command: pm_commands::PmCommand,
     },
     /// Read server-derived SDLC task context by canonical issue UUID
+    #[command(
+        after_long_help = "For interaction_protocol=configured-cli-v1, start PM work with this context read.\nUse the returned workflow_task_key (SDLC-N), not the Tracker task UUID, with\n`project-workflow --json step --task WORKFLOW_TASK_KEY` in the configured environment.\nRead the real Workflow step before work; no native lifecycle read, lease or rebind\nis required for configured PM dialogue. requirement_revision=null is expected\nbefore the first saved requirements document: continue substantive brainstorming,\nthen publish a real working revision when enough product facts are known.\npermissions.can_answer and permissions.can_confirm describe owner-only actions.\nBoth may be false for the assigned PM; they do not prohibit publishing questions\nor requirements under the current assignment. PM service identity must never\nanswer or confirm as the owner. A real 403 on publication remains a blocker.\nDo not publish a placeholder just to remove an expected absence. Missing Workflow\nbinding or denied context/Workflow access remains a blocker; never invent IDs."
+    )]
     Context {
         #[arg(long)]
         task: Uuid,
@@ -262,6 +275,9 @@ pub enum SdlcCommand {
         task: Uuid,
     },
     /// Read current requirements revision by canonical issue UUID
+    #[command(
+        after_long_help = "Read `task-tracker sdlc context --task TASK_UUID` first. For a new configured-cli-v1\nPM Draft, requirement_revision=null means no requirements document is saved yet.\nA 404 from this requirements read is expected ONLY when the successful authorized\ncontext read for the SAME task shows no first revision; it is not by itself a\ngeneral tool/configuration blocker. Continue brainstorming and publish a real\nworking revision when substantive product facts are sufficient, never a placeholder.\nIf context names a saved revision, a 404 is NOT explained by this initial absence.\nDo not ignore denied access, a missing task or other inconsistent readbacks."
+    )]
     Requirements {
         #[arg(long)]
         task: Uuid,
@@ -358,6 +374,59 @@ pub enum SdlcAnalysisResultCommand {
 #[derive(Subcommand)]
 pub enum SdlcQuestionCommand {
     /// Publish a clarification question JSON payload from a file or stdin
+    #[command(
+        after_long_help = r#"Read `task-tracker sdlc context --task TASK_UUID` first. Copy the current
+assignment_id, execution_id, agent_id and assignment version into fence.
+The current unconfirmed requirements revision must already exist: publish a
+working revision with `sdlc revision publish` before asking a formal question.
+Continue free-form brainstorming until enough substantive product facts are known.
+Never publish a placeholder merely to obtain a revision for a question.
+Use its actual requirement_revision, not the illustrative value below.
+Generate stable request/question/option UUIDs once for this logical question.
+Use expected_question_version=null for a new question; updates use its current
+version and request_id. Repeat an uncertain operation with the same key/payload.
+The field is text, not question. Options are objects, not strings. Mode is
+single, multiple or text; text requires options=[] and no recommendation.
+Questions use the current assignment, without native checkpoint_id.
+Never invent a checkpoint or copy the sample identities.
+PM cannot answer or confirm on behalf of the human owner.
+Pipe the JSON into `task-tracker sdlc question publish --task TASK_UUID --from-file -`.
+
+JSON example (configured-cli-v1):
+{
+  "fence": {
+    "assignment_id": "22222222-2222-4222-8222-222222222222",
+    "execution_id": "33333333-3333-4333-8333-333333333333",
+    "agent_id": "44444444-4444-4444-8444-444444444444",
+    "assignment_version": 1
+  },
+  "request_id": "55555555-5555-4555-8555-555555555555",
+  "question_id": "66666666-6666-4666-8666-666666666666",
+  "expected_question_version": null,
+  "requirement_revision": 1,
+  "requirement_reference": null,
+  "text": "Which audience should the first release serve?",
+  "rationale": "The audience determines the initial scope.",
+  "required": true,
+  "mode": "single",
+  "options": [
+    {
+      "id": "77777777-7777-4777-8777-777777777777",
+      "label": "Internal users",
+      "consequences": "Prioritize existing employee workflows.",
+      "is_custom": false
+    },
+    {
+      "id": "88888888-8888-4888-8888-888888888888",
+      "label": "External users",
+      "consequences": "Include public onboarding in the initial scope.",
+      "is_custom": false
+    }
+  ],
+  "recommended_option_id": "77777777-7777-4777-8777-777777777777",
+  "idempotency_key": "example-question-1"
+}"#
+    )]
     Publish {
         #[arg(long)]
         task: Uuid,
@@ -369,6 +438,63 @@ pub enum SdlcQuestionCommand {
 #[derive(Subcommand)]
 pub enum SdlcRevisionCommand {
     /// Publish a requirements revision JSON payload from a file or stdin
+    #[command(
+        after_long_help = r#"Read `task-tracker sdlc context --task TASK_UUID` first and copy the current
+assignment fence. All identities and document content below are illustrative.
+For the first working revision use expected_requirement_revision=null; for an
+update use the current revision from context. Keep the same key/payload on an
+uncertain outcome. The server returns the new revision and content_hash.
+A working revision may precede formal questions, but must contain real product
+requirements grounded in known facts, not a PM-process document.
+Continue free-form brainstorming until enough substantive product facts are known.
+Never publish a placeholder merely to obtain a revision for a question.
+The product below is a syntax example, not a decision for your task.
+Required open questions must be resolved before publishing a later revision.
+Document checklist/prerequisites
+are business content, not fabricated infrastructure verification receipts.
+This command publishes requirements; it does not confirm them. Confirmation is
+owner-only: PM must not call revision confirm or fabricate human consent.
+Pipe the JSON into `task-tracker sdlc revision publish --task TASK_UUID --from-file -`.
+
+JSON example (configured-cli-v1):
+{
+  "fence": {
+    "assignment_id": "22222222-2222-4222-8222-222222222222",
+    "execution_id": "33333333-3333-4333-8333-333333333333",
+    "agent_id": "44444444-4444-4444-8444-444444444444",
+    "assignment_version": 1
+  },
+  "expected_requirement_revision": null,
+  "document": {
+    "goal": "Keep a personal browser task list without losing tasks after reload.",
+    "scope": [
+      "Create a task with user-entered text.",
+      "Mark an existing task as completed.",
+      "Persist task text and completion state across browser reloads."
+    ],
+    "exclusions": [],
+    "scenarios": [
+      "The user enters a task and sees it in the list.",
+      "The user completes one task while other tasks remain unchanged.",
+      "The user reloads the page and continues using the saved list."
+    ],
+    "acceptance_criteria": [
+      "Creating a task adds exactly one incomplete item with the entered text.",
+      "Completing a task marks that item completed without removing other items.",
+      "Reloading restores the same task texts and completion states."
+    ],
+    "constraints": [],
+    "dependencies": [],
+    "assumptions": [],
+    "checklist": [
+      "Task text remains visible after completion.",
+      "Reload preserves both incomplete and completed tasks."
+    ],
+    "prerequisites": ["The browser permits storage for this site."]
+  },
+  "idempotency_key": "example-revision-1"
+}"#
+    )]
     Publish {
         #[arg(long)]
         task: Uuid,
@@ -421,6 +547,7 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Discussion { command } => discussion_commands::execute(api, command).await,
         SdlcCommand::CriticalBlocker { command } => {
             critical_commands::critical_blocker(api, command).await
         }

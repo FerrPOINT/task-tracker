@@ -65,6 +65,35 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError> {
+        // Exact original-key replay is a read of retained authority. It must
+        // survive a later assignment while current project access is rechecked.
+        match self
+            .lifecycle_repository()?
+            .delivery_proposal_operation(task, actor, &command.idempotency_key)
+            .await
+        {
+            Ok(_) => {
+                return self
+                    .lifecycle_repository()?
+                    .submit_delivery_proposal(task, actor, command)
+                    .await;
+            }
+            Err(AppError::NotFound(_)) => {}
+            Err(error) => return Err(error),
+        }
+        let state = self.repository.read(task, actor).await?;
+        if state.configured_cli() {
+            let lifecycle = self
+                .lifecycle_repository()?
+                .lifecycle_read(task, actor)
+                .await?;
+            let reader = self.configured_workflow.as_ref().ok_or_else(|| {
+                AppError::Unavailable("Workflow receipt reader is not configured".into())
+            })?;
+            reader
+                .read_delivery(&state, &lifecycle.receipt, &command.workflow_receipt)
+                .await?;
+        }
         self.lifecycle_repository()?
             .submit_delivery_proposal(task, actor, command)
             .await
@@ -292,6 +321,29 @@ pub fn delivery_grant(actor: &Principal) -> Result<Option<DeliveryGrant>, AppErr
     }))
 }
 
+/// Validate an immutable proposal against its original permanent identity, not
+/// the later active assignment. The repository separately rechecks project ACL.
+pub fn authorize_configured_proposal_receipt(
+    actor: &Principal,
+    receipt: &DeliveryProposalReceipt,
+    assignment: &DeliveryAssignment,
+    owner: &str,
+) -> Result<(), AppError> {
+    crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
+    if receipt.producer_subject != actor.subject
+        || assignment.machine_subject.as_deref() != Some(actor.subject.as_str())
+        || assignment.owner_subject != owner
+        || actor.subject == owner
+        || receipt.task_id != assignment.task_id
+        || receipt.assignment_id != assignment.assignment_id
+        || receipt.execution_id != assignment.execution_id
+        || receipt.agent_id != assignment.agent_id
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
 pub fn authorize_delivery_assignment(
     grant: &DeliveryGrant,
     assignment: &DeliveryAssignment,
@@ -350,6 +402,34 @@ pub fn producer(actor: &Principal, write: bool) -> Result<DeliveryGrant, AppErro
         return Err(AppError::Forbidden);
     }
     delivery_grant(actor)?.ok_or(AppError::Forbidden)
+}
+
+/// A configured agent is authorized by the permanent identity frozen in the
+/// current assignment, independently of the scheduler's lease identity.
+pub fn assigned_producer(
+    actor: &Principal,
+    head: &LifecycleReceipt,
+    write: bool,
+) -> Result<DeliveryGrant, AppError> {
+    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    if let Some(subject) = &assignment.machine_subject {
+        crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        if subject != &actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        Ok(DeliveryGrant {
+            task_id: assignment.task_id,
+            assignment_id: assignment.assignment_id,
+            execution_id: assignment.execution_id,
+            agent_id: assignment.agent_id,
+            fencing_token: assignment.fencing_token,
+        })
+    } else if !write {
+        // Historical producer grants only read their retained results.
+        producer(actor, false)
+    } else {
+        Err(AppError::Forbidden)
+    }
 }
 
 pub fn scheduler_read(

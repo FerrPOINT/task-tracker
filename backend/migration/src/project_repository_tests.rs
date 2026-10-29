@@ -42,6 +42,14 @@ impl MigratorTrait for CatalogBeforePmRecovery {
                         | "m20261021_0000101_native_sdlc_spaces"
                         | "m20261022_0000102_request_commit_clock"
                         | "m20261022_0000103_identity_deletion"
+                        | "m20261023_0000103_pm_settled_input_recovery"
+                        | "m20261026_0000104_pm_manual_recovery_budget"
+                        | "m20261026_0000105_configured_cli"
+                        | "m20261027_0000106_configured_stage_comments"
+                        | "m20261027_0000107_configured_business_history"
+                        | "m20261027_0000108_configured_critical_lifecycle"
+                        | "m20261028_0000109_configured_initial_adoption"
+                        | "m20261028_0000110_configured_checkpoint_absence"
                 )
             })
             .collect()
@@ -63,6 +71,14 @@ impl MigratorTrait for LegacyCatalogBeforePmRecovery {
                         | "m20261021_0000101_native_sdlc_spaces"
                         | "m20261022_0000102_request_commit_clock"
                         | "m20261022_0000103_identity_deletion"
+                        | "m20261023_0000103_pm_settled_input_recovery"
+                        | "m20261026_0000104_pm_manual_recovery_budget"
+                        | "m20261026_0000105_configured_cli"
+                        | "m20261027_0000106_configured_stage_comments"
+                        | "m20261027_0000107_configured_business_history"
+                        | "m20261027_0000108_configured_critical_lifecycle"
+                        | "m20261028_0000109_configured_initial_adoption"
+                        | "m20261028_0000110_configured_checkpoint_absence"
                 )
             })
             .collect()
@@ -121,7 +137,7 @@ async fn project_compat_legacy_preserves_links_and_ledger_without_invented_task_
         .await,
         serde_json::json!(0)
     );
-    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_pm_unsubmitted_recovery','m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion')").await);
+    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_pm_unsubmitted_recovery','m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion','m20261023_0000103_pm_settled_input_recovery','m20261026_0000104_pm_manual_recovery_budget','m20261026_0000105_configured_cli','m20261027_0000106_configured_stage_comments','m20261027_0000107_configured_business_history','m20261027_0000108_configured_critical_lifecycle','m20261028_0000109_configured_initial_adoption','m20261028_0000110_configured_checkpoint_absence')").await);
     let once = value(
         &db,
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m",
@@ -158,7 +174,7 @@ async fn project_compat_published_source_history_remains_valid() {
     )
     .await;
     Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion')").await);
+    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_project_repository_catalog','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion','m20261023_0000103_pm_settled_input_recovery','m20261026_0000104_pm_manual_recovery_budget','m20261026_0000105_configured_cli','m20261027_0000106_configured_stage_comments','m20261027_0000107_configured_business_history','m20261027_0000108_configured_critical_lifecycle','m20261028_0000109_configured_initial_adoption','m20261028_0000110_configured_checkpoint_absence')").await);
     assert_eq!(value(&db,"SELECT to_jsonb(count(*)) AS v FROM seaql_migrations WHERE version='m20261016_0000096_project_repositories'").await,serde_json::json!(0));
 }
 
@@ -178,7 +194,7 @@ async fn assert_catalog_before_pm_history(db: &DatabaseConnection) {
     .await;
     Migrator::up(db, None).await.unwrap();
     assert_eq!(ledger_before, value(db,
-        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_pm_unsubmitted_recovery','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion')").await);
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261018_0000098_pm_unsubmitted_recovery','m20261021_0000099_pm_bootstrap_retry','m20261019_0000099_unified_spaces','m20261021_0000100_human_sdlc_spaces','m20261021_0000101_native_sdlc_spaces','m20261022_0000102_request_commit_clock','m20261022_0000103_identity_deletion','m20261023_0000103_pm_settled_input_recovery','m20261026_0000104_pm_manual_recovery_budget','m20261026_0000105_configured_cli','m20261027_0000106_configured_stage_comments','m20261027_0000107_configured_business_history','m20261027_0000108_configured_critical_lifecycle','m20261028_0000109_configured_initial_adoption','m20261028_0000110_configured_checkpoint_absence')").await);
     assert_eq!(links, value(db,
         "SELECT jsonb_agg(to_jsonb(p) ORDER BY repository_id) AS v FROM project_repository_links p").await);
     assert_eq!(value(db,

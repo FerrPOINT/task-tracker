@@ -1,16 +1,13 @@
 //! Companion only. Every entry uses the caller's already locked transaction; never commits it.
 use super::*;
 use app::sdlc_critical_pm_lifecycle::{
-    prepare_critical_pm_command, prepare_critical_pm_completion,
+    prepare_configured_critical_pm_completion, prepare_critical_pm_command,
 };
 use domain::sdlc_critical_blockers::{CriticalBlockerReceipt, CriticalBlockerState};
 use domain::sdlc_critical_pm_lifecycle::*;
 use domain::sdlc_critical_pm_reservation::CriticalPmReservationResult;
-use domain::sdlc_execution_lease::{
-    ClaimExecutionLease, ExecutionLeaseReceipt, ResumePmExecutionLease,
-};
-use domain::sdlc_lifecycle::{LifecycleReceipt, LifecycleStatus, RuntimeState};
-use domain::sdlc_reservation::{CompletePmDraft, PmDraftCompletionReceipt};
+use domain::sdlc_execution_lease::ExecutionLeaseReceipt;
+use domain::sdlc_lifecycle::LifecycleReceipt;
 use domain::sdlc_routing::TaskRoutingSnapshot;
 
 fn inconsistent() -> AppError {
@@ -34,7 +31,7 @@ impl Review {
     fn source<'a>(
         &'a self,
         state: &'a TaskState,
-        execution: CriticalPmExecutionContext<'a>,
+        observed_at: chrono::DateTime<chrono::Utc>,
     ) -> CriticalPmLifecycleSource<'a> {
         CriticalPmLifecycleSource {
             state,
@@ -43,14 +40,7 @@ impl Review {
             blocker: &self.blocker,
             initial_pm_assignment: &self.initial_pm,
             initial_routing: &self.initial_routing,
-            execution,
-        }
-    }
-    fn before(&self, state: &TaskState) -> CriticalPmProjection {
-        CriticalPmProjection {
-            state: state.clone(),
-            lifecycle: self.lifecycle.clone(),
-            blocker: self.blocker.clone(),
+            observed_at,
         }
     }
 }
@@ -80,6 +70,18 @@ async fn owner_access(tx: &DatabaseTransaction, state: &TaskState) -> Result<(),
 }
 
 impl PostgresSdlcRepository {
+    pub(super) async fn configured_review_context(
+        &self,
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+    ) -> Result<Option<domain::sdlc_critical_pm_reservation::CriticalPmReviewContext>, AppError>
+    {
+        Ok(self
+            .current_critical_pm_review(tx, state, None)
+            .await?
+            .map(|review| review.saved.context))
+    }
+
     async fn current_critical_pm_review(
         &self,
         tx: &DatabaseTransaction,
@@ -230,9 +232,9 @@ impl PostgresSdlcRepository {
         if app::sdlc::command_hash(command)? != request_sha256 {
             return Err(inconsistent());
         }
-        let lease = Self::lease_current(tx, &review.saved.reservation)
-            .await?
-            .ok_or_else(inconsistent)?;
+        if !state.configured_cli() {
+            return Err(AppError::conflict("retired PM review is read only"));
+        }
         let now = super::execution_lease::clock(tx).await?;
         let generated = matches!(
             command,
@@ -240,13 +242,7 @@ impl PostgresSdlcRepository {
         )
         .then(Uuid::now_v7);
         let plan = prepare_critical_pm_command(
-            review.source(
-                state,
-                CriticalPmExecutionContext::Open {
-                    lease: &lease,
-                    observed_at: now,
-                },
-            ),
+            review.source(state, now),
             actor,
             &self.config,
             command,
@@ -264,10 +260,12 @@ impl PostgresSdlcRepository {
             request_sha256,
             &serde_json::to_value(command).map_err(AppError::internal)?,
             &plan.result,
-            &lease,
+            None,
+            review.saved.reservation.owner_cas.version,
             &plan.before,
             &plan.after,
             event_id,
+            None,
             None,
         )
         .await?;
@@ -301,205 +299,48 @@ impl PostgresSdlcRepository {
         Ok(Some(plan.result))
     }
 
-    pub(super) async fn project_critical_pm_claim(
+    /// Parent has verified the saved Workflow result and prepared this receipt in this transaction.
+    /// The common configured completion row is already inserted by the caller.
+    /// Its lifecycle effects share that transaction and never enqueue Analyst.
+    pub(super) async fn finalize_configured_critical_pm_review(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
         actor: &Principal,
-        command: &ClaimExecutionLease,
-        request_sha256: &str,
-        receipt: &ExecutionLeaseReceipt,
-    ) -> Result<Option<()>, AppError> {
+        command: &domain::sdlc_configured_cli::CompleteConfiguredPm,
+        result: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    ) -> Result<bool, AppError> {
         let Some(review) = self.current_critical_pm_review(tx, state, None).await? else {
-            return Ok(None);
+            return Ok(false);
         };
-        if app::sdlc::canonical_hash(
-            &json!({"operation":"claim_pm_execution_lease","payload":command}),
-        )? != request_sha256
-            || actor.human_session
-            || actor.trusted_human
-        {
-            return Err(inconsistent());
-        }
-        super::execution_lease::valid_receipt(receipt, &review.saved.reservation)?;
-        super::execution_lease::check_fence(
-            &review.saved.reservation,
-            command.expected_owner_version,
-            &command.fence,
-        )?;
-        if actor.subject != review.saved.reservation.assignment.machine_subject
-            || !actor
-                .scopes
-                .contains(&review.saved.reservation.assignment.scope(state.task_id))
-            || receipt.lease.version != 1
-        {
-            return Err(inconsistent());
-        }
-        lease_projection(
-            tx,
-            actor,
-            "claim",
-            &command.idempotency_key,
-            request_sha256,
-            &serde_json::to_value(command).map_err(AppError::internal)?,
-            receipt,
-            review.before(state),
-        )
-        .await?;
-        Ok(Some(()))
-    }
-
-    /// Replaces only the old unconditional delivery-head overlap and stage validation for this review.
-    pub(super) async fn allow_critical_pm_retained_head(
-        &self,
-        tx: &DatabaseTransaction,
-        state: &TaskState,
-        command: &ResumePmExecutionLease,
-    ) -> Result<Option<()>, AppError> {
-        let Some(review) = self.current_critical_pm_review(tx, state, None).await? else {
-            return Ok(None);
-        };
-        app::sdlc_pm_resume::validate_command(command)?;
-        super::execution_lease::check_fence(
-            &review.saved.reservation,
-            command.expected_owner_version,
-            &command.checkpoint.fence,
-        )?;
-        if command.checkpoint.requirement_revision != state.current_revision()
-            || command.checkpoint.content_hash.as_deref()
-                != state.revisions.last().map(|r| r.content_hash.as_str())
-            || matches!(
-                command.input,
-                domain::sdlc_execution_lease::PmResumeInput::Confirmation { .. }
-            ) && review.lifecycle.task.waiting_reason.as_deref() != Some(PM_FINALIZATION_REASON)
-        {
-            return Err(inconsistent());
-        }
-        let allowed = tx
-            .query_one(statement(
-                "SELECT sdlc_critical_pm_retained_head_allowed($1,$2) AS allowed",
-                vec![
-                    state.task_id.into(),
-                    review.saved.reservation.assignment.execution_id.into(),
-                ],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or_else(inconsistent)?;
-        if !allowed.try_get::<bool>("", "allowed").map_err(map_db)? {
-            return Err(inconsistent());
-        }
-        Ok(Some(()))
-    }
-
-    pub(super) async fn project_critical_pm_resume(
-        &self,
-        tx: &DatabaseTransaction,
-        state: &TaskState,
-        actor: &Principal,
-        command: &ResumePmExecutionLease,
-        request_sha256: &str,
-        receipt: &ExecutionLeaseReceipt,
-    ) -> Result<Option<()>, AppError> {
-        app::sdlc_reservation::scheduler(actor, &self.config)?;
-        if actor.trusted_human {
-            return Err(AppError::Forbidden);
-        }
-        let Some(review) = self.current_critical_pm_review(tx, state, None).await? else {
-            return Ok(None);
-        };
-        if app::sdlc_pm_resume::request_hash(command)? != request_sha256 {
-            return Err(inconsistent());
-        }
-        super::execution_lease::valid_receipt(receipt, &review.saved.reservation)?;
-        if command.lease_id != receipt.lease.lease_id
-            || command.expected_lease_version.checked_add(1) != Some(receipt.lease.version)
-            || command.checkpoint.fence != receipt.fence
-        {
-            return Err(inconsistent());
-        }
-        lease_projection(
-            tx,
-            actor,
-            "resume",
-            &command.idempotency_key,
-            request_sha256,
-            &serde_json::to_value(command).map_err(AppError::internal)?,
-            receipt,
-            review.before(state),
-        )
-        .await?;
-        Ok(Some(()))
-    }
-
-    /// Parent has verified actual Workflow/native terminal and prepared THIS receipt in THIS transaction.
-    /// Must run BEFORE the generic completion INSERT/tail. It inserts all completion effects itself.
-    pub(super) async fn finalize_critical_pm_review(
-        &self,
-        tx: &DatabaseTransaction,
-        state: &TaskState,
-        actor: &Principal,
-        command: &CompletePmDraft,
-        request_sha256: &str,
-        prepared: &PmDraftCompletionReceipt,
-    ) -> Result<Option<()>, AppError> {
-        let Some(review) = self.current_critical_pm_review(tx, state, None).await? else {
-            return Ok(None);
-        };
-        if app::sdlc::canonical_hash(&json!({"operation":"complete_pm_draft","payload":command}))?
-            != request_sha256
-        {
-            return Err(inconsistent());
-        }
-        let lease = Self::lease_current(tx, &review.saved.reservation)
-            .await?
-            .ok_or_else(inconsistent)?;
-        let plan = prepare_critical_pm_completion(
-            review.source(
-                state,
-                CriticalPmExecutionContext::Finalizing {
-                    lease: &lease,
-                    completion: prepared,
-                },
-            ),
+        let plan = prepare_configured_critical_pm_completion(
+            review.source(state, result.created_at),
             actor,
             &self.config,
             command,
-            CriticalPmCompletionAllocation {
-                snapshot_id: Uuid::now_v7(),
-                analysis_intent_id: Uuid::now_v7(),
-            },
+            result,
+            Uuid::now_v7(),
         )?;
-        let generation = &plan.routing;
-        let intent = &plan.analysis_intent;
-        let result = &plan.completion;
         let operation_id = write_operation(
             tx,
             actor,
             "complete",
             &command.idempotency_key,
-            request_sha256,
+            &app::sdlc::canonical_hash(command)?,
             &serde_json::to_value(command).map_err(AppError::internal)?,
             &serde_json::to_value(result).map_err(AppError::internal)?,
-            &lease,
+            None,
+            review.saved.reservation.owner_cas.version,
             &plan.before,
             &plan.after,
             result.completion_id,
+            None,
             Some(result.completion_id),
         )
         .await?;
-        exec(tx,"INSERT INTO sdlc_pm_completions(completion_id,task_id,execution_id,assignment_id,assignment_version,
-            lease_id,lease_version,requirement_revision,content_hash,terminal_receipt_ref,terminal_receipt_sha256,
-            workflow_receipt_ref,workflow_receipt_sha256,result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
-            vec![result.completion_id.into(),state.task_id.into(),result.fence.execution_id.into(),result.fence.assignment_id.into(),
-                result.fence.assignment_version.into(),result.lease_id.into(),result.lease_version.into(),result.requirement_revision.into(),
-                result.content_hash.clone().into(),result.terminal_receipt_ref.clone().into(),result.terminal_receipt_sha256.clone().into(),
-                result.workflow_receipt_ref.clone().into(),result.workflow_receipt_sha256.clone().into(),json_value(result)?]).await?;
-        exec(tx,"INSERT INTO sdlc_pm_completion_operations(task_id,idempotency_key,actor_subject,payload_hash,completion_id,result)
-            VALUES($1,$2,$3,$4,$5,$6)",vec![state.task_id.into(),command.idempotency_key.clone().into(),actor.subject.clone().into(),
-                request_sha256.into(),result.completion_id.into(),json_value(result)?]).await?;
+        let generation = &plan.routing;
         exec(tx,"INSERT INTO sdlc_task_routing_generations(task_id,generation,snapshot_id,previous_snapshot_id,blocker_id,
-            execution_id,completion_id,confirmation_id,requirement_revision,content_hash,project_id,policy_version,payload,operation_id)
+            execution_id,configured_completion_id,confirmation_id,requirement_revision,content_hash,project_id,policy_version,payload,operation_id)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",vec![state.task_id.into(),generation.generation.into(),
                 generation.snapshot.snapshot_id.into(),generation.previous_snapshot_id.into(),plan.before.blocker.blocker_id.into(),
                 result.fence.execution_id.into(),result.completion_id.into(),generation.snapshot.confirmation_id.into(),
@@ -508,39 +349,12 @@ impl PostgresSdlcRepository {
         let confirmation = plan
             .after
             .state
-            .confirmations
-            .iter()
-            .find(|confirmation| confirmation.id == generation.snapshot.confirmation_id)
+            .current_confirmation()
             .ok_or_else(inconsistent)?;
         self.freeze_source(tx, &plan.after.state, confirmation, &generation.snapshot)
             .await?;
-        exec(tx,"INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,
-            operation_key,payload,routing_snapshot_id,routing_generation,review_routing_snapshot_id)
-            VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9)",vec![intent.intent_id.into(),state.task_id.into(),intent.requirement_revision.into(),
-                intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(intent)?,
-                generation.generation.into(),generation.snapshot.snapshot_id.into()]).await?;
         save_projection(tx, actor, &plan.after, true).await?;
-        write_outbox(
-            tx,
-            result.completion_id,
-            "pm.completed",
-            actor,
-            &plan.after.state,
-            &serde_json::to_value(result).map_err(AppError::internal)?,
-            Stage::Analysis,
-        )
-        .await?;
-        write_outbox(
-            tx,
-            intent.intent_id,
-            "analysis.intent_created",
-            actor,
-            &plan.after.state,
-            &serde_json::to_value(intent).map_err(AppError::internal)?,
-            Stage::Analysis,
-        )
-        .await?;
-        Ok(Some(()))
+        Ok(true)
     }
 }
 
@@ -591,21 +405,25 @@ async fn write_operation(
     hash: &str,
     command: &Json,
     result: &Json,
-    lease: &ExecutionLeaseReceipt,
+    lease: Option<&ExecutionLeaseReceipt>,
+    owner_version: i64,
     before: &CriticalPmProjection,
     after: &CriticalPmProjection,
     outbox: Uuid,
     completion: Option<Uuid>,
+    configured_completion: Option<Uuid>,
 ) -> Result<Uuid, AppError> {
     let operation_id = Uuid::now_v7();
     exec(tx,"INSERT INTO sdlc_critical_pm_lifecycle_operations(operation_id,task_id,blocker_id,execution_id,actor_subject,
         kind,idempotency_key,request_sha256,command,result,lease_id,lease_version,before_state,after_state,
-        before_execution,after_execution,before_blocker,after_blocker,outbox_event_id,completion_id,owner_version)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
-        vec![operation_id.into(),before.state.task_id.into(),before.blocker.blocker_id.into(),lease.fence.execution_id.into(),
-            actor.subject.clone().into(),kind.into(),key.into(),hash.into(),command.clone().into(),result.clone().into(),lease.lease.lease_id.into(),
-            lease.lease.version.into(),json_value(&before.state)?,json_value(&after.state)?,execution(&before.lifecycle)?.into(),
-            execution(&after.lifecycle)?.into(),json_value(&before.blocker)?,json_value(&after.blocker)?,outbox.into(),completion.into(),lease.owner_version.into()]).await?;
+        before_execution,after_execution,before_blocker,after_blocker,outbox_event_id,completion_id,owner_version,configured_completion_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)",
+        vec![operation_id.into(),before.state.task_id.into(),before.blocker.blocker_id.into(),
+            before.state.assignment.as_ref().ok_or_else(inconsistent)?.execution_id.into(),
+            actor.subject.clone().into(),kind.into(),key.into(),hash.into(),command.clone().into(),result.clone().into(),
+            lease.map(|r|r.lease.lease_id).into(),lease.map(|r|r.lease.version).into(),
+            json_value(&before.state)?,json_value(&after.state)?,execution(&before.lifecycle)?.into(),
+            execution(&after.lifecycle)?.into(),json_value(&before.blocker)?,json_value(&after.blocker)?,outbox.into(),completion.into(),owner_version.into(),configured_completion.into()]).await?;
     Ok(operation_id)
 }
 
@@ -640,58 +458,6 @@ async fn save_projection(
         super::lifecycle::mapped_issue_status(tx, after.state.stage, after.lifecycle.task.status)
             .await?;
     super::lifecycle::project_issue_status(tx, task, actor, status).await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn lease_projection(
-    tx: &DatabaseTransaction,
-    actor: &Principal,
-    kind: &str,
-    key: &str,
-    hash: &str,
-    command: &Json,
-    receipt: &ExecutionLeaseReceipt,
-    before: CriticalPmProjection,
-) -> Result<(), AppError> {
-    let mut after = before.clone();
-    after.lifecycle.task.version = after
-        .lifecycle
-        .task
-        .version
-        .checked_add(1)
-        .filter(|v| *v <= MAX_SAFE_VERSION)
-        .ok_or_else(inconsistent)?;
-    // Actual lease ownership is Reserved, not a fabricated native-running observation.
-    after.lifecycle.task.runtime = RuntimeState::Reserved;
-    if after.lifecycle.task.waiting_reason.as_deref() != Some(PM_FINALIZATION_REASON) {
-        after.lifecycle.task.status = LifecycleStatus::InProgress;
-    }
-    after.state = serde_json::from_value(app::sdlc_lifecycle::canonical_projection(
-        &serde_json::to_value(&after.state).map_err(AppError::internal)?,
-        &after.lifecycle.task,
-    )?)
-    .map_err(AppError::internal)?;
-    let event_id = Uuid::now_v7();
-    let result = serde_json::to_value(receipt).map_err(AppError::internal)?;
-    write_operation(
-        tx, actor, kind, key, hash, command, &result, receipt, &before, &after, event_id, None,
-    )
-    .await?;
-    save_projection(tx, actor, &after, false).await?;
-    write_outbox(
-        tx,
-        event_id,
-        if kind == "claim" {
-            "critical.pm_review_lease_claimed"
-        } else {
-            "critical.pm_review_resumed"
-        },
-        actor,
-        &after.state,
-        &result,
-        Stage::Draft,
-    )
-    .await
 }
 
 async fn write_outbox(

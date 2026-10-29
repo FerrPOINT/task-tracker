@@ -151,7 +151,11 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             return Ok(());
         }
         crate::sdlc_lifecycle::scheduler_read(actor, config)?;
-        if method == "GET" && crate::attachment_artifacts::is_download_path(path) {
+        let task_list = path
+            .strip_prefix("/api/v1/issues/")
+            .and_then(|part| part.strip_suffix("/attachments"))
+            .is_some_and(|id| crate::sdlc::canonical_pm_uuid(id).is_some());
+        if method == "GET" && (crate::attachment_artifacts::is_download_path(path) || task_list) {
             return Ok(());
         }
         Err(AppError::Forbidden)
@@ -399,7 +403,7 @@ mod tests {
                     "GET",
                     &format!("/api/v1/issues/{}/attachments", uuid::Uuid::new_v4())
                 )
-                .is_err()
+                .is_ok()
         );
         scheduler.subject = "foreign-machine".into();
         assert!(

@@ -1,7 +1,8 @@
 //! Child of sdlc: durable PM review reservation only, never runtime admission or another queue.
 use super::*;
 use app::sdlc_critical_pm_reservation::{
-    CriticalPmReservationAllocation, CriticalPmReservationSource, prepare_critical_pm_reservation,
+    CompletedPmReceipt, CriticalPmReservationAllocation, CriticalPmReservationSource,
+    prepare_critical_pm_reservation,
 };
 use domain::sdlc_critical_blockers::{
     CriticalBlockerReceipt, CriticalBlockerState, valid_operation_key,
@@ -147,10 +148,21 @@ impl PostgresSdlcRepository {
         let execution: Option<Uuid> = cursor.try_get("", "pm_execution_id").map_err(map_db)?;
         let admission: Option<String> = cursor.try_get("", "pm_admission_state").map_err(map_db)?;
         let previous = Self::reservation(&tx, &state, execution.ok_or_else(inconsistent)?).await?;
-        let completion: PmDraftCompletionReceipt = decode(&tx.query_one(statement(
-            "SELECT result FROM sdlc_pm_completions WHERE task_id=$1 AND execution_id=$2 FOR SHARE",
-            vec![task.into(), previous.assignment.execution_id.into()],
-        )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "result")?;
+        let configured;
+        let historical;
+        let completion = if state.configured_cli() {
+            configured = Self::configured_saved(&tx, &state, None)
+                .await?
+                .ok_or_else(inconsistent)?
+                .result;
+            CompletedPmReceipt::Configured(&configured)
+        } else {
+            historical = decode::<PmDraftCompletionReceipt>(&tx.query_one(statement(
+                "SELECT result FROM sdlc_pm_completions WHERE task_id=$1 AND execution_id=$2 FOR SHARE",
+                vec![task.into(), previous.assignment.execution_id.into()],
+            )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "result")?;
+            CompletedPmReceipt::Historical(&historical)
+        };
         let original = original_pm(&tx, task).await?;
         let input = PmDraftInputResponse {
             contract_version: 1,
@@ -192,7 +204,7 @@ impl PostgresSdlcRepository {
                 lifecycle: &current,
                 blocker: &blocker,
                 previous_reservation: &previous,
-                current_completed: &completion,
+                current_completed: completion,
                 original_pm_assignment: &original,
                 original_input: &input,
                 pm_owner_version: owner_version,

@@ -1,5 +1,143 @@
 # Changelog
 
+## 2026-10-29: Fileless Writer Rollout Boundary
+
+- Native PM writers are retired by the coordinated Tracker/Fleet/Workflow/CLI
+  replacement. Drain active legacy work and reconcile unknown operations on the
+  old compatible cohort before switching; retained history stays read-only.
+- New configured tasks use persistent service credentials with unchanged
+  owner/project/fence checks. Started legacy tasks are not auto-converted.
+- Document the existing configuration and synthetic populated-history checks in
+  [Local Setup](docs/LOCAL_SETUP.md#31-configured-cli-cohort). All-role Hermes
+  acceptance remains runtime release evidence, not a CLI source merge gate.
+  This documentation change performs no installation or activation.
+
+## 2026-10-27: PM Publish CLI Discovery
+
+- Fresh PM check: FLEETQA-9 independently reads Workflow but incorrectly treats
+  optional legacy lifecycle403, expected first-revision404 and human-only
+  answer/confirmation flags as publication blockers. New context/lifecycle/
+  requirements help separates those meanings without changing API errors or
+  authorization. Required context/Workflow/publication failures remain blockers;
+  PM identity still cannot confirm for the owner. Source80f62d13 is published,
+  independently reviewed; all30 Linux CLI workflow tests pass (including the new
+  discovery case) in8.48s on that exact source. Disposable Compose resources are
+  cleaned. The retained PM still has the old binary; source verification is not
+  installation or fresh PM acceptance.
+- Problem: the live PM guessed question/options JSON because nested publish help
+  described flags but not the existing strict payload; Tracker correctly rejected
+  it. A later empty prerequisites list was rejected, and changing an execution
+  UUID caused a separate correct stale-fence rejection.
+- Fix: question/revision publish help now includes typed substantive product
+  examples, actual-context fence mapping, revision/CAS/idempotency rules and
+  nonempty document prerequisites. No placeholder revision, invented checkpoint
+  or owner impersonation is permitted. API, schema, assignments and guards are
+  unchanged.
+- Completion discovery: nested completion submit help now gives the exact closed
+  configured JSON, actual terminal receipt/fence mapping, stdin and original-key
+  readback. Legacy lease/native completion remains a separate supported shape;
+  the help grants no authority and does not change business APIs.
+- Checks:29 CLI workflow tests PASS on c1bc6805, including all three typed help examples,
+  malformed shapes, stdin forwarding and error/no-retry contracts; Rustfmt1.88
+  and diff-check PASS. Base helper v2 removed its own QA containers/volumes;
+  shared caches/evidence remain. Removal of five flat disposable host inputs was
+  denied by tool policy; they remain, without another deletion method.
+- Live: the same PM saved revisions1/2 and one answered question through CLI.
+  The user separately confirmed revision2/hash, retained by Tracker in Draft.
+  Actual final evaluation exposed a Workflow future-effect dependency, not a
+  missing Tracker permission. After that Workflow correction, PM itself submitted
+  completion01a17d1c at11:26 UTC and read back Backlog/Ready. Exact CLI replay
+  preserves its ID/time/hash; task-scoped counts remain one task, one completion,
+  zero Analysis intents and zero delivery assignments. UI reload retains the
+  result. This is assisted existing-task acceptance, not full release readiness.
+  New CLI help is published source, not installed into the retained PM container.
+
+## 2026-10-26: Configured CLI PM — Source Verified, Tracker Installed
+
+- Problem: owner consent in Draft and ordinary preconfigured PM credentials did
+  not match the legacy native-runtime contract. Consent now stays in Draft;
+  only terminal Workflow plus PM completion publishes Backlog / Ready. No
+  Analysis intent is created. Legacy tasks and their saved history are retained.
+- Standard agent scopes and current assignment/owner/revision checks remain.
+  Project owners can explicitly add a verified active service account through
+  the member API; human directory selectors remain human-only. Central subjects
+  are resolved to local IDs rather than assumed equal.
+- Actual checks: configured PostgreSQL lifecycle/replay/no-Analysis test PASS;
+  app, CLI, metadata, migration and service-member checks PASS on their recorded
+  source revisions. Rust OpenAPI was regenerated, client/parity PASS on d5fca554.
+  A disposable copy of all111 existing tables preserves original rows under the
+  exact forward105 SQL;38 original ledger rows are retained. QA cleanup completed.
+- Normal Build371d42ef / Apply installed d5fca554 as image3f084e40; health200.
+  The new PM service identity has verified member access to the acceptance
+  project through the owner API. No direct business-state SQL writes were used.
+- Next: compatible Fleet installation and permanent CLI configuration, then a
+  real PM dialogue and human exact-revision confirmation. Live Backlog / Ready
+  and full release gates remain unaccepted; source tests are not that acceptance.
+
+## 2026-10-26: Bounded PM Producer Installed With History Preserved
+
+- Normal selected-service Build22889741/source1ee/backended445/SDKed61 produces
+  image79fcae57; receipt SHA
+  4d1a80475f376cf0ce9ebd80fe2f40f1d5555bdf3b2113a28741ad7e8cfb0a0b.
+- Actual disposable populated-copy migration preserves all97 original public
+  tables' original column/row projections and32 old ledger entries; target38
+  appends six. Copy result SHA
+  6b24ba213b8b53ae1f52c0b9b557465b1ff8656e8d606627ef5d214744911bb5.
+  This migration-only check executes zero tests and does not prove source ACLs,
+  HTTP behavior or background workers. Protected source dump is retained.
+- Normal Applyfe9457b9 is COMPLETE. Backend2cb481f4 runs79fcae57 healthy with
+  migration104. Old producer container19045 and all captured old PostgreSQL
+  pid/backend_start pairs are absent. The three old recovery receipts remain
+  unchanged and fourth4321 is absent. Post-Apply proof SHA
+  3cf5747a0c43bde5206061880a5ba537fa603f2bce599e4548bf8ddec5f12d3a.
+- Fleet witness rollout, the live fourth callback, useful PM requirements and
+  real owner-confirmed Backlog/Ready remain open. No recovery POST, fake ACK,
+  attempt reset, owner confirmation or Analyst assignment was performed here.
+
+## 2026-10-26: Bounded PM Recovery Qualified At Source Level
+
+- Current main is integrated, retaining identity103, PM103 and forward104 without
+  changing applied migration bytes. The optional manual budget comes only from
+  the authenticated Fleet callback; default cap3 and original request hashes stay.
+- Nine actual scoped tests pass on c8/SDKed61, including the219.39-second real
+  PostgreSQL expiry/CAS/chain/replay/history scenario. The original overall FAIL
+  retains its test-only Clippy warning. The subsequent7b one-line redundant
+  conversion correction changes no production code or assertion.
+- Actual fmt and strict release workspace/all-target Clippy pass on7b. This
+  gate-only run executes zero tests; the nine earlier passes are not recounted.
+- Genuine Rust OpenAPI export is adopted byte-identically. Client generation,
+  parity and standalone strict TypeScript pass using the lock's tool versions;
+  this is not a full frontend gate. The original spec-drift FAIL is retained.
+- Installed Tracker533 is unchanged. New image/rollout, real Fleet callback,
+  useful PM and human-confirmed Backlog/Ready remain open. No Analyst, new MCP,
+  controller, scheduler, fake ACK or attempt reset is introduced.
+
+## 2026-10-24: Terminal-Idle Checkpoint Permit Source
+
+- Independent source review found the new original-key GET required writer
+  authority despite Fleet's read-only scheduler credential. It now uses the
+  existing scheduler_read guard; PG coverage asserts read succeeds while the
+  same principal cannot issue a permit. Execution of this regression is pending.
+- Added a closed Feedback-only branch to the existing PM lease resume API.
+  Trusted Fleet readback and current locked custody permit one exact checkpoint;
+  the canonical expired lease, task state and owner consent do not change.
+- Reused the existing idempotency ledger with immutable expiry and cross-ledger
+  collision checks; no new migration or business queue.
+- Added5 app tests and1 isolated PG test. Rustfmt/diff pass; Cargo/PG, generated
+  API/client, installation and live PM acceptance remain open.
+
+## 2026-10-23: Settled PM Input Recovery Source Candidate
+
+- Added append-only recovery for a consumed PM input whose renewed lease expired
+  before continuation. Original messages, inputs, receipts and assignment stay
+  unchanged; issuance requires an authenticated Fleet barrier and exact expired CAS.
+- Added typed reader/witness, cross-ledger key guards and additive0103. Original
+  resume payloads omit the optional extension and preserve their old hash.
+- Format/diff checks pass. Cargo/PG/OpenAPI and live PM acceptance are pending;
+  this is a Draft source package, not a verified installation.
+- Rollout is Tracker then Fleet. The current main native-spaces/auth/SDK package
+  is not silently included in the bounded installed7d6 runtime repair.
+
 - Источник можно выбрать после публикации требований PM, пока владелец ещё
   не подтвердил их. При повторном согласовании через PM новая версия сохраняет
   исходный выбранный источник и прежние binding-записи.

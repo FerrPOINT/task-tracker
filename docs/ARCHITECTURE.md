@@ -1,5 +1,29 @@
 # Архитектура Task Tracker
 
+The terminal-idle branch grants a single exact Workflow checkpoint operation
+after trusted Fleet readback and a task-locked custody recheck. It never restores
+general lease authority; ordinary resume follows only after a real checkpoint ACK.
+[Contract and unverified execution gates](contracts/pm-terminal-idle-recovery.md).
+
+Settled-input expiry recovery reads a typed Fleet barrier outside the issuance
+transaction, then rechecks owner/assignment/lease CAS under existing task locks.
+It is a narrow branch of the existing resume producer, not a scheduler or native
+dispatch path. Historical ACK settlement and live authority are separate states.
+[Contract and pending qualification](contracts/pm-settled-input-recovery.md).
+
+Optional manual budget использует ту же trusted Fleet callback boundary: preflight
+за cap3 только читает, а commit повторяет authority/expired-CAS checks под locks.
+Tracker проверяет closed nine-field proof и свою chain position; opaque Fleet
+prefix seal не подменяется hash Tracker rows. SQL104 проверяет bounded permission,
+но не происхождение HTTP и не выдуманный ACK: trust задаётся существующим reader.
+Fresh callback admission отделён от historical exact-key replay сохранённого
+witness после completion parent. Нет новой роли, endpoint, таблицы, controller,
+CLI/MCP или Hermes patch. Forward104 зарегистрирован вместе с current main;
+девять scoped tests c8/ed61, включая real PostgreSQL, проходят. Последующий7b
+меняет только redundant test conversion; fmt/strict Clippy и реальный Rust API
+export проверены отдельно, без пересчёта старых тестов. Image/live gates остаются
+открыты. [Границы](contracts/pm-settled-input-recovery.md#optional-trusted-manual-budget-source-only).
+
 Initial PM bootstrap retry reads a composite witness from the EXISTING Fleet
 reader outside SQL, then rechecks task/lease/authorization under locks. Fleet,
 not Tracker, reads Workflow. Original-key recovery is ledger-first; no public
@@ -696,7 +720,6 @@ expiry закрывает операцию. Включение берётся и
 
 Private identity-deletion owner source: [contract and pending qualification](IDENTITY_DELETION.md).
 
-
 ### Подписи ресурсных коллекций
 
 Audit log и корзина проекта используют ResourceListHeader/Row Base с общей
@@ -704,3 +727,27 @@ Audit log и корзина проекта используют ResourceListHead
 сохраняет выравнивание при разной длине подписей и действий. Mobile visibility,
 данные, права, mutation и фильтры остаются в Tracker. Новый UI pin требуется
 для ResourceListHeader; это source-изменение, не установка runtime.
+
+## Configured CLI V1 PM
+
+The opt-in protocol branches at current assignment authorization and business
+admission, not at a proxy/resolver. Central Auth verifies the service subject;
+Tracker checks its stable agent capability against the locked assignment and
+retains project/member RBAC. No native admission observation or execution lease
+is accepted for this mode. See [CONFIGURED_CLI_V1](contracts/CONFIGURED_CLI_V1.md).
+
+For this protocol only, business readiness is a valid current document with
+mandatory questions closed, not infrastructure verifier evidence. Owner consent
+is an immutable Draft receipt. Only completion, after authoritative Workflow
+terminal readback and locked owner/assignment revalidation, projects Draft to
+Backlog/Ready in the same transaction as its ledger, admission and outbox. It
+does not activate Analysis or retrofit legacy consent/history.
+
+Critical PM business review shares this completion path. Tracker owns the saved
+review assignment, selected blocker and consent. Fleet delivers an ordinary
+message and retains actual native custody; it supplies no business checkpoint.
+The review journal records changed requirements, exact owner consent, blocker
+resolution and the next frozen routing generation. History reads reconstruct
+the original business tuple without granting an old assignment write authority.
+The candidate preserves the native resource controls for technical execution;
+permanent service identity does not bypass those guards.

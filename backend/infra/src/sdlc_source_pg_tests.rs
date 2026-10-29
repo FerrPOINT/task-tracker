@@ -6,7 +6,7 @@ fn actor(subject: &str, human: bool) -> Principal {
     Principal {
         subject: subject.into(),
         human_session: human,
-        trusted_human: false,
+        trusted_human: human,
         scopes: if human {
             Default::default()
         } else {
@@ -159,6 +159,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: None,
                 title: "Synthetic legacy Draft".into(),
                 description: String::new(),
@@ -219,6 +220,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             project,
             &owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Synthetic selected Draft".into(),
                 description: String::new(),
@@ -278,47 +280,24 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
     assert_legacy_routed_confirmation(&db, &repo, &owner, draft.task_id).await;
     let task = new_draft.task_id;
     let policy = repo.routing_policy(project, &owner, None).await.unwrap();
-    let (reservation, _) = repo
-        .reserve_pm_draft(
-            task,
-            &owner,
-            serde_json::from_value(json!({
-        "requested_agent_id":policy.routes.project_manager.agent_id,"expected_owner_version":0,
-        "expected_assignment_version":null,"idempotency_key":"source-pm:reserve"}))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    let mut pm = actor("source-pm", false);
-    pm.scopes = [
-        "task-tracker:read".into(),
-        "task-tracker:write".into(),
-        reservation.assignment.scope(task),
-    ]
-    .into_iter()
-    .collect();
+    let (reservation, pm) = crate::sdlc::configured_test_support::assigned_pm(
+        &repo,
+        task,
+        &owner,
+        policy.routes.project_manager.agent_id,
+    )
+    .await;
     let fence = MachineFence {
         assignment_id: reservation.assignment.assignment_id,
         execution_id: reservation.assignment.execution_id,
         agent_id: reservation.assignment.agent_id,
-        assignment_version: 1,
+        assignment_version: reservation.assignment.version,
     };
-    repo.claim_execution_lease(
-        task,
-        &pm,
-        domain::sdlc_execution_lease::ClaimExecutionLease {
-            expected_owner_version: 1,
-            fence: fence.clone(),
-            idempotency_key: "source-pm:claim".into(),
-        },
-    )
-    .await
-    .unwrap();
     let document: RequirementsDocument = serde_json::from_value(json!({"goal":"Synthetic source test",
         "scope":["One root"],"exclusions":[],"scenarios":["Source freeze"],"acceptance_criteria":["Exact binding"],
         "constraints":[],"dependencies":[],"assumptions":[],"checklist":["source-check"],"prerequisites":["source-prerequisite"]})).unwrap();
     let content_hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         &pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -327,36 +306,9 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             document,
             idempotency_key: "source:requirements".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
-    let mut verifier = actor("source-verifier", false);
-    verifier.scopes = [
-        "task-tracker:write".into(),
-        format!("task-tracker:sdlc:evidence:{task}:1"),
-    ]
-    .into_iter()
-    .collect();
-    for check in ["source-check", "source-prerequisite"] {
-        repo.execute_verified(
-            task,
-            &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: fence.clone(),
-                requirement_revision: 1,
-                content_hash: content_hash.clone(),
-                check_id: check.into(),
-                evidence_reference: format!("fixture://{check}"),
-                idempotency_key: check.into(),
-            }),
-            reservation.clone(),
-            None,
-        )
-        .await
-        .unwrap();
-    }
     let old_assignment = repo.read(task, &owner).await.unwrap().assignment;
     let command = SdlcCommand::Confirm {
         revision: 1,
@@ -366,14 +318,8 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             expected_routing_policy_version: Some(1),
         },
     };
-    let confirmation = repo
-        .execute_verified(task, &owner, command.clone(), reservation.clone(), None)
-        .await
-        .unwrap();
-    let repeated = repo
-        .execute_verified(task, &owner, command, reservation, None)
-        .await
-        .unwrap();
+    let confirmation = repo.execute(task, &owner, command.clone()).await.unwrap();
+    let repeated = repo.execute(task, &owner, command).await.unwrap();
     assert_eq!(confirmation, repeated);
     assert_eq!(
         serde_json::to_value(repo.read(task, &owner).await.unwrap().assignment).unwrap(),
@@ -496,6 +442,7 @@ async fn explicit_unconfigured_draft_fixture(
             project,
             owner,
             CreateDraftCommand {
+                interaction_protocol: None,
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Synthetic unconfigured original Draft".into(),
                 description: String::new(),
@@ -514,43 +461,19 @@ async fn explicit_unconfigured_draft_fixture(
     .await
     .unwrap();
     let policy = repo.routing_policy(project, owner, None).await.unwrap();
-    let (reservation, _) = repo
-        .reserve_pm_draft(
-            task,
-            owner,
-            serde_json::from_value(json!({
-        "requested_agent_id":policy.routes.project_manager.agent_id,"expected_owner_version":0,
-        "expected_assignment_version":null,"idempotency_key":"fixture-original-pm"}))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    let mut pm = actor("source-pm", false);
-    pm.scopes = [
-        "task-tracker:read".into(),
-        "task-tracker:write".into(),
-        reservation.assignment.scope(task),
-    ]
-    .into_iter()
-    .collect();
+    let (reservation, pm) = crate::sdlc::configured_test_support::assigned_pm(
+        &repo,
+        task,
+        owner,
+        policy.routes.project_manager.agent_id,
+    )
+    .await;
     let fence = MachineFence {
         assignment_id: reservation.assignment.assignment_id,
         execution_id: reservation.assignment.execution_id,
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
-    let (lease, _) = repo
-        .claim_execution_lease(
-            task,
-            &pm,
-            domain::sdlc_execution_lease::ClaimExecutionLease {
-                expected_owner_version: 1,
-                fence: fence.clone(),
-                idempotency_key: "enroll-active-pm-lease".into(),
-            },
-        )
-        .await
-        .unwrap();
     let confirm = prepare_enrollment_confirmation(&repo, task, &reservation, &pm, &fence).await;
     let old_state = serde_json::to_value(repo.read(task, owner).await.unwrap()).unwrap();
     let old_assignment = serde_json::to_value(&reservation).unwrap();
@@ -601,7 +524,7 @@ async fn explicit_unconfigured_draft_fixture(
     let (enrollment, confirmation) = if race {
         let (a, b) = tokio::join!(
             repo.enroll_draft_source(task, owner, command.clone()),
-            repo.execute_verified(task, owner, confirm.clone(), reservation.clone(), None)
+            repo.execute(task, owner, confirm.clone())
         );
         (a, Some(b))
     } else {
@@ -672,13 +595,11 @@ async fn explicit_unconfigured_draft_fixture(
     assert_eq!(row.try_get::<i64>("", "audited").unwrap(), 1);
     let event = tx.query_one(statement("SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='source.selected'",vec![task.into()])).await.unwrap().unwrap();
     assert_eq!(event.try_get::<i64>("", "n").unwrap(), 1);
-    let retained_lease = PostgresSdlcRepository::lease_current(&tx, &reservation)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        serde_json::to_value(lease).unwrap(),
-        serde_json::to_value(retained_lease).unwrap()
+    assert!(
+        PostgresSdlcRepository::lease_current(&tx, &reservation)
+            .await
+            .unwrap()
+            .is_none()
     );
     tx.rollback().await.unwrap();
     let current_policy = repo.source_policy(project, owner, None).await.unwrap();
@@ -697,9 +618,7 @@ async fn explicit_unconfigured_draft_fixture(
     .await
     .unwrap();
     // If confirmation acquired the lock first it failed missing-source and rolled back, not fake-success.
-    repo.execute_verified(task, owner, confirm, reservation, None)
-        .await
-        .unwrap();
+    repo.execute(task, owner, confirm).await.unwrap();
     assert!(
         repo.enroll_draft_source(task, owner, command)
             .await
@@ -709,100 +628,35 @@ async fn explicit_unconfigured_draft_fixture(
 }
 
 async fn assert_legacy_routed_confirmation(
-    db: &DatabaseConnection,
+    _db: &DatabaseConnection,
     repo: &PostgresSdlcRepository,
     owner: &Principal,
     task: Uuid,
 ) {
-    let state = repo.read(task, owner).await.unwrap();
-    assert_eq!(state.draft_flow().unwrap(), None);
+    let before = serde_json::to_value(repo.read(task, owner).await.unwrap()).unwrap();
+    assert_eq!(before.get("flow"), None);
     let policy = repo
-        .routing_policy(state.project_id, owner, None)
-        .await
-        .unwrap();
-    let (reservation, _) = repo
-        .reserve_pm_draft(
-            task,
+        .routing_policy(
+            Uuid::parse_str(before["project_id"].as_str().unwrap()).unwrap(),
             owner,
-            serde_json::from_value(json!({
-                "requested_agent_id":policy.routes.project_manager.agent_id,
-                "expected_owner_version":0,"expected_assignment_version":null,
-                "idempotency_key":"legacy-routed:reserve"}))
-            .unwrap(),
+            None,
         )
         .await
         .unwrap();
-    let mut pm = actor("source-pm", false);
-    pm.scopes.insert(reservation.assignment.scope(task));
-    let fence = MachineFence {
-        assignment_id: reservation.assignment.assignment_id,
-        execution_id: reservation.assignment.execution_id,
-        agent_id: reservation.assignment.agent_id,
-        assignment_version: reservation.assignment.version,
-    };
-    repo.claim_execution_lease(
-        task,
-        &pm,
-        domain::sdlc_execution_lease::ClaimExecutionLease {
-            expected_owner_version: reservation.owner_cas.version,
-            fence: fence.clone(),
-            idempotency_key: "legacy-routed:claim".into(),
-        },
-    )
-    .await
-    .unwrap();
-    let command = prepare_enrollment_confirmation(repo, task, &reservation, &pm, &fence).await;
-    let before = repo.read(task, owner).await.unwrap();
-    let saved = repo
-        .execute_verified(task, owner, command.clone(), reservation.clone(), None)
-        .await
-        .unwrap();
-    let snapshot = repo.task_routing_snapshot(task, owner).await.unwrap();
-    assert_eq!(snapshot.policy, policy);
-    assert_eq!(saved["id"], json!(snapshot.confirmation_id));
-    assert_eq!(saved["stage"], json!("Backlog"));
-    assert!(matches!(
-        repo.analysis_intent(task, owner).await,
-        Err(AppError::NotFound(_))
-    ));
-    let after = repo.read(task, owner).await.unwrap();
-    assert_eq!(after.stage, Stage::Backlog);
-    assert_eq!(after.status, None);
+    assert!(repo.reserve_pm_draft(task, owner, serde_json::from_value(json!({
+        "requested_agent_id":policy.routes.project_manager.agent_id,"expected_owner_version":0,
+        "expected_assignment_version":null,"idempotency_key":"retired-reservation"
+    })).unwrap()).await.is_err());
     assert_eq!(
-        serde_json::to_value(after.assignment).unwrap(),
-        serde_json::to_value(before.assignment).unwrap()
-    );
-    let inventory = db
-        .query_one(statement(
-            "SELECT (SELECT count(*) FROM sdlc_task_source_selections WHERE task_id=$1) AS selections,
-             (SELECT count(*) FROM sdlc_task_source_bindings WHERE task_id=$1) AS bindings,
-             (SELECT count(*) FROM sdlc_task_routing_snapshots WHERE task_id=$1) AS snapshots,
-             (SELECT count(*) FROM sdlc_analysis_intents WHERE task_id=$1) AS intents",
-            vec![task.into()],
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(inventory.try_get::<i64>("", "selections").unwrap(), 0);
-    assert_eq!(inventory.try_get::<i64>("", "bindings").unwrap(), 0);
-    assert_eq!(inventory.try_get::<i64>("", "snapshots").unwrap(), 1);
-    assert_eq!(inventory.try_get::<i64>("", "intents").unwrap(), 0);
-    assert_eq!(
-        repo.execute_verified(task, owner, command, reservation, None)
-            .await
-            .unwrap(),
-        saved
-    );
-    assert_eq!(
-        repo.task_routing_snapshot(task, owner).await.unwrap(),
-        snapshot
+        serde_json::to_value(repo.read(task, owner).await.unwrap()).unwrap(),
+        before
     );
 }
 
 async fn prepare_enrollment_confirmation(
     repo: &PostgresSdlcRepository,
     task: Uuid,
-    reservation: &domain::sdlc_pm_draft::PmDraftReservation,
+    _reservation: &domain::sdlc_pm_draft::PmDraftReservation,
     pm: &Principal,
     fence: &MachineFence,
 ) -> SdlcCommand {
@@ -811,7 +665,7 @@ async fn prepare_enrollment_confirmation(
         "acceptance_criteria":["Pinned source"],"constraints":[],"dependencies":[],"assumptions":[],
         "checklist":["enrollment-check"],"prerequisites":["enrollment-prerequisite"]})).unwrap();
     let content_hash = app::sdlc::canonical_hash(&document).unwrap();
-    repo.execute_verified(
+    repo.execute(
         task,
         pm,
         SdlcCommand::PublishRevision(PublishRevision {
@@ -820,36 +674,9 @@ async fn prepare_enrollment_confirmation(
             document,
             idempotency_key: "enrollment-requirements".into(),
         }),
-        reservation.clone(),
-        None,
     )
     .await
     .unwrap();
-    let mut verifier = actor("source-verifier", false);
-    verifier.scopes = [
-        "task-tracker:write".into(),
-        format!("task-tracker:sdlc:evidence:{task}:1"),
-    ]
-    .into_iter()
-    .collect();
-    for check in ["enrollment-check", "enrollment-prerequisite"] {
-        repo.execute_verified(
-            task,
-            &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: fence.clone(),
-                requirement_revision: 1,
-                content_hash: content_hash.clone(),
-                check_id: check.into(),
-                evidence_reference: format!("fixture://{check}"),
-                idempotency_key: check.into(),
-            }),
-            reservation.clone(),
-            None,
-        )
-        .await
-        .unwrap();
-    }
     SdlcCommand::Confirm {
         revision: 1,
         command: ConfirmCommand {

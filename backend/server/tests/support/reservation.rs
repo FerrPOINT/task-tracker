@@ -1,12 +1,11 @@
 use super::*;
 
-#[path = "execution_lease.rs"]
-mod execution_lease;
+#[path = "configured_pm_http.rs"]
+mod configured_pm_http;
 
-async fn require_execution_lease(client: &Client, url: &str, token: &str, body: &Value) {
-    let error = expect(client, url, token, body, 409).await;
-    assert_eq!(error["error"]["code"], "CONFLICT");
-    assert_eq!(error["error"]["message"], "PM execution lease missing");
+async fn reject_retired_grant(client: &Client, url: &str, token: &str, body: &Value) {
+    let error = expect(client, url, token, body, 403).await;
+    assert_eq!(error["error"]["code"], "FORBIDDEN");
 }
 
 pub struct Fixture<'a> {
@@ -35,8 +34,10 @@ fn machine(secret: &SecretKey, issuer: &str, subject: &str, scopes: Vec<String>)
     )
     .unwrap()
 }
+pub(super) const PM_SUBJECT: &str = "00000000-0000-4000-8000-000000000019";
+
 fn reserve(key: &str, agent: Uuid) -> Value {
-    json!({"expected_owner_version":0,"expected_assignment_version":null,"requested_agent_id":agent,"idempotency_key":key})
+    json!({"interaction_protocol":"configured-cli-v1","machine_subject":PM_SUBJECT,"expected_owner_version":0,"expected_assignment_version":null,"requested_agent_id":agent,"idempotency_key":key})
 }
 async fn create(f: &Fixture<'_>, base: &str, key: &str) -> Uuid {
     let result = expect(
@@ -97,13 +98,40 @@ async fn curl_json(url: &str, token: &str, body: Option<&Value>) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
-pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
+pub async fn prepare(db: &DatabaseConnection, url: &str) -> (Uuid, Uuid) {
+    let name: String = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT current_database() AS name".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "name")
+        .unwrap();
+    assert!(name.ends_with("_draft_test"));
+    // Keep this synthetic configured project out of the ordinary creation/edit
+    // fixture. Its settings owner is distinct and has no HTTP session.
+    let settings_owner = Uuid::new_v4();
+    sql(db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+        VALUES($1,'configured-settings-owner@example.test','configured-settings-owner','Configured settings owner','!',$2,true)",
+        vec![settings_owner.into(),Uuid::new_v4().to_string().into()]).await;
+    let project = Uuid::new_v4();
+    sql(db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'CPM','Configured PM HTTP',$2,$3)",
+        vec![project.into(),settings_owner.into(),Uuid::new_v4().into()]).await;
+    sql(db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Configured PM','[]' FROM projects WHERE id=$1",
+        vec![project.into()]).await;
+    (project, configured_pm_http::prepare(db, project, url).await)
+}
+
+pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>, selector: Uuid) {
     let subject = Uuid::new_v4().to_string();
     let verifier = Uuid::new_v4().to_string();
     for (sub, name) in [
         (subject.as_str(), "reservation-machine"),
         (verifier.as_str(), "reservation-verifier"),
         ("scheduler", "reservation-scheduler"),
+        (PM_SUBJECT, "configured-pm-service"),
     ] {
         let id = Uuid::new_v4();
         sql(f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$4,true)",
@@ -133,6 +161,13 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             "task-tracker:sdlc:assign".into(),
         ],
     );
+
+    unsafe {
+        std::env::set_var(
+            "TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS",
+            f.project.to_string(),
+        );
+    }
     let (base, stop, handle) = start(config.clone()).await;
     let creation_key = "creation/readback-\u{043a}\u{043b}\u{044e}\u{0447}";
     let creation_url = creation_endpoint(&base, f.project, creation_key);
@@ -182,7 +217,6 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     assert_eq!(count(f.db, "sdlc_draft_creations").await, counts[1] + 1);
     let task = create(&f, &base, "reservation-main").await;
     let url = endpoint(&base, task);
-    let selector = Uuid::new_v4(); // Intentionally no Fleet agent exists: only a selector is persisted.
     let cmd = reserve("reservation", selector);
     let empty = get_json(f.client, &url, f.owner, 200).await;
     assert_eq!(empty["owner_version"], 0);
@@ -256,7 +290,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     assert_eq!(result["variant"], "pm_draft_reserved");
     assert_eq!(result["admission_state"], "reserved");
     assert_eq!(result["assignment"]["agent_id"], selector.to_string());
-    assert_eq!(result["assignment"]["machine_subject"], subject);
+    assert_eq!(result["assignment"]["machine_subject"], PM_SUBJECT);
     assert_eq!(result["assignment"]["version"], 1);
     assert_eq!(
         result["owner_cas"],
@@ -337,7 +371,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     let pm = machine(
         f.secret,
         f.issuer,
-        &subject,
+        PM_SUBJECT,
         vec![
             "task-tracker:read".into(),
             "task-tracker:write".into(),
@@ -348,115 +382,28 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             ),
         ],
     );
-    let scheduler = machine(
-        f.secret,
-        f.issuer,
-        "scheduler",
-        vec!["task-tracker:write".into()],
-    );
-    // This fixture deliberately has no Fleet native reader. A real PM draft
-    // reservation owns its producer writes through the exact execution lease.
+    // Retired own-task grants cannot impersonate the current configured service.
+    // Ordinary configured PM writes are exercised below without a native lease.
     let native_count_before = count(f.db, "sdlc_pm_native_admissions").await;
     let mut next = result["assignment"].clone();
     next["version"] = json!(2);
     next["execution_id"] = json!(Uuid::new_v4());
     expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
-        &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),409).await;
-    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
+        &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),403).await;
+    reject_retired_grant(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
         &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"})).await;
-    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
-        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"})).await;
-    let lease = expect(
+    reject_retired_grant(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"})).await;
+    // Native lease acquisition is retired; retained legacy reservations cannot
+    // manufacture a new execution or become configured by posting old commands.
+    expect(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-execution-lease"),
         &pm,
-        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"draft-reservation-lease"}),
-        201,
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"retired-claim"}),
+        404,
     )
     .await;
-    let revision = expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
-        &pm,
-        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]},"idempotency_key":"draft-reservation-revision"}),
-        200,
-    )
-    .await;
-    let question_id = Uuid::new_v4();
-    let option_id = Uuid::new_v4();
-    expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),
-        &pm,
-        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"Choose one","rationale":"Needed before owner confirmation","required":true,"mode":"single","options":[{"id":option_id,"label":"Standard","consequences":"Proceed","is_custom":false}],"recommended_option_id":option_id,"idempotency_key":"draft-reservation-question"}),
-        200,
-    )
-    .await;
-    let answer = expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications/{question_id}/answers"),
-        f.owner,
-        &json!({"expected_question_version":1,"requirement_revision":1,"selected_option_ids":[option_id],"text":null,"comment":"Owner accepted","idempotency_key":"draft-reservation-answer"}),
-        200,
-    )
-    .await;
-    assert_eq!(answer["question_id"], question_id.to_string());
-    // An answer does not publish the PM's final requirements or approve them.
-    expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
-        f.owner,
-        &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-premature-confirm"}),
-        409,
-    )
-    .await;
-    let revision = expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
-        &pm,
-        &json!({"fence":fence,"expected_requirement_revision":1,"document":{"goal":"goal with confirmed Standard choice","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]},"idempotency_key":"draft-reservation-final-revision"}),
-        200,
-    )
-    .await;
-    assert_eq!(revision["revision"], 2);
-    let evidence = machine(
-        f.secret,
-        f.issuer,
-        &verifier,
-        vec![
-            "task-tracker:read".into(),
-            "task-tracker:write".into(),
-            format!("task-tracker:sdlc:evidence:{task}:1"),
-        ],
-    );
-    for check in ["check", "pre"] {
-        let evidence_body = json!({"fence":fence,"requirement_revision":2,"content_hash":revision["content_hash"],"check_id":check,"evidence_reference":format!("workflow://verified/{check}"),"idempotency_key":format!("draft-reservation-evidence-{check}")});
-        expect(
-            f.client,
-            &format!("{base}/api/v1/issues/{task}/sdlc/evidence"),
-            &pm,
-            &evidence_body,
-            403,
-        )
-        .await;
-        expect(
-            f.client,
-            &format!("{base}/api/v1/issues/{task}/sdlc/evidence"),
-            &evidence,
-            &evidence_body,
-            200,
-        )
-        .await;
-    }
-    let confirmation = expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm"),
-        f.owner,
-        &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-confirm"}),
-        200,
-    )
-    .await;
-    assert_eq!(confirmation["stage"], "Backlog");
     assert_eq!(
         count(f.db, "sdlc_pm_native_admissions").await,
         native_count_before
@@ -482,11 +429,6 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             .any(|event| event["event_type"] == "pm.assigned"
                 && event["payload"]["result"] == result["assignment"])
     );
-    assert!(
-        legacy_events
-            .iter()
-            .any(|event| event["event_type"] == "requirements.confirmed")
-    );
     let (_, page) = metadata::get(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/events?projection=metadata_v1"),
@@ -496,47 +438,23 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     .await;
     metadata::verify(&page, &legacy);
     let completion_url = format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-completion");
-    let completion_command = json!({"contract_version":1,"fence":fence,"lease_id":lease["lease"]["lease_id"],
-        "lease_version":lease["lease"]["version"],"requirement_revision":2,"content_hash":revision["content_hash"],
-        "terminal_receipt_ref":"fleet/pm/draft-reservation/terminal.json","terminal_receipt_sha256":"c".repeat(64),
-        "workflow_receipt_ref":"workflow/pm/draft-reservation/terminal.json","workflow_receipt_sha256":"d".repeat(64),
-        "idempotency_key":"draft-reservation-completion"});
-    expect(f.client, &completion_url, &pm, &completion_command, 403).await;
-    let mut stale_lease = completion_command.clone();
-    stale_lease["lease_version"] = json!(lease["lease"]["version"].as_i64().unwrap() + 1);
-    expect(f.client, &completion_url, &scheduler, &stale_lease, 409).await;
-    let mut stale_fence = completion_command.clone();
-    stale_fence["fence"]["assignment_version"] = json!(2);
-    expect(f.client, &completion_url, &scheduler, &stale_fence, 409).await;
-    let completion = expect(
-        f.client,
-        &completion_url,
-        &scheduler,
-        &completion_command,
-        201,
-    )
-    .await;
-    assert_eq!(completion["next_pm_admission_state"], "completed");
-    assert_eq!(completion["requirement_revision"], 2);
-    assert_eq!(
-        expect(
-            f.client,
-            &completion_url,
-            &scheduler,
-            &completion_command,
-            200
-        )
-        .await,
-        completion
+    let retired_completion = json!({"contract_version":1,"fence":fence,"lease_id":Uuid::new_v4(),
+        "lease_version":1,"requirement_revision":2,"content_hash":"a".repeat(64),
+        "terminal_receipt_ref":"retired/native-terminal.json","terminal_receipt_sha256":"c".repeat(64),
+        "workflow_receipt_ref":"retired/workflow-terminal.json","workflow_receipt_sha256":"d".repeat(64),
+        "idempotency_key":"retired-completion"});
+    let configured_pm = machine(
+        f.secret,
+        f.issuer,
+        PM_SUBJECT,
+        vec!["task-tracker:read".into(), "task-tracker:write".into()],
     );
-    let mut conflicting_completion = completion_command.clone();
-    conflicting_completion["workflow_receipt_sha256"] = json!("e".repeat(64));
     expect(
         f.client,
         &completion_url,
-        &scheduler,
-        &conflicting_completion,
-        409,
+        &configured_pm,
+        &retired_completion,
+        422,
     )
     .await;
     // A forced failure after UUID/ordinal allocation rolls every business row back.
@@ -747,27 +665,21 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         .await,
         read
     );
-    sql(
-        f.db,
-        "UPDATE issues SET summary='mutable changed' WHERE id=$1",
-        vec![task.into()],
-    )
-    .await;
+    // Configured issue rows require their canonical mutation permit even for a
+    // title-only raw update. Ordinary HTTP editing/input isolation is exercised
+    // by drafts.rs before this independently bound project is introduced.
+    assert!(
+        f.db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE issues SET summary='mutable changed' WHERE id=$1",
+            vec![task.into()]
+        ))
+        .await
+        .is_err()
+    );
     assert_eq!(expect(f.client, &url, f.owner, &cmd, 200).await, result);
-    // History is a separate read; replay must not write the current control pointer.
-    sql(
-        f.db,
-        "ALTER TABLE sdlc_tasks DISABLE TRIGGER sdlc_pm_reservation_gate",
-        vec![],
-    )
-    .await;
-    sql(f.db,"UPDATE sdlc_tasks SET pm_execution_id=NULL,pm_owner_version=0,pm_admission_state=NULL WHERE task_id=$1",vec![task.into()]).await;
-    sql(
-        f.db,
-        "ALTER TABLE sdlc_tasks ENABLE TRIGGER sdlc_pm_reservation_gate",
-        vec![],
-    )
-    .await;
+    // A configured control pointer cannot be detached by a raw legacy update.
+    assert!(f.db.execute_unprepared(&format!("UPDATE sdlc_tasks SET pm_execution_id=NULL,pm_owner_version=0,pm_admission_state=NULL WHERE task_id='{task}'")).await.is_err());
     let historical = get_json(
         f.client,
         &format!("{url}?idempotency_key=reservation"),
@@ -775,20 +687,9 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         200,
     )
     .await;
-    assert!(historical["current"].is_null());
+    assert_eq!(historical["current"], result);
     assert_eq!(historical["operation"]["result"], result);
     assert_eq!(expect(f.client, &url, f.owner, &cmd, 200).await, result);
-    assert!(get_json(f.client, &url, f.owner, 200).await["current"].is_null());
-    expect(
-        f.client,
-        &url,
-        f.owner,
-        &reserve("detached-history", selector),
-        409,
-    )
-    .await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
-        &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"detached-bypass"}),409).await;
     sql(
         f.db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
@@ -842,5 +743,5 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     f.unavailable.store(false, Ordering::SeqCst);
     stop.send(()).unwrap();
     handle.await.unwrap();
-    execution_lease::verify(config, &f, &subject, &verifier).await;
+    configured_pm_http::verify(config, &f, PM_SUBJECT, selector).await;
 }

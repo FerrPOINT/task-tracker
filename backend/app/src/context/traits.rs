@@ -76,6 +76,8 @@ pub trait IssueTypeService: Send + Sync {
 
 #[async_trait]
 pub trait CommentService: Send + Sync {
+    /// Notify after a task-owned transaction has committed an ordinary comment.
+    async fn notify_committed(&self, _id: CommentId, _author: UserId) {}
     async fn list(
         &self,
         issue_id: IssueId,

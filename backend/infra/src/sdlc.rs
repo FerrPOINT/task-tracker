@@ -11,24 +11,25 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "sdlc_commands.rs"]
+mod commands;
+#[path = "sdlc_configured_cli.rs"]
+mod configured_cli;
+#[cfg(test)]
+#[path = "sdlc_configured_test_support.rs"]
+mod configured_test_support;
 #[path = "sdlc_critical_blockers.rs"]
 mod critical_blockers;
 #[path = "sdlc_critical_pm_lifecycle.rs"]
 mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
+#[path = "sdlc_discussion.rs"]
+mod discussion;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
 #[path = "sdlc_lifecycle.rs"]
 mod lifecycle;
-#[path = "sdlc_native_admission.rs"]
-mod native_admission;
-#[path = "sdlc_pm_bootstrap_retry.rs"]
-mod pm_bootstrap_retry;
-#[path = "sdlc_pm_resume.rs"]
-mod pm_resume;
-#[path = "sdlc_pm_unsubmitted.rs"]
-mod pm_unsubmitted;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -75,14 +76,43 @@ fn state_from(row: QueryResult) -> Result<TaskState, AppError> {
         .map_err(AppError::internal)
 }
 
-/// Synthetic downstream/historical setup only: owner confirmation never queues Analysis.
+/// Import a synthetic starting snapshot for standalone technical-stage tests.
+/// This is NOT a production PM -> Analyst transition or historical acceptance.
+/// PM consent/completion stay at Draft/Backlog in the separate business tests.
+/// The one initial-transition trigger is restored before any action under test;
+/// all other guards and the canonical projection/head writer remain active.
 #[cfg(test)]
 async fn seed_analysis_fixture(
     db: &DatabaseConnection,
     task: Uuid,
     actor: &Principal,
 ) -> AnalysisIntent {
+    use domain::sdlc_lifecycle::{
+        LifecycleReceipt, LifecycleStage, LifecycleStatus, LifecycleTask, RuntimeState,
+    };
+    let name: String = db
+        .query_one(statement("SELECT current_database() AS name", vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "name")
+        .unwrap();
+    assert!(
+        name.ends_with("_candidates_test")
+            || name.ends_with("_lifecycle_test")
+            || name.ends_with("_draft_flow_test")
+    );
     let tx = db.begin().await.unwrap();
+    let guard_sql = "SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger
+        WHERE tgrelid='public.sdlc_tasks'::regclass
+          AND tgname='sdlc_delivery_canonical_gate' AND NOT tgisinternal AND tgenabled='O'";
+    let guard: String = tx
+        .query_one(statement(guard_sql, vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "definition")
+        .unwrap();
     let row = tx
         .query_one(statement(
             "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
@@ -93,7 +123,24 @@ async fn seed_analysis_fixture(
         .unwrap();
     let mut state = state_from(row).unwrap();
     assert_eq!(state.stage, Stage::Backlog);
+    assert!(state.configured_cli());
+    assert!(state.owner(actor));
     assert!(!state.retained_fields.contains_key("lifecycle"));
+    let completed: bool = tx.query_one(statement(
+        "SELECT sdlc_current_configured_pm_completed(task_id,pm_execution_id,state,pm_admission_state) AS completed FROM sdlc_tasks WHERE task_id=$1",
+        vec![task.into()],
+    )).await.unwrap().unwrap().try_get("", "completed").unwrap();
+    assert!(
+        completed,
+        "technical snapshots require real saved PM completion first"
+    );
+    // A normal unpermitted promotion is still forbidden before the fixture import.
+    let denied = tx.begin().await.unwrap();
+    assert!(denied.execute(statement(
+        "UPDATE sdlc_tasks SET state=jsonb_set(state,'{stage}','\"Analysis\"'::jsonb) WHERE task_id=$1",
+        vec![task.into()],
+    )).await.is_err());
+    denied.rollback().await.unwrap();
     state.stage = Stage::Analysis;
     assert_eq!(
         state.context(actor).waiting_reason.as_deref(),
@@ -113,38 +160,67 @@ async fn seed_analysis_fixture(
     assert_eq!(snapshot.confirmation_id, confirmation.id);
     assert_eq!(snapshot.requirement_revision, confirmation.revision);
     assert_eq!(snapshot.content_hash, confirmation.content_hash);
-    let mut intent = app::sdlc::analysis_intent(&state, confirmation, Uuid::new_v4()).unwrap();
-    intent.workflow = snapshot.policy.routes.analyst.workflow_key;
+    // The synthetic technical snapshot has the same frozen business tuple.
+    let mut historical_confirmation = confirmation.clone();
+    historical_confirmation.stage = Stage::Backlog;
+    let mut intent =
+        app::sdlc::analysis_intent(&state, &historical_confirmation, Uuid::new_v4()).unwrap();
+    intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
     exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
         vec![intent.intent_id.into(),task.into(),intent.requirement_revision.into(),intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(&intent).unwrap(),snapshot.snapshot_id.into()]).await.unwrap();
-    exec(&tx, "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
-        SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks WHERE task_id=$1 AND pm_execution_id IS NOT NULL",
-        vec![task.into(), json_value(&state).unwrap()]).await.unwrap();
-    exec(
-        &tx,
-        "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
-        vec![task.into(), json_value(&state).unwrap()],
-    )
-    .await
-    .unwrap();
-    let status_id = if let Some(status) = state.status {
-        lifecycle::mapped_issue_status(&tx, Stage::Analysis, status)
-            .await
-            .unwrap()
-    } else {
-        tx.query_one(statement(
-            "SELECT id FROM statuses WHERE name='SDLC Analysis' ORDER BY id LIMIT 1",
-            vec![],
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get("", "id")
-        .unwrap()
+    let receipt = LifecycleReceipt {
+        task: LifecycleTask {
+            task_id: task,
+            owner_subject: state.owner_subject.clone(),
+            version: 1,
+            stage: LifecycleStage::Analysis,
+            status: LifecycleStatus::Ready,
+            cycle: 0,
+            transient_retries: 0,
+            waiting_reason: Some("queued_for_assignment".into()),
+            runtime: RuntimeState::Queued,
+            routing: snapshot,
+            previous_result_id: None,
+            resume_chat_id: None,
+        },
+        assignment: None,
+        lease: None,
+        binding: None,
+        result: None,
     };
-    lifecycle::project_issue_status(&tx, task, actor, status_id)
+    // Snapshot import only, in an owned disposable DB and one transaction.
+    // Re-enabling before commit also makes rollback restore the original DDL.
+    tx.execute_unprepared("ALTER TABLE sdlc_tasks DISABLE TRIGGER sdlc_delivery_canonical_gate")
         .await
         .unwrap();
+    PostgresSdlcRepository::save_delivery_projection(&tx, actor, &receipt, true)
+        .await
+        .unwrap();
+    // PostgreSQL forbids ALTER TABLE while deferred trigger events are pending.
+    // Validate the imported snapshot now; do not suppress its commit guards.
+    tx.execute_unprepared("SET CONSTRAINTS ALL IMMEDIATE")
+        .await
+        .unwrap();
+    tx.execute_unprepared("ALTER TABLE sdlc_tasks ENABLE TRIGGER sdlc_delivery_canonical_gate")
+        .await
+        .unwrap();
+    tx.execute_unprepared("SET CONSTRAINTS ALL DEFERRED")
+        .await
+        .unwrap();
+    let restored: String = tx
+        .query_one(statement(guard_sql, vec![]))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "definition")
+        .unwrap();
+    assert_eq!(restored, guard);
+    let forbidden = tx.begin().await.unwrap();
+    assert!(forbidden.execute(statement(
+        "UPDATE sdlc_tasks SET state=jsonb_set(state,'{lifecycle,version}','2'::jsonb) WHERE task_id=$1",
+        vec![task.into()],
+    )).await.is_err());
+    forbidden.rollback().await.unwrap();
     let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
         "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
         "owner_subject":state.owner_subject,"stage":Stage::Analysis,
@@ -257,6 +333,35 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
+        let state = Self::load_binding(tx, config, task, actor).await?;
+        Self::bind_current_task(tx, config, &state, actor).await?;
+        Ok(state)
+    }
+
+    async fn bind_current_task(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        state: &TaskState,
+        actor: &Principal,
+    ) -> Result<(), AppError> {
+        if state.configured_cli()
+            && !actor.trusted_human
+            && app::sdlc_reservation::scheduler(actor, config).is_err()
+        {
+            lifecycle::configured_assignment(tx, state, actor).await?;
+        }
+        spaces::bind_task(tx, config, state, actor).await
+    }
+
+    // Locks current project/account ACL and validates the aggregate, but does not
+    // authorize an operation. Retained-operation callers must prove ownership of
+    // the exact immutable receipt before binding a read-only namespace scope.
+    async fn load_binding(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
         let (project, _) = Self::issue_access(tx, task, actor).await?;
         let row = tx
             .query_one(statement(
@@ -274,7 +379,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("SDLC binding mismatch"));
         }
         state.require_root()?;
-        spaces::bind_task(tx, config, &state, actor).await?;
+        state.interaction_protocol()?;
         Ok(state)
     }
 
@@ -294,9 +399,15 @@ impl PostgresSdlcRepository {
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
         let state = Self::load_with_config(tx, config, task, actor).await?;
-        app::sdlc::authorize_pm_read(&state, actor)?;
+        if !state.configured_cli() {
+            app::sdlc::authorize_pm_read(&state, actor)?;
+        }
         lifecycle::authorize_read(tx, &state, actor).await?;
-        if app::sdlc::has_pm_grant(&actor.scopes) {
+        if app::sdlc::has_pm_grant(&actor.scopes)
+            || (state.configured_cli()
+                && !actor.trusted_human
+                && matches!(state.stage, Stage::Draft | Stage::Backlog))
+        {
             let row = tx.query_one(statement(
                 "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",
                 vec![task.into()],
@@ -399,6 +510,7 @@ impl PostgresSdlcRepository {
                 .map_err(|_| AppError::conflict("PM reservation history invalid"))?;
         let input = Self::original_input(tx, state).await?;
         if result.binding != Self::draft_binding(state)
+            || result.interaction_protocol != state.interaction_protocol()?
             || result.assignment.execution_id != id
             || result.input.snapshot_ref != input.snapshot_ref
             || result.input.sha256 != input.sha256
@@ -531,12 +643,15 @@ impl PostgresSdlcRepository {
             }
         }
         exec(tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)", vec![task.into(), actor.subject.clone().into(), key.into(), hash.into(), result.clone().into()]).await?;
-        let event_stage = if event_type == "requirements.confirmed" {
+        let event_stage = if event_type == "requirements.confirmed" && !state.configured_cli() {
             Stage::Backlog
         } else {
             state.stage
         };
-        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
+        let mut payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
+        if let Some(protocol) = state.interaction_protocol()? {
+            payload["interaction_protocol"] = json!(protocol);
+        }
         exec(
             tx,
             "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
@@ -748,6 +863,9 @@ impl PostgresSdlcRepository {
                 "pm.feedback_recorded" => {
                     "SELECT EXISTS(SELECT 1 FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2 AND payload=$3) AS valid"
                 }
+                "pm.completed" if state.configured_cli() => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_configured_pm_completions WHERE task_id=$1 AND completion_id=$2 AND result=$3) AS valid"
+                }
                 "pm.completed" => {
                     "SELECT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE task_id=$1 AND completion_id=$2 AND result=$3) AS valid"
                 }
@@ -811,6 +929,35 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
+        Some(self)
+    }
+
+    async fn configured_pm_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<Option<domain::sdlc_configured_cli::ConfiguredPmCompletionOperation>, AppError>
+    {
+        self.configured_completion_read(task, actor, key).await
+    }
+    async fn complete_configured_pm(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_configured_cli::CompleteConfiguredPm,
+        receipt: domain::sdlc_configured_cli::ConfiguredWorkflowReceipt,
+    ) -> Result<
+        (
+            domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+            bool,
+        ),
+        AppError,
+    > {
+        self.configured_completion_commit(task, actor, command, receipt)
+            .await
+    }
     fn source_repository(&self) -> Option<&dyn domain::sdlc_source::TaskSourceRepository> {
         Some(self)
     }
@@ -867,14 +1014,7 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
         self.read_analysis_result_operation(task, actor, key).await
     }
-    async fn complete_pm_draft(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_reservation::CompletePmDraft,
-    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
-        self.complete_pm_draft_execution(task, actor, command).await
-    }
+
     async fn pm_draft_completion(
         &self,
         task: Uuid,
@@ -939,99 +1079,7 @@ impl SdlcRepository for PostgresSdlcRepository {
         tx.commit().await.map_err(map_db)?;
         Ok(intent)
     }
-    async fn claim_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ClaimExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.claim_pm_lease(task, actor, command).await
-    }
-    async fn heartbeat_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.heartbeat_pm_lease(task, actor, command).await
-    }
-    async fn execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: Option<&str>,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
-        self.read_pm_lease(task, actor, key).await
-    }
-    async fn resume_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.resume_pm_lease(task, actor, command).await
-    }
-    async fn pm_resume_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_pm_resume_operation(task, actor, key).await
-    }
-    async fn preflight_unsubmitted_pm_recovery(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        self.preflight_unsubmitted_recovery(task, actor, command)
-            .await
-    }
-    async fn recover_unsubmitted_pm_execution_lease(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
-        witness: domain::sdlc_execution_lease::UnsubmittedPmWitness,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.recover_unsubmitted_pm_lease(task, actor, command, witness)
-            .await
-    }
-    async fn unsubmitted_pm_recovery_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_unsubmitted_recovery(task, actor, key).await
-    }
-    async fn preflight_pm_bootstrap_retry(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
-        self.preflight_bootstrap_retry(task, actor, command).await
-    }
-    async fn retry_pm_bootstrap(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: domain::sdlc_pm_bootstrap_retry::BootstrapRetryCommand,
-        witness: domain::sdlc_pm_bootstrap_retry::BootstrapFailureReadback,
-    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
-        self.commit_bootstrap_retry(task, actor, command, witness)
-            .await
-    }
-    async fn pm_bootstrap_retry_operation(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        key: &str,
-    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
-        self.read_bootstrap_retry(task, actor, key).await
-    }
+
     async fn reserve_pm_draft(
         &self,
         task: Uuid,
@@ -1050,6 +1098,53 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let input = Self::original_input(&tx, &state).await?;
+        if command.interaction_protocol != Some(InteractionProtocol::ConfiguredCliV1) {
+            return Err(AppError::conflict(
+                "new PM reservations require configured CLI",
+            ));
+        }
+        if state.interaction_protocol()?.is_none() {
+            let was_unmarked = state.draft_flow()?.is_none();
+            app::sdlc_configured_cli::adopt_unstarted_draft(&mut state)?;
+            // Forward migration guards this one-way transition against stored
+            // assignment/history too. The original creation/input stays intact.
+            exec(
+                &tx,
+                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+                vec![task.into(), json_value(&state)?],
+            )
+            .await?;
+            if was_unmarked {
+                let (creator, _) = Self::project_access(&tx, state.project_id, actor).await?;
+                self.select_task_source(&tx, &state, creator).await?;
+            }
+        }
+        let protocol = state.interaction_protocol()?;
+        if command.interaction_protocol != protocol {
+            return Err(AppError::conflict(
+                "PM reservation interaction protocol mismatch",
+            ));
+        }
+        let machine_subject = {
+            let subject = command
+                .machine_subject
+                .as_deref()
+                .ok_or_else(|| AppError::validation("configured PM service subject is required"))?;
+            let id = Uuid::parse_str(subject)
+                .map_err(|_| AppError::validation("invalid PM service subject"))?;
+            if id.is_nil()
+                || id.to_string() != subject
+                || subject == state.owner_subject
+                || subject == self.config.verifier_subject
+                || subject == self.config.orchestrator_subject
+                || subject == self.config.reservation_scheduler_subject
+            {
+                return Err(AppError::validation(
+                    "PM requires a dedicated service subject",
+                ));
+            }
+            subject.to_owned()
+        };
         let hash =
             app::sdlc::canonical_hash(&json!({"operation":"reserve_pm_draft","payload":command}))?;
         if let Some(saved) = Self::replay(&tx, task, actor, &command.idempotency_key, &hash).await?
@@ -1094,7 +1189,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 "initial PM reservation requires unassigned Draft and current owner CAS",
             ));
         }
-        if self.config.orchestrator_subject.trim().is_empty() {
+        if machine_subject.trim().is_empty() {
             return Err(AppError::Unavailable(
                 "PM machine identity is not configured".into(),
             ));
@@ -1139,8 +1234,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 command.requested_agent_id,
             )?;
         }
-        if self.config.orchestrator_subject == state.owner_subject
-            || self.config.orchestrator_subject == self.config.verifier_subject
+        if machine_subject == state.owner_subject || machine_subject == self.config.verifier_subject
         {
             return Err(AppError::conflict(
                 "PM machine identity conflicts with owner/verifier",
@@ -1151,7 +1245,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             execution_id: Uuid::now_v7(),
             agent_id: command.requested_agent_id,
             version: 1,
-            machine_subject: self.config.orchestrator_subject.clone(),
+            machine_subject,
         };
         let ordinal_row = tx
             .query_one(statement(
@@ -1163,6 +1257,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             .ok_or_else(|| AppError::internal("PM ordinal absent"))?;
         let ordinal: i64 = ordinal_row.try_get("", "ordinal").map_err(map_db)?;
         let result = PmDraftReservation {
+            interaction_protocol: protocol,
             contract_version: 1,
             variant: PmDraftVariant::Reserved,
             binding: Self::draft_binding(&state),
@@ -1200,6 +1295,11 @@ impl SdlcRepository for PostgresSdlcRepository {
                 version.into(),result.owner_cas.version.into(),result.input.snapshot_ref.into(),result.input.sha256.clone().into(),
                 result.assignment_operation_key.clone().into(),json_value(&result)?]).await?;
         state.assignment = Some(assignment.clone());
+        if state.configured_cli() {
+            state
+                .retained_fields
+                .insert("workflow_task_key".into(), json!(result.execution.key));
+        }
         exec(&tx, "UPDATE sdlc_tasks SET state=$2,pm_owner_version=$3,pm_execution_id=$4,pm_admission_state='reserved' WHERE task_id=$1 AND pm_owner_version=$5",
             vec![task.into(),json_value(&state)?,result.owner_cas.version.into(),assignment.execution_id.into(),version.into()]).await?;
         exec(&tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)",
@@ -1414,7 +1514,8 @@ impl SdlcRepository for PostgresSdlcRepository {
                     || state.root_task_id != task
                     || state.task_id != task
                     || state.project_id != project
-                    || state.draft_flow()? != command.flow
+                    || (state.draft_flow()? != command.flow
+                        && !(result.interaction_protocol.is_none() && state.configured_cli()))
                     || result.task_id != task
                     || result.root_task_id != task
                     || result.project_id != project
@@ -1499,6 +1600,9 @@ impl SdlcRepository for PostgresSdlcRepository {
                 return Err(map_db(error));
             }
             let mut retained_fields = serde_json::Map::new();
+            if let Some(protocol) = command.interaction_protocol {
+                retained_fields.insert("interaction_protocol".into(), json!(protocol));
+            }
             if let Some(flow) = command.flow {
                 retained_fields.insert(
                     "flow".into(),
@@ -1533,6 +1637,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 self.select_task_source(&tx, &state, user).await?;
             }
             let result = CreatedDraft {
+                interaction_protocol: command.interaction_protocol,
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,
                 task_id: task,
@@ -1619,19 +1724,30 @@ impl SdlcRepository for PostgresSdlcRepository {
             || result.root_task_id != task
             || result.project_id != project
             || result.owner_subject != actor.subject
+            || (result.interaction_protocol != state.interaction_protocol()?
+                && !(result.interaction_protocol.is_none() && state.configured_cli()))
         {
             return Err(inconsistent());
         }
         let input = Self::original_input(&tx, &state).await?;
-        let original = CreateDraftCommand {
+        let mut original = CreateDraftCommand {
+            interaction_protocol: result.interaction_protocol,
             title: input.title,
             description: input.description,
             idempotency_key: key.into(),
             flow: state.draft_flow()?,
         };
-        let hash =
+        let mut hash =
             app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
-        if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
+        let saved_hash: String = row.try_get("", "payload_hash").map_err(map_db)?;
+        if hash != saved_hash && result.interaction_protocol.is_none() && state.configured_cli() {
+            // The immutable creation hash distinguishes the two historical
+            // creation formats after explicit adoption: unmarked or single-task.
+            original.flow = None;
+            hash =
+                app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
+        }
+        if saved_hash != hash {
             return Err(inconsistent());
         }
         tx.commit().await.map_err(map_db)?;
@@ -1643,6 +1759,32 @@ impl SdlcRepository for PostgresSdlcRepository {
         let state = self.load_read(&tx, task, actor).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(state)
+    }
+    async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load_read(&tx, task, actor).await?;
+        let mut context = state.context(actor);
+        if state.configured_cli() {
+            context.assignment = lifecycle::configured_assignment(&tx, &state, actor).await?;
+            context.critical_review = self.configured_review_context(&tx, &state).await?;
+            if !actor.trusted_human && app::sdlc_reservation::reader(actor).is_ok() {
+                // This server read is Workflow's current execution authority,
+                // not just a view of a historical assignment. Reader membership
+                // must never keep a revoked producer authorized to execute.
+                if let Some(assignment) = &context.assignment {
+                    let producer = Principal {
+                        subject: assignment.machine_subject.clone(),
+                        human_session: false,
+                        trusted_human: false,
+                        scopes: Default::default(),
+                    };
+                    Self::project_access(&tx, state.project_id, &producer).await?;
+                }
+            }
+            context.expected_assignment_version = context.assignment.as_ref().map(|a| a.version);
+        }
+        tx.commit().await.map_err(map_db)?;
+        Ok(context)
     }
     async fn confirmation_read(
         &self,
@@ -1789,28 +1931,9 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<Json, AppError> {
-        self.execute_with_native(task, actor, command, None, None)
-            .await
+        self.execute_command(task, actor, command).await
     }
-    async fn prepare_native_command(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: &SdlcCommand,
-    ) -> Result<domain::sdlc_native_admission::CommandAdmission, AppError> {
-        self.native_command_preflight(task, actor, command).await
-    }
-    async fn execute_verified(
-        &self,
-        task: Uuid,
-        actor: &Principal,
-        command: SdlcCommand,
-        expected: PmDraftReservation,
-        observed: Option<domain::sdlc_native_admission::AdmissionObservation>,
-    ) -> Result<Json, AppError> {
-        self.execute_with_native(task, actor, command, Some(expected), observed)
-            .await
-    }
+
     async fn outbox(
         &self,
         task: Uuid,
