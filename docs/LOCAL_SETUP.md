@@ -40,6 +40,38 @@ docker compose up -d --build
 
 Основные переменные — в `.env.example` (Postgres-параметры compose, JWT-секрет, лимиты, порты `BACKEND_PORT`/`FRONTEND_PORT`). Секреты обязательны: `docker compose` откажется стартовать без `POSTGRES_PASSWORD` и `TASKTRACKER_JWT_SECRET`.
 
+### 3.1. Configured CLI Cohort
+
+Замена native PM writers несовместима со старым Fleet. До переключения
+приостановить новую legacy-выдачу, завершить активные исполнения и сверить
+неизвестные результаты по исходным ключам на совместимом старом cohort.
+Затем согласованно заменить Tracker/Fleet/Workflow и упакованные CLI, применяя
+обычную forward-цепочку миграций. Старые квитанции, IDs, hashes и история
+сохраняются для чтения; удалённые native endpoints не возвращаются.
+
+Новый agent runtime получает `FLEET_CLI_PROTOCOL=configured-cli-v1`, текущий
+`FLEET_AGENT_ID`, `TASKTRACKER_API_URL` и постоянный `TASKTRACKER_TOKEN` служебной
+identity с обычными read/write scopes и членством в проекте. Workflow CLI имеет
+свои `PROJECT_WORKFLOW_URL`, `PROJECT_WORKFLOW_API_TOKEN` и namespace. Tracker
+читает receipt отдельным серверным credential: пара
+`TASKTRACKER_SDLC__WORKFLOW_URL` / `TASKTRACKER_SDLC__WORKFLOW_READ_TOKEN`;
+для технических профессий используются соответствующие серверные read tokens
+из `TASKTRACKER_SDLC__WORKFLOW_READ_TOKENS_JSON`. Значения секретов не входят
+в source, команды или evidence. Точный контракт: [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
+
+Новые задачи явно выбирают configured protocol. Включение проекта не конвертирует
+существующие задачи; первое назначение владельцем может принять только ещё
+не начатый Draft по существующему правилу миграции109. Начатые legacy-задачи
+автоматически не переводятся. Owner confirmation остаётся Draft/InProgress;
+проверенные Workflow receipt и итоговый комментарий допускают Backlog/Ready
+без автоматического запуска Analyst. Права владельца, проекта и fencing сохраняются.
+
+Source-проверка сохранения заполненной истории использует синтетические
+populated seed fixtures и отдельные disposable БД, без копий рабочих данных.
+Проверка упакованных entrypoints/JSON относится к CLI cohort; настоящая
+Hermes-приёмка всех профессий и Rework относится к runtime release и сама
+по себе не является условием merge CLI source без выявленного дефекта.
+
 ## 4. Backend (разработка без Docker)
 
 ```bash

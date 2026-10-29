@@ -7,6 +7,15 @@ removed by the coordinated protocol replacement. New question publication and
 completion use the configured request shapes; stored history keeps its original
 shape. Use the current Rust-generated OpenAPI for the exposed routes.
 
+Rollout is a coordinated writer replacement: stop new legacy dispatch, drain
+active legacy executions and reconcile unknown effects by their original keys
+on the compatible old cohort before replacing Tracker/Fleet/Workflow and the
+packaged CLIs. Saved legacy confirmation/completion/history remains read-only
+in its original shape through retained readback routes; removed native routes
+are not restored. New configured tasks use persistent service identities and
+the existing owner/project/fence checks. No automatic conversion of started
+legacy tasks is supported. See [local rollout boundary](LOCAL_SETUP.md#31-configured-cli-cohort).
+
 ## Terminal-Idle Checkpoint Permit (Source Candidate)
 
 The existing resume POST/operation GET additionally support the closed

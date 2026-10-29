@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-29: Fileless Writer Rollout Boundary
+
+- Native PM writers are retired by the coordinated Tracker/Fleet/Workflow/CLI
+  replacement. Drain active legacy work and reconcile unknown operations on the
+  old compatible cohort before switching; retained history stays read-only.
+- New configured tasks use persistent service credentials with unchanged
+  owner/project/fence checks. Started legacy tasks are not auto-converted.
+- Document the existing configuration and synthetic populated-history checks in
+  [Local Setup](docs/LOCAL_SETUP.md#31-configured-cli-cohort). All-role Hermes
+  acceptance remains runtime release evidence, not a CLI source merge gate.
+  This documentation change performs no installation or activation.
+
 ## 2026-10-27: PM Publish CLI Discovery
 
 - Fresh PM check: FLEETQA-9 independently reads Workflow but incorrectly treats
