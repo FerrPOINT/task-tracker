@@ -333,9 +333,7 @@ export function ProjectBoardPage() {
                     isMoving={move.isPending}
                   />
                 ))}
-                {colIssues.length === 0 && (
-                  <EmptyState message={t('board.emptyStatus')} />
-                )}
+                {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
               </CardContent>
 
               <CreateTaskAction

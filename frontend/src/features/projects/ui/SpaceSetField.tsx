@@ -138,9 +138,9 @@ export function SpaceSetField({
               >
                 <ResourceListTitle asChild>
                   <span className="min-w-0 break-all">
-                  {entry?.metadata.name ?? 'Пространство'} · {ref.registry_instance_id}/
-                  {ref.space_id}
-                </span>
+                    {entry?.metadata.name ?? 'Пространство'} · {ref.registry_instance_id}/
+                    {ref.space_id}
+                  </span>
                 </ResourceListTitle>
                 <Button
                   type="button"

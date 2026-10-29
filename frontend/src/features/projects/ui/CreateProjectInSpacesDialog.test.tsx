@@ -129,7 +129,9 @@ describe('explicit-space project creation', () => {
     await user.type(keyField, '?')
     await screen.findByText('Ключ: от 1 до 10 латинских букв, цифр или дефисов.')
     expect(keyField).toHaveAttribute('aria-invalid', 'true')
-    expect(keyField).toHaveAccessibleDescription('Ключ: от 1 до 10 латинских букв, цифр или дефисов.')
+    expect(keyField).toHaveAccessibleDescription(
+      'Ключ: от 1 до 10 латинских букв, цифр или дефисов.',
+    )
     await user.type(nameField, 'x')
     await user.clear(nameField)
     await screen.findByText('Укажите название до 200 символов.')

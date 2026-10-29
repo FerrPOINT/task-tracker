@@ -23,10 +23,9 @@ export interface CustomFieldValue {
 }
 
 export async function listCustomFields(projectKey: string): Promise<CustomField[]> {
-  const { data, error, response } = await api.GET(
-    '/api/v1/projects/{project_key}/custom-fields',
-    { params: { path: { project_key: projectKey } } },
-  )
+  const { data, error, response } = await api.GET('/api/v1/projects/{project_key}/custom-fields', {
+    params: { path: { project_key: projectKey } },
+  })
   if (error || !response.ok) throw new ApiError(response.status, 'Failed to load custom fields')
   if (!data || !Array.isArray((data as { fields?: unknown }).fields))
     throw new InvalidResponseError(response.status)
@@ -59,10 +58,9 @@ export async function deleteCustomField(id: string): Promise<void> {
   if (error) throw new Error('Failed to delete custom field')
 }
 export async function listIssueCustomFieldValues(issueId: string): Promise<CustomFieldValue[]> {
-  const { data, error, response } = await api.GET(
-    '/api/v1/issues/{issue_id}/custom-fields',
-    { params: { path: { issue_id: issueId } } },
-  )
+  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/custom-fields', {
+    params: { path: { issue_id: issueId } },
+  })
   if (error || !response.ok)
     throw new ApiError(response.status, 'Failed to load custom field values')
   if (!data || !Array.isArray((data as { values?: unknown }).values))

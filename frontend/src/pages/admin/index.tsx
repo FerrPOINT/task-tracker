@@ -284,7 +284,11 @@ export function AdminPage() {
                 errorMessage={t('admin.audit.loadError')}
                 onRetry={() => void auditLog.refetch()}
               >
-                <ResourceList role="list" variant="bordered" className="lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem]">
+                <ResourceList
+                  role="list"
+                  variant="bordered"
+                  className="lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,2fr)_8rem]"
+                >
                   <ResourceListHeader className="hidden gap-3 lg:col-span-full lg:grid lg:grid-cols-subgrid">
                     <span>{t('admin.audit.action')}</span>
                     <span>{t('admin.audit.entity')}</span>

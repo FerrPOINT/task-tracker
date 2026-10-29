@@ -295,10 +295,12 @@ export function ReportsPage() {
           </div>
         )}
 
-        <ActionGroup align="start"
+        <ActionGroup
+          align="start"
           className="sm:ml-auto"
           aria-label={t('reports.export')}
-          aria-busy={exporting !== null}>
+          aria-busy={exporting !== null}
+        >
           <Button
             variant="outline"
             size="sm"

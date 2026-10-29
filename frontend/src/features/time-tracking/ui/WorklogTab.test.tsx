@@ -58,9 +58,11 @@ describe('WorklogTab', () => {
   })
 
   it('exposes mobile worklog terms and values without inventing remaining time', () => {
-    render(wrapper(
-      <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
-    ))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
     expect(screen.getAllByRole('term').map((node) => node.textContent)).toEqual([
       i18n.t('timeTracking.worklog.started'),
       i18n.t('timeTracking.worklog.timeSpent'),
@@ -71,7 +73,13 @@ describe('WorklogTab', () => {
       i18n.t('timeTracking.worklog.remaining'),
     ])
     expect(screen.getAllByRole('definition').map((node) => node.textContent)).toEqual([
-      '2026-08-01', '1h', '-', 'Fixed the bug', '2026-08-02', '30m', '-',
+      '2026-08-01',
+      '1h',
+      '-',
+      'Fixed the bug',
+      '2026-08-02',
+      '30m',
+      '-',
     ])
   })
 
@@ -79,11 +87,15 @@ describe('WorklogTab', () => {
     const entry = { ...worklogs[1]!, timeSpentSeconds: 0, comment: null }
     const onEdit = vi.fn()
     const onDelete = vi.fn()
-    render(wrapper(
-      <WorklogTab worklogs={[entry]} onEdit={onEdit} onDelete={onDelete} currentUserId="u1" />,
-    ))
+    render(
+      wrapper(
+        <WorklogTab worklogs={[entry]} onEdit={onEdit} onDelete={onDelete} currentUserId="u1" />,
+      ),
+    )
     expect(screen.getAllByRole('definition').map((node) => node.textContent)).toEqual([
-      '2026-08-02', '0m', '-',
+      '2026-08-02',
+      '0m',
+      '-',
     ])
     expect(screen.queryByLabelText(/edit worklog/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/delete worklog/i)).not.toBeInTheDocument()

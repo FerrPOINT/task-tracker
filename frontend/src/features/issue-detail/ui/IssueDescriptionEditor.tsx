@@ -1,4 +1,13 @@
-import { ActionGroup, Input, Button, Textarea, Notice, FormField, PageHeader, Prose } from '@pdlc/ui/ui'
+import {
+  ActionGroup,
+  Input,
+  Button,
+  Textarea,
+  Notice,
+  FormField,
+  PageHeader,
+  Prose,
+} from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -189,11 +198,7 @@ function renderDescription(text: string) {
           )
         }
         if (line.startsWith('# ')) {
-          return (
-            <h3 key={idx}>
-              {line.slice(2)}
-            </h3>
-          )
+          return <h3 key={idx}>{line.slice(2)}</h3>
         }
         if (line.trim() === '') {
           return <div key={idx} className="h-2" />

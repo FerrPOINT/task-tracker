@@ -2,12 +2,21 @@
 
 ## Текущий source-кандидат UI
 
-Точный UI SHA: `cf88f7094044a403e6bb7105cfa88b12c4208c96` ([pin](../.base-ui-revision)).
+Точный UI SHA: `cdfac2bbcf61f82ff126df529d5759d425e872ea` ([pin](../.base-ui-revision)),
+пакет 0.3.25, reference `dee0677b0616c0caf8d5df8276cd43c1e7bbc1dfa7d9b6ac3776c57fb7ae1b7d`.
+Producer объединяет Base #384 и независимый expiry #386 без повторного включения #381.
 Компоненты и reference берутся из этой версии Base; открытый справочник другой
 версии не подтверждает доступность контракта в продукте. SDK/skills pins
 независимы. Это исходники собственного checkout; установка и authenticated
 приёмка runtime этим значением не подтверждаются. Датированные разделы ниже
 описывают прежние квалификации и не заменяют проверку итогового кандидата.
+
+Квалификация source UI cohort: frozen install, точный installed snapshot,
+TypeScript, shell/primitive/CSS guards, lint, format, OpenAPI check, build
+и 74 scoped tests /7 файлов PASS. Только formatter исправил 18 файлов;
+emitted JavaScript AST до/после совпадает. SDK/skills pins и lockfile не менялись.
+Полный продуктовый suite, authenticated UI, установка и полная тематическая
+матрица этим source-проходом не объявляются завершёнными.
 
 Совместимый UI-кандидат выровнен с остальными потребителями; предметные компоненты Tracker этим обновлением не заменяются.
 

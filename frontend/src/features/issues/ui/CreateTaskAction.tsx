@@ -111,11 +111,7 @@ export function CreateTaskAction({
       title={pending ? 'Загружаем проект…' : contextError}
       onClick={() => void open()}
     >
-      {pending ? (
-        <Loader size="sm" />
-      ) : (
-        <Plus className="h-4 w-4" aria-hidden />
-      )}
+      {pending ? <Loader size="sm" /> : <Plus className="h-4 w-4" aria-hidden />}
       {children ?? t('navigation.create')}
     </Button>
   )

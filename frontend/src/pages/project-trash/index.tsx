@@ -86,11 +86,11 @@ export function ProjectTrashPage() {
 
   if (!projectKey) {
     return (
-        <ResourceStateView
-          scope="local"
-          state={{ kind: 'not-found', title: t('trash.noProject'), headingLevel: 1 }}
-        />
-      )
+      <ResourceStateView
+        scope="local"
+        state={{ kind: 'not-found', title: t('trash.noProject'), headingLevel: 1 }}
+      />
+    )
   }
 
   const hasPrev = trashOffset > 0
@@ -115,9 +115,7 @@ export function ProjectTrashPage() {
         }
       />
 
-      {isLoading && (
-        <LoadingState scope="local" message={t('trash.loading')} />
-      )}
+      {isLoading && <LoadingState scope="local" message={t('trash.loading')} />}
 
       {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
 
@@ -126,7 +124,10 @@ export function ProjectTrashPage() {
       )}
 
       {trashedIssues.length > 0 && (
-        <ResourceList variant="bordered" className="text-sm lg:grid lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto]">
+        <ResourceList
+          variant="bordered"
+          className="text-sm lg:grid lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto]"
+        >
           <ResourceListHeader className="hidden gap-3 lg:col-span-full lg:grid lg:grid-cols-subgrid">
             <span>{t('trash.key')}</span>
             <span>{t('trash.summary')}</span>

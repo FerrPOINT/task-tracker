@@ -50,9 +50,14 @@ describe('ActivityFeed', () => {
   ])('shows $duration of logged time in $language', async ({ language, seconds, duration }) => {
     await i18n.changeLanguage(language)
     try {
-      render(wrapper(
-        <ActivityFeed comments={[]} worklogs={[{ ...worklog, timeSpentSeconds: seconds, comment: null }]} />,
-      ))
+      render(
+        wrapper(
+          <ActivityFeed
+            comments={[]}
+            worklogs={[{ ...worklog, timeSpentSeconds: seconds, comment: null }]}
+          />,
+        ),
+      )
       expect(screen.getByText(duration, { exact: false })).toBeVisible()
     } finally {
       await i18n.changeLanguage('en')
@@ -92,9 +97,14 @@ describe('ActivityFeed', () => {
   })
 
   it('orders activity by time and keeps event kinds in text rather than color', () => {
-    const { container } = render(wrapper(
-      <ActivityFeed comments={[{ ...comment, id: 'same-id' }]} worklogs={[{ ...worklog, id: 'same-id' }]} />,
-    ))
+    const { container } = render(
+      wrapper(
+        <ActivityFeed
+          comments={[{ ...comment, id: 'same-id' }]}
+          worklogs={[{ ...worklog, id: 'same-id' }]}
+        />,
+      ),
+    )
     const bob = screen.getByText('Bob')
     const alice = screen.getByText('Alice')
     expect(bob.compareDocumentPosition(alice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -108,9 +118,14 @@ describe('ActivityFeed', () => {
     const withoutAuthor = { ...comment, authorName: null }
     const view = render(wrapper(<ActivityFeed comments={[withoutAuthor]} worklogs={[]} />))
     expect(screen.getByText('Unknown user')).toBeVisible()
-    view.rerender(wrapper(
-      <ActivityFeed comments={[]} worklogs={[{ ...worklog, comment: '<script>plain text</script>' }]} />,
-    ))
+    view.rerender(
+      wrapper(
+        <ActivityFeed
+          comments={[]}
+          worklogs={[{ ...worklog, comment: '<script>plain text</script>' }]}
+        />,
+      ),
+    )
     expect(screen.queryByText('Unknown user')).not.toBeInTheDocument()
     expect(screen.getByText('<script>plain text</script>')).toBeVisible()
     expect(view.container.querySelector('script')).toBeNull()

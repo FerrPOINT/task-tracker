@@ -206,15 +206,17 @@ export function ProjectCustomFieldsPage() {
                     <ResourceListRow asChild key={field.id}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <ResourceListTitle asChild className="break-words"><p >
-                            {field.name}
-                            {field.is_required ? ' *' : ''}
-                          </p></ResourceListTitle>
+                          <ResourceListTitle asChild className="break-words">
+                            <p>
+                              {field.name}
+                              {field.is_required ? ' *' : ''}
+                            </p>
+                          </ResourceListTitle>
                           <ResourceListDescription asChild>
                             <p className="break-words">
-                            {t(`customFields.types.${field.field_type}`)}
-                            {field.options.length ? `: ${field.options.join(', ')}` : ''}
-                          </p>
+                              {t(`customFields.types.${field.field_type}`)}
+                              {field.options.length ? `: ${field.options.join(', ')}` : ''}
+                            </p>
                           </ResourceListDescription>
                         </div>
                         <Button

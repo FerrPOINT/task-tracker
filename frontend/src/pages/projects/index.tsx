@@ -207,9 +207,21 @@ export function ProjectsPage() {
                   </span>
                 </ProjectCardLink>
                 <ResourceListRow className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 items-center gap-1 text-center sm:col-span-1 sm:col-start-2 sm:row-start-1">
-                  <Metric appearance="compact" label={t("projects.todo")} value={project.todo_count} />
-                  <Metric appearance="compact" label={t("projects.inProgress")} value={project.in_progress_count} />
-                  <Metric appearance="compact" label={t("projects.done")} value={project.done_count} />
+                  <Metric
+                    appearance="compact"
+                    label={t('projects.todo')}
+                    value={project.todo_count}
+                  />
+                  <Metric
+                    appearance="compact"
+                    label={t('projects.inProgress')}
+                    value={project.in_progress_count}
+                  />
+                  <Metric
+                    appearance="compact"
+                    label={t('projects.done')}
+                    value={project.done_count}
+                  />
                 </ResourceListRow>
                 <ResourceListRow className="col-start-2 row-start-1 flex items-center sm:col-start-3">
                   <DropdownMenu modal={false}>

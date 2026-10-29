@@ -44,9 +44,9 @@ export function SpaceContextBoundary({
     return (
       <div className="space-y-3">
         <ErrorState message="Контекст пространства или проекта неоднозначен. Выберите его явно." />
-        <TextLink asChild><Link to={spaceProjectLocation(null)}>
-          Открыть все доступные проекты
-        </Link></TextLink>
+        <TextLink asChild>
+          <Link to={spaceProjectLocation(null)}>Открыть все доступные проекты</Link>
+        </TextLink>
       </div>
     )
   if (!session) return <ErrorState message="Нужна подтверждённая центральная сессия." />
