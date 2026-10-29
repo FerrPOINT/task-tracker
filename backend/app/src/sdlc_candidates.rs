@@ -30,8 +30,11 @@ pub fn candidate(
     state: &TaskState,
     current: Option<&LifecycleReceipt>,
     pm_completed: bool,
+    configured_started: bool,
 ) -> Result<Option<DeliveryCandidate>, AppError> {
-    if state.configured_cli() || state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
+    if state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
+        || (state.configured_cli() && (!configured_started || !pm_completed || current.is_none()))
+    {
         return Ok(None);
     }
     state.require_root()?;

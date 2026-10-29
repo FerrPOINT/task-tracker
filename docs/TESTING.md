@@ -1,5 +1,31 @@
 # Стратегия тестирования Task Tracker
 
+## Configured Analysis Start: 2026-10-29
+
+PR197 qualifies the explicit owner start, not an automatic PM transition. On
+backend tree `1458e3abfd17f62aa94411a4d602dbcc3bd76987`,13 selected real
+PostgreSQL scenarios cover atomic start/discovery, replay/conflict, ownership,
+stale consent, rollback and populated migration history. The actual HTTP Draft
+suite additionally checks denied/stale commands,201 creation,200 replay and one
+intent with no assignment. Backend538 unit and44 CLI tests, workspace/all-target
+check, strict Clippy, Rustfmt and Rust OpenAPI generation pass locally in Linux.
+Ignored tests outside those selections are not passes. Only fresh synthetic
+Compose fixtures were used, with owned resources cleaned by Base helper v2.
+
+The frontend on pinned Base UI03a35d80 passes typecheck,724 tests across77 files,
+lint, format, build and generated schema/compatibility checks. These are composed
+results: the first run passed665 tests but failed to start one fork worker; the
+missing file then passed59 tests separately. Five existing formatting errors
+were corrected mechanically before the final format/build gates. No business UI
+was changed. Generated TypeScript remains an ignored build artifact, produced
+from the checked-in Rust-generated OpenAPI rather than manually maintained.
+
+Retained result hashes and scope are in
+[the evidence manifest](evidence/configured-analysis-start-20261029.json).
+This is source qualification, not installation, real Auth/Hermes inference,
+browser acceptance or a seven-role deployment. Those remain coordinated release
+gates. PM completion alone is still tested to leave Backlog/Ready without intent.
+
 ## PM Recovery: Миграция0098
 
 В PR169 подготовлен отдельный сценарий непустого PM upgrade: fixture доходит

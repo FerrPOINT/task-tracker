@@ -1,6 +1,7 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { Fieldset,
+import {
+  Fieldset,
   PageHeader,
   SectionHeader,
   Select,

@@ -544,15 +544,26 @@ pub fn analysis_intent(
     confirmation: &Confirmation,
     intent_id: Uuid,
 ) -> Result<AnalysisIntent, AppError> {
+    if state.stage != Stage::Analysis || confirmation.stage != Stage::Backlog {
+        return Err(AppError::conflict(
+            "Analysis intent confirmation binding inconsistent",
+        ));
+    }
+    analysis_intent_payload(state, confirmation, intent_id)
+}
+
+pub(crate) fn analysis_intent_payload(
+    state: &TaskState,
+    confirmation: &Confirmation,
+    intent_id: Uuid,
+) -> Result<AnalysisIntent, AppError> {
     state.require_root()?;
     let revision = state
         .revisions
         .last()
         .ok_or_else(|| AppError::conflict("requirements absent"))?;
-    if !matches!(state.stage, Stage::Analysis)
-        || intent_id.is_nil()
+    if intent_id.is_nil()
         || confirmation.id.is_nil()
-        || !matches!(confirmation.stage, Stage::Backlog)
         || confirmation.task_id != state.task_id
         || confirmation.owner_subject != state.owner_subject
         || confirmation.revision != revision.revision

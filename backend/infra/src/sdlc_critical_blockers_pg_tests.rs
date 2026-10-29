@@ -1,6 +1,8 @@
 //! Child of the existing candidates fixture, not another DB runner.
 //! Runtime/Workflow observations and business content below are explicitly synthetic.
 use super::*;
+#[path = "sdlc_configured_start_pg_tests.rs"]
+mod configured_start_tests;
 #[path = "sdlc_critical_pm_blocker_read_pg_tests.rs"]
 mod pm_blocker_read_tests;
 #[path = "sdlc_critical_pm_lifecycle_pg_tests.rs"]

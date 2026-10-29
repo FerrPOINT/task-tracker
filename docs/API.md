@@ -16,6 +16,39 @@ are not restored. New configured tasks use persistent service identities and
 the existing owner/project/fence checks. No automatic conversion of started
 legacy tasks is supported. See [local rollout boundary](LOCAL_SETUP.md#31-configured-cli-cohort).
 
+## Explicit Configured Analysis Start (Source Candidate)
+
+The existing `POST /api/v1/issues/{id}/sdlc/lifecycle` accepts exactly:
+
+```json
+{"operation":"start_analysis","pm_completion_id":"22222222-2222-4222-8222-222222222222","idempotency_key":"owner-start-1"}
+```
+
+Only the current human task owner with current project admission may start an
+opt-in `single-task-v1`, `configured-cli-v1` task in Backlog/Ready before its first
+delivery lifecycle. A verified human session is required, as for owner consent. An agent,
+administrator or scheduler cannot substitute for that owner. The server derives
+and checks the exact current PM completion, owner/version, assignment fence,
+requirements revision/hash, saved Draft confirmation and frozen routing/source
+binding. No caller-supplied authority tuple or new confirmation is accepted.
+
+New success is 201; exact original-key replay is 200 with the original
+`LifecycleReceipt`, even after later lifecycle advancement. Changed payload is
+409. Replay/readback rechecks current user activity, project access and actual
+task ownership; it does not roll back the current lifecycle. Read the original
+receipt with the existing no-store GET
+`/api/v1/issues/{id}/sdlc/lifecycle/operations/{idempotency_key}`.
+
+CLI: `task-tracker sdlc start analysis --task UUID --pm-completion-id UUID --key KEY`;
+readback: `task-tracker sdlc start operation --task UUID --key KEY`.
+On unknown POST outcome read that original key before retrying the same command.
+PM completion and its replay still create zero Analysis intents. Explicit start
+atomically creates one intent, initial queued lifecycle and existing outbox events;
+it does not assign or dispatch an agent. Discovery includes only explicitly started
+configured tasks. Accepted role results use the existing next-stage queue on the
+same root task, without manual per-role advance or child tasks. This source package
+does not establish seven-role live acceptance or enable a deployed project.
+
 ## Terminal-Idle Checkpoint Permit (Source Candidate)
 
 The existing resume POST/operation GET additionally support the closed

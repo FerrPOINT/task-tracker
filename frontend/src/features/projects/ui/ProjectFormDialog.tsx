@@ -1,4 +1,5 @@
-import { Fieldset,
+import {
+  Fieldset,
   ProjectAvatar,
   Button,
   Input,

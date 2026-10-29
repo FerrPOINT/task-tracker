@@ -5,6 +5,46 @@ use domain::sdlc_routing::{
     RoleRoute, RoleRoutes, RoutingPolicy, RoutingVerification, TaskRoutingSnapshot,
 };
 
+#[test]
+fn explicit_start_command_is_closed_and_has_no_owner_or_dispatch_override() {
+    use serde_json::json;
+    let raw = json!({"operation":"start_analysis","pm_completion_id":Uuid::new_v4(),"idempotency_key":"start"});
+    let command: LifecycleCommand = serde_json::from_value(raw.clone()).unwrap();
+    validate_command(&command).unwrap();
+    assert_eq!(command.key(), "start");
+    for field in [
+        "owner_subject",
+        "project_id",
+        "requirement_revision",
+        "content_hash",
+        "confirmation_id",
+        "agent_id",
+        "assignment_id",
+        "transaction_id",
+    ] {
+        let mut wrong = raw.clone();
+        wrong[field] = json!("override");
+        assert!(
+            serde_json::from_value::<LifecycleCommand>(wrong).is_err(),
+            "{field}"
+        );
+    }
+    assert!(
+        validate_command(&LifecycleCommand::StartAnalysis {
+            pm_completion_id: Uuid::nil(),
+            idempotency_key: "start".into(),
+        })
+        .is_err()
+    );
+    assert!(
+        validate_command(&LifecycleCommand::StartAnalysis {
+            pm_completion_id: Uuid::new_v4(),
+            idempotency_key: String::new(),
+        })
+        .is_err()
+    );
+}
+
 fn artifact(name: &str) -> ArtifactReceipt {
     ArtifactReceipt {
         reference: format!("evidence/{name}.json"),

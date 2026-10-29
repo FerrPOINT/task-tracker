@@ -135,3 +135,14 @@ cd ../frontend && pnpm generate:api && pnpm typecheck
 - [Деплой](DEPLOYMENT.md)
 - [Бэкап и восстановление](BACKUP_RESTORE.md)
 - [Runbook](OPS_RUNBOOK.md)
+
+## Explicit Start Rollout (Next Source Release)
+
+Apply forward migration `m20261029_0000111_configured_analysis_start` after 0110,
+before enabling the compatible Tracker backend and packaged CLI. Keep the existing
+project opt-in allowlist; deployment does not start any task. An authorized current
+human owner selects a saved current PM completion and explicitly starts that task
+through the existing lifecycle API / `sdlc start analysis`. No automatic history
+conversion, new owner confirmation, Fleet planner or Workflow/Hermes rebuild is
+part of this package. The previously installed PM-only cohort is unchanged until
+a separate coordinated release. See [API](API.md#explicit-configured-analysis-start-source-candidate).

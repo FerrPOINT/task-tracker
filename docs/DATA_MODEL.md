@@ -2336,3 +2336,15 @@ intent is created by configured PM completion. Fresh/filled PostgreSQL acceptanc
 of these unapplied candidate migrations remains required.
 
 Migration 110 corrects the configured critical-PM question guard: missing and JSON-null `checkpoint_id` both mean absence; non-null native checkpoints remain forbidden. Applied migrations and stored history are unchanged.
+
+## Explicit Start Journal Extension
+
+Forward migration `m20261029_0000111_configured_analysis_start` extends existing
+`sdlc_delivery_operations` with nullable `command` and `transaction_id`. Historical
+rows keep NULL values and their original fields; no old SQL or ledger rows are
+rewritten. The pair exists only for explicit configured owner start: its closed
+command must match the current completion/consent/source tuple. The transaction ID
+ties that journal row to the existing projection permit, so a historical receipt
+cannot authorize another initial transition. A partial unique task index and
+deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
+No new table, permit family, task tree or scheduler is introduced.
