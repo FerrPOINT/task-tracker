@@ -40,7 +40,6 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "i18next": "^25.1.0",
-    "i18next-http-backend": "^3.0.2",
     "lucide-react": "^0.487.0",
     "openapi-fetch": "^0.13.5",
     "react": "^19.1.0",
