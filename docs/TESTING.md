@@ -1,5 +1,11 @@
 # Стратегия тестирования Task Tracker
 
+Frontend manifest/importer больше не объявляет неиспользуемый
+`i18next-http-backend`: product и Base переводы уже bundled JSON. Configs,
+locales, scripts, locked versions и pins сохранены. Новый lock требует отдельной
+frozen qualification; старый environment не считается проверенным этим Source audit.
+[Общий consumer contract и результаты](../../services-base/docs/plans/fleet-frontend-dependency-closure-20261030.md).
+
 ## Configured Analysis Start: 2026-10-29
 
 PR197 qualifies the explicit owner start, not an automatic PM transition. On
