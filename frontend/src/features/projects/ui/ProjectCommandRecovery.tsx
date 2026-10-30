@@ -1,19 +1,14 @@
-import { Component, type ReactNode } from 'react'
-import { ErrorState } from '@pdlc/ui/ui'
+import type { ReactNode } from 'react'
+import { ErrorState, RenderBoundary } from '@pdlc/ui/ui'
 
-export class ProjectCommandRecovery extends Component<
-  { children: ReactNode },
-  { broken: boolean }
-> {
-  state = { broken: false }
-  static getDerivedStateFromError() {
-    return { broken: true }
-  }
-  render() {
-    return this.state.broken ? (
-      <ErrorState message="Не удалось открыть форму проекта. Сохранённый журнал не удалён; требуется проверка ошибки." />
-    ) : (
-      this.props.children
-    )
-  }
+export function ProjectCommandRecovery({ children }: { children: ReactNode }) {
+  return (
+    <RenderBoundary
+      fallback={
+        <ErrorState message="Не удалось открыть форму проекта. Сохранённый журнал не удалён; требуется проверка ошибки." />
+      }
+    >
+      {children}
+    </RenderBoundary>
+  )
 }

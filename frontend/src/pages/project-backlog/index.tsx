@@ -1,6 +1,9 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
+  ActionGroup,
+  ResourceListDescription,
+  ResourceListTitle,
   ProjectAvatar,
   PageHeader,
   PageNavigation,
@@ -17,6 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   UserAvatar,
@@ -54,10 +58,12 @@ function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode })
           className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-            <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
-            <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
-              {issue.summary}
-            </span>
+            <ResourceListDescription asChild className="shrink-0 sm:w-20">
+              <span>{issue.key}</span>
+            </ResourceListDescription>
+            <ResourceListTitle asChild className="line-clamp-2 min-w-0 sm:line-clamp-1 sm:flex-1">
+              <span>{issue.summary}</span>
+            </ResourceListTitle>
           </span>
           <span className="flex items-center gap-2 sm:shrink-0">
             <PriorityBadge priority={issue.priority} />
@@ -113,10 +119,10 @@ function MoveIssueAction({
         {(activeSprint || futureSprints.length > 0) && (
           <>
             {removeFromSprintId && <DropdownMenuSeparator />}
-            <DropdownMenuItem disabled className="text-text-muted">
-              <ArrowRightLeft className="mr-2 h-4 w-4" />
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4" />
               {t('backlog.moveToSprint')}
-            </DropdownMenuItem>
+            </DropdownMenuLabel>
             {activeSprint && issue.sprint_id !== activeSprint.id && (
               <DropdownMenuItem
                 disabled={isLoading}
@@ -315,7 +321,7 @@ export function ProjectBacklogPage() {
         }
         action={
           activeFromList ? (
-            <div className="flex items-center gap-2">
+            <ActionGroup align="start">
               <Button
                 size="sm"
 
@@ -353,7 +359,7 @@ export function ProjectBacklogPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            </ActionGroup>
           ) : undefined
         }
         items={activeSprintIssues}
@@ -380,7 +386,7 @@ export function ProjectBacklogPage() {
           key={sprint.id}
           title={t('backlog.futureSprint', { name: sprint.name })}
           action={
-            <div className="flex items-center gap-2">
+            <ActionGroup align="start">
               <Button
                 size="sm"
 
@@ -407,7 +413,7 @@ export function ProjectBacklogPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            </ActionGroup>
           }
           items={sprint_issues.filter((issue) => issue.sprint_id === sprint.id)}
           renderItem={(issue) => (

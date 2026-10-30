@@ -1,3 +1,4 @@
+import { ApiError, InvalidResponseError, downloadBlob } from '@pdlc/ui/lib'
 import { api } from './client'
 import { apiBaseUrl, refreshAccessToken } from './client'
 import type { components } from './generated'
@@ -6,10 +7,11 @@ import { useAuthStore } from '@/shared/auth/store'
 export type Attachment = components['schemas']['AttachmentResponse']
 
 export async function listAttachments(issueId: string): Promise<Attachment[]> {
-  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/attachments', {
+  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/attachments', {
     params: { path: { issue_id: issueId } },
   })
-  if (error || !data) throw new Error('Failed to load attachments')
+  if (error || !response.ok) throw new ApiError(response.status, 'Failed to load attachments')
+  if (!data || !Array.isArray(data.attachments)) throw new InvalidResponseError(response.status)
   return data.attachments
 }
 
@@ -95,17 +97,5 @@ export async function downloadAttachment(a: Attachment): Promise<void> {
     })
   }
   if (!res.ok) throw new Error('download failed')
-  await saveDownload(a, res)
-}
-
-async function saveDownload(a: Attachment, res: Response): Promise<void> {
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = a.file_name
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  downloadBlob(await res.blob(), a.file_name)
 }

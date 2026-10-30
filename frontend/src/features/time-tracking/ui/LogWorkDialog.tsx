@@ -4,16 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Play, Square } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Button,
-  Input,
-  Notice,
-  FormField,
-} from '@pdlc/ui/ui'
+import { FormDialog, Button, Input, Notice, FormField } from '@pdlc/ui/ui'
 
 import { parseDuration, formatDuration } from '@/shared/lib/time'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
@@ -122,76 +113,70 @@ export function LogWorkDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        onEscapeKeyDown={(event) => isPending && event.preventDefault()}
-        onInteractOutside={(event) => isPending && event.preventDefault()}
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <Notice role="alert" tone="danger" appearance="inline">
-              {error.message}
-            </Notice>
-          )}
-          <FormField
-            id="timeSpent"
-            label={t('timeTracking.fields.timeSpent')}
-            error={form.formState.errors.timeSpent?.message}
-            hint={timerRunning ? formatDuration(timerSeconds) : undefined}
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      pending={isPending}
+      title={<>{isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}</>}
+      onSubmit={(event) => void handleSubmit(event)}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => handleOpenChange(false)}
+            disabled={isPending}
           >
-            {(attrs) => (
-              <div className="flex gap-2">
-                <Input {...attrs} {...form.register('timeSpent')} placeholder="1h 30m" />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={toggleTimer}
-                  aria-label={
-                    timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
-                  }
-                >
-                  {timerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </Button>
-              </div>
-            )}
-          </FormField>
-
-          <FormField id="startedAt" label={t('timeTracking.fields.startedAt')}>
-            {(attrs) => <Input {...attrs} type="date" {...form.register('startedAt')} />}
-          </FormField>
-
-          <FormField id="comment" label={t('timeTracking.fields.comment')}>
-            {(attrs) => (
-              <Input
-                {...attrs}
-                {...form.register('comment')}
-                placeholder={t('timeTracking.fields.commentPlaceholder')}
-              />
-            )}
-          </FormField>
-
-          <div className="flex justify-end gap-2 pt-2">
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? t('common.saving') : t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      {error && (
+        <Notice role="alert" tone="danger" appearance="inline">
+          {error.message}
+        </Notice>
+      )}
+      <FormField
+        id="timeSpent"
+        label={t('timeTracking.fields.timeSpent')}
+        error={form.formState.errors.timeSpent?.message}
+        hint={timerRunning ? formatDuration(timerSeconds) : undefined}
+      >
+        {(attrs) => (
+          <div className="flex gap-2">
+            <Input {...attrs} {...form.register('timeSpent')} placeholder="1h 30m" />
             <Button
               type="button"
               variant="secondary"
-              onClick={() => handleOpenChange(false)}
-              disabled={isPending}
+              size="icon"
+              onClick={toggleTimer}
+              aria-label={
+                timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
+              }
             >
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? t('common.saving') : t('common.save')}
+              {timerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        )}
+      </FormField>
+
+      <FormField id="startedAt" label={t('timeTracking.fields.startedAt')}>
+        {(attrs) => <Input {...attrs} type="date" {...form.register('startedAt')} />}
+      </FormField>
+
+      <FormField id="comment" label={t('timeTracking.fields.comment')}>
+        {(attrs) => (
+          <Input
+            {...attrs}
+            {...form.register('comment')}
+            placeholder={t('timeTracking.fields.commentPlaceholder')}
+          />
+        )}
+      </FormField>
+    </FormDialog>
   )
 }

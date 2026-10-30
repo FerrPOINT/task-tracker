@@ -1,4 +1,11 @@
-import { Card, CardContent } from '@pdlc/ui/ui'
+import {
+  EmptyState,
+  Card,
+  CardContent,
+  IconMark,
+  ResourceListTitle,
+  ResourceListDescription,
+} from '@pdlc/ui/ui'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Clock } from 'lucide-react'
@@ -30,7 +37,7 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
   const activity = buildActivity(comments, worklogs)
 
   if (activity.length === 0) {
-    return <p className="text-sm text-text-muted">{t('issue.noActivity')}</p>
+    return <EmptyState message={t('issue.noActivity')} />
   }
 
   return (
@@ -41,18 +48,18 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
           return (
             <Card key={item.id}>
               <CardContent className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20">
-                  <MessageSquare className="h-4 w-4 text-accent" />
-                </div>
+                <IconMark size="sm">
+                  <MessageSquare aria-hidden />
+                </IconMark>
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-text-primary">
-                      {c.authorName ?? t('comments.unknown')}
-                    </span>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <ResourceListTitle asChild>
+                      <span>{c.authorName ?? t('comments.unknown')}</span>
+                    </ResourceListTitle>
                     <span className="text-text-muted">{t('issue.commented')}</span>
-                    <span className="text-xs text-text-muted">
-                      {format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}
-                    </span>
+                    <ResourceListDescription asChild>
+                      <span>{format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+                    </ResourceListDescription>
                   </div>
                   <CommentBody body={c.body} />
                 </div>
@@ -65,18 +72,20 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
         return (
           <Card key={item.id}>
             <CardContent className="flex gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-                <Clock className="h-4 w-4 text-emerald-500" />
-              </div>
+              <IconMark size="sm">
+                <Clock aria-hidden />
+              </IconMark>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium text-text-primary">{w.userDisplayName}</span>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <ResourceListTitle asChild>
+                    <span>{w.userDisplayName}</span>
+                  </ResourceListTitle>
                   <span className="text-text-muted">
                     {t('issue.loggedTime', { duration: formatDuration(w.timeSpentSeconds) })}
                   </span>
-                  <span className="text-xs text-text-muted">
-                    {format(new Date(w.createdAt), 'yyyy-MM-dd HH:mm')}
-                  </span>
+                  <ResourceListDescription asChild>
+                    <span>{format(new Date(w.createdAt), 'yyyy-MM-dd HH:mm')}</span>
+                  </ResourceListDescription>
                 </div>
                 {w.comment && (
                   <div className="whitespace-pre-wrap text-sm text-text-secondary">{w.comment}</div>

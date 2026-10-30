@@ -1,3 +1,4 @@
+import { ContentSection } from '@pdlc/ui/ui'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -15,6 +16,9 @@ import {
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
 import {
+  ActionGroup,
+  ResourceListTitle,
+  ResourceListDescription,
   Fieldset,
   RadioGroup,
   PageHeader,
@@ -29,11 +33,14 @@ import {
   CardHeader,
   CardTitle,
   ErrorState,
-  Label,
+  EmptyState,
+  LoadingState,
   Notice,
+  PageNavigation,
+  FormField,
 } from '@pdlc/ui/ui'
 
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check } from 'lucide-react'
 
 const PAGE_SIZE = 20
 
@@ -82,7 +89,9 @@ const NotificationRow = memo(function NotificationRow({
   const content = (
     <>
       <div className="flex min-w-0 items-start gap-2">
-        <h2 className="min-w-0 flex-1 break-words text-sm font-semibold">{notification.title}</h2>
+        <ResourceListTitle asChild className="flex-1">
+          <h2>{notification.title}</h2>
+        </ResourceListTitle>
         <time
           dateTime={notification.created_at}
           title={createdAt.toLocaleString(i18n.language)}
@@ -92,7 +101,9 @@ const NotificationRow = memo(function NotificationRow({
         </time>
       </div>
       {notification.body && (
-        <p className="mt-0.5 break-words text-xs text-text-secondary">{notification.body}</p>
+        <ResourceListDescription asChild className="mt-0.5">
+          <p>{notification.body}</p>
+        </ResourceListDescription>
       )}
     </>
   )
@@ -311,15 +322,13 @@ export function NotificationsPage() {
           )}
 
           {notificationsLoading ? (
-            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
-              {t('notifications.loading')}
-            </p>
+            <LoadingState message={t('notifications.loading')} />
           ) : notificationsError ? (
             <ErrorState message={t('common.error')} onRetry={() => void refetchNotifications()} />
           ) : visibleNotifications.length === 0 ? (
-            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
-              {showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}
-            </p>
+            <EmptyState
+              message={showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}
+            />
           ) : (
             <>
               <ResourceList asChild variant="bordered">
@@ -341,36 +350,17 @@ export function NotificationsPage() {
                 </ul>
               </ResourceList>
               {(page > 0 || hasNextPage) && (
-                <nav
-                  aria-label={t('notifications.pagination')}
-                  className="flex items-center justify-center gap-3 pt-1"
-                >
-                  <Button
-                    variant="outline"
-                    size="icon"
-
-                    aria-label={t('notifications.previousPage')}
-                    title={t('notifications.previousPage')}
-                    disabled={page === 0}
-                    onClick={() => updateListParams(showUnread, page - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm text-text-secondary">
-                    {t('notifications.page', { page: page + 1 })}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-
-                    aria-label={t('notifications.nextPage')}
-                    title={t('notifications.nextPage')}
-                    disabled={!hasNextPage}
-                    onClick={() => updateListParams(showUnread, page + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </nav>
+                <PageNavigation
+                  label={t('notifications.pagination')}
+                  compact
+                  page={page + 1}
+                  hasNext={hasNextPage}
+                  previousLabel={t('notifications.previousPage')}
+                  nextLabel={t('notifications.nextPage')}
+                  summary={t('notifications.page', { page: page + 1 })}
+                  onPageChange={(next) => updateListParams(showUnread, next - 1)}
+                  className="justify-center mt-1"
+                />
               )}
             </>
           )}
@@ -382,7 +372,7 @@ export function NotificationsPage() {
           </CardHeader>
           <CardContent>
             {settingsLoading ? (
-              <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
+              <LoadingState scope="local" message={t('notifications.loading')} />
             ) : !displayedSettings ? (
               <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
             ) : (
@@ -393,26 +383,30 @@ export function NotificationsPage() {
                   saveSettings()
                 }}
               >
-                <div className="space-y-2">
-                  <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
-                  <Select
-                    id="notification-frequency"
-                    className="w-full"
-                    value={displayedSettings.email_frequency}
-                    onValueChange={(nextValue) =>
-                      updatePreference({
-                        email_frequency: nextValue,
-                      })
-                    }
-                    disabled={updateSettings.isPending}
-                    options={[
-                      { value: 'immediate', label: String(t('notifications.frequencyImmediate')) },
-                      { value: 'hourly', label: String(t('notifications.frequencyHourly')) },
-                      { value: 'daily', label: String(t('notifications.frequencyDaily')) },
-                      { value: 'never', label: String(t('notifications.frequencyNone')) },
-                    ]}
-                  />
-                </div>
+                <FormField id="notification-frequency" label={t('notifications.frequency')}>
+                  {(baseFieldAttrs) => (
+                    <Select
+                      {...baseFieldAttrs}
+                      className="w-full"
+                      value={displayedSettings.email_frequency}
+                      onValueChange={(nextValue) =>
+                        updatePreference({
+                          email_frequency: nextValue,
+                        })
+                      }
+                      disabled={updateSettings.isPending}
+                      options={[
+                        {
+                          value: 'immediate',
+                          label: String(t('notifications.frequencyImmediate')),
+                        },
+                        { value: 'hourly', label: String(t('notifications.frequencyHourly')) },
+                        { value: 'daily', label: String(t('notifications.frequencyDaily')) },
+                        { value: 'never', label: String(t('notifications.frequencyNone')) },
+                      ]}
+                    />
+                  )}
+                </FormField>
                 <Switch
                   label={t('notifications.ownChanges')}
                   checked={displayedSettings.notify_own_changes}
@@ -421,10 +415,7 @@ export function NotificationsPage() {
                   }
                   disabled={updateSettings.isPending}
                 />
-                <Fieldset
-                  className="border-t border-border pt-3"
-                  legend={t('notifications.eventsTitle')}
-                >
+                <Fieldset separated legend={t('notifications.eventsTitle')}>
                   {NOTIFICATION_EVENTS.map((eventType) => (
                     <Checkbox
                       key={eventType}
@@ -435,51 +426,53 @@ export function NotificationsPage() {
                     />
                   ))}
                 </Fieldset>
-                <div className="space-y-2 border-t border-border pt-4">
-                  {(updateSettings.isPending ||
-                    updateSettings.isSuccess ||
-                    updateSettings.isError) && (
-                    <Notice
-                      role="status"
-                      aria-live="polite"
-                      appearance="inline"
-                      tone={
-                        updateSettings.isError
-                          ? 'danger'
-                          : updateSettings.isSuccess
-                            ? 'success'
-                            : 'neutral'
-                      }
-                    >
-                      {updateSettings.isPending && <span>{t('common.saving')}</span>}
-                      {updateSettings.isSuccess && <span>{t('common.saved')}</span>}
-                      {updateSettings.isError && (
-                        <span>{t('notifications.settingsSaveError')}</span>
-                      )}
-                    </Notice>
-                  )}
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
+                <ContentSection asChild dividers="start">
+                  <div className="space-y-2">
+                    {(updateSettings.isPending ||
+                      updateSettings.isSuccess ||
+                      updateSettings.isError) && (
+                      <Notice
+                        role="status"
+                        aria-live="polite"
+                        appearance="inline"
+                        tone={
+                          updateSettings.isError
+                            ? 'danger'
+                            : updateSettings.isSuccess
+                              ? 'success'
+                              : 'neutral'
+                        }
+                      >
+                        {updateSettings.isPending && <span>{t('common.saving')}</span>}
+                        {updateSettings.isSuccess && <span>{t('common.saved')}</span>}
+                        {updateSettings.isError && (
+                          <span>{t('notifications.settingsSaveError')}</span>
+                        )}
+                      </Notice>
+                    )}
+                    <ActionGroup align="end">
+                      <Button
+                        type="button"
+                        variant="ghost"
 
-                      disabled={!settingsDirty || updateSettings.isPending}
-                      onClick={() => {
-                        setSettingsDraft(null)
-                        updateSettings.reset()
-                      }}
-                    >
-                      {t('common.cancel')}
-                    </Button>
-                    <Button
-                      type="submit"
+                        disabled={!settingsDirty || updateSettings.isPending}
+                        onClick={() => {
+                          setSettingsDraft(null)
+                          updateSettings.reset()
+                        }}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        type="submit"
 
-                      disabled={!settingsDirty || updateSettings.isPending}
-                    >
-                      {t('common.save')}
-                    </Button>
+                        disabled={!settingsDirty || updateSettings.isPending}
+                      >
+                        {t('common.save')}
+                      </Button>
+                    </ActionGroup>
                   </div>
-                </div>
+                </ContentSection>
               </form>
             )}
           </CardContent>

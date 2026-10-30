@@ -138,6 +138,33 @@ describe('ProjectCustomFieldsPage', () => {
     )
   })
 
+  it('associates missing options with their field and keeps validation at the product boundary', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<ProjectCustomFieldsPage />))
+    await user.click(screen.getByRole('button', { name: 'Добавить поле' }))
+    await user.type(screen.getByRole('textbox', { name: /Название поля/ }), 'Choices')
+    await chooseValue(screen.getByRole('combobox', { name: 'Тип поля' }), 'multi-select')
+    const options = screen.getByRole('textbox', { name: 'Варианты через запятую' })
+    expect(options).toHaveAttribute('aria-invalid', 'true')
+    expect(options).toHaveAccessibleDescription('Для этого типа поля обязательны варианты')
+    expect(options).not.toBeRequired()
+    expect(screen.getByRole('button', { name: 'Добавить поле' })).toBeDisabled()
+    expect(mockCreate).not.toHaveBeenCalled()
+    await user.type(options, ' , First, Second, ')
+    expect(options).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByRole('button', { name: 'Добавить поле' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Добавить поле' }))
+    expect(mockCreate).toHaveBeenCalledExactlyOnceWith(
+      {
+        name: 'Choices',
+        field_type: 'multi-select',
+        options: ['First', 'Second'],
+        is_required: false,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
   it('explains a create failure without exposing the API error', async () => {
     mockCreateState.mockReturnValue({
       mutate: mockCreate,

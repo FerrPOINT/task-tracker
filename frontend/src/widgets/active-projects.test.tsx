@@ -3,9 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useActiveProjects } from './active-projects'
+import { useProjects } from '@/shared/api/hooks'
 
 vi.mock('@/shared/api/hooks', () => ({
-  useProjects: () => ({
+  useProjects: vi.fn(() => ({
     data: [
       { id: 'one', key: 'ARCHIVED', name: 'Archived by name only' },
       { id: 'two', key: 'ACTIVE', name: 'Active by name only' },
@@ -16,19 +17,34 @@ vi.mock('@/shared/api/hooks', () => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
-  }),
+  })),
 }))
-function mount() {
+function mount(...args: Parameters<typeof useActiveProjects>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children)
-  return renderHook(() => useActiveProjects(), { wrapper })
+  return renderHook(() => useActiveProjects(...args), { wrapper })
 }
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
 describe('working project list', () => {
+  it('keeps a sentinel out of a choice page without truncating the full navigation catalog', () => {
+    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'false')
+    const choice = mount(0, 3, '', { visibleLimit: 2 })
+    expect(choice.result.current.data?.map((project) => project.id)).toEqual(['one', 'two'])
+    expect(choice.result.current.hasMore).toBe(true)
+    choice.unmount()
+    const navigation = mount(0, 2, '', { allPages: true })
+    expect(navigation.result.current.data?.map((project) => project.id)).toEqual([
+      'one',
+      'two',
+      'local',
+    ])
+    expect(navigation.result.current.hasMore).toBe(false)
+    expect(useProjects).toHaveBeenLastCalledWith(0, 2, '', true, { allPages: true })
+  })
   it.each(['one', 'two'])(
     'filters archived resource %s by binding identity, preserves standalone and observes restore',
     async (archived) => {

@@ -1,4 +1,8 @@
-import { createUiProviderDedupe, createUiFontAssetsPlugin } from '@pdlc/ui/build'
+import {
+  createUiDevCachePlugin,
+  createUiProviderDedupe,
+  createUiFontAssetsPlugin,
+} from '@pdlc/ui/build'
 import { createUiManualChunks } from '@pdlc/ui/build'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -7,7 +11,7 @@ import { resolve } from 'path'
 
 export default defineConfig({
   base: process.env.VITE_APP_BASE_PATH ?? '/',
-  plugins: [createUiFontAssetsPlugin(), react(), tailwindcss()],
+  plugins: [createUiDevCachePlugin(), createUiFontAssetsPlugin(), react(), tailwindcss()],
   resolve: {
     dedupe: createUiProviderDedupe(),
     alias: {

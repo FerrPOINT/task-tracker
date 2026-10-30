@@ -1,6 +1,10 @@
 import {
+  ResourceStateView,
+  LoadingState,
+  EmptyState,
   PageNavigation,
   ResourceListRow,
+  ResourceListHeader,
   ResourceList,
   PageHeader,
   ProjectAvatar,
@@ -81,7 +85,12 @@ export function ProjectTrashPage() {
   }, [error, isLoading, trashedIssues.length, trashOffset, updatePage])
 
   if (!projectKey) {
-    return <div className="text-text-muted">{t('trash.noProject')}</div>
+    return (
+      <ResourceStateView
+        scope="local"
+        state={{ kind: 'not-found', title: t('trash.noProject'), headingLevel: 1 }}
+      />
+    )
   }
 
   const hasPrev = trashOffset > 0
@@ -106,30 +115,29 @@ export function ProjectTrashPage() {
         }
       />
 
-      {isLoading && (
-        <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
-      )}
+      {isLoading && <LoadingState scope="local" message={t('trash.loading')} />}
 
       {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
 
       {!error && !isLoading && trashedIssues.length === 0 && (
-        <div className="py-16 text-center text-sm text-text-muted">
-          {hasPrev ? t('trash.emptyPage') : t('trash.noIssues')}
-        </div>
+        <EmptyState message={hasPrev ? t('trash.emptyPage') : t('trash.noIssues')} />
       )}
 
       {trashedIssues.length > 0 && (
-        <ResourceList variant="bordered" className="text-sm">
-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
+        <ResourceList
+          variant="bordered"
+          className="text-sm lg:grid lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto]"
+        >
+          <ResourceListHeader className="hidden gap-3 lg:col-span-full lg:grid lg:grid-cols-subgrid">
             <span>{t('trash.key')}</span>
             <span>{t('trash.summary')}</span>
             <span>{t('trash.type')}</span>
             <span>{t('trash.priority')}</span>
             <span className="text-right">{t('trash.actions')}</span>
-          </div>
+          </ResourceListHeader>
           {trashedIssues.map((issue) => (
             <ResourceListRow asChild key={issue.id}>
-              <article className="grid gap-2 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3">
+              <article className="grid gap-2 lg:col-span-full lg:grid-cols-subgrid lg:items-center lg:gap-3">
                 <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
                 <div className="min-w-0 break-words font-medium lg:font-normal">
                   {issue.summary}

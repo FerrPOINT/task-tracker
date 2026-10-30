@@ -1,14 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Textarea,
-  Button,
-  Input,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@pdlc/ui/ui'
+import { FormDialog, FormField, Notice, Textarea, Button, Input } from '@pdlc/ui/ui'
 
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 
@@ -71,72 +63,75 @@ export function SprintFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
-          <div className="space-y-2">
-            <label htmlFor="sprint-form-name" className="text-sm font-medium">
-              {t('sprints.name')} *
-            </label>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      pending={isPending}
+      title={<>{isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}</>}
+      onSubmit={handleSubmit}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
+          </Button>
+        </>
+      }
+    >
+      {error && (
+        <Notice role="alert" tone="danger" appearance="inline">
+          {error.message}
+        </Notice>
+      )}
+      <FormField id="sprint-form-name" label={t('sprints.name')} required={!isEdit}>
+        {(attrs) => (
+          <Input
+            {...attrs}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('sprints.namePlaceholder')}
+          />
+        )}
+      </FormField>
+      <FormField id="sprint-form-goal" label={t('sprints.goal')}>
+        {(attrs) => (
+          <Textarea
+            {...attrs}
+            className="w-full"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            placeholder={t('sprints.goalPlaceholder')}
+          />
+        )}
+      </FormField>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormField id="sprint-form-startdate" label={t('sprints.startDate')}>
+          {(attrs) => (
             <Input
-              id="sprint-form-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('sprints.namePlaceholder')}
-              required={!isEdit}
+              {...attrs}
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
             />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="sprint-form-goal" className="text-sm font-medium">
-              {t('sprints.goal')}
-            </label>
-            <Textarea
-              id="sprint-form-goal"
-              className="w-full"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder={t('sprints.goalPlaceholder')}
+          )}
+        </FormField>
+        <FormField
+          id="sprint-form-enddate"
+          label={t('sprints.endDate')}
+          error={dateError ?? undefined}
+        >
+          {(attrs) => (
+            <Input
+              {...attrs}
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
             />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
-                {t('sprints.startDate')}
-              </label>
-              <Input
-                id="sprint-form-startdate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
-                {t('sprints.endDate')}
-              </label>
-              <Input
-                id="sprint-form-enddate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-          </div>
-          {dateError && <p className="text-sm text-danger">{dateError}</p>}
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          )}
+        </FormField>
+      </div>
+    </FormDialog>
   )
 }

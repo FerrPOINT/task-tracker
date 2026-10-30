@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 import {
+  ActionGroup,
+  EmptyState,
   Table,
   TableHeader,
   TableBody,
@@ -13,6 +15,8 @@ import {
   ConfirmDialog,
   Card,
   CardContent,
+  DescriptionItem,
+  ResourceListTitle,
 } from '@pdlc/ui/ui'
 
 import { formatDuration } from '@/shared/lib/time'
@@ -84,7 +88,7 @@ export function WorklogTab({
     <>
       {deleteDialog}
       {worklogs.length === 0 ? (
-        <p className="text-sm text-text-muted">{t('timeTracking.worklog.empty')}</p>
+        <EmptyState message={t('timeTracking.worklog.empty')} />
       ) : (
         <div className="space-y-4">
           <Card data-testid="worklog-table" className="hidden 2xl:block">
@@ -127,7 +131,7 @@ export function WorklogTab({
                     <TableCell className="max-w-[200px] truncate">{w.comment ?? '-'}</TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       {w.userId === currentUserId && (
-                        <div className="flex items-center justify-end gap-1">
+                        <ActionGroup align="end">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -146,7 +150,7 @@ export function WorklogTab({
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </div>
+                        </ActionGroup>
                       )}
                     </TableCell>
                   </TableRow>
@@ -158,13 +162,13 @@ export function WorklogTab({
           <div className="space-y-3 2xl:hidden">
             {worklogs.map((w) => (
               <Card key={w.id}>
-                <CardContent className="space-y-2 p-3">
+                <CardContent className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 break-words font-medium text-text-primary">
-                      {w.userDisplayName}
-                    </div>
+                    <ResourceListTitle asChild>
+                      <div className="min-w-0 break-words">{w.userDisplayName}</div>
+                    </ResourceListTitle>
                     {w.userId === currentUserId && (
-                      <div className="flex items-center gap-1">
+                      <ActionGroup align="start">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -183,25 +187,25 @@ export function WorklogTab({
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
-                      </div>
+                      </ActionGroup>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                    <span className="text-text-muted">{t('timeTracking.worklog.started')}</span>
-                    <span className="text-text-primary">
+                  <dl className="grid gap-1">
+                    <DescriptionItem label={t('timeTracking.worklog.started')} layout="inline">
                       {format(new Date(w.startedAt), 'yyyy-MM-dd')}
-                    </span>
-                    <span className="text-text-muted">{t('timeTracking.worklog.timeSpent')}</span>
-                    <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
-                    <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
-                    <span className="text-text-primary">-</span>
+                    </DescriptionItem>
+                    <DescriptionItem label={t('timeTracking.worklog.timeSpent')} layout="inline">
+                      {formatDuration(w.timeSpentSeconds)}
+                    </DescriptionItem>
+                    <DescriptionItem label={t('timeTracking.worklog.remaining')} layout="inline">
+                      -
+                    </DescriptionItem>
                     {w.comment && (
-                      <>
-                        <span className="text-text-muted">{t('timeTracking.worklog.comment')}</span>
-                        <span className="min-w-0 break-words text-text-primary">{w.comment}</span>
-                      </>
+                      <DescriptionItem label={t('timeTracking.worklog.comment')} layout="inline">
+                        {w.comment}
+                      </DescriptionItem>
                     )}
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
             ))}

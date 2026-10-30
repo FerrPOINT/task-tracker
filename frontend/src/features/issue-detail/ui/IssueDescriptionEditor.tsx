@@ -1,4 +1,13 @@
-import { Input, Button, Textarea, Notice, FormField, PageHeader } from '@pdlc/ui/ui'
+import {
+  ActionGroup,
+  Input,
+  Button,
+  Textarea,
+  Notice,
+  FormField,
+  PageHeader,
+  Prose,
+} from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -103,7 +112,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="mt-1 px-0 lg:hidden"
+                className="mt-1 lg:hidden"
                 aria-controls={descriptionId}
                 aria-expanded={descriptionExpanded}
                 onClick={(event) => {
@@ -156,7 +165,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           {saveError}
         </Notice>
       )}
-      <div className="flex gap-2">
+      <ActionGroup align="start">
         <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
@@ -171,7 +180,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           <X className="mr-1 h-4 w-4" />
           {t('common.cancel')}
         </Button>
-      </div>
+      </ActionGroup>
     </form>
   )
 }
@@ -179,27 +188,23 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 function renderDescription(text: string) {
   const lines = text.split('\n')
   return (
-    <div className="space-y-3 break-words text-sm text-text-secondary">
+    <Prose>
       {lines.map((line, idx) => {
         if (line.startsWith('· ')) {
           return (
-            <ul key={idx} className="ml-5 list-disc">
+            <ul key={idx}>
               <li>{line.slice(2)}</li>
             </ul>
           )
         }
         if (line.startsWith('# ')) {
-          return (
-            <h3 key={idx} className="text-base font-semibold text-text-primary">
-              {line.slice(2)}
-            </h3>
-          )
+          return <h3 key={idx}>{line.slice(2)}</h3>
         }
         if (line.trim() === '') {
           return <div key={idx} className="h-2" />
         }
         return <p key={idx}>{line}</p>
       })}
-    </div>
+    </Prose>
   )
 }

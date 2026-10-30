@@ -6,7 +6,7 @@ export function useActiveProjects(
   offset = 0,
   limit = 100,
   search = '',
-  { allPages = false }: { allPages?: boolean } = {},
+  { allPages = false, visibleLimit = limit }: { allPages?: boolean; visibleLimit?: number } = {},
 ) {
   const projects = useProjects(offset, limit, search, true, { allPages })
   const enabled =
@@ -18,13 +18,30 @@ export function useActiveProjects(
       ?.filter((context) => !isUnarchivedProject(context))
       .map((context) => context.binding.resource.resource_id),
   )
+  const projectIsActive = (id: string) => (!enabled || catalog.isSuccess) && !archived.has(id)
+  const total = projects.catalog?.total
+  const rawCount = projects.data?.length
   return {
     ...projects,
     unfilteredCount: projects.data?.length ?? 0,
+    projectIsActive,
+    hasMore: allPages
+      ? false
+      : total !== undefined
+        ? offset + visibleLimit < total
+        : rawCount === undefined
+          ? undefined
+          : rawCount > visibleLimit
+            ? true
+            : rawCount < limit
+              ? false
+              : undefined,
     data:
       enabled && !catalog.isSuccess
         ? undefined
-        : projects.data?.filter((project) => !archived.has(project.id)),
+        : (allPages ? projects.data : projects.data?.slice(0, visibleLimit))?.filter((project) =>
+            projectIsActive(project.id),
+          ),
     isLoading: projects.isLoading || (enabled && catalog.isPending),
     isPending: projects.isPending || (enabled && catalog.isPending),
     isError: projects.isError || (enabled && catalog.isError),

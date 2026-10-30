@@ -2,13 +2,19 @@ import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  ActionGroup,
+  ResourceListDescription,
+  EmptyState,
+  ResourceListTitle,
   SectionHeader,
+  FormField,
   toast,
   Input,
   Select,
   Button,
   ConfirmDialog,
   ErrorState,
+  LoadingState,
   ResourceList,
   ResourceListRow,
   Checkbox,
@@ -88,56 +94,67 @@ export function ProjectCustomFieldsPage() {
                     {t('customFields.createError')}
                   </Notice>
                 )}
-                <Input
-                  aria-label={t('customFields.fieldName')}
-                  placeholder={t('customFields.fieldName')}
-                  required
-                  value={draft.name}
-                  onChange={(e) => {
-                    create.reset()
-                    setDraft({ ...draft, name: e.target.value })
-                  }}
-                />
-                <Select
-                  aria-label={t('customFields.fieldType')}
-                  className="w-auto"
-                  value={draft.field_type}
-                  onValueChange={(nextValue) => {
-                    create.reset()
-                    setDraft({ ...draft, field_type: nextValue as CustomFieldType })
-                  }}
-                  options={[
-                    ...(types.map((type) => ({
-                      value: String(type),
-                      label: String(t(`customFields.types.${type}`)),
-                    })) ?? []),
-                  ]}
-                />
+                <FormField id="custom-field-name" label={t('customFields.fieldName')} required>
+                  {(attrs) => (
+                    <Input
+                      {...attrs}
+                      placeholder={t('customFields.fieldName')}
+                      value={draft.name}
+                      onChange={(e) => {
+                        create.reset()
+                        setDraft({ ...draft, name: e.target.value })
+                      }}
+                    />
+                  )}
+                </FormField>
+                <FormField id="custom-field-type" label={t('customFields.fieldType')}>
+                  {(attrs) => (
+                    <Select
+                      {...attrs}
+                      className="w-auto"
+                      value={draft.field_type}
+                      onValueChange={(nextValue) => {
+                        create.reset()
+                        setDraft({ ...draft, field_type: nextValue as CustomFieldType })
+                      }}
+                      options={[
+                        ...(types.map((type) => ({
+                          value: String(type),
+                          label: String(t(`customFields.types.${type}`)),
+                        })) ?? []),
+                      ]}
+                    />
+                  )}
+                </FormField>
                 {needsOptions && (
-                  <Input
-                    aria-label={t('customFields.options')}
-                    placeholder={t('customFields.options')}
-                    value={optionsText}
-                    onChange={(e) => {
-                      create.reset()
-                      setOptionsText(e.target.value)
-                    }}
-                  />
+                  <FormField
+                    id="custom-field-options"
+                    label={t('customFields.options')}
+                    error={options.length === 0 ? t('customFields.optionsRequired') : undefined}
+                  >
+                    {(attrs) => (
+                      <Input
+                        {...attrs}
+                        placeholder={t('customFields.options')}
+                        value={optionsText}
+                        onChange={(e) => {
+                          create.reset()
+                          setOptionsText(e.target.value)
+                        }}
+                      />
+                    )}
+                  </FormField>
                 )}
-                <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
-                  <Checkbox
-                    checked={draft.is_required}
-                    onCheckedChange={(checked) => {
-                      create.reset()
-                      setDraft({ ...draft, is_required: checked === true })
-                    }}
-                  />
+                <Checkbox
+                  checked={draft.is_required}
+                  onCheckedChange={(checked) => {
+                    create.reset()
+                    setDraft({ ...draft, is_required: checked === true })
+                  }}
+                >
                   {t('customFields.required')}
-                </label>
-                {needsOptions && options.length === 0 && (
-                  <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
-                )}
-                <div className="flex gap-2">
+                </Checkbox>
+                <ActionGroup align="start">
                   <Button
                     type="submit"
                     className="justify-self-start"
@@ -162,7 +179,7 @@ export function ProjectCustomFieldsPage() {
                   >
                     {t('common.cancel')}
                   </Button>
-                </div>
+                </ActionGroup>
               </form>
             </CardContent>
           </Card>
@@ -176,7 +193,7 @@ export function ProjectCustomFieldsPage() {
           />
           <div>
             {fields.isLoading ? (
-              <p className="text-sm text-text-muted">{t('customFields.loading')}</p>
+              <LoadingState scope="local" message={t('customFields.loading')} />
             ) : fields.error ? (
               <ErrorState
                 message={t('customFields.loadError')}
@@ -189,14 +206,18 @@ export function ProjectCustomFieldsPage() {
                     <ResourceListRow asChild key={field.id}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="break-words font-medium">
-                            {field.name}
-                            {field.is_required ? ' *' : ''}
-                          </p>
-                          <p className="break-words text-sm text-text-muted">
-                            {t(`customFields.types.${field.field_type}`)}
-                            {field.options.length ? `: ${field.options.join(', ')}` : ''}
-                          </p>
+                          <ResourceListTitle asChild className="break-words">
+                            <p>
+                              {field.name}
+                              {field.is_required ? ' *' : ''}
+                            </p>
+                          </ResourceListTitle>
+                          <ResourceListDescription asChild>
+                            <p className="break-words">
+                              {t(`customFields.types.${field.field_type}`)}
+                              {field.options.length ? `: ${field.options.join(', ')}` : ''}
+                            </p>
+                          </ResourceListDescription>
                         </div>
                         <Button
                           variant="destructive-outline"
@@ -217,7 +238,7 @@ export function ProjectCustomFieldsPage() {
                 </div>
               </ResourceList>
             ) : (
-              <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
+              <EmptyState message={t('customFields.noFields')} />
             )}
           </div>
         </section>

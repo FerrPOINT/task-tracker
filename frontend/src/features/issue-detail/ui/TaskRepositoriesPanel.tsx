@@ -1,4 +1,8 @@
+import { ContentSection } from '@pdlc/ui/ui'
 import {
+  ResourceListDescription,
+  EmptyState,
+  TextLink,
   Select,
   ResourceList,
   ResourceListRow,
@@ -120,15 +124,14 @@ export function TaskRepositoriesPanel({
           <SectionHeader title="Репозитории проекта" />
           {fleet && (
             <p>
-              <a
-                className="text-accent"
+              <TextLink
                 href={withNamespaceLocation(
                   `${fleet}/chats?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
                   ref,
                 )}
               >
                 Чаты Fleet с контекстом задачи
-              </a>
+              </TextLink>
             </p>
           )}
           {linked.isPending ? (
@@ -147,8 +150,7 @@ export function TaskRepositoriesPanel({
                   >
                     <li>
                       {forge ? (
-                        <a
-                          className="text-accent"
+                        <TextLink
                           href={withNamespaceLocation(
                             `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
                             ref,
@@ -156,7 +158,7 @@ export function TaskRepositoriesPanel({
                           )}
                         >
                           {repository.public_name}
-                        </a>
+                        </TextLink>
                       ) : (
                         repository.public_name
                       )}
@@ -238,83 +240,83 @@ export function TaskRepositoriesPanel({
               )}
             </div>
           )}
-          <div className="space-y-3 border-t border-border pt-3">
-            <SectionHeader level={3} title="PR, коммиты и проверки" />
-            {evidence.isPending ? (
-              <LoadingState message="Читаем свидетельства…" />
-            ) : evidence.isError ? (
-              <Notice role="alert" tone="danger" appearance="inline">
-                Свидетельства Forge недоступны.
-              </Notice>
-            ) : evidence.data?.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.
-              </p>
-            ) : (
-              evidence.data?.map((item) => (
-                <Card asChild key={item.pull_request_id}>
-                  <article>
-                    <CardContent className="space-y-2">
-                      <p>
-                        {forge ? (
-                          <a
-                            className="text-accent"
-                            href={withNamespaceLocation(
-                              `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
-                              ref,
-                              search,
-                            )}
-                          >
-                            #{item.number} {item.title}
-                          </a>
-                        ) : (
-                          item.title
-                        )}{' '}
-                        · {item.status}
-                      </p>
-                      <p className="break-all text-xs text-text-muted">
-                        Коммиты: {item.commits.join(', ')}
-                      </p>
-                      <ul className="space-y-1 text-sm">
-                        {item.checks.map((check) => (
-                          <li key={check.pipeline_id}>
-                            {forge ? (
-                              <a
-                                className="text-accent"
-                                href={withNamespaceLocation(
-                                  `${forge}/pipelines/${check.pipeline_id}`,
-                                  ref,
-                                  search,
-                                )}
-                              >
-                                CI · {check.status}
-                              </a>
-                            ) : (
-                              check.status
-                            )}
-                            <span className="ml-2 font-mono text-xs">
-                              {check.commit_sha.slice(0, 12)}
-                            </span>
-                          </li>
-                        ))}
-                        {item.checks.length === 0 && (
-                          <li className="text-text-muted">Проверок этих коммитов пока нет.</li>
-                        )}
-                      </ul>
-                    </CardContent>
-                  </article>
-                </Card>
-              ))
-            )}
-            <PageNavigation
-              label="Страницы свидетельств Forge"
-              page={evidenceOffset / 10 + 1}
-              hasNext={(evidence.data?.length ?? 0) >= 10}
-              previousLabel="Назад"
-              nextLabel="Далее"
-              onPageChange={(page) => setEvidenceOffset((page - 1) * 10)}
-            />
-          </div>
+          <ContentSection asChild dividers="start" density="compact">
+            <div className="space-y-3">
+              <SectionHeader level={3} title="PR, коммиты и проверки" />
+              {evidence.isPending ? (
+                <LoadingState message="Читаем свидетельства…" />
+              ) : evidence.isError ? (
+                <Notice role="alert" tone="danger" appearance="inline">
+                  Свидетельства Forge недоступны.
+                </Notice>
+              ) : evidence.data?.length === 0 ? (
+                <EmptyState
+                  message={'Связанных PR пока нет. Откройте репозиторий из задачи и свяжите PR.'}
+                />
+              ) : (
+                evidence.data?.map((item) => (
+                  <Card asChild key={item.pull_request_id}>
+                    <article>
+                      <CardContent className="space-y-2">
+                        <p>
+                          {forge ? (
+                            <TextLink
+                              href={withNamespaceLocation(
+                                `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
+                                ref,
+                                search,
+                              )}
+                            >
+                              #{item.number} {item.title}
+                            </TextLink>
+                          ) : (
+                            item.title
+                          )}{' '}
+                          · {item.status}
+                        </p>
+                        <ResourceListDescription asChild technical>
+                          <p className="break-all">Коммиты: {item.commits.join(', ')}</p>
+                        </ResourceListDescription>
+                        <ul className="space-y-1 text-sm">
+                          {item.checks.map((check) => (
+                            <li key={check.pipeline_id}>
+                              {forge ? (
+                                <TextLink
+                                  href={withNamespaceLocation(
+                                    `${forge}/pipelines/${check.pipeline_id}`,
+                                    ref,
+                                    search,
+                                  )}
+                                >
+                                  CI · {check.status}
+                                </TextLink>
+                              ) : (
+                                check.status
+                              )}
+                              <ResourceListDescription asChild technical>
+                                <span className="ml-2">{check.commit_sha.slice(0, 12)}</span>
+                              </ResourceListDescription>
+                            </li>
+                          ))}
+                          {item.checks.length === 0 && (
+                            <li className="text-text-muted">Проверок этих коммитов пока нет.</li>
+                          )}
+                        </ul>
+                      </CardContent>
+                    </article>
+                  </Card>
+                ))
+              )}
+              <PageNavigation
+                label="Страницы свидетельств Forge"
+                page={evidenceOffset / 10 + 1}
+                hasNext={(evidence.data?.length ?? 0) >= 10}
+                previousLabel="Назад"
+                nextLabel="Далее"
+                onPageChange={(page) => setEvidenceOffset((page - 1) * 10)}
+              />
+            </div>
+          </ContentSection>
         </CardContent>
       </section>
     </Card>
