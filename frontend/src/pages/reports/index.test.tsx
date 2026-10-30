@@ -262,7 +262,7 @@ describe('ReportsPage', () => {
     const dialog = within(screen.getByRole('dialog'))
     await user.click(dialog.getByRole('button', { name: 'Далее' }))
     await dialog.findByRole('button', { name: 'Project 20 (P20)' })
-    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true)
+    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true, { allPages: false })
     expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1')
     await user.click(dialog.getByRole('button', { name: 'Project 20 (P20)' }))
     expect(useVelocityReport).toHaveBeenLastCalledWith('id-20')
@@ -290,9 +290,11 @@ describe('ReportsPage', () => {
     await user.click(screen.getByRole('button', { name: /проект|project/i }))
     const dialog = within(screen.getByRole('dialog'))
     await user.click(dialog.getByRole('button', { name: 'Далее' }))
-    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true)
+    expect(useProjects).toHaveBeenLastCalledWith(20, 21, '', true, { allPages: false })
     await user.type(dialog.getByRole('searchbox'), 'team')
-    await waitFor(() => expect(useProjects).toHaveBeenLastCalledWith(0, 21, 'team', true))
+    await waitFor(() =>
+      expect(useProjects).toHaveBeenLastCalledWith(0, 21, 'team', true, { allPages: false }),
+    )
     await user.click(dialog.getByRole('button', { name: 'Закрыть' }))
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/reports?source=search',

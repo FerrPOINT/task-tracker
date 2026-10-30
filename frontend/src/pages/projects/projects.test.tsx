@@ -141,11 +141,11 @@ describe('ProjectsPage', () => {
       refetch: vi.fn(),
     })
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(useProjects).toHaveBeenLastCalledWith(50, 50, '', true)
+    expect(useProjects).toHaveBeenLastCalledWith(50, 50, '', true, { allPages: false })
     expect(screen.getByRole('button', { name: 'Далее' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Назад' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
-    expect(useProjects).toHaveBeenLastCalledWith(0, 50, '', true)
+    expect(useProjects).toHaveBeenLastCalledWith(0, 50, '', true, { allPages: false })
   })
 
   it('shows a localized no-match state after filtering', async () => {
