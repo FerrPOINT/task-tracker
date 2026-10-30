@@ -92,43 +92,16 @@ jobs:
         working-directory: task-tracker
         run: python3 scripts/verify_readme.py
   minimum-rust:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    needs: [changes, backend]
+    if: always() && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      - name: Read pinned Base revision
-        id: base
-        working-directory: task-tracker
-        run: |
-          pin=.base-revision
-          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
-          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
-          echo "pin=$pin" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: ${{ steps.base.outputs.sha }}
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - name: Verify pinned Base checkout
-        working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-      - name: Reset restored local crates once; keep compiled external dependencies
-        working-directory: task-tracker/backend
-        run: python3 ../scripts/vendor/base_rust_target_cache.py
-      - name: Check declared minimum independently of release builds
-        working-directory: task-tracker/backend
-        run: cargo check --locked --workspace --all-targets
+      - name: Require the shared minimum Rust and backend checks to pass
+        shell: bash
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: test "$BACKEND_RESULT" = success
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
@@ -173,6 +146,9 @@ jobs:
         run: |-
           cargo fmt --all -- --check
           cargo test --locked -p domain --lib
+      - name: Check declared minimum in the shared Rust workspace
+        # The former minimum job did not set the backend SQLX_OFFLINE override.
+        run: env -u SQLX_OFFLINE cargo check --locked --workspace --all-targets
       - name: Build changed application after isolated units
         if: needs.changes.outputs.backend_build == 'true'
         run: cargo build --locked --workspace
