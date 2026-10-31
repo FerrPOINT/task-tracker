@@ -314,3 +314,19 @@ Generation отражает порядок frozen snapshots, а не факт PM
 отмене он сохраняется как история; следующий consent получает новую generation.
 Legacy initial/review snapshots сохраняют прежние gates и не могут занять
 уже использованный snapshot или generation. Native reservation этим не создаётся.
+
+
+### Связь с исходниками вручную созданной задачи
+
+Материалы содержат канонический набор repository identities: namespace, Forge
+instance, repository ID и kind. Он объединяет явные task links и выбранный
+project source. Название ссылки, автор связи и время её создания не являются
+исходными материалами; остальные репозитории не скрываются. При явном запросе
+очереди точная связь с project source сохраняется в той же транзакции от имени
+человека. Её проекция не меняет sealed material hash. Конфликтующая identity
+существующей связи отклоняется, её metadata не перезаписывается. Replay не
+создаёт дубль; failed commit откатывает и эту связь.
+
+Сохранение источника не создаёт Forge branch, agent run или результат. Actual
+reservation должна отдельно связать genuine human source receipt с native
+assignment и проверять актуальные права/конфигурацию.

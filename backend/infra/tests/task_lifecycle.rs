@@ -1344,6 +1344,64 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .await
         .unwrap();
     assert!(!replayed);
+    let source_link = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT snapshot,created_by FROM task_repository_links WHERE issue_id=$1",
+            vec![queued_task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        source_link
+            .try_get::<Uuid>("", "created_by")
+            .unwrap()
+            .to_string(),
+        actor.subject
+    );
+    assert_eq!(
+        requested.issue_materials_sha256,
+        queued_preview.issue_materials_sha256
+    );
+    // A display caption is not a different repository. A real unrelated link is
+    // still a material change and cannot be hidden by source association projection.
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+        "UPDATE task_repository_links SET snapshot=jsonb_set(snapshot,'{public_name}','\"Renamed source caption\"'::jsonb) WHERE issue_id=$1",vec![queued_task.into()])).await.unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(queued_task, &actor)
+            .await
+            .is_ok()
+    );
+    let other_repo = Uuid::new_v4();
+    let mut other_link = source_link
+        .try_get::<serde_json::Value>("", "snapshot")
+        .unwrap();
+    other_link["repository_id"] = json!(other_repo);
+    other_link["public_name"] = json!("Unrelated repository");
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+        "INSERT INTO task_repository_links(issue_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5)",
+        vec![queued_task.into(),Uuid::parse_str(other_link["forge_instance_id"].as_str().unwrap()).unwrap().into(),other_repo.into(),other_link.into(),Uuid::parse_str(&actor.subject).unwrap().into()])).await.unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(queued_task, &actor)
+            .await
+            .is_err()
+    );
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "DELETE FROM task_repository_links WHERE issue_id=$1 AND repository_id=$2",
+        vec![queued_task.into(), other_repo.into()],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(queued_task, &actor)
+            .await
+            .is_ok()
+    );
     let frozen=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
         "SELECT payload,generation FROM sdlc_routing_snapshot_inventory WHERE task_id=$1 AND snapshot_id=$2",
         vec![queued_task.into(),requested.routing_snapshot_id.into()])).await.unwrap().unwrap();

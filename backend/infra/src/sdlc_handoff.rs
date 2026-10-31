@@ -112,6 +112,12 @@ impl PostgresSdlcRepository {
             }
             Err(error) => return Err(error),
         };
+        let default_repository=source.as_ref().map(|policy|json!({
+            "namespace":policy.verification.namespace,"forge_instance_id":policy.source.forge_instance_id,
+            "repository_id":policy.source.repository_id,"kind":"hosted"}));
+        // Repository identity includes the selected project source before its link
+        // is projected at explicit queueing. Display names and relation authorship
+        // are not task materials; unrelated explicit repository identities remain.
         // Hash inputs that can change without a lifecycle transition too. Do not hash
         // navigation position, user display names or unrelated catalogue activity.
         let row=tx.query_one(statement("SELECT jsonb_build_object(
@@ -121,8 +127,11 @@ impl PostgresSdlcRepository {
             'attachments',COALESCE((SELECT jsonb_agg(to_jsonb(a)-ARRAY['storage_key','created_at'] ORDER BY a.id) FROM attachments a WHERE a.issue_id=i.id),'[]'::jsonb),
             'comments_sha256',(SELECT encode(sha256(convert_to(COALESCE(string_agg(c.id::text||'/'||c.author_id::text||'/'||encode(sha256(convert_to(c.body,'UTF8')),'hex'),',' ORDER BY c.id),''),'UTF8')),'hex') FROM comments c WHERE c.issue_id=i.id),
             'links',COALESCE((SELECT jsonb_agg(to_jsonb(link) ORDER BY link.id) FROM issue_links link WHERE link.source_id=i.id OR link.target_id=i.id),'[]'::jsonb),
-            'repositories',COALESCE((SELECT jsonb_agg(to_jsonb(link)-'created_at' ORDER BY link.forge_instance_id,link.repository_id) FROM task_repository_links link WHERE link.issue_id=i.id),'[]'::jsonb)) AS material
-            FROM issues i WHERE i.id=$1 AND i.deleted_at IS NULL",vec![task.into()]))
+            'repositories',COALESCE((SELECT jsonb_agg(repo ORDER BY repo->>'forge_instance_id',repo->>'repository_id',repo->'namespace',repo->>'kind') FROM (
+                SELECT jsonb_build_object('namespace',link.snapshot->'namespace','forge_instance_id',link.forge_instance_id,'repository_id',link.repository_id,'kind',link.snapshot->'kind') AS repo FROM task_repository_links link WHERE link.issue_id=i.id
+                UNION SELECT $2::jsonb WHERE $2::jsonb IS NOT NULL
+            ) effective),'[]'::jsonb)) AS material
+            FROM issues i WHERE i.id=$1 AND i.deleted_at IS NULL",vec![task.into(),default_repository.into()]))
             .await.map_err(map_db)?.ok_or_else(||AppError::not_found("issue",task))?;
         let material: Json = row.try_get("", "material").map_err(map_db)?;
         let issue_materials_sha256 = app::sdlc::canonical_hash(&material)?;
@@ -533,6 +542,18 @@ impl PostgresSdlcRepository {
                 return Err(AppError::conflict("source policy namespace changed"));
             }
         }
+        if observed.is_some() {
+            Self::ensure_handoff_repository_link(
+                &tx,
+                &state,
+                actor_id,
+                prepared
+                    .source
+                    .as_ref()
+                    .ok_or_else(|| AppError::Unavailable("source_not_configured".into()))?,
+            )
+            .await?;
+        }
         let frozen = app::task_handoff::prepare_materials(
             &state,
             actor,
@@ -593,6 +614,31 @@ impl PostgresSdlcRepository {
 }
 
 impl PostgresSdlcRepository {
+    async fn ensure_handoff_repository_link(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        creator: Uuid,
+        policy: &domain::sdlc_source::ProjectSourcePolicy,
+    ) -> Result<(), AppError> {
+        let expected = domain::task_repositories::TaskRepositoryLink {
+            namespace: policy.verification.namespace.clone(),
+            forge_instance_id: policy.source.forge_instance_id,
+            repository_id: policy.source.repository_id,
+            public_name: policy.verification.public_name.clone(),
+            kind: "hosted".into(),
+        };
+        exec(tx,"INSERT INTO task_repository_links(issue_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(issue_id,forge_instance_id,repository_id) DO NOTHING",vec![state.task_id.into(),expected.forge_instance_id.into(),expected.repository_id.into(),json_value(&expected)?,creator.into()]).await?;
+        if let Some(row)=tx.query_one(statement("SELECT snapshot FROM task_repository_links WHERE issue_id=$1 AND forge_instance_id=$2 AND repository_id=$3 FOR SHARE",vec![state.task_id.into(),expected.forge_instance_id.into(),expected.repository_id.into()])).await.map_err(map_db)?{
+            let link:domain::task_repositories::TaskRepositoryLink=serde_json::from_value(row.try_get::<Json>("","snapshot").map_err(map_db)?).map_err(AppError::internal)?;
+            if link.namespace!=expected.namespace || link.forge_instance_id!=expected.forge_instance_id || link.repository_id!=expected.repository_id || link.kind!=expected.kind {
+                return Err(AppError::conflict("task source repository link differs"));
+            }
+        } else {
+            return Err(AppError::conflict("task source repository link missing"));
+        }
+        Ok(())
+    }
+
     async fn pending_handoff_locked(
         &self,
         tx: &DatabaseTransaction,
