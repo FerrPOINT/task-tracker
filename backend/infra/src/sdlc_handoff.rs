@@ -117,7 +117,16 @@ impl PostgresSdlcRepository {
             Err(error) => return Err(error),
         };
         let source = match Self::retained_source_policy(tx, state.project_id, None).await {
-            Ok(policy) => Some(policy),
+            Ok(policy) => {
+                match Self::source_namespace_for(tx, state.project_id, &policy.source).await {
+                    Ok(namespace) if namespace == policy.verification.namespace => Some(policy),
+                    Ok(_) | Err(AppError::Conflict(_)) | Err(AppError::NotFound(_)) => {
+                        blockers.push(Blocker::SourceUnavailable);
+                        None
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
             Err(AppError::NotFound(_)) => {
                 blockers.push(Blocker::SourceUnavailable);
                 None
@@ -585,7 +594,8 @@ impl PostgresSdlcRepository {
             observed.ensure_for(&prepared)?;
         }
         if let Some(source) = &prepared.source {
-            if Self::source_namespace(&tx, state.project_id).await? != source.verification.namespace
+            if Self::source_namespace_for(&tx, state.project_id, &source.source).await?
+                != source.verification.namespace
             {
                 return Err(AppError::conflict("source policy namespace changed"));
             }
@@ -730,7 +740,17 @@ impl PostgresSdlcRepository {
             || prepared.source.as_ref().is_none_or(|p| {
                 p.source_revision != source.source_revision || p.source_hash != source.policy_hash
             })
-            || Self::source_namespace(tx, state.project_id).await? != source.namespace
+            || Self::source_namespace_for(
+                tx,
+                state.project_id,
+                &prepared
+                    .source
+                    .as_ref()
+                    .ok_or_else(|| AppError::Unavailable("source_not_configured".into()))?
+                    .source,
+            )
+            .await?
+                != source.namespace
         {
             return Err(AppError::conflict(
                 "current_stage_handoff_inputs_changed_or_blocked",

@@ -161,6 +161,7 @@ pub trait TaskSourceRepository: Send + Sync {
         &self,
         project: Uuid,
         actor: &Principal,
+        source: &SourcePolicySpec,
     ) -> Result<NamespaceRef, AppError>;
     async fn set_source_policy(
         &self,

@@ -428,6 +428,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     // ServiceBridge activation is process configuration, not a mutable test switch.
     // The manual runner starts this case in a separate process/fresh database.
     let application_policy = std::env::var_os("TT_HANDOFF_POLICY_OFF_FIXTURE").is_none();
+    let catalog_source = std::env::var_os("TT_HANDOFF_CATALOG_SOURCE_FIXTURE").is_some();
     let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
     let db = Arc::new(Database::connect(url.as_str()).await.unwrap());
     let row = db
@@ -510,8 +511,10 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     let project_b = Uuid::new_v4();
     let binding = json!({"schema_version":1,"namespace":namespace,"resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
         "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
-    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
+    if !catalog_source {
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
         [project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()])).await.unwrap();
+    }
     let source = SourcePolicySpec {
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
@@ -529,6 +532,25 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         protected_refs: vec![],
         observed_at: chrono::Utc::now(),
     };
+    if catalog_source {
+        for (forge, repo, ns, name) in [
+            (
+                Uuid::new_v4(),
+                Uuid::from_u128(1),
+                Uuid::new_v4(),
+                "unrelated/first",
+            ),
+            (
+                source.forge_instance_id,
+                source.repository_id,
+                namespace.namespace_id,
+                "selected/source",
+            ),
+        ] {
+            let snapshot = json!({"namespace":{"registry_instance_id":namespace.registry_instance_id,"namespace_id":ns},"forge_instance_id":forge,"repository_id":repo,"public_name":name,"kind":"hosted"});
+            db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO project_repository_links(project_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5)",vec![project.into(),forge.into(),repo.into(),snapshot.into(),Uuid::parse_str(OWNER).unwrap().into()])).await.unwrap();
+        }
+    }
     repository
         .set_source_policy(
             project,

@@ -2360,3 +2360,13 @@ Current technical lifecycle commands, result reads and proposal/operation reads
 Изолированно проверены heartbeat, original result, отсутствие двойного продления,
 read-vs-write credentials и отзыв после успеха. Реальный start/result/terminal
 cohort и безопасный cleanup после отзыва ещё требуют отдельной приёмки.
+
+
+Источник проекта выбирается по точной паре `forge_instance_id/repository_id` из
+`SetSourcePolicy`. Namespace берётся из подтверждённой явной связи этого
+репозитория с проектом, а не из первого репозитория или единственного пространства
+проекта. Это позволяет настроить источник самостоятельного проекта без legacy
+namespace binding. Старый путь сохраняется для проектов без явной записи каталога.
+Повреждённая совпавшая запись не разрешает fallback. Предварительный выбор до
+Forge HTTP повторно проверяется в транзакции записи policy; чужой namespace в
+verified facts отклоняется. JSON-команда и старые strict envelopes не меняются.

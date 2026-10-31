@@ -56,6 +56,7 @@ mod m20261031_0000115_current_stage_request;
 mod m20261031_0000116_human_routing_inventory;
 mod m20261031_0000117_current_stage_delivery_adoption;
 mod m20261101_0000118_current_stage_space_dependencies;
+mod m20261101_0000119_current_stage_catalog_source;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -161,6 +162,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261031_0000116_human_routing_inventory::Migration),
             Box::new(m20261031_0000117_current_stage_delivery_adoption::Migration),
             Box::new(m20261101_0000118_current_stage_space_dependencies::Migration),
+            Box::new(m20261101_0000119_current_stage_catalog_source::Migration),
         ]
     }
 }

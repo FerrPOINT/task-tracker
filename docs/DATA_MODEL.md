@@ -2493,3 +2493,29 @@ owner observations. Операция не добавляет строку в PM 
 Общие leases/fences/capacity и результаты остаются в прежних owner-ledgers.
 `execution_handoff_id` — происхождение текущего исполнения; queued
 `human_handoff_id` потребляется атомарно. Это не второй источник стадии.
+
+
+### Источник текущей стадии из каталога репозиториев
+
+Forward119 не меняет исторические SourcePolicy/TaskSourceBinding payloads.
+Новый SQL helper `task_handoff_source_policy_current` сверяет source head/hash,
+точные Forge/repository IDs, base ref/commit и namespace с выбранной записью
+`project_repository_links`. Повреждённая совпавшая запись закрывает допуск; legacy
+namespace применяется только при отсутствии точной записи каталога. Остальные
+условия transient human write permit сохраняются. Старые миграции не редактируются,
+новые receipt-таблицы и второй источник связи не создаются.
+
+Native scope нового human-origin исполнения также не требует прежней 1:1
+привязки. При первоначальном принятии используется точный human source receipt;
+после принятия — сохранённые зависимости действующего assignment/hold плюс тот
+же источник. Проверки реального проекта, зарегистрированного субъекта, прав,
+жизненного цикла ресурсов и исходного срока подтверждения сохраняются.
+Исторические исполнения продолжают проверять прежний явный namespace owner.
+
+Изолированный case `TT_HANDOFF_CATALOG_SOURCE_FIXTURE=true` проверяет проект без
+legacy namespace binding, соседний иной репозиторий, отказ неверного snapshot и
+verified namespace, сохранение current-stage consent/routing/source и реального assignment/hold без
+запуска процесса.
+Обычный case отдельно сохраняет проверку populated upgrade с113/115 и неизменность
+старых подлинных записей после119. Прямое SQL-доказательство другого repository ID
+не принимается при прежнем namespace/hash.

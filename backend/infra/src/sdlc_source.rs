@@ -106,20 +106,61 @@ impl PostgresSdlcRepository {
         Ok(())
     }
 
+    /// The exact selected repository owns its namespace. Project space grouping
+    /// is not a source selector. Retain the old namespace-only path for installs
+    /// without an explicit link; a malformed matching link never falls back.
+    pub(super) async fn source_namespace_for(
+        tx: &DatabaseTransaction,
+        project: Uuid,
+        source: &SourcePolicySpec,
+    ) -> Result<NamespaceRef, AppError> {
+        app::sdlc_source::validate_spec(source)?;
+        let row=tx.query_one(statement("SELECT snapshot AS payload FROM project_repository_links WHERE project_id=$1 AND forge_instance_id=$2 AND repository_id=$3 FOR SHARE",vec![project.into(),source.forge_instance_id.into(),source.repository_id.into()])).await.map_err(map_db)?;
+        let Some(row) = row else {
+            return Self::legacy_project_namespace(tx, project)
+                .await?
+                .ok_or_else(|| AppError::conflict("source_repository_not_selected"));
+        };
+        let link: domain::task_repositories::TaskRepositoryLink = decode(&row)?;
+        if link.forge_instance_id != source.forge_instance_id
+            || link.repository_id != source.repository_id
+            || link.kind != "hosted"
+            || link.namespace.registry_instance_id.is_nil()
+            || link.namespace.namespace_id.is_nil()
+        {
+            return Err(AppError::conflict(
+                "source repository catalog identity differs",
+            ));
+        }
+        super::spaces::require_resource_namespace(&link.namespace)?;
+        Ok(link.namespace)
+    }
+
     pub(super) async fn source_namespace(
         tx: &DatabaseTransaction,
         project: Uuid,
     ) -> Result<NamespaceRef, AppError> {
+        Self::legacy_project_namespace(tx, project)
+            .await?
+            .ok_or_else(|| {
+                AppError::conflict("active project namespace required for source binding")
+            })
+    }
+    async fn legacy_project_namespace(
+        tx: &DatabaseTransaction,
+        project: Uuid,
+    ) -> Result<Option<NamespaceRef>, AppError> {
         let row = tx.query_one(statement(
             "SELECT registry_instance_id,namespace_id FROM tracker_namespace_bindings WHERE resource_id=$1 AND state='active' FOR SHARE",
             vec![project.into()],
-        )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("active project namespace required for source binding"))?;
+        )).await.map_err(map_db)?;
+        let Some(row) = row else { return Ok(None) };
         let namespace = NamespaceRef {
             registry_instance_id: row.try_get("", "registry_instance_id").map_err(map_db)?,
             namespace_id: row.try_get("", "namespace_id").map_err(map_db)?,
         };
         super::spaces::require_resource_namespace(&namespace)?;
-        Ok(namespace)
+        Ok(Some(namespace))
     }
 
     pub(super) async fn retained_source_policy(
@@ -236,11 +277,12 @@ impl TaskSourceRepository for PostgresSdlcRepository {
         &self,
         project: Uuid,
         actor: &Principal,
+        source: &SourcePolicySpec,
     ) -> Result<NamespaceRef, AppError> {
         app::sdlc_source::human_owner(actor)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         Self::routing_owner(&tx, project, actor, false).await?;
-        let namespace = Self::source_namespace(&tx, project).await?;
+        let namespace = Self::source_namespace_for(&tx, project, source).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(namespace)
     }
@@ -275,7 +317,7 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((policy, true));
         }
-        let namespace = Self::source_namespace(&tx, project).await?;
+        let namespace = Self::source_namespace_for(&tx, project, &command.source).await?;
         let now = super::lifecycle::now(&tx).await?;
         app::sdlc_source::validate_verification(&command.source, &namespace, &verified, now)?;
         let current = tx

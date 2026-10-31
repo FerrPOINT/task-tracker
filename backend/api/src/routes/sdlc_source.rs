@@ -72,7 +72,9 @@ pub async fn set(
         Err(AppError::NotFound(_)) => (),
         Err(error) => return Err(error),
     }
-    let namespace = repository.source_policy_namespace(project, &actor).await?;
+    let namespace = repository
+        .source_policy_namespace(project, &actor, &input.source)
+        .await?;
     let verified = ctx
         .task_repositories
         .verify_source(&namespace, &input.source)

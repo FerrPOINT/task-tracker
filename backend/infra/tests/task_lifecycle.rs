@@ -829,6 +829,7 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     };
     use domain::task_handoff::TaskHandoffCommand;
     use serde_json::json;
+    let catalog_source = std::env::var_os("TT_HANDOFF_CATALOG_SOURCE_FIXTURE").is_some();
     let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
     let db = Database::connect(url.as_str()).await.unwrap();
     let row = db
@@ -851,9 +852,16 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .iter()
         .position(|m| m.name().ends_with("0000116_human_routing_inventory"))
         .unwrap();
-    migration::Migrator::up(&db, Some(before_routing_index as u32))
-        .await
-        .unwrap();
+    migration::Migrator::up(
+        &db,
+        if catalog_source {
+            None
+        } else {
+            Some(before_routing_index as u32)
+        },
+    )
+    .await
+    .unwrap();
     db.execute_unprepared(include_str!(
         "../../migration/src/task_lifecycle_fixture.sql"
     ))
@@ -918,8 +926,10 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     };
     let binding = json!({"schema_version":1,"namespace":namespace,"resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
         "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
-    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
+    if !catalog_source {
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
         [project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()])).await.unwrap();
+    }
     let source = SourcePolicySpec {
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
@@ -937,6 +947,82 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         protected_refs: vec![],
         observed_at: chrono::Utc::now(),
     };
+    if catalog_source {
+        // The project has no legacy namespace binding. Its explicit repository
+        // link supplies source C; an unrelated earlier link must not be selected.
+        for (forge, repository_id, space, name) in [
+            (
+                Uuid::new_v4(),
+                Uuid::from_u128(1),
+                Uuid::new_v4(),
+                "earlier/unrelated",
+            ),
+            (
+                source.forge_instance_id,
+                source.repository_id,
+                namespace.namespace_id,
+                "chosen/source",
+            ),
+        ] {
+            let snapshot = json!({"namespace":{"registry_instance_id":namespace.registry_instance_id,"namespace_id":space},"forge_instance_id":forge,"repository_id":repository_id,"public_name":name,"kind":"hosted"});
+            db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO project_repository_links(project_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5)",vec![project.into(),forge.into(),repository_id.into(),snapshot.into(),Uuid::parse_str(&actor.subject).unwrap().into()])).await.unwrap();
+        }
+        assert_eq!(
+            db.query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT count(*) AS n FROM tracker_namespace_bindings WHERE resource_id=$1",
+                vec![project.into()]
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<i64>("", "n")
+            .unwrap(),
+            0
+        );
+    }
+    let exact=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT snapshot FROM project_repository_links WHERE project_id=$1 AND forge_instance_id=$2 AND repository_id=$3",vec![project.into(),source.forge_instance_id.into(),source.repository_id.into()])).await.unwrap().map(|row|row.try_get::<serde_json::Value>("","snapshot").unwrap());
+    let malformed = json!({"namespace":namespace,"forge_instance_id":Uuid::new_v4(),"repository_id":source.repository_id,"public_name":"invalid/catalog-identity","kind":"hosted"});
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO project_repository_links(project_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(project_id,forge_instance_id,repository_id) DO UPDATE SET snapshot=EXCLUDED.snapshot",vec![project.into(),source.forge_instance_id.into(),source.repository_id.into(),malformed.into(),Uuid::parse_str(&actor.subject).unwrap().into()])).await.unwrap();
+    assert!(
+        matches!(
+            repository
+                .source_policy_namespace(project, &actor, &source)
+                .await,
+            Err(shared::AppError::Conflict(_))
+        ),
+        "a malformed exact link must not fall back to the old namespace or another repository"
+    );
+    if let Some(snapshot) = exact {
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE project_repository_links SET snapshot=$4 WHERE project_id=$1 AND forge_instance_id=$2 AND repository_id=$3",vec![project.into(),source.forge_instance_id.into(),source.repository_id.into(),snapshot.into()])).await.unwrap();
+    } else {
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"DELETE FROM project_repository_links WHERE project_id=$1 AND forge_instance_id=$2 AND repository_id=$3",vec![project.into(),source.forge_instance_id.into(),source.repository_id.into()])).await.unwrap();
+    }
+    assert_eq!(
+        repository
+            .source_policy_namespace(project, &actor, &source)
+            .await
+            .unwrap(),
+        namespace
+    );
+    let mut foreign = verified.clone();
+    foreign.namespace.namespace_id = Uuid::new_v4();
+    assert!(
+        repository
+            .set_source_policy(
+                project,
+                &actor,
+                SetSourcePolicy {
+                    expected_source_revision: None,
+                    source: source.clone(),
+                    idempotency_key: "foreign-source-namespace-proof".into()
+                },
+                foreign
+            )
+            .await
+            .is_err(),
+        "verified facts from a different namespace cannot be substituted"
+    );
     repository
         .set_source_policy(
             project,
@@ -1227,6 +1313,15 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     let before_index=db.query_one(Statement::from_string(DbBackend::Postgres,
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY handoff_id) AS history FROM task_handoff_materials m".to_owned())).await.unwrap().unwrap().try_get::<serde_json::Value>("","history").unwrap();
     migration::Migrator::up(&db, None).await.unwrap();
+    let source_guard=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT bool_and(task_handoff_source_policy_current((receipt->>'project_id')::uuid,source_binding)) AS legitimate,bool_or(task_handoff_source_policy_current((receipt->>'project_id')::uuid,jsonb_set(source_binding,'{repository_id}','\"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee\"'))) AS forged FROM task_handoff_materials".to_owned())).await.unwrap().unwrap();
+    assert!(
+        source_guard.try_get::<bool>("", "legitimate").unwrap(),
+        "old genuine source receipts remain valid after the additive owner change"
+    );
+    assert!(
+        !source_guard.try_get::<bool>("", "forged").unwrap(),
+        "same namespace and hash cannot disguise another repository"
+    );
     migration::Migrator::up(&db, None).await.unwrap();
     let after_index=db.query_one(Statement::from_string(DbBackend::Postgres,
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY handoff_id) AS history FROM task_handoff_materials m".to_owned())).await.unwrap().unwrap().try_get::<serde_json::Value>("","history").unwrap();
@@ -1951,10 +2046,13 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert!(reserved.lease.is_some());
     assert!(reserved.binding.is_none());
     assert!(reserved.result.is_none());
-    let current_source = repository
-        .task_source(queued_task, &scheduler)
-        .await
-        .unwrap();
+    // Repository-only principals do not supply an original SDK native clock.
+    // The HTTP/SDK fixture separately proves registered machine source reads.
+    assert!(matches!(
+        repository.task_source(queued_task, &scheduler).await,
+        Err(shared::AppError::Forbidden)
+    ));
+    let current_source = repository.task_source(queued_task, &actor).await.unwrap();
     match current_source {
         domain::sdlc_source::TaskSourceReadback::Blocked {
             reason: domain::sdlc_source::SourceBlockReason::ExecutionNotRunning,
