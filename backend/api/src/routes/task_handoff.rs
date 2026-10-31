@@ -53,6 +53,11 @@ pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
         .route("/sdlc/current-stage-candidates", get(requested))
         .route("/issues/{id}/handoff/execution", get(execution))
+        .route("/issues/{id}/handoff/reservations", post(reserve))
+        .route(
+            "/issues/{id}/handoff/reservations/{key}",
+            get(reservation_operation),
+        )
         .route("/issues/{id}/handoff", get(preview).post(request))
         .route("/issues/{id}/handoff/operations/{key}", get(operation))
         .route("/issues/{id}/handoff/{handoff_id}/cancel", post(cancel))
@@ -236,4 +241,59 @@ pub async fn execution(
             .requested_handoff_execution(id, &actor)
             .await?,
     ))
+}
+
+#[utoipa::path(post,operation_id="reserve_requested_current_stage_handoff",path="/api/v1/issues/{id}/handoff/reservations",params(("id"=Uuid,Path)),request_body=domain::task_handoff::ReserveTaskHandoffCommand,responses((status=201,body=domain::current_stage_execution::CurrentStageExecution),(status=200,body=domain::current_stage_execution::CurrentStageExecution),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn reserve(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<domain::task_handoff::ReserveTaskHandoffCommand>,
+) -> Result<Response, AppError> {
+    let service = super::sdlc::service(&ctx)?;
+    command.validate()?;
+    let repo = repository(&ctx)?;
+    if let Some(saved) = repo
+        .handoff_reservation_operation(id, &actor, &command.idempotency_key, true)
+        .await?
+    {
+        if saved.command_hash != app::sdlc::canonical_hash(&command)? {
+            return Err(AppError::conflict("current_stage_reservation_key_conflict"));
+        }
+        return Ok(response(StatusCode::OK, saved.result));
+    }
+    let prepared = repo.prepare_requested_handoff(id, &actor).await?;
+    if prepared.state.revision != command.expected_revision {
+        return Err(AppError::conflict("task_lifecycle_revision_conflict"));
+    }
+    let fleet = service
+        .fleet_configuration
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Fleet configuration reader not configured".into()))?;
+    let observed =
+        app::task_handoff_observations::observe(&prepared, fleet, ctx.task_repositories.as_ref())
+            .await?;
+    let (result, replayed) = repo
+        .reserve_current_stage_handoff(id, &actor, &command, &observed)
+        .await?;
+    Ok(response(
+        if replayed {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        result,
+    ))
+}
+#[utoipa::path(get,operation_id="read_current_stage_reservation_operation",path="/api/v1/issues/{id}/handoff/reservations/{key}",params(("id"=Uuid,Path),("key"=String,Path)),responses((status=200,body=domain::current_stage_execution::CurrentStageExecution),(status=401),(status=403),(status=404),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn reservation_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<Response, AppError> {
+    let saved = repository(&ctx)?
+        .handoff_reservation_operation(id, &actor, &key, false)
+        .await?
+        .ok_or_else(|| AppError::not_found("current stage reservation operation", key))?;
+    Ok(response(StatusCode::OK, saved.result))
 }

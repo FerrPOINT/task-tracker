@@ -2325,3 +2325,20 @@ Preview handoff дополнительно возвращает `current_request
 увидеть и отменить свою незахваченную очередь после отзыва приложений запуска.
 Read-only PAT этого права не получает. UI использует исходную operation при
 потере ответа; автоматического повторного POST нет.
+
+Для отдельного registered scheduler write credential добавлен POST
+`/api/v1/issues/{id}/handoff/reservations`; тело — strict
+`ReserveTaskHandoffCommand`. 201 подтверждает реальное reservation, не native
+start. 200 при повторе возвращает исходный результат без нового Fleet/Forge IO.
+GET `/api/v1/issues/{id}/handoff/reservations/{key}` использует отдельный
+scheduler read credential, original key и текущую авторизацию владельца.
+Возвращаемый snapshot исторический: актуальное исполнение читается существующим
+GET `/api/v1/issues/{id}/sdlc/lifecycle`, где истёкший lease означает Unknown.
+Подмена producer/команды при том же ключе — 409. Роль человека либо generic
+machine credential не открывают эти операции.
+
+Чтение текущих lifecycle/source сначала получает owner app proof вне
+транзакции, затем проверяет его с тем же сроком под блокировками. Human source
+выбирается из своего exact receipt; reserved источник не объявляется running.
+Изолированная HTTP/PG/SDK проверка не является dev/live запуском; PM и полный
+owner-space/native consumer cohort пока не завершены.

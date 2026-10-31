@@ -236,6 +236,12 @@ pub struct PendingHandoffMaterials {
     pub source: TaskSourceBinding,
 }
 
+/// Immutable original reservation outcome; runtime state is read separately.
+pub struct SavedHandoffReservation {
+    pub command_hash: String,
+    pub result: domain::current_stage_execution::CurrentStageExecution,
+}
+
 /// The command hash remains internal; callers cannot use it as owner evidence.
 pub struct SavedHandoffOperation {
     pub operation: domain::task_handoff::TaskHandoffOperation,
@@ -257,6 +263,14 @@ pub trait CurrentStageHandoffRepository: Send + Sync {
         command: &domain::task_handoff::ReserveTaskHandoffCommand,
         observed: &crate::task_handoff_observations::MatchedHandoffInputs,
     ) -> Result<(domain::current_stage_execution::CurrentStageExecution, bool), AppError>;
+
+    async fn handoff_reservation_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+        mutation: bool,
+    ) -> Result<Option<SavedHandoffReservation>, AppError>;
 
     async fn current_owner_handoff(
         &self,

@@ -3,6 +3,35 @@ use super::*;
 use app::space_access::{CentralRequestContext, SpaceActor};
 use shared::{ProjectId, space_access::SpaceRef};
 
+/// Resolve the immutable owner's application decision before holding native task
+/// locks. The locked bind checks the same cached proof again, with its old clock.
+pub(super) async fn confirm_owner_before_transaction(
+    repository: &PostgresSdlcRepository,
+    task: Uuid,
+    actor: &Principal,
+) -> Result<(), AppError> {
+    if actor.trusted_human || !app::native_space_access::application_policy_required().await? {
+        return Ok(());
+    }
+    let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
+    if native.identity().subject != actor.subject {
+        return Err(AppError::Forbidden);
+    }
+    let tx = repository.db.begin().await.map_err(map_db)?;
+    let state = PostgresSdlcRepository::load_binding(&tx, &repository.config, task, actor).await?;
+    tx.commit().await.map_err(map_db)?;
+    let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
+    if owner.to_string() != state.owner_subject {
+        return Err(AppError::Forbidden);
+    }
+    let required: &[&str] = if state.retained_fields.contains_key("execution_handoff_id") {
+        &["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
+    } else {
+        &["task-tracker", "fleet-control"]
+    };
+    native.require_owner(owner, required).await
+}
+
 pub(super) async fn request_scope(
     db: &impl ConnectionTrait,
     actor: &Principal,

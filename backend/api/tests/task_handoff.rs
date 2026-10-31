@@ -27,6 +27,7 @@ const FULL: &str = "pdlc_pat_fixture_full_owner_AAAAAAAAAAAAAAAAAA";
 const TRACKER: &str = "pdlc_pat_fixture_tracker_owner_AAAAAAAAAAAAAAA";
 const MACHINE: &str = "pdlc_pat_fixture_machine_owner_AAAAAAAAAAAAAAA";
 const SCHEDULER: &str = "pdlc_pat_fixture_scheduler_read_AAAAAAAAAAAAAAA";
+const SCHEDULER_WRITE: &str = "pdlc_pat_fixture_scheduler_write_AAAAAAAAAAAAAA";
 #[derive(Clone)]
 struct Owners {
     issuer: String,
@@ -56,7 +57,11 @@ async fn introspect(State(s): State<Owners>, headers: HeaderMap) -> Json<Value> 
         .filter(|scope| !bearer.contains("readonly") || scope.ends_with(":read"))
         .collect();
     if scheduler {
-        scopes = vec!["task-tracker:read".into()]
+        scopes = if bearer.contains("_write_") {
+            vec!["task-tracker:write".into()]
+        } else {
+            vec!["task-tracker:read".into()]
+        }
     }
     Json(
         json!({"sub":subject,"email":"operator@example.test","scopes":scopes,"display_name":"Fixture owner",
@@ -631,6 +636,15 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     next["idempotency_key"] = json!("catalog-qualified-request");
     let (status, queued_again) = call(&router, "POST", &path, Some(FULL), next).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{queued_again}");
+    let producer = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES($1,'producer@example.test','producer','Fixture producer','fixture',$2)",vec![producer.into(),producer.to_string().into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![project.into(), producer.into()],
+    ))
+    .await
+    .unwrap();
     db.execute_unprepared("INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES('90000000-0000-4000-8000-000000000001','90000000-0000-4000-8000-000000000002',1,'active','{}')").await.unwrap();
     assert_eq!(
         call(&router, "GET", &execution, Some(SCHEDULER), Value::Null)
@@ -648,6 +662,106 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             .await
             .0,
         StatusCode::FORBIDDEN
+    );
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE tracker_space_catalog SET state='active' WHERE registry_instance_id=$1 AND space_id=$2",[namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    let reservations = format!("{path}/reservations");
+    let reservation = json!({"handoff_id":queued_again["receipt"]["handoff_id"],"expected_revision":queued_again["receipt"]["resulting_revision"],"machine_subject":producer,"idempotency_key":"first-technical-admission"});
+    for token in [FULL, TRACKER, MACHINE, SCHEDULER] {
+        assert_eq!(
+            call(
+                &router,
+                "POST",
+                &reservations,
+                Some(token),
+                reservation.clone()
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    let (status, reserved) = call(
+        &router,
+        "POST",
+        &reservations,
+        Some(SCHEDULER_WRITE),
+        reservation.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{reserved}");
+    assert!(reserved["assignment"].is_object() && reserved["lease"].is_object());
+    assert!(reserved["binding"].is_null() && reserved["result"].is_null());
+    assert_eq!(reserved["task"]["stage"], "Review");
+    assert_eq!(reserved["task"]["runtime"], "reserved");
+    let operation = format!("{reservations}/first-technical-admission");
+    let (status, recovered) = call(&router, "GET", &operation, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{recovered}");
+    assert_eq!(recovered, reserved);
+    let (status, current) = call(
+        &router,
+        "GET",
+        &format!("/api/v1/issues/{TASK}/sdlc/lifecycle"),
+        Some(SCHEDULER),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{current}");
+    assert_eq!(current["runtime_state"], "reserved");
+    let (status, source) = call(
+        &router,
+        "GET",
+        &format!("/api/v1/issues/{TASK}/sdlc/source-binding"),
+        Some(SCHEDULER),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    assert_eq!(source["binding"]["namespace"], json!(namespace));
+    assert_eq!(source["reason"], "execution_not_running");
+    let before_native_replay = reads.load(Ordering::SeqCst);
+    available.store(false, Ordering::SeqCst);
+    let (status, repeated) = call(
+        &router,
+        "POST",
+        &reservations,
+        Some(SCHEDULER_WRITE),
+        reservation.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{repeated}");
+    assert_eq!(repeated, reserved);
+    assert_eq!(reads.load(Ordering::SeqCst), before_native_replay);
+    let mut conflict = reservation.clone();
+    conflict["machine_subject"] = json!(Uuid::new_v4());
+    assert_eq!(
+        call(
+            &router,
+            "POST",
+            &reservations,
+            Some(SCHEDULER_WRITE),
+            conflict
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(&router, "GET", &operation, Some(FULL), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            &format!("{reservations}/absent-original-key"),
+            Some(SCHEDULER),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
     );
     stub_task.abort();
     let _ = stub_task.await;

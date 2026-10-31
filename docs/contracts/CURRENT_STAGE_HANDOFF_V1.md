@@ -385,3 +385,12 @@ human либо legacy source receipt. Новый snapshot задачи не пе
 Reserved возвращает source binding вместе с ExecutionNotRunning, пока настоящего
 старта нет; source readback не фабрикует запуск. Repository/readback проверен
 на реальной изолированной БД; полный native HTTP/owner-space gate ещё открыт.
+
+HTTP reservation и original-key readback используют отдельные registered
+write/read credentials scheduler. Readback не выдаёт новое право запуска и не
+продлевает срок исходных подтверждений. Оригинальный snapshot можно получить
+без повторного Fleet/Forge IO; текущее исполнение, включая Unknown после lease
+expiry, принадлежит прежнему lifecycle endpoint. Current lifecycle/source reads
+получают owner app proof до SQL-транзакции и повторно проверяют его под lock,
+сохраняя исходный clock. Выполнена изолированная HTTP/PG/SDK проверка с
+каталогом namespace, настоящим technical assignment и без native run.

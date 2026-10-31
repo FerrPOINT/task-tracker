@@ -8,13 +8,19 @@ use domain::{
 };
 
 impl PostgresSdlcRepository {
-    async fn current_handoff_owner(&self, task: Uuid, actor: &Principal) -> Result<(), AppError> {
+    async fn current_handoff_owner(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        require_write: bool,
+    ) -> Result<(), AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         tx.commit().await.map_err(map_db)?;
         if app::native_space_access::application_policy_required().await? {
             let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
-            if native.identity().subject != actor.subject || !native.may_write() {
+            if native.identity().subject != actor.subject || (require_write && !native.may_write())
+            {
                 return Err(AppError::Forbidden);
             }
             native
@@ -26,13 +32,65 @@ impl PostgresSdlcRepository {
         }
         Ok(())
     }
+    pub(super) async fn handoff_reservation_read(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+        mutation: bool,
+    ) -> Result<Option<app::task_handoff::SavedHandoffReservation>, AppError> {
+        if mutation {
+            app::task_handoff::scheduler_writer(actor, &self.config)?
+        } else {
+            app::task_handoff::scheduler_reader(actor, &self.config)?
+        }
+        domain::task_lifecycle::validate_command_fields(1, key)?;
+        self.current_handoff_owner(task, actor, mutation).await?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        Self::load_binding(&tx, &self.config, task, actor).await?;
+        let row=tx.query_one(statement("SELECT a.command_hash,o.result,m.source_binding FROM task_handoff_delivery_adoptions a JOIN task_handoff_delivery_outcomes o USING(handoff_id) JOIN task_handoff_materials m USING(task_id,handoff_id) WHERE a.task_id=$1 AND a.actor_subject=$2 AND a.idempotency_key=$3",vec![task.into(),actor.subject.clone().into(),key.into()])).await.map_err(map_db)?;
+        let Some(row) = row else {
+            tx.commit().await.map_err(map_db)?;
+            return Ok(None);
+        };
+        let enforced=tx.query_one(statement("SELECT active OR EXISTS(SELECT 1 FROM tracker_space_catalog WHERE metadata IS NOT NULL) AS enforced FROM tracker_space_admission_state WHERE singleton",vec![])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?.try_get::<bool>("","enforced").map_err(map_db)?;
+        if enforced {
+            let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
+            if native.identity().subject != actor.subject {
+                return Err(AppError::Forbidden);
+            }
+            let source: domain::sdlc_source::TaskSourceBinding =
+                serde_json::from_value(row.try_get::<Json>("", "source_binding").map_err(map_db)?)
+                    .map_err(AppError::internal)?;
+            let catalog=tx.query_one(statement("SELECT state FROM tracker_space_catalog WHERE registry_instance_id=$1 AND space_id=$2 AND admin_revision IS NOT NULL FOR SHARE",vec![source.namespace.registry_instance_id.into(),source.namespace.namespace_id.into()])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+            if !matches!(
+                catalog
+                    .try_get::<String>("", "state")
+                    .map_err(map_db)?
+                    .as_str(),
+                "active" | "archiving" | "archived"
+            ) {
+                return Err(AppError::Forbidden);
+            }
+            crate::guarded_db::bind_commit_clock(&tx, native.validity()?.valid_until)
+                .await
+                .map_err(map_db)?;
+        }
+        let saved = app::task_handoff::SavedHandoffReservation {
+            command_hash: row.try_get("", "command_hash").map_err(map_db)?,
+            result: serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                .map_err(AppError::internal)?,
+        };
+        tx.commit().await.map_err(map_db)?;
+        Ok(Some(saved))
+    }
     pub(super) async fn prepare_handoff_delivery(
         &self,
         task: Uuid,
         actor: &Principal,
     ) -> Result<PreparedCurrentStageHandoff, AppError> {
         app::task_handoff::scheduler_writer(actor, &self.config)?;
-        self.current_handoff_owner(task, actor).await?;
+        self.current_handoff_owner(task, actor, true).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         self.pending_handoff_locked(&tx, task, actor, true).await?;
         let (_, prepared) = self.prepare_handoff_locked(&tx, task, actor, true).await?;
@@ -94,7 +152,7 @@ impl PostgresSdlcRepository {
     ) -> Result<(CurrentStageExecution, bool), AppError> {
         app::task_handoff::scheduler_writer(actor, &self.config)?;
         command.validate()?;
-        self.current_handoff_owner(task, actor).await?;
+        self.current_handoff_owner(task, actor, true).await?;
         let hash = app::sdlc::canonical_hash(command)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;

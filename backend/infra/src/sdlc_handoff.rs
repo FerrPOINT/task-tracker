@@ -186,6 +186,17 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
             .await
     }
 
+    async fn handoff_reservation_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+        mutation: bool,
+    ) -> Result<Option<app::task_handoff::SavedHandoffReservation>, AppError> {
+        self.handoff_reservation_read(task, actor, key, mutation)
+            .await
+    }
+
     async fn current_owner_handoff(
         &self,
         task: Uuid,

@@ -1447,6 +1447,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<LifecycleReadback, AppError> {
+        spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
         if !state.configured_cli() {

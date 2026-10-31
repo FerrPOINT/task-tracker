@@ -380,6 +380,7 @@ impl TaskSourceRepository for PostgresSdlcRepository {
         } else {
             app::sdlc_reservation::reader(actor)?;
         }
+        spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load_read(&tx, task, actor).await?;
         let current = super::lifecycle::current(&tx, task).await?;
