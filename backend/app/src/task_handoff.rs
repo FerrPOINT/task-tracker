@@ -30,6 +30,31 @@ pub struct FrozenHandoffMaterials {
     pub source: TaskSourceBinding,
 }
 
+/// Validate human inputs before peer HTTP and again inside the locked owner write.
+pub fn validate_prepared_command(
+    prepared: &PreparedCurrentStageHandoff,
+    command: &TaskHandoffCommand,
+) -> Result<(), AppError> {
+    command.validate()?;
+    if !prepared.blockers.is_empty()
+        || prepared.state.revision != command.expected_revision
+        || prepared.issue_sha256 != command.confirmed_issue_sha256
+        || prepared.routing.as_ref().map(|p| p.version)
+            != Some(command.expected_routing_policy_version)
+    {
+        return Err(AppError::conflict(
+            "current_stage_handoff_inputs_changed_or_blocked",
+        ));
+    }
+    match prepared.state.stage {
+        domain::sdlc_lifecycle::LifecycleStage::Draft
+        | domain::sdlc_lifecycle::LifecycleStage::Backlog => {
+            crate::sdlc::validate_initial_document(&command.requirements)
+        }
+        _ => crate::sdlc::validate_document(&command.requirements),
+    }
+}
+
 pub fn prepare_materials(
     state: &TaskState,
     actor: &Principal,
@@ -37,7 +62,7 @@ pub fn prepare_materials(
     command: &TaskHandoffCommand,
     ids: HandoffAllocation,
 ) -> Result<FrozenHandoffMaterials, AppError> {
-    command.validate()?;
+    validate_prepared_command(prepared, command)?;
     if !actor.trusted_human
         || actor.subject != state.owner_subject
         || actor.subject != prepared.owner_subject
@@ -51,23 +76,13 @@ pub fn prepare_materials(
         &serde_json::to_value(state).map_err(AppError::internal)?,
         prepared.state.revision,
     )?;
-    if !prepared.blockers.is_empty()
-        || state.task_id != prepared.task_id
+    if state.task_id != prepared.task_id
         || state.project_id != prepared.project_id
         || business_state != prepared.state
-        || command.expected_revision != prepared.state.revision
-        || command.confirmed_issue_sha256 != prepared.issue_sha256
     {
         return Err(AppError::conflict(
             "current_stage_handoff_inputs_changed_or_blocked",
         ));
-    }
-    match business_state.stage {
-        domain::sdlc_lifecycle::LifecycleStage::Draft
-        | domain::sdlc_lifecycle::LifecycleStage::Backlog => {
-            crate::sdlc::validate_initial_document(&command.requirements)?
-        }
-        _ => crate::sdlc::validate_document(&command.requirements)?,
     }
     let entry = CurrentStageEntry::derive(prepared.state, false)?;
     if prepared.entry != Some(entry) {
@@ -78,9 +93,6 @@ pub fn prepare_materials(
         .as_ref()
         .ok_or_else(|| AppError::Unavailable("routing_not_configured".into()))?;
     crate::sdlc_draft_flow::validate_policy(policy, state.project_id, &state.tracker_instance_id)?;
-    if policy.version != command.expected_routing_policy_version {
-        return Err(AppError::conflict("current_stage_handoff_routing_changed"));
-    }
     let source_policy = prepared
         .source
         .as_ref()
@@ -190,14 +202,48 @@ pub struct PendingHandoffMaterials {
     pub source: TaskSourceBinding,
 }
 
+/// The command hash remains internal; callers cannot use it as owner evidence.
+pub struct SavedHandoffOperation {
+    pub operation: domain::task_handoff::TaskHandoffOperation,
+    pub command_hash: String,
+}
+
 #[async_trait::async_trait]
 pub trait CurrentStageHandoffRepository: Send + Sync {
+    /// Read the original operation after lost responses, even if inputs changed or
+    /// it was cancelled. Current owner, account and project access still apply.
+    async fn handoff_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<Option<SavedHandoffOperation>, AppError>;
+
     /// A verified current consent, not native execution admission. Recheck again at claim.
     async fn pending_handoff_materials(
         &self,
         task: Uuid,
         actor: &Principal,
     ) -> Result<PendingHandoffMaterials, AppError>;
+
+    /// Cancel only an unclaimed queued request; native stop uses the real runner protocol.
+    async fn cancel_current_stage_handoff(
+        &self,
+        task: Uuid,
+        handoff: Uuid,
+        actor: &Principal,
+        command: &domain::task_handoff::CancelTaskHandoffCommand,
+    ) -> Result<(domain::task_handoff::CancelTaskHandoffReceipt, bool), AppError>;
+
+    /// A durable request, not a process-start receipt. Peer observations are
+    /// obtained outside the transaction and rechecked against the locked inputs.
+    async fn request_current_stage_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &TaskHandoffCommand,
+        observed: &crate::task_handoff_observations::MatchedHandoffInputs,
+    ) -> Result<(TaskHandoffReceipt, bool), AppError>;
 
     async fn save_handoff_materials(
         &self,

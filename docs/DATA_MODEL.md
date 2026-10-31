@@ -2442,3 +2442,18 @@ snapshots находятся в краткоживущем transaction permit, �
 На существующей установке таблица создаётся пустой; пустота задач не заменяет
 provenance. Pending переживает прерывание, а завершение и empty-activation
 коммитятся вместе. Это эксплуатационная история, не настройка проекта или SDLC.
+
+
+### Запрос исполнения и отмена до claim
+
+Миграция115 добавляет к `task_handoff_materials` immutable execution_requested и
+queue_observations. Дедлайн Fleet/Forge facts проверяется deferred trigger при
+commit. `task_handoff_cancellations` хранит исходный operation key, настоящего
+actor и ревизии; точный cancel permit существует только внутри транзакции.
+Запрос/отмена не создают run, assignment, PM completion или deployment receipt.
+
+Общий execution_busy включает текущий queued pointer без отмены. Предыдущий
+runtime/terminal predicate выделен в task_lifecycle_runtime_busy без изменения
+тела. Отмена удаляет только exact queued pointer и увеличивает core_revision;
+старый operation replay не отменяет successor. Нативный claim/stop/result остаются
+отдельной ещё незавершённой consumer-границей.

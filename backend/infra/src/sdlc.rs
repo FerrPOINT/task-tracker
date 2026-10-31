@@ -67,7 +67,7 @@ pub(crate) fn map_db(error: sea_orm::DbErr) -> AppError {
     } else if error.to_string().contains("SDLC") {
         AppError::conflict("SDLC confirmation/binding gate rejected operation")
     } else {
-        AppError::database(error)
+        crate::db_error::map(error)
     }
 }
 fn json_value<T: serde::Serialize>(value: &T) -> Result<Value, AppError> {

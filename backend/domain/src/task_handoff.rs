@@ -1,7 +1,7 @@
 //! Explicit human entry into the current stage. No historical agent result is inferred.
 use crate::{
     sdlc::RequirementsDocument,
-    task_lifecycle::{Action, State, TransitionCommand},
+    task_lifecycle::{State, validate_command_fields},
 };
 use serde::{Deserialize, Serialize};
 use shared::AppError;
@@ -17,12 +17,7 @@ pub struct TaskHandoffCommand {
 }
 impl TaskHandoffCommand {
     pub fn validate(&self) -> Result<(), AppError> {
-        TransitionCommand {
-            action: Action::Start,
-            expected_revision: self.expected_revision,
-            idempotency_key: self.idempotency_key.clone(),
-        }
-        .validate()?;
+        validate_command_fields(self.expected_revision, &self.idempotency_key)?;
         if !(1..=9_007_199_254_740_991).contains(&self.expected_routing_policy_version)
             || self.confirmed_issue_sha256.len() != 64
             || !self
@@ -62,7 +57,7 @@ pub enum TaskExecutionBlocker {
 #[serde(deny_unknown_fields)]
 pub struct TaskHandoffPreview {
     pub state: State,
-    pub issue_sha256: String,
+    pub issue_sha256: Option<String>,
     pub routing_policy_version: Option<i64>,
     pub required_applications: Vec<String>,
     pub blockers: Vec<TaskExecutionBlocker>,
@@ -342,4 +337,34 @@ mod manual_authority_tests {
         assert_eq!(manual.workflow_task_key, live.workflow_task_key);
         assert_eq!(serde_json::to_value(state).unwrap(), historical);
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelTaskHandoffCommand {
+    pub expected_revision: i64,
+    pub idempotency_key: String,
+}
+impl CancelTaskHandoffCommand {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_command_fields(self.expected_revision, &self.idempotency_key)
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelTaskHandoffReceipt {
+    pub task_id: uuid::Uuid,
+    pub handoff_id: uuid::Uuid,
+    pub actor_subject: String,
+    pub resulting_revision: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Historical operation readback; acceptance is not a native-start receipt.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TaskHandoffOperation {
+    pub receipt: TaskHandoffReceipt,
+    pub execution_requested: bool,
+    pub cancellation: Option<CancelTaskHandoffReceipt>,
 }

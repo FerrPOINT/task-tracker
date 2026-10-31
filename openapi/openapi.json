@@ -1503,6 +1503,255 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/handoff": {
+      "get": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "preview_task_handoff",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskHandoffPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "request_task_handoff",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskHandoffCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskHandoffOperation"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskHandoffOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/handoff/operations/{key}": {
+      "get": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "get_task_handoff_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskHandoffOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/handoff/{handoff_id}/cancel": {
+      "post": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "cancel_task_handoff",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "handoff_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTaskHandoffCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelTaskHandoffReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/lifecycle": {
       "get": {
         "tags": [
@@ -11754,6 +12003,55 @@
         },
         "additionalProperties": false
       },
+      "CancelTaskHandoffCommand": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CancelTaskHandoffReceipt": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "handoff_id",
+          "actor_subject",
+          "resulting_revision",
+          "created_at"
+        ],
+        "properties": {
+          "actor_subject": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "handoff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resulting_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "CandidateOperation": {
         "type": "string",
         "enum": [
@@ -13042,6 +13340,26 @@
             }
           }
         }
+      },
+      "CurrentStageEntry": {
+        "type": "object",
+        "required": [
+          "state",
+          "role",
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/TaskExecutionMode"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TaskExecutionRole"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskLifecycleState"
+          }
+        },
+        "additionalProperties": false
       },
       "CustomFieldListResponse": {
         "type": "object",
@@ -21688,6 +22006,227 @@
             "format": "int32"
           }
         }
+      },
+      "TaskExecutionBlocker": {
+        "type": "string",
+        "enum": [
+          "model_not_active",
+          "execution_not_configured",
+          "routing_not_configured",
+          "required_input_missing",
+          "application_access_denied",
+          "execution_busy",
+          "owner_consent_required",
+          "configuration_changed",
+          "source_unavailable",
+          "workflow_unavailable",
+          "fleet_unavailable",
+          "already_completed"
+        ]
+      },
+      "TaskExecutionMode": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "analysis",
+          "decomposition",
+          "initial",
+          "rework",
+          "delivery"
+        ]
+      },
+      "TaskExecutionRole": {
+        "type": "string",
+        "description": "Existing machine professions; these do not introduce human authorization roles.",
+        "enum": [
+          "project_manager",
+          "analyst",
+          "architect",
+          "developer",
+          "reviewer",
+          "tester",
+          "devops"
+        ]
+      },
+      "TaskHandoffCommand": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_routing_policy_version",
+          "confirmed_issue_sha256",
+          "requirements",
+          "idempotency_key"
+        ],
+        "properties": {
+          "confirmed_issue_sha256": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_routing_policy_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/RequirementsDocument"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskHandoffOperation": {
+        "type": "object",
+        "description": "Historical operation readback; acceptance is not a native-start receipt.",
+        "required": [
+          "receipt",
+          "execution_requested"
+        ],
+        "properties": {
+          "cancellation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CancelTaskHandoffReceipt"
+              }
+            ]
+          },
+          "execution_requested": {
+            "type": "boolean"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/TaskHandoffReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskHandoffPreview": {
+        "type": "object",
+        "required": [
+          "state",
+          "required_applications",
+          "blockers"
+        ],
+        "properties": {
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskExecutionBlocker"
+            }
+          },
+          "issue_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "required_applications": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routing_policy_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskLifecycleState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskHandoffReceipt": {
+        "type": "object",
+        "description": "A genuine human consent; not a PM execution, deployment or terminal receipt.",
+        "required": [
+          "contract_version",
+          "handoff_id",
+          "task_id",
+          "project_id",
+          "actor_subject",
+          "entry",
+          "confirmed_issue_sha256",
+          "issue_materials_sha256",
+          "resulting_revision",
+          "requirement_revision",
+          "requirements_sha256",
+          "confirmation_id",
+          "routing_snapshot_id",
+          "source_binding_id",
+          "idempotency_key",
+          "created_at"
+        ],
+        "properties": {
+          "actor_subject": {
+            "type": "string"
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmed_issue_sha256": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/CurrentStageEntry"
+          },
+          "handoff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "issue_materials_sha256": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "requirements_sha256": {
+            "type": "string"
+          },
+          "resulting_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_binding_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "TaskLifecycleAction": {
         "type": "string",

@@ -120,8 +120,10 @@ pub async fn run(
             )
             .with_artifact_config(sdlc_config),
         );
+        let repository = Arc::new(repository);
+        ctx.current_stage_handoff = Some(repository.clone());
         ctx.sdlc = Some(app::sdlc::SdlcService {
-            repository: Arc::new(repository),
+            repository,
             configured_workflow:
                 app::sdlc_workflow_receipt::WorkflowReceiptReader::from_deployment()
                     .expect("invalid configured Workflow receipt reader"),

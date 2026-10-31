@@ -108,6 +108,7 @@ fn configuration_drift_readiness_and_stale_proof_are_rejected() {
 #[test]
 fn matched_observation_still_requires_freshness_after_repository_readback() {
     let mut matched = MatchedConfiguration {
+        selection_sha256: "a".repeat(64),
         observation_ref: Uuid::new_v4(),
         observed_at: Utc::now(),
     };

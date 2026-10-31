@@ -79,6 +79,11 @@ pub enum WorkCommand {
         #[command(subcommand)]
         command: LifecycleCommand,
     },
+    /// Явная передача текущей стадии агенту; ручная работа остаётся независимой
+    Handoff {
+        #[command(subcommand)]
+        command: HandoffCommand,
+    },
     /// Справочник статусов
     Statuses,
     /// Справочник типов задач
@@ -128,6 +133,21 @@ pub enum LifecycleCommand {
         expected_revision: i64,
         #[arg(long)]
         idempotency_key: String,
+    },
+}
+#[derive(Subcommand)]
+pub enum HandoffCommand {
+    Preview { #[arg(long)] issue:String },
+    /// Отправить точный human command из файла или stdin (-); без автоматического повтора
+    Request { #[arg(long)] issue:String, #[arg(long)] from_file:String },
+    /// Прочитать исходный ключ после потери ответа, без нового запуска
+    Operation { #[arg(long)] issue:String, #[arg(long)] key:String },
+    /// Отозвать незахваченную очередь; это не остановка работающего процесса
+    Cancel {
+        #[arg(long)] issue:String,
+        #[arg(long)] handoff_id:Uuid,
+        #[arg(long,value_parser=clap::value_parser!(i64).range(1..=9007199254740991))] expected_revision:i64,
+        #[arg(long)] idempotency_key:String,
     },
 }
 #[derive(Subcommand)]
@@ -720,6 +740,23 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
                 api.post(&format!("/api/v1/issues/{}/lifecycle/transitions",enc(&id)),json!({
                     "action":action,"expected_revision":expected_revision,"idempotency_key":idempotency_key,
                 })).await
+            }
+        },
+        WorkCommand::Handoff { command }=>match command {
+            HandoffCommand::Preview {issue}=>api.get(&format!("/api/v1/issues/{}/handoff",enc(&issue_id(api,&issue).await?))).await,
+            HandoffCommand::Request {issue,from_file}=>{
+                let payload=json_input(&from_file)?;
+                let id=issue_id(api,&issue).await?;
+                api.post(&format!("/api/v1/issues/{}/handoff",enc(&id)),payload).await
+            },
+            HandoffCommand::Operation {issue,key}=>{
+                anyhow::ensure!(!key.is_empty() && key.len()<=128 && !key.chars().any(char::is_control),"Некорректный idempotency key");
+                api.get(&format!("/api/v1/issues/{}/handoff/operations/{}",enc(&issue_id(api,&issue).await?),enc(&key))).await
+            },
+            HandoffCommand::Cancel {issue,handoff_id,expected_revision,idempotency_key}=>{
+                anyhow::ensure!(!handoff_id.is_nil() && !idempotency_key.is_empty() && idempotency_key.len()<=128 && !idempotency_key.chars().any(char::is_control),"Некорректный handoff или idempotency key");
+                let id=issue_id(api,&issue).await?;
+                api.post(&format!("/api/v1/issues/{}/handoff/{handoff_id}/cancel",enc(&id)),json!({"expected_revision":expected_revision,"idempotency_key":idempotency_key})).await
             }
         },
         WorkCommand::Statuses => api.get("/api/v1/statuses").await,

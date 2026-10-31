@@ -1056,6 +1056,34 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .await
             .is_ok()
     );
+    // Work accounting is independent; real new discussion material invalidates consent.
+    db.execute_unprepared(
+        "UPDATE issues SET time_spent_seconds=time_spent_seconds+1 WHERE key='CORE-2'",
+    )
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_ok()
+    );
+    db.execute_unprepared("INSERT INTO comments(id,issue_id,author_id,body,created_at,updated_at) VALUES('70000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','New human input after consent',clock_timestamp(),clock_timestamp())").await.unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_err()
+    );
+    db.execute_unprepared("DELETE FROM comments WHERE id='70000000-0000-4000-8000-000000000001'")
+        .await
+        .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_ok()
+    );
     let saved = repository.read(task, &actor).await.unwrap();
     assert!(saved.assignment.is_none());
     assert!(
@@ -1187,6 +1215,297 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .await
             .is_ok()
     );
+    // Baseline status3 is Done, not Review: its agreed Deployment/Completed state
+    // must not silently start a new agent or a real deployment.
+    let completed = repository
+        .prepare_current_stage_handoff(
+            Uuid::parse_str("50000000-0000-4000-8000-000000000003").unwrap(),
+            &actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (completed.state.stage, completed.state.status),
+        (Stage::Deployment, Status::Completed)
+    );
+    assert!(completed.entry.is_none());
+    assert!(
+        completed
+            .blockers
+            .contains(&domain::task_handoff::TaskExecutionBlocker::AlreadyCompleted)
+    );
+    // Queue ownership is durable, but is not a native running/assignment claim.
+    let queued_task = Uuid::parse_str("50000000-0000-4000-8000-000000000004").unwrap();
+    let queued_preview = repository
+        .prepare_current_stage_handoff(queued_task, &actor)
+        .await
+        .unwrap();
+    let queued_command = command(&queued_preview, "actual-durable-human-request");
+    let entry = queued_preview.entry.unwrap();
+    let mut observed_source = queued_preview.source.as_ref().unwrap().verification.clone();
+    observed_source.observed_at = chrono::Utc::now();
+    let configuration = app::sdlc_configuration::MatchedConfiguration {
+        selection_sha256: app::sdlc_configuration::MatchedConfiguration::selection_hash(
+            entry.route(queued_preview.routing.as_ref().unwrap()),
+            entry.role.key(),
+            entry.mode.key(),
+        )
+        .unwrap(),
+        observation_ref: Uuid::new_v4(),
+        observed_at: chrono::Utc::now(),
+    };
+    let observed = app::task_handoff_observations::MatchedHandoffInputs::bind(
+        &queued_preview,
+        configuration,
+        observed_source,
+    )
+    .unwrap();
+    // Corrupt only the audit deadline in a fixture trigger. The deferred commit
+    // guard must roll the consent, history and request back without real sleeps.
+    db.execute_unprepared("CREATE FUNCTION injected_expired_observation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.execution_requested THEN NEW.queue_observations=jsonb_set(NEW.queue_observations,'{valid_until}',to_jsonb((clock_timestamp()-interval '1 second')::text)); END IF; RETURN NEW; END $$; CREATE TRIGGER injected_expired_observation BEFORE INSERT ON task_handoff_materials FOR EACH ROW EXECUTE FUNCTION injected_expired_observation()").await.unwrap();
+    let error = repository
+        .request_current_stage_handoff(queued_task, &actor, &queued_command, &observed)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, shared::AppError::Conflict(_)));
+    db.execute_unprepared("DROP TRIGGER injected_expired_observation ON task_handoff_materials; DROP FUNCTION injected_expired_observation()").await.unwrap();
+    assert_eq!(
+        repository
+            .prepare_current_stage_handoff(queued_task, &actor)
+            .await
+            .unwrap()
+            .state,
+        queued_preview.state
+    );
+    let (requested, replayed) = repository
+        .request_current_stage_handoff(queued_task, &pat_actor, &queued_command, &observed)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert!(
+        repository
+            .request_current_stage_handoff(queued_task, &actor, &queued_command, &observed)
+            .await
+            .unwrap()
+            .1
+    );
+    let current = repository
+        .prepare_current_stage_handoff(queued_task, &actor)
+        .await
+        .unwrap();
+    assert!(
+        current
+            .blockers
+            .contains(&domain::task_handoff::TaskExecutionBlocker::ExecutionBusy)
+    );
+    assert_eq!(
+        (current.state.stage, current.state.status),
+        (Stage::Review, Status::Ready)
+    );
+    assert_eq!(current.state.revision, requested.resulting_revision);
+    let worker_read = repository
+        .pending_handoff_materials(queued_task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(worker_read.receipt.handoff_id, requested.handoff_id);
+    let issues = SeaOrmRepositories::new(Database::connect(url.as_str()).await.unwrap()).issues;
+    let actor_id = UserId::from_uuid(Uuid::parse_str(&actor.subject).unwrap());
+    assert!(
+        issues
+            .transition_task_lifecycle(
+                IssueId::from_uuid(queued_task),
+                actor_id,
+                &TransitionCommand {
+                    action: Action::Start,
+                    expected_revision: current.state.revision,
+                    idempotency_key: "cannot-overwrite-queued-request".into(),
+                }
+            )
+            .await
+            .is_err()
+    );
+    let counts=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM task_handoff_materials WHERE execution_requested) AS requests,(SELECT count(*) FROM sdlc_pm_executions) AS pm_runs,(SELECT count(*) FROM sdlc_delivery_assignments) AS assignments".to_owned())).await.unwrap().unwrap();
+    assert_eq!(counts.try_get::<i64>("", "requests").unwrap(), 1);
+    assert_eq!(counts.try_get::<i64>("", "pm_runs").unwrap(), 0);
+    assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
+
+    let cancel = domain::task_handoff::CancelTaskHandoffCommand {
+        expected_revision: current.state.revision,
+        idempotency_key: "cancel-original-queued".into(),
+    };
+    assert!(
+        repository
+            .cancel_current_stage_handoff(queued_task, requested.handoff_id, &machine, &cancel)
+            .await
+            .is_err()
+    );
+    let (cancelled, replayed) = repository
+        .cancel_current_stage_handoff(queued_task, requested.handoff_id, &pat_actor, &cancel)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(cancelled.resulting_revision, current.state.revision + 1);
+    assert!(
+        repository
+            .cancel_current_stage_handoff(queued_task, requested.handoff_id, &actor, &cancel)
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(
+        repository
+            .pending_handoff_materials(queued_task, &actor)
+            .await
+            .is_err()
+    );
+    let available = issues
+        .task_lifecycle(IssueId::from_uuid(queued_task), true)
+        .await
+        .unwrap();
+    assert!(!available.execution_busy);
+    assert_eq!(
+        (available.state.stage, available.state.status),
+        (Stage::Review, Status::Ready)
+    );
+    assert_eq!(available.state.revision, cancelled.resulting_revision);
+    let resumed = issues
+        .transition_task_lifecycle(
+            IssueId::from_uuid(queued_task),
+            actor_id,
+            &TransitionCommand {
+                action: Action::Start,
+                expected_revision: available.state.revision,
+                idempotency_key: "human-after-cancel".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(resumed.state.status, Status::InProgress);
+    let again = repository
+        .prepare_current_stage_handoff(queued_task, &actor)
+        .await
+        .unwrap();
+    let command_again = command(&again, "second-explicit-request");
+    let entry = again.entry.unwrap();
+    let mut source_again = again.source.as_ref().unwrap().verification.clone();
+    source_again.observed_at = chrono::Utc::now();
+    let config_again = app::sdlc_configuration::MatchedConfiguration {
+        selection_sha256: app::sdlc_configuration::MatchedConfiguration::selection_hash(
+            entry.route(again.routing.as_ref().unwrap()),
+            entry.role.key(),
+            entry.mode.key(),
+        )
+        .unwrap(),
+        observation_ref: Uuid::new_v4(),
+        observed_at: chrono::Utc::now(),
+    };
+    let observed_again = app::task_handoff_observations::MatchedHandoffInputs::bind(
+        &again,
+        config_again,
+        source_again,
+    )
+    .unwrap();
+    let (second, _) = repository
+        .request_current_stage_handoff(queued_task, &actor, &command_again, &observed_again)
+        .await
+        .unwrap();
+    assert_ne!(second.handoff_id, requested.handoff_id);
+    assert_eq!(second.entry.state.status, Status::InProgress);
+    // Lost old ACKs must not cancel a successor or silently queue the old operation again.
+    assert!(
+        repository
+            .cancel_current_stage_handoff(queued_task, requested.handoff_id, &actor, &cancel)
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(
+        repository
+            .request_current_stage_handoff(queued_task, &actor, &queued_command, &observed)
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(
+        issues
+            .task_lifecycle(IssueId::from_uuid(queued_task), true)
+            .await
+            .unwrap()
+            .execution_busy
+    );
+    assert_eq!(
+        repository
+            .pending_handoff_materials(queued_task, &actor)
+            .await
+            .unwrap()
+            .receipt
+            .handoff_id,
+        second.handoff_id
+    );
+    let wrong_target = domain::task_handoff::CancelTaskHandoffCommand {
+        expected_revision: second.resulting_revision,
+        idempotency_key: cancel.idempotency_key.clone(),
+    };
+    assert!(
+        repository
+            .cancel_current_stage_handoff(queued_task, second.handoff_id, &actor, &wrong_target)
+            .await
+            .is_err()
+    );
+    let history = repository
+        .handoff_operation(queued_task, &actor, &queued_command.idempotency_key)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.operation.receipt.handoff_id, requested.handoff_id);
+    assert!(history.operation.execution_requested);
+    assert_eq!(
+        history.operation.cancellation.unwrap().resulting_revision,
+        cancelled.resulting_revision
+    );
+    assert_eq!(
+        history.command_hash,
+        app::sdlc::canonical_hash(&queued_command).unwrap()
+    );
+    assert!(
+        repository
+            .handoff_operation(queued_task, &actor, "unknown-original-key")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        repository
+            .handoff_operation(queued_task, &machine, &queued_command.idempotency_key)
+            .await
+            .is_err()
+    );
+    let actual_cancel = domain::task_handoff::CancelTaskHandoffCommand {
+        expected_revision: second.resulting_revision,
+        idempotency_key: "cancel-second-queued".into(),
+    };
+    repository
+        .cancel_current_stage_handoff(queued_task, second.handoff_id, &actor, &actual_cancel)
+        .await
+        .unwrap();
+    let final_read = issues
+        .task_lifecycle(IssueId::from_uuid(queued_task), true)
+        .await
+        .unwrap();
+    assert!(!final_read.execution_busy);
+    assert_eq!(
+        (final_read.state.stage, final_read.state.status),
+        (Stage::Review, Status::InProgress)
+    );
+    let permits = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT count(*) AS n FROM task_handoff_cancel_write_permits".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(permits.try_get::<i64>("", "n").unwrap(), 0);
 }
 
 #[tokio::test]

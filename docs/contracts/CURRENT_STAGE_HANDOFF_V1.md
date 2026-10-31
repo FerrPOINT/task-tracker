@@ -1,8 +1,9 @@
 # Явная передача текущего этапа агенту
 
 Статус: кандидат. Подготовка и атомарное сохранение human materials реализованы
-во внутреннем repository port и проверяются отдельно. HTTP-команда постановки
-на исполнение, outbox/consumer и живая поставка ещё не завершены. Сохранённое
+во внутреннем repository port и проверяются отдельно. HTTP preview/request/operation/cancel
+подключены к строгой центральной авторизации и проходят изолированную HTTP/PG
+проверку. Транспорт consumer и живая поставка ещё не завершены. Сохранённое
 подтверждение не является разрешением нативного запуска.
 Он уточняет [единую модель](../plans/unified-task-lifecycle-20261030.md).
 
@@ -147,7 +148,8 @@ Analysis intent для другой роли. Исторические strict-к
 Fingerprint issue materials хранится отдельно от fingerprint команды, который
 также содержит core revision. Это позволяет учесть собственное увеличение
 ревизии при сохранении согласия и одновременно обнаружить последующее изменение
-описания, вложений, ссылок или custom fields без перехода стадии.
+описания, комментариев, вложений, ссылок или custom fields без перехода стадии.
+Учёт времени и навигационная position не являются новыми входными материалами.
 
 `pending_handoff_materials` повторно проверяет нынешнего reporter/owner и доступ,
 manual custody, точную итоговую ревизию, стадию/статус, материалы и текущие
@@ -181,3 +183,71 @@ configured-cli-v1, execution ordinal, lease, run binding и fencing. Её pure s
 сохраняет Ready/InProgress и текущую стадию для всех девяти входов, не создаёт
 assignment или предыдущего результата. Этот seed ещё не является queue/dispatch.
 Исторические SdlcContext/LifecycleReceipt/DeliveryAssignment не расширяются.
+
+
+## Durable запрос и отмена до назначения
+
+Аддитивная миграция115 использует тот же immutable human ledger для признака
+`execution_requested` и audit свежих owner observations. Новый broker и второй
+владелец стадии не создаются. `request_current_stage_handoff` сохраняет согласие,
+запрос и событие в одной owner-транзакции. Исходные Fleet/Forge observations
+получаются вне неё и привязаны к точным task/owner/revision/materials, route/role/
+mode и source policy. Временные метки не обновляются промежуточным слоем.
+Deferred constraint повторно проверяет исходный срок фактов при commit; истечение
+откатывает весь пакет, включая требования и подтверждение.
+
+Queued request блокирует конфликтующую ручную запись, хотя assignment и native
+run ещё отсутствуют. Исторический runtime/terminal predicate сохранён отдельно;
+pending read может увидеть свой queued request, но не выдаёт разрешение запуска.
+Фактический worker должен снова получить текущий допуск и свежие owner facts.
+
+`cancel_current_stage_handoff` отменяет только текущий ещё не взятый запрос под тем
+же row lock и с expected_revision. Сохраняется настоящий actor и immutable cancel
+receipt, удаляется только queued pointer, общая core revision и событие меняются
+атомарно. Stage/status, требования, routing/source history и чужие операции
+сохраняются. Это не native stop: для взятого, running или unknown исполнения
+по-прежнему нужен реальный runner-протокол и terminal/no-successor proof.
+
+Повтор старого request/cancel возвращает исходную историю после проверки текущего
+доступа и не влияет на successor. Изменение target/payload при прежнем ключе
+отклоняется. Отмена вновь открывает разрешённую ручную работу; повторная передача
+требует явной новой команды с актуальными материалами и ревизией.
+
+Новые owner observations — конфигурация и исходники, а не runtime_ready/dispatch
+permit. Configuration proof сохраняет hash точного agent/role/mode/route; чужое
+или просроченное наблюдение не становится подходящим через новый wrapper.
+
+
+## HTTP readback и отзыв запроса
+
+- `GET /api/v1/issues/{id}/handoff` возвращает состояние модели, оригинальный
+  fingerprint только для допустимого owner preview и конкретные blockers.
+  Без настроенного исполнения ручная модель продолжает работать. Ошибку
+  исходников нельзя представлять как отсутствие owner consent.
+- `POST /api/v1/issues/{id}/handoff` возвращает 202 для нового durable запроса,
+  200 для точного повтора; это не подтверждение запуска процесса.
+- `GET /api/v1/issues/{id}/handoff/operations/{key}` читает исходный запрос,
+  включая сохранённую отмену. Для восстановления после потери ответа не нужны
+  новый ключ, новые материалы или доступность Fleet/Forge.
+- `POST /api/v1/issues/{id}/handoff/{handoff_id}/cancel` отменяет только свой
+  незахваченный запрос с expected_revision и исходным ключом. Снятие приложения
+  Fleet не лишает владельца права отозвать очередь через Tracker. Работающий
+  процесс останавливается исключительно настоящим runner stop-протоколом.
+
+Запрос текущего кандидата требует актуальные приложения task-tracker,
+fleet-control, project-workflow, ci-cd и их read/write scopes у человеческого
+PAT: credential исполнения не расширяет ограниченный initiating token.
+История и отмена очереди требуют Tracker; machine subject не заменяет человека.
+При повторе POST сначала проверяется текущий доступ и исходный payload, затем
+возвращается та же операция без повторного HTTP к peers. Новый запрос заново
+сверяет материалы и первоначальные owner observations перед commit.
+
+
+## CLI
+
+`task-tracker handoff preview --issue KEY`, `handoff request --issue KEY
+--from-file command.json` (или `-` для stdin), `handoff operation --issue KEY
+--key ORIGINAL` и `handoff cancel --issue KEY --handoff-id UUID
+--expected-revision REV --idempotency-key ORIGINAL_CANCEL` сохраняют exact
+payload/revision/key. CLI не подбирает стадию, не создаёт новый ключ после ошибки
+и не повторяет мутацию автоматически.

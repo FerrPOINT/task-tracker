@@ -2298,3 +2298,15 @@ as other agent business commands. Historical delivery grants can read retained
 results; they cannot authorize a new proposal. Global `admin` scope does not
 turn a service account into an assigned producer. Standard scopes for other
 products remain compatible with the ordinary CLI credential.
+
+
+## Явная передача текущей стадии
+
+Кандидат предоставляет GET/POST `/api/v1/issues/{id}/handoff`, GET
+`/api/v1/issues/{id}/handoff/operations/{key}` и POST
+`/api/v1/issues/{id}/handoff/{handoff_id}/cancel`. Строгие DTO и responses
+генерируются из Rust handlers. Все маршруты используют central auth без local
+JWT fallback; human owner/project admission, приложения и PAT scopes независимы.
+202 означает durable request, а не нативный запуск. Replay возвращает исходную
+операцию вместе с отменой; новый ключ после потери ответа не нужен.
+[Полный контракт](contracts/CURRENT_STAGE_HANDOFF_V1.md).

@@ -118,11 +118,29 @@ struct ProfileObservation {
 }
 
 pub struct MatchedConfiguration {
+    pub selection_sha256: String,
     pub observation_ref: Uuid,
     pub observed_at: DateTime<Utc>,
 }
 
 impl MatchedConfiguration {
+    pub fn selection_hash(route: &RoleRoute, role: &str, mode: &str) -> Result<String, AppError> {
+        crate::sdlc::canonical_hash(&serde_json::json!({"route":route,"role":role,"mode":mode}))
+    }
+    pub fn ensure_selection(
+        &self,
+        route: &RoleRoute,
+        role: &str,
+        mode: &str,
+    ) -> Result<(), AppError> {
+        self.ensure_fresh()?;
+        if self.observation_ref.is_nil()
+            || self.selection_sha256 != Self::selection_hash(route, role, mode)?
+        {
+            return Err(mismatch());
+        }
+        Ok(())
+    }
     pub fn ensure_fresh(&self) -> Result<(), AppError> {
         let age = Utc::now().signed_duration_since(self.observed_at);
         if age > chrono::Duration::seconds(5) || age < chrono::Duration::seconds(-2) {
@@ -194,6 +212,7 @@ fn compare(
         return Err(mismatch());
     }
     let matched = MatchedConfiguration {
+        selection_sha256: MatchedConfiguration::selection_hash(route, role, mode)?,
         observation_ref: observation.observation_ref,
         observed_at: observation.observed_at,
     };
@@ -367,6 +386,7 @@ fn compare_profile(
         return Err(mismatch());
     }
     let matched = MatchedConfiguration {
+        selection_sha256: MatchedConfiguration::selection_hash(route, role, mode)?,
         observation_ref: observation.observation_ref,
         observed_at: observation.observed_at,
     };

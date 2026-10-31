@@ -24,6 +24,7 @@ pub fn map(error: DbErr) -> AppError {
             "task_lifecycle_handoff_required",
             "task_lifecycle_execution_history_retained",
             "task_lifecycle_trashed_issue_required",
+            "task_handoff_observations_expired_or_changed",
         ] {
             if message.contains(rule) {
                 return AppError::conflict(rule);

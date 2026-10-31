@@ -96,3 +96,115 @@ async fn lifecycle_invalid_action_or_revision_does_not_send_a_request() {
     }
     assert!(server.requests().is_empty());
 }
+
+#[tokio::test]
+async fn handoff_commands_preserve_human_payload_and_reconcile_the_original_operation() {
+    let handoff = "22222222-2222-4222-8222-222222222222";
+    let body = json!({"expected_revision":7,"expected_routing_policy_version":3,"confirmed_issue_sha256":"a".repeat(64),"requirements":{"goal":"Кириллица + quoted input"},"idempotency_key":"original?+=#"});
+    let server = Server::start(vec![
+        (200, json!({"id":TASK})),
+        (200, json!({"blockers":[]})),
+        (200, json!({"id":TASK})),
+        (202, json!({"receipt":{"handoff_id":handoff}})),
+        (200, json!({"id":TASK})),
+        (200, json!({"cancellation":null})),
+        (200, json!({"id":TASK})),
+        (200, json!({"resulting_revision":9})),
+    ])
+    .await;
+    success(
+        &server
+            .run(&["handoff", "preview", "--issue", TASK], None)
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &["handoff", "request", "--issue", TASK, "--from-file", "-"],
+                Some(&body.to_string()),
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "handoff",
+                    "operation",
+                    "--issue",
+                    TASK,
+                    "--key",
+                    "original?+=#",
+                ],
+                None,
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "handoff",
+                    "cancel",
+                    "--issue",
+                    TASK,
+                    "--handoff-id",
+                    handoff,
+                    "--expected-revision",
+                    "8",
+                    "--idempotency-key",
+                    "cancel?+=#",
+                ],
+                None,
+            )
+            .await,
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 8);
+    assert_eq!(requests[1].path, format!("/api/v1/issues/{TASK}/handoff"));
+    assert_eq!(requests[3].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[3].body).unwrap(),
+        body
+    );
+    assert_eq!(
+        requests[5].path,
+        format!("/api/v1/issues/{TASK}/handoff/operations/original%3F%2B%3D%23")
+    );
+    assert_eq!(
+        requests[7].path,
+        format!("/api/v1/issues/{TASK}/handoff/{handoff}/cancel")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[7].body).unwrap(),
+        json!({"expected_revision":8,"idempotency_key":"cancel?+=#"})
+    );
+}
+
+#[tokio::test]
+async fn handoff_failure_does_not_retry_mutations_or_replace_the_original_key() {
+    let server = Server::start(vec![
+        (200, json!({"id":TASK})),
+        (503, json!({"error":"owner unavailable"})),
+    ])
+    .await;
+    let payload =
+        json!({"expected_revision":7,"idempotency_key":"retain-after-failure"}).to_string();
+    assert!(
+        !server
+            .run(
+                &["handoff", "request", "--issue", TASK, "--from-file", "-"],
+                Some(&payload)
+            )
+            .await
+            .status
+            .success()
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[1].body).unwrap()["idempotency_key"],
+        "retain-after-failure"
+    );
+}

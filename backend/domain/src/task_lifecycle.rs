@@ -52,15 +52,23 @@ pub struct TaskLifecycleTransitionCommand {
 }
 impl TransitionCommand {
     pub fn validate(&self) -> Result<(), AppError> {
-        if !(1..=9_007_199_254_740_991).contains(&self.expected_revision)
-            || self.idempotency_key.is_empty()
-            || self.idempotency_key.len() > 128
-            || self.idempotency_key.chars().any(char::is_control)
-        {
-            return Err(AppError::validation("invalid task lifecycle command"));
-        }
-        Ok(())
+        validate_command_fields(self.expected_revision, &self.idempotency_key)
     }
+}
+
+/// Shared command metadata; validation does not invent a business transition.
+pub fn validate_command_fields(
+    expected_revision: i64,
+    idempotency_key: &str,
+) -> Result<(), AppError> {
+    if !(1..=9_007_199_254_740_991).contains(&expected_revision)
+        || idempotency_key.is_empty()
+        || idempotency_key.len() > 128
+        || idempotency_key.chars().any(char::is_control)
+    {
+        return Err(AppError::validation("invalid task lifecycle command"));
+    }
+    Ok(())
 }
 
 pub fn category(stage: Stage, status: Status) -> StatusCategory {

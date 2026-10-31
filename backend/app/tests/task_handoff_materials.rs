@@ -276,3 +276,62 @@ fn an_explicit_user_pat_can_confirm_its_own_inputs_without_a_fake_browser_sessio
     actor.human_session = true;
     assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_err());
 }
+
+#[test]
+fn owner_observations_cannot_follow_changed_inputs_or_extend_their_original_age() {
+    use app::{
+        sdlc_configuration::MatchedConfiguration, task_handoff_observations::MatchedHandoffInputs,
+    };
+    let (_, _, prepared, _) = fixture(LifecycleStatus::Ready);
+    let selection = MatchedConfiguration::selection_hash(
+        prepared
+            .entry
+            .as_ref()
+            .unwrap()
+            .route(prepared.routing.as_ref().unwrap()),
+        prepared.entry.unwrap().role.key(),
+        prepared.entry.unwrap().mode.key(),
+    )
+    .unwrap();
+    let fleet = || MatchedConfiguration {
+        selection_sha256: selection.clone(),
+        observation_ref: Uuid::new_v4(),
+        observed_at: Utc::now(),
+    };
+    let observed_source = prepared.source.as_ref().unwrap().verification.clone();
+    let foreign_configuration = MatchedConfiguration {
+        selection_sha256: "f".repeat(64),
+        observation_ref: Uuid::new_v4(),
+        observed_at: Utc::now(),
+    };
+    assert!(
+        MatchedHandoffInputs::bind(&prepared, foreign_configuration, observed_source.clone())
+            .is_err()
+    );
+    let matched = MatchedHandoffInputs::bind(&prepared, fleet(), observed_source.clone()).unwrap();
+    assert!(matched.ensure_for(&prepared).is_ok());
+    for field in ["revision", "materials", "routing", "source", "owner"] {
+        let mut changed = prepared.clone();
+        match field {
+            "revision" => changed.state.revision += 1,
+            "materials" => changed.issue_materials_sha256 = "f".repeat(64),
+            "routing" => changed.routing.as_mut().unwrap().version += 1,
+            "source" => changed.source.as_mut().unwrap().source_revision += 1,
+            "owner" => changed.owner_subject = "another-human".into(),
+            _ => unreachable!(),
+        }
+        assert!(matched.ensure_for(&changed).is_err(), "{field}");
+    }
+    let expired = MatchedConfiguration {
+        selection_sha256: selection.clone(),
+        observation_ref: Uuid::new_v4(),
+        observed_at: Utc::now() - chrono::Duration::seconds(6),
+    };
+    assert!(MatchedHandoffInputs::bind(&prepared, expired, observed_source.clone()).is_err());
+    let mut expired_source = observed_source.clone();
+    expired_source.observed_at = Utc::now() - chrono::Duration::seconds(31);
+    assert!(MatchedHandoffInputs::bind(&prepared, fleet(), expired_source).is_err());
+    let mut foreign = observed_source;
+    foreign.repository_id = Uuid::new_v4();
+    assert!(MatchedHandoffInputs::bind(&prepared, fleet(), foreign).is_err());
+}

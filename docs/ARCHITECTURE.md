@@ -811,3 +811,16 @@ completion alone stays Backlog/Ready with zero intents. Role transitions retain
 the existing result/lease/fencing path, not a second planner. Historical operation
 readback rechecks current access without reapplying stale transition CAS.
 See [API](API.md#explicit-configured-analysis-start-source-candidate).
+
+
+### Свежие owner facts перед постановкой запроса
+
+`task_handoff_observations::observe` получает конфигурацию Fleet и точный source
+readback Forge через существующие readers вне DB-транзакции. Не-deserializable
+MatchedHandoffInputs связывает факты с исходными материалами и route/role/mode;
+repository повторяет проверку после row locks. Fleet config match не равен
+native execution admission. Original expiry не продлевается wrapper или commit.
+
+Owner queue и отмена до claim используют human ledger и общую ревизию. Runtime
+claim будет обслуживаться отдельным consumer, с настоящим назначением/fencing и
+новой проверкой текущих полномочий; публикация согласия сама его не запускает.

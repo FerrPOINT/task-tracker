@@ -45,6 +45,7 @@ impl EventBus {
 #[derive(Clone)]
 pub struct AppContext {
     pub sdlc: Option<crate::sdlc::SdlcService>,
+    pub current_stage_handoff: Option<Arc<dyn crate::task_handoff::CurrentStageHandoffRepository>>,
     pub task_documents: Arc<dyn domain::task_documents::TaskDocumentsReader>,
     pub task_repositories: Arc<dyn domain::task_repositories::TaskRepositoriesReader>,
     pub config: Arc<AppConfig>,
@@ -199,6 +200,7 @@ impl AppContext {
         ));
         Self {
             sdlc: None,
+            current_stage_handoff: None,
             task_documents: Arc::new(domain::task_documents::UnavailableTaskDocuments),
             task_repositories: Arc::new(domain::task_repositories::UnavailableTaskRepositories),
             config,
