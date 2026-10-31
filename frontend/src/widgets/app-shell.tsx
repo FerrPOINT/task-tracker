@@ -29,7 +29,7 @@ import {
   ErrorState,
 } from '@pdlc/ui/ui'
 
-import { useProjectDisclosures } from '@pdlc/ui/lib'
+import { useMediaQuery, useProjectDisclosures } from '@pdlc/ui/lib'
 
 import { ProjectActions } from './project-actions'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
@@ -225,6 +225,7 @@ function ProjectNavigation({
 }
 
 export function AppShell() {
+  const showCreateLabel = useMediaQuery('(min-width: 1280px)')
   const { t } = useTranslation()
   const location = useLocation()
   const routeProject = useCurrentProjectKey()
@@ -407,8 +408,8 @@ export function AppShell() {
           leading={
             <>
               {navigationTrigger}
-              <Button asChild variant="ghost" size="icon">
-                <Link to="/" className="hidden md:flex" aria-label={t('app.name')}>
+              <Button asChild variant="ghost" size="icon" className="hidden md:flex">
+                <Link to="/" aria-label={t('app.name')}>
                   <PlatformMark size="shell" withName={false} />
                 </Link>
               </Button>
@@ -470,7 +471,7 @@ export function AppShell() {
                 projectKey={projectKey}
                 contextPending={createContextPending}
                 contextError={createContextError}
-                size="sm"
+                size={showCreateLabel ? 'sm' : 'icon'}
               >
                 <span className="hidden xl:inline">{t('navigation.create')}</span>
               </CreateTaskAction>
