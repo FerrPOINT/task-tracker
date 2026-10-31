@@ -6,6 +6,39 @@ locales, scripts, locked versions и pins сохранены. Новый lock т
 frozen qualification; старый environment не считается проверенным этим Source audit.
 [Общий consumer contract и результаты](../../services-base/docs/plans/fleet-frontend-dependency-closure-20261030.md).
 
+## Текущий performance candidate — 31 октября 2026
+
+Оптимизации перенесены на main `fa60e0e2` в отдельной task branch. Текущие Rust
+исходники, Cargo manifests/lock, SDK `ed61ec63` и UI `03a35d80` сохранены.
+Frontend preparation/CI используют Node 22.22.2, как текущие Docker recipes.
+Общий порядок задаёт [принятый стандарт Base](https://github.com/FerrPOINT/services-base/blob/0a552be41d7b6586abc8cb2f54cfbccd3d7f1c59/docs/BUILD_PERFORMANCE.md).
+
+- `just build` без scope отказывает до команд подготовки. Выбирать
+  `build-backend`, `build-cli`, `build-frontend`; намеренный полный — `build-all`.
+- Backend и CLI собирают только свои explicit package/bin. У них общий unit
+  prerequisite; frontend `pnpm build` выполняет собственные units/typecheck/compile.
+- `just test` — domain/frontend units. Полные `test-backend-all`,
+  `test-frontend-all`, `gate`, coverage, HTTP/PostgreSQL и E2E — вручную.
+- `api-codegen` вызывает существующий canonical postinstall wrapper с проверкой
+  актуального generated output; прежней отсутствующей команды `generate:api` нет.
+- Standalone CLI rustfmt не готовит SDK/Cargo target. Компиляция сохраняет exact
+  SDK guard; полный Root Rust suite требует фактический `TT_TEST_DATABASE_URL`,
+  ошибочная переменная Wiki из старого descriptor удалена.
+- Portable selector `0a552be4` объединяет backend/CLI full suite в одном manual
+  выборе; frontend full использует `test:all`. Unit subsets не запускаются второй
+  раз перед полным набором. Старые Root readers могут повторять shared checks:
+  Root tooling и native execution profiles в этом переносе не активированы.
+
+`release.yml` вызывает текущий manual `qualification.yml`. Новые configured PM,
+explicit Analysis start, legacy schema, lineage и остальные PostgreSQL controls
+сохранены с текущими командами/env/conditions из main. Root workspace suite не
+заменяет эти explicit ignored cases. Историческая приёмка ниже сохранена отдельно.
+
+Scoped Source tests: 51 PASS, 4 POSIX SKIP; изменённый Just source contract затем
+проверен отдельно. App/Node/Just/Rust qualification, frozen install, SDK authority,
+artifact transfer, CPU/RAM/I/O/cold-warm и live — NOT RUN/NOT MEASURED. Static
+path/consumer audit подтверждает scope изменения, не native compatibility.
+
 ## Configured Analysis Start: 2026-10-29
 
 PR197 qualifies the explicit owner start, not an automatic PM transition. On
@@ -40,7 +73,9 @@ application producer. Native packaging/layer reuse проверяются отд
 
 Общие правила принадлежат Base `docs/BUILD_PERFORMANCE.md` и `docs/TESTING.md`
 принятого quality tooling. Product descriptor `.quality-gate.json` задаёт команды;
-Root, automatic CI и container helper потребляют один exact Base selector.
+Automatic CI и container helper потребляют exact portable Base selector.
+Root использует собственный принятый packet; его обновление не входит в этот
+Source transfer и не считается выполненным по результату portable selector.
 SDK/UI/skills/operator pins от quality pin независимы.
 
 Из корня PDLC workspace после `enter-dev.ps1`:

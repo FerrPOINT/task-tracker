@@ -70,11 +70,13 @@
         "-B",
         "-m",
         "unittest",
+        "scripts.tests.test_current_performance_routes",
         "scripts.tests.test_quality_routes",
         "scripts.tests.test_ci_contract_checks",
         "scripts.tests.test_build_pin",
         "scripts.tests.test_verify_readme",
         "scripts.tests.test_dockerfile_budget",
+        "scripts.tests.test_base_maintenance",
         "-q"
       ],
       "inputs": [
@@ -142,7 +144,7 @@
             "node",
             "--version"
           ],
-          "pattern": "^v22\\.20\\.0\\s*$"
+          "pattern": "^v22\\.22\\.2\\s*$"
         },
         {
           "argv": [
@@ -152,7 +154,7 @@
           "pattern": "^10\\.28\\.1\\s*$"
         }
       ],
-      "prepare_frontend": "22.20.0",
+      "prepare_frontend": "22.22.2",
       "test_tier": "static"
     },
     {
@@ -160,8 +162,6 @@
       "component": "frontend",
       "profiles": [
         "fast",
-        "integrated",
-        "release",
         "unit",
         "build"
       ],
@@ -183,7 +183,7 @@
             "node",
             "--version"
           ],
-          "pattern": "^v22\\.20\\.0\\s*$"
+          "pattern": "^v22\\.22\\.2\\s*$"
         },
         {
           "argv": [
@@ -193,7 +193,7 @@
           "pattern": "^10\\.28\\.1\\s*$"
         }
       ],
-      "prepare_frontend": "22.20.0",
+      "prepare_frontend": "22.22.2",
       "test_tier": "unit"
     },
     {
@@ -221,7 +221,7 @@
             "node",
             "--version"
           ],
-          "pattern": "^v22\\.20\\.0\\s*$"
+          "pattern": "^v22\\.22\\.2\\s*$"
         },
         {
           "argv": [
@@ -231,7 +231,7 @@
           "pattern": "^10\\.28\\.1\\s*$"
         }
       ],
-      "prepare_frontend": "22.20.0",
+      "prepare_frontend": "22.22.2",
       "test_tier": "static"
     },
     {
@@ -239,7 +239,6 @@
       "component": "backend",
       "profiles": [
         "fast",
-        "release",
         "unit",
         "build"
       ],
@@ -271,7 +270,7 @@
           "pattern": "^rustc 1\\.88\\.0\\b"
         }
       ],
-      "sdk_revision": ".base-revision",
+      "sdk_revision": ".namespace-base-revision",
       "test_tier": "unit"
     },
     {
@@ -302,7 +301,7 @@
       ],
       "external_state": true,
       "requires_env": [
-        "WIKI_TEST_DATABASE_URL"
+        "TT_TEST_DATABASE_URL"
       ],
       "tools": [
         {
@@ -313,8 +312,9 @@
           "pattern": "^rustc 1\\.88\\.0\\b"
         }
       ],
-      "sdk_revision": ".base-revision",
-      "test_tier": "integration"
+      "sdk_revision": ".namespace-base-revision",
+      "test_tier": "integration",
+      "shared_check": "tracker-rust-manual-v1"
     },
     {
       "id": "cli:format",
@@ -325,9 +325,6 @@
         "build"
       ],
       "argv": [
-        "bash",
-        "{base}/scripts/run_rust_gate.sh",
-        "--",
         "rustfmt",
         "--edition",
         "2024",
@@ -351,7 +348,6 @@
           "pattern": "^rustc 1\\.88\\.0\\b"
         }
       ],
-      "sdk_revision": ".base-revision",
       "test_tier": "static"
     },
     {
@@ -380,7 +376,7 @@
             "node",
             "--version"
           ],
-          "pattern": "^v22\\.20\\.0\\s*$"
+          "pattern": "^v22\\.22\\.2\\s*$"
         },
         {
           "argv": [
@@ -390,7 +386,7 @@
           "pattern": "^10\\.28\\.1\\s*$"
         }
       ],
-      "prepare_frontend": "22.20.0",
+      "prepare_frontend": "22.22.2",
       "outputs": [
         "frontend/dist"
       ],
@@ -477,7 +473,7 @@
           "pattern": "^rustc 1\\.88\\.0\\b"
         }
       ],
-      "sdk_revision": ".base-revision",
+      "sdk_revision": ".namespace-base-revision",
       "kind": "artifact",
       "artifact_outputs": [
         "server"
@@ -562,7 +558,7 @@
           "pattern": "^rustc 1\\.88\\.0\\b"
         }
       ],
-      "sdk_revision": ".base-revision",
+      "sdk_revision": ".namespace-base-revision",
       "kind": "artifact",
       "artifact_outputs": [
         "task-tracker"
@@ -607,6 +603,88 @@
       "exclude_inputs": [
         "backend/**/tests/**"
       ]
+    },
+    {
+      "id": "cli:quality",
+      "component": "cli",
+      "profiles": [
+        "integration",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "bash",
+        "{base}/scripts/run_rust_gate.sh",
+        "--",
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        "cargo fmt --all -- --check; cargo clippy --locked --workspace --all-targets -- -D warnings; cargo test --locked --workspace -- --test-threads=1"
+      ],
+      "cwd": "backend",
+      "inputs": [
+        "**"
+      ],
+      "cacheable": false,
+      "platforms": [
+        "linux"
+      ],
+      "external_state": true,
+      "requires_env": [
+        "TT_TEST_DATABASE_URL"
+      ],
+      "tools": [
+        {
+          "argv": [
+            "rustc",
+            "--version"
+          ],
+          "pattern": "^rustc 1\\.88\\.0\\b"
+        }
+      ],
+      "sdk_revision": ".namespace-base-revision",
+      "test_tier": "integration",
+      "shared_check": "tracker-rust-manual-v1"
+    },
+    {
+      "id": "frontend:full-tests",
+      "component": "frontend",
+      "profiles": [
+        "integration",
+        "integrated",
+        "release"
+      ],
+      "argv": [
+        "pnpm",
+        "test:all"
+      ],
+      "cwd": "frontend",
+      "inputs": [
+        "frontend/**",
+        "openapi/**",
+        ".base-ui-revision",
+        ".gitattributes"
+      ],
+      "cacheable": false,
+      "tools": [
+        {
+          "argv": [
+            "node",
+            "--version"
+          ],
+          "pattern": "^v22\\.22\\.2\\s*$"
+        },
+        {
+          "argv": [
+            "pnpm",
+            "--version"
+          ],
+          "pattern": "^10\\.28\\.1\\s*$"
+        }
+      ],
+      "prepare_frontend": "22.22.2",
+      "test_tier": "integration"
     }
   ],
   "additional_acceptance": "Manual release preserves previous http_only, PostgreSQL/ignored migrations and namespace, MSRV, packed UI/themes/security/data/live obligations; native peer qualification remains open.",

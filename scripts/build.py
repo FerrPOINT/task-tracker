@@ -19,9 +19,9 @@ elif not set(targets) <= {'backend', 'frontend'} or len(set(targets)) != len(tar
 revision = '.namespace-base-revision' if (root / '.namespace-base-revision').exists() else '.base-revision'
 if targets == ['frontend'] and (root / '.base-ui-revision').is_file():
     revision = '.base-ui-revision'
-if targets and set(targets) == {'backend', 'frontend'} and (root / '.base-ui-revision').is_file():
-    if (root / revision).read_text().strip() != (root / '.base-ui-revision').read_text().strip():
-        raise SystemExit('Mixed SDK/UI pins require the qualified multi-pin candidate route; no Docker build started')
+if (targets and set(targets) == {'backend', 'frontend'} and (root / '.base-ui-revision').is_file()
+        and (root / revision).read_text().strip() != (root / '.base-ui-revision').read_text().strip()):
+    raise SystemExit('Mixed SDK/UI pins require the qualified multi-pin candidate route; no Docker build started')
 if targets:
     subprocess.run([sys.executable, str(base / 'scripts/verify_base_revision.py'),
                 '--base', str(base), '--revision', str(root / revision)], check=True)

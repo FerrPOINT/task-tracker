@@ -206,3 +206,10 @@ Legacy registered reader не заменяет эту проверку kind. Kno
 Перед публикацией проверять точный кандидат через `--ref <commit>`. Установка
 hooks и допустимые артефакты: [правила](docs/REPOSITORY_HYGIENE.md).
 Копии проверки принадлежат Base; SDK/UI pins не меняются.
+
+## Текущий performance candidate
+
+`just build` требует явного компонента; `build-all` выбирают намеренно.
+`just test` запускает domain/frontend units; `gate` и `test-*-all` — вручную.
+Frontend Node 22.22.2 согласован с Docker и preparations; CLI rustfmt не требует
+SDK/compiled target. Commands и непроверенные native gates: [TESTING](docs/TESTING.md#текущий-performance-candidate--31-октября-2026).

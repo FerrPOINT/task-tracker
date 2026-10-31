@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import unittest
 import re
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -72,7 +72,7 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn("pnpm format:check", frontend_job)
 
     def test_configured_pm_gate_executes_both_current_authority_cases(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/qualification.yml").read_text(encoding="utf-8")
         self.assertNotIn("unsubmitted_recovery_tests::", workflow)
         for name in (
             "owner_can_adopt_only_an_unstarted_draft_without_rewriting_its_creation",
@@ -83,7 +83,7 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn('dropdb -U tasktracker tracker_pm_candidates_test', workflow)
 
     def test_configured_start_gate_executes_each_case_in_a_fresh_database(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/qualification.yml").read_text(encoding="utf-8")
         for name in (
             "forward_start_migration_preserves_filled_110_history_without_auto_start",
             "explicit_start_is_atomic_discovered_once_and_replays_original_after_advancement",
@@ -121,6 +121,7 @@ class CiContractChecksTest(unittest.TestCase):
 class ServerCliMetadataContractTest(unittest.TestCase):
     def test_server_keeps_production_sdk_sources_and_only_unselected_cli_metadata(self):
         import re
+
         import tomllib
         backend, base = ROOT / 'backend', ROOT.parent / 'services-base'
         workspace = tomllib.loads((backend / 'Cargo.toml').read_text(encoding='utf-8'))['workspace'].get('dependencies', {})
@@ -160,7 +161,7 @@ class ServerCliMetadataContractTest(unittest.TestCase):
         for filename in ('Dockerfile', 'Dockerfile.umbrella'):
             with self.subTest(recipe=filename):
                 text = (backend / filename).read_text(encoding='utf-8')
-                copied = set(re.findall(r'^COPY services-base/((?:crates|base-modules/rust)/\S+)\s', text, re.M))
+                copied = set(re.findall(r'^COPY services-base/((?:crates|base-modules/rust)/\S+)\s', text, re.MULTILINE))
                 self.assertEqual(copied, required | {sdk + '/Cargo.toml'})
                 self.assertIn(f'COPY services-base/{sdk}/Cargo.toml /services-base/{sdk}/Cargo.toml', text)
                 self.assertIn('COPY task-tracker/backend/cli/Cargo.toml cli/Cargo.toml', text)

@@ -83,11 +83,19 @@ typecheck:
 
 # Run frontend unit tests
 test-frontend:
-    cd frontend && pnpm test
+    cd frontend && pnpm test:unit
 
-# Run backend unit + integration tests (single-threaded for env safety)
+# Reviewed fast domain units
 test-backend:
-    cd backend && cargo test --workspace -- --test-threads=1
+    cd backend && cargo test --locked -p domain --lib
+
+# Full workspace; manual qualification
+test-backend-all:
+    cd backend && cargo test --locked --workspace -- --test-threads=1
+
+# Full frontend; manual qualification
+test-frontend-all:
+    cd frontend && pnpm test:all
 
 # Run backend coverage gate (Rust 1.88, cargo-llvm-cov and Docker Compose required).
 test-backend-coverage:
@@ -101,7 +109,7 @@ e2e:
     cd frontend && pnpm exec playwright test
 
 # Full quality gate (CI-like)
-gate: repository-hygiene fmt-check-rust clippy typecheck lint test-frontend test-backend
+gate: repository-hygiene fmt-check-rust clippy typecheck lint test-frontend-all test-backend-all
 
 # Lint frontend
 lint:
@@ -116,11 +124,19 @@ build-frontend:
     cd frontend && pnpm build
 
 # Build backend release binary
-build-backend:
-    cd backend && cargo build --release
+build-backend: test-backend
+    cd backend && cargo build --locked --release -p server --bin server
 
-# Build everything
-build: build-backend build-frontend
+# Official CLI is an independent artifact
+build-cli: test-backend
+    cd backend && cargo build --locked --release -p task-tracker-cli --bin task-tracker
+
+# Choose a component explicitly; no preparation on ambiguous build
+build:
+    @echo "Choose build-backend, build-frontend, build-cli or build-all" >&2; exit 64
+
+# Intentional full build; Just deduplicates the shared unit prerequisite
+build-all: build-backend build-cli build-frontend
 
 # ─────────────────────────────────────────────
 # Misc
@@ -128,7 +144,7 @@ build: build-backend build-frontend
 
 # Regenerate OpenAPI client from backend spec
 api-codegen:
-    cd frontend && pnpm generate:api
+    cd frontend && pnpm run postinstall
 
 # Open backend API docs (requires running backend)
 api-docs:
