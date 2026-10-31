@@ -146,9 +146,12 @@ pub fn freeze_handoff_binding(
     routing: &TaskRoutingSnapshot,
     policy: &ProjectSourcePolicy,
 ) -> Result<TaskSourceBinding, AppError> {
-    if state.stage != entry.stage.canonical()
-        || state.status != Some(entry.status)
-        || confirmation.stage != state.stage
+    let business_state = domain::task_lifecycle::effective_state(
+        &serde_json::to_value(state).map_err(AppError::internal)?,
+        entry.revision,
+    )?;
+    if business_state != entry
+        || confirmation.stage != entry.stage.canonical()
         || state.revisions.last().is_none_or(|r| {
             r.revision != confirmation.revision || r.content_hash != confirmation.content_hash
         })

@@ -38,10 +38,8 @@ pub fn prepare_materials(
     ids: HandoffAllocation,
 ) -> Result<FrozenHandoffMaterials, AppError> {
     command.validate()?;
-    crate::sdlc::validate_document(&command.requirements)?;
     if !actor.trusted_human
-        || !actor.human_session
-        || !state.owner(actor)
+        || actor.subject != state.owner_subject
         || actor.subject != prepared.owner_subject
         || crate::sdlc::has_pm_grant(&actor.scopes)
         || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
@@ -49,17 +47,27 @@ pub fn prepare_materials(
         return Err(AppError::Forbidden);
     }
     state.require_root()?;
+    let business_state = domain::task_lifecycle::effective_state(
+        &serde_json::to_value(state).map_err(AppError::internal)?,
+        prepared.state.revision,
+    )?;
     if !prepared.blockers.is_empty()
         || state.task_id != prepared.task_id
         || state.project_id != prepared.project_id
-        || state.stage != prepared.state.stage.canonical()
-        || state.status != Some(prepared.state.status)
+        || business_state != prepared.state
         || command.expected_revision != prepared.state.revision
         || command.confirmed_issue_sha256 != prepared.issue_sha256
     {
         return Err(AppError::conflict(
             "current_stage_handoff_inputs_changed_or_blocked",
         ));
+    }
+    match business_state.stage {
+        domain::sdlc_lifecycle::LifecycleStage::Draft
+        | domain::sdlc_lifecycle::LifecycleStage::Backlog => {
+            crate::sdlc::validate_initial_document(&command.requirements)?
+        }
+        _ => crate::sdlc::validate_document(&command.requirements)?,
     }
     let entry = CurrentStageEntry::derive(prepared.state, false)?;
     if prepared.entry != Some(entry) {
@@ -118,7 +126,7 @@ pub fn prepare_materials(
         content_hash: requirement.content_hash.clone(),
         owner_subject: actor.subject.clone(),
         created_at: ids.observed_at,
-        stage: state.stage,
+        stage: prepared.state.stage.canonical(),
     };
     let mut next_state = state.clone();
     next_state.revisions.push(requirement.clone());
@@ -197,4 +205,97 @@ pub trait CurrentStageHandoffRepository: Send + Sync {
         actor: &Principal,
         command: &TaskHandoffCommand,
     ) -> Result<(TaskHandoffReceipt, bool), AppError>;
+}
+
+/// Build the pending business execution from a real saved human consent. This
+/// allocates no assignment, native run, prior result or deployment receipt.
+pub fn seed_current_stage(
+    pending: &PendingHandoffMaterials,
+) -> Result<domain::current_stage_execution::CurrentStageExecution, AppError> {
+    use domain::sdlc_lifecycle::{LifecycleTask, RuntimeState};
+    let consent = &pending.receipt;
+    let routing = &pending.routing;
+    let source = &pending.source;
+    let entry = CurrentStageEntry::derive(consent.entry.state, false)?;
+    if consent.contract_version != 1
+        || !(1..MAX_SAFE_VERSION).contains(&consent.entry.state.revision)
+        || !(1..=MAX_SAFE_VERSION).contains(&consent.requirement_revision)
+        || consent.actor_subject.is_empty()
+        || [
+            consent.confirmation_id,
+            consent.routing_snapshot_id,
+            consent.source_binding_id,
+        ]
+        .iter()
+        .any(Uuid::is_nil)
+        || [
+            &consent.confirmed_issue_sha256,
+            &consent.issue_materials_sha256,
+            &consent.requirements_sha256,
+        ]
+        .iter()
+        .any(|s| !crate::sdlc_source::lower_hex(s, 64))
+        || consent.handoff_id.is_nil()
+        || consent.task_id.is_nil()
+        || consent.project_id.is_nil()
+        || entry != consent.entry
+        || consent.resulting_revision
+            != consent
+                .entry
+                .state
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| AppError::conflict("task_lifecycle_revision_exhausted"))?
+        || consent.resulting_revision > MAX_SAFE_VERSION
+        || routing.task_id != consent.task_id
+        || routing.root_task_id != consent.task_id
+        || routing.project_id != consent.project_id
+        || routing.snapshot_id != consent.routing_snapshot_id
+        || routing.confirmation_id != consent.confirmation_id
+        || routing.requirement_revision != consent.requirement_revision
+        || routing.content_hash != consent.requirements_sha256
+        || source.task_id != consent.task_id
+        || source.root_task_id != consent.task_id
+        || source.project_id != consent.project_id
+        || source.owner_subject != consent.actor_subject
+        || source.routing_snapshot_id != routing.snapshot_id
+        || source.confirmation_id != consent.confirmation_id
+        || source.requirement_revision != consent.requirement_revision
+        || source.content_hash != consent.requirements_sha256
+        || source.tracker_instance_id != routing.tracker_instance_id
+        || source.source_hash != crate::sdlc_source::sealed_hash(source)?
+    {
+        return Err(AppError::conflict(
+            "current_stage_handoff_basis_inconsistent",
+        ));
+    }
+    crate::sdlc_draft_flow::validate_policy(
+        &routing.policy,
+        consent.project_id,
+        &routing.tracker_instance_id,
+    )?;
+    Ok(domain::current_stage_execution::CurrentStageExecution {
+        contract_version: 1,
+        interaction_protocol: domain::sdlc::InteractionProtocol::ConfiguredCliV1,
+        consent: consent.clone(),
+        task: LifecycleTask {
+            task_id: consent.task_id,
+            owner_subject: consent.actor_subject.clone(),
+            version: 1,
+            stage: entry.state.stage,
+            status: entry.state.status,
+            cycle: 0,
+            transient_retries: 0,
+            waiting_reason: Some("queued_for_assignment".into()),
+            runtime: RuntimeState::Queued,
+            routing: routing.clone(),
+            previous_result_id: None,
+            resume_chat_id: None,
+        },
+        source_binding: source.clone(),
+        assignment: None,
+        lease: None,
+        binding: None,
+        result: None,
+    })
 }

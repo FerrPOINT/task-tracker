@@ -174,3 +174,105 @@ fn handoff_does_not_accept_an_incomplete_requirements_document() {
     command.requirements.prerequisites.clear();
     assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_err());
 }
+
+#[test]
+fn every_manual_stage_has_its_real_configured_entry_without_fake_predecessors() {
+    use app::task_handoff::{PendingHandoffMaterials, seed_current_stage};
+    for stage in domain::task_lifecycle::STAGES {
+        for status in [LifecycleStatus::Ready, LifecycleStatus::InProgress] {
+            let (mut state, actor, mut prepared, command) = fixture(status);
+            state.stage = stage.canonical();
+            prepared.state.stage = stage;
+            prepared.entry = Some(CurrentStageEntry::derive(prepared.state, false).unwrap());
+            let frozen =
+                prepare_materials(&state, &actor, &prepared, &command, allocation()).unwrap();
+            let pending = PendingHandoffMaterials {
+                receipt: frozen.receipt,
+                routing: frozen.routing,
+                source: frozen.source,
+            };
+            let seed = seed_current_stage(&pending).unwrap();
+            assert_eq!((seed.task.stage, seed.task.status), (stage, status));
+            assert_eq!(seed.consent.entry, prepared.entry.unwrap());
+            assert!(seed.task.previous_result_id.is_none());
+            assert!(
+                seed.assignment.is_none()
+                    && seed.lease.is_none()
+                    && seed.binding.is_none()
+                    && seed.result.is_none()
+            );
+            assert_eq!(
+                seed.interaction_protocol,
+                domain::sdlc::InteractionProtocol::ConfiguredCliV1
+            );
+            for invalid_revision in [-1, 0, domain::sdlc::MAX_SAFE_VERSION] {
+                let mut invalid = PendingHandoffMaterials {
+                    receipt: pending.receipt.clone(),
+                    routing: pending.routing.clone(),
+                    source: pending.source.clone(),
+                };
+                invalid.receipt.entry.state.revision = invalid_revision;
+                invalid.receipt.resulting_revision = invalid_revision + 1;
+                assert!(seed_current_stage(&invalid).is_err());
+            }
+            // A receipt for another task/source is not a current-stage entry permit.
+            let mut changed = pending;
+            changed.source.task_id = Uuid::new_v4();
+            assert!(seed_current_stage(&changed).is_err());
+        }
+    }
+}
+
+#[test]
+fn legacy_unmarked_clarification_uses_agreed_draft_view_without_rewriting_history() {
+    let (mut state, actor, mut prepared, command) = fixture(LifecycleStatus::Ready);
+    state.stage = domain::sdlc::Stage::Clarification;
+    state.status = None;
+    prepared.state.stage = LifecycleStage::Draft;
+    prepared.entry = Some(CurrentStageEntry::derive(prepared.state, false).unwrap());
+    let before = serde_json::to_value(&state).unwrap();
+    let frozen = prepare_materials(&state, &actor, &prepared, &command, allocation()).unwrap();
+    assert_eq!(frozen.next_state.stage, domain::sdlc::Stage::Clarification);
+    assert_eq!(frozen.next_state.status, None);
+    assert_eq!(frozen.confirmation.stage, domain::sdlc::Stage::Draft);
+    assert_eq!(frozen.receipt.entry.state.stage, LifecycleStage::Draft);
+    assert_eq!(serde_json::to_value(&state).unwrap(), before);
+}
+
+#[test]
+fn pm_accepts_real_initial_materials_without_invented_technical_requirements() {
+    for stage in [LifecycleStage::Draft, LifecycleStage::Backlog] {
+        let (mut state, actor, mut prepared, mut command) = fixture(LifecycleStatus::Ready);
+        state.stage = stage.canonical();
+        prepared.state.stage = stage;
+        prepared.entry = Some(CurrentStageEntry::derive(prepared.state, false).unwrap());
+        command.requirements.scope.clear();
+        command.requirements.scenarios.clear();
+        command.requirements.acceptance_criteria.clear();
+        command.requirements.checklist.clear();
+        command.requirements.prerequisites.clear();
+        assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_ok());
+        // Missing technical requirements remain a real blocker at a technical stage.
+        state.stage = domain::sdlc::Stage::Analysis;
+        prepared.state.stage = LifecycleStage::Analysis;
+        prepared.entry = Some(CurrentStageEntry::derive(prepared.state, false).unwrap());
+        assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_err());
+        state.stage = stage.canonical();
+        prepared.state.stage = stage;
+        prepared.entry = Some(CurrentStageEntry::derive(prepared.state, false).unwrap());
+        command.requirements.checklist.push(" ".into());
+        assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_err());
+    }
+}
+
+#[test]
+fn an_explicit_user_pat_can_confirm_its_own_inputs_without_a_fake_browser_session() {
+    let (state, mut actor, prepared, command) = fixture(LifecycleStatus::Ready);
+    actor.human_session = false;
+    assert!(actor.trusted_human);
+    assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_ok());
+    // A service principal never becomes a person by claiming a browser session.
+    actor.trusted_human = false;
+    actor.human_session = true;
+    assert!(prepare_materials(&state, &actor, &prepared, &command, allocation()).is_err());
+}

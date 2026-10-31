@@ -1,5 +1,5 @@
-//! Current-stage human preparation on the existing owner/project/aggregate boundary.
-//! This is a read plan. Fresh configuration/source observations and atomic commit follow separately.
+//! Genuine current-stage consent and exact input revalidation on the owner boundary.
+//! Material persistence is separate from fresh owner observations and native execution admission.
 use super::*;
 use domain::sdlc_lifecycle::LifecycleStatus;
 use domain::task_handoff::{
@@ -13,8 +13,7 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<PreparedCurrentStageHandoff, AppError> {
-        if !actor.human_session
-            || !actor.trusted_human
+        if !actor.trusted_human
             || app::sdlc::has_pm_grant(&actor.scopes)
             || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
         {
@@ -33,8 +32,7 @@ impl PostgresSdlcRepository {
         actor: &Principal,
     ) -> Result<(TaskState, PreparedCurrentStageHandoff), AppError> {
         if actor.trusted_human {
-            if !actor.human_session
-                || app::sdlc::has_pm_grant(&actor.scopes)
+            if app::sdlc::has_pm_grant(&actor.scopes)
                 || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
             {
                 return Err(AppError::Forbidden);
@@ -46,7 +44,7 @@ impl PostgresSdlcRepository {
             app::sdlc_reservation::reader(actor)?;
         }
         let state = Self::load_binding(tx, &self.config, task, actor).await?;
-        if actor.trusted_human && !state.owner(actor) {
+        if actor.trusted_human && actor.subject != state.owner_subject {
             return Err(AppError::Forbidden);
         }
         // Match the current reporter as well as the retained owner identity.
@@ -204,8 +202,7 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
         command: &domain::task_handoff::TaskHandoffCommand,
     ) -> Result<(domain::task_handoff::TaskHandoffReceipt, bool), AppError> {
         command.validate()?;
-        if !actor.human_session
-            || !actor.trusted_human
+        if !actor.trusted_human
             || app::sdlc::has_pm_grant(&actor.scopes)
             || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
         {
@@ -215,7 +212,7 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
         let tx = self.db.begin().await.map_err(map_db)?;
         // Re-check the current account, project, reporter and aggregate even on replay.
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;
-        if !state.owner(actor) {
+        if actor.subject != state.owner_subject {
             return Err(AppError::Forbidden);
         }
         let reporter = tx.query_one(statement(

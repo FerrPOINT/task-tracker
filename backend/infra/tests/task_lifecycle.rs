@@ -852,6 +852,7 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     ))
     .await
     .unwrap();
+    db.execute_unprepared("INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds) VALUES('50000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000001','CORE-5','Task','00000000-0000-0000-0000-000000000001','Legacy clarification','Preserved real inputs','10000000-0000-4000-8000-000000000001','Medium','[]',5,0); INSERT INTO sdlc_tasks(task_id,project_id,root_task_id,tracker_instance_id,owner_subject,state) VALUES('50000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000005','40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','{\"task_id\":\"50000000-0000-4000-8000-000000000005\",\"root_task_id\":\"50000000-0000-4000-8000-000000000005\",\"project_id\":\"20000000-0000-4000-8000-000000000001\",\"tracker_instance_id\":\"40000000-0000-4000-8000-000000000001\",\"owner_subject\":\"10000000-0000-4000-8000-000000000001\",\"stage\":\"Clarification\",\"confirmation_revision\":null,\"assignment\":null,\"questions\":[],\"revisions\":[],\"confirmations\":[],\"evidence\":[]}')").await.unwrap();
     db.execute_unprepared("SELECT task_lifecycle_activate('10000000-0000-4000-8000-000000000001',task_lifecycle_inventory_snapshot())").await.unwrap();
     let project = Uuid::parse_str("20000000-0000-4000-8000-000000000001").unwrap();
     let repository = infra::sdlc::PostgresSdlcRepository::connect(
@@ -989,8 +990,16 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     let n=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_requirements) AS requirements,(SELECT count(*) FROM sdlc_confirmations) AS confirmations".to_owned())).await.unwrap().unwrap();
     assert_eq!(n.try_get::<i64>("", "requirements").unwrap(), 0);
     assert_eq!(n.try_get::<i64>("", "confirmations").unwrap(), 0);
+    let mut pat_actor = actor.clone();
+    pat_actor.human_session = false;
+    assert!(
+        repository
+            .prepare_current_stage_handoff(task, &pat_actor)
+            .await
+            .is_ok()
+    );
     let (receipt, replayed) = repository
-        .save_handoff_materials(task, &actor, &original)
+        .save_handoff_materials(task, &pat_actor, &original)
         .await
         .unwrap();
     assert!(!replayed);
@@ -1100,8 +1109,14 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .prepare_current_stage_handoff(pm_task, &actor)
         .await
         .unwrap();
+    let mut pm_command = command(&pm, "human-backlog");
+    pm_command.requirements.scope.clear();
+    pm_command.requirements.scenarios.clear();
+    pm_command.requirements.acceptance_criteria.clear();
+    pm_command.requirements.checklist.clear();
+    pm_command.requirements.prerequisites.clear();
     let (pm_receipt, _) = repository
-        .save_handoff_materials(pm_task, &actor, &command(&pm, "human-backlog"))
+        .save_handoff_materials(pm_task, &actor, &pm_command)
         .await
         .unwrap();
     assert_eq!(pm_receipt.entry.state.stage, Stage::Backlog);
@@ -1138,6 +1153,37 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert!(
         repository
             .pending_handoff_materials(task, &actor)
+            .await
+            .is_ok()
+    );
+    let legacy = Uuid::parse_str("50000000-0000-4000-8000-000000000005").unwrap();
+    let legacy_preview = repository
+        .prepare_current_stage_handoff(legacy, &actor)
+        .await
+        .unwrap();
+    assert_eq!(
+        (legacy_preview.state.stage, legacy_preview.state.status),
+        (Stage::Draft, Status::Ready)
+    );
+    let (legacy_receipt, _) = repository
+        .save_handoff_materials(
+            legacy,
+            &actor,
+            &command(&legacy_preview, "human-clarification"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_receipt.entry.state.stage, Stage::Draft);
+    let retained = repository.read(legacy, &actor).await.unwrap();
+    assert_eq!(retained.stage, domain::sdlc::Stage::Clarification);
+    assert_eq!(retained.status, None);
+    assert_eq!(
+        retained.confirmations.last().unwrap().stage,
+        domain::sdlc::Stage::Draft
+    );
+    assert!(
+        repository
+            .pending_handoff_materials(legacy, &actor)
             .await
             .is_ok()
     );

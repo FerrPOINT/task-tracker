@@ -89,7 +89,7 @@ LANGUAGE sql STABLE AS $$
                 AND next_snapshot->'confirmation_revision'=to_jsonb(m.requirement_revision)
                 AND c.payload->>'owner_subject'=m.actor_subject
                 AND r.payload->>'author_subject'=m.actor_subject
-                AND c.payload->>'stage'=t.state->>'stage')
+                AND c.payload->>'stage'=task_lifecycle_effective_stage(t.state))
 $$;
 
 -- Add a narrow, ledger-backed consent branch. Retain every existing transition,
@@ -138,4 +138,14 @@ DO $$ DECLARE definition text; anchor text := '    IF NOT t.manual_control OR'; 
     IF position(anchor IN definition)=0 THEN RAISE EXCEPTION 'handoff_purge_guard_anchor_missing'; END IF;
     EXECUTE replace(definition,anchor,
         '    IF EXISTS(SELECT 1 FROM task_handoff_materials WHERE task_id=task) OR NOT t.manual_control OR');
+END $$;
+
+-- A new human confirmation does not rewrite the old flow marker or pretend to
+-- be its historical PM publication. All fields outside this consent are exact.
+DO $$ DECLARE definition text; BEGIN
+    definition:=pg_get_functiondef('sdlc_draft_flow_gate()'::regprocedure);
+    IF position('BEGIN' IN definition)=0 THEN RAISE EXCEPTION 'handoff_draft_guard_anchor_missing'; END IF;
+    definition:=overlay(definition placing E'BEGIN\n    IF task_handoff_material_write_permitted(OLD.task_id,NEW.state) THEN RETURN NEW; END IF;'
+        from position('BEGIN' IN definition) for 5);
+    EXECUTE definition;
 END $$;

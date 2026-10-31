@@ -512,6 +512,17 @@ pub fn validate_document(document: &RequirementsDocument) -> Result<(), AppError
             "scope, scenarios, acceptance_criteria, checklist and prerequisites must be nonempty",
         ));
     }
+    validate_document_items(document)
+}
+
+/// Initial human materials for the PM to clarify. This is not approval of a
+/// complete technical requirements document; existing full validation is unchanged.
+pub(crate) fn validate_initial_document(document: &RequirementsDocument) -> Result<(), AppError> {
+    nonblank(&document.goal, "goal")?;
+    validate_document_items(document)
+}
+
+fn validate_document_items(document: &RequirementsDocument) -> Result<(), AppError> {
     for item in document
         .scope
         .iter()

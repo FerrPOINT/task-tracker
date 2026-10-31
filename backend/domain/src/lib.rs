@@ -139,3 +139,5 @@ pub mod task_documents;
 pub mod task_repositories;
 
 pub mod task_handoff;
+
+pub mod current_stage_execution;
