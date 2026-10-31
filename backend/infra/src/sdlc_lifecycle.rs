@@ -1447,9 +1447,12 @@ impl LifecycleRepository for PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<LifecycleReadback, AppError> {
-        spaces::confirm_owner_before_transaction(self, task, actor).await?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        if state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+        }
         if !state.configured_cli() {
             if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
                 app::sdlc_lifecycle::producer(actor, false)?;
@@ -1466,6 +1469,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         authorize_read(&tx, &state, actor).await?;
         let observed_at = now(&tx).await?;
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = owner_data {
+            owner_data.current()?;
+        }
         Ok(LifecycleReadback {
             observed_at,
             runtime_state: if receipt

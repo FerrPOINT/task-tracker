@@ -9,27 +9,34 @@ pub(super) async fn confirm_owner_before_transaction(
     repository: &PostgresSdlcRepository,
     task: Uuid,
     actor: &Principal,
-) -> Result<(), AppError> {
-    if actor.trusted_human || !app::native_space_access::application_policy_required().await? {
-        return Ok(());
-    }
-    let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
-    if native.identity().subject != actor.subject {
-        return Err(AppError::Forbidden);
+) -> Result<Option<super::handoff_spaces::OwnerDataAdmission>, AppError> {
+    if actor.trusted_human {
+        return Ok(None);
     }
     let tx = repository.db.begin().await.map_err(map_db)?;
     let state = PostgresSdlcRepository::load_binding(&tx, &repository.config, task, actor).await?;
     tx.commit().await.map_err(map_db)?;
-    let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
-    if owner.to_string() != state.owner_subject {
-        return Err(AppError::Forbidden);
+    if app::native_space_access::application_policy_required().await? {
+        let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
+        if native.identity().subject != actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
+        if owner.to_string() != state.owner_subject {
+            return Err(AppError::Forbidden);
+        }
+        let required: &[&str] = if state.retained_fields.contains_key("execution_handoff_id") {
+            &["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
+        } else {
+            &["task-tracker", "fleet-control"]
+        };
+        native.require_owner(owner, required).await?;
     }
-    let required: &[&str] = if state.retained_fields.contains_key("execution_handoff_id") {
-        &["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
+    if state.retained_fields.contains_key("execution_handoff_id") {
+        repository.owner_data_admission(task, actor, None).await
     } else {
-        &["task-tracker", "fleet-control"]
-    };
-    native.require_owner(owner, required).await
+        Ok(None)
+    }
 }
 
 pub(super) async fn request_scope(

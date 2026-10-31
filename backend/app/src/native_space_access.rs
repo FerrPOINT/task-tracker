@@ -1,4 +1,5 @@
 //! Original native request clock. This is not a human impersonation/read proof.
+pub use pdlc_auth_core::service_bridge::ConfirmedSpaceRead as OwnerSpaceRead;
 use pdlc_auth_core::{
     application_access::VerifiedApplicationAccess,
     application_access_client::{ApplicationAccessClient, ApplicationAccessError},
@@ -115,6 +116,45 @@ impl NativeRequest {
             return Err(AppError::Forbidden);
         }
         Ok(())
+    }
+    /// Read-only data restriction for the immutable task owner. The caller still
+    /// verifies its own native capability and retains both original clocks.
+    pub async fn owner_space_read(
+        &self,
+        owner: uuid::Uuid,
+        spaces: &[shared::space_access::SpaceRef],
+    ) -> Result<pdlc_auth_core::service_bridge::ConfirmedSpaceRead, AppError> {
+        if owner.is_nil() || !self.is_current() {
+            return Err(AppError::Forbidden);
+        }
+        let client = crate::space_access::admission_client().await?;
+        let result = if let Some(proof) = self.owner_access.get() {
+            self.check_owner(proof, owner, &["task-tracker"])?;
+            client
+                .confirm_owner_many_read(
+                    &crate::space_access::CENTRAL_BRIDGE,
+                    proof,
+                    "task-tracker",
+                    spaces,
+                )
+                .await
+        } else {
+            // Space policy can be active independently of application policy.
+            let reader = crate::space_access::notification_reader().await?;
+            client
+                .confirm_recipient_many(
+                    &crate::space_access::CENTRAL_BRIDGE,
+                    &reader,
+                    owner,
+                    spaces,
+                )
+                .await
+        };
+        result.map_err(|error| match error {
+            pdlc_auth_core::service_bridge::SpaceAdmissionError::Invalid
+            | pdlc_auth_core::service_bridge::SpaceAdmissionError::Expired => AppError::Forbidden,
+            _ => AppError::Unavailable("current task owner space admission unavailable".into()),
+        })
     }
     pub fn is_current(&self) -> bool {
         self.window.is_current()

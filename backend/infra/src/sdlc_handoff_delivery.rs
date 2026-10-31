@@ -53,6 +53,23 @@ impl PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok(None);
         };
+        let source: domain::sdlc_source::TaskSourceBinding =
+            serde_json::from_value(row.try_get::<Json>("", "source_binding").map_err(map_db)?)
+                .map_err(AppError::internal)?;
+        tx.commit().await.map_err(map_db)?;
+        let owner_data = self
+            .owner_data_admission(task, actor, Some(&source.namespace))
+            .await?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        Self::bind_owner_data(
+            &tx,
+            &state,
+            owner_data.as_ref(),
+            Some(&source.namespace),
+            false,
+        )
+        .await?;
         let enforced=tx.query_one(statement("SELECT active OR EXISTS(SELECT 1 FROM tracker_space_catalog WHERE metadata IS NOT NULL) AS enforced FROM tracker_space_admission_state WHERE singleton",vec![])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?.try_get::<bool>("","enforced").map_err(map_db)?;
         if enforced {
             let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
@@ -82,6 +99,9 @@ impl PostgresSdlcRepository {
                 .map_err(AppError::internal)?,
         };
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = owner_data {
+            owner_data.current()?;
+        }
         Ok(Some(saved))
     }
     pub(super) async fn prepare_handoff_delivery(
@@ -91,9 +111,11 @@ impl PostgresSdlcRepository {
     ) -> Result<PreparedCurrentStageHandoff, AppError> {
         app::task_handoff::scheduler_writer(actor, &self.config)?;
         self.current_handoff_owner(task, actor, true).await?;
+        let owner_data = self.owner_data_admission(task, actor, None).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         self.pending_handoff_locked(&tx, task, actor, true).await?;
-        let (_, prepared) = self.prepare_handoff_locked(&tx, task, actor, true).await?;
+        let (checked_state, prepared) = self.prepare_handoff_locked(&tx, task, actor, true).await?;
+        Self::bind_owner_data(&tx, &checked_state, owner_data.as_ref(), None, true).await?;
         if let Some(native) = app::native_space_access::current()? {
             if !native.is_current() {
                 return Err(AppError::Forbidden);
@@ -153,6 +175,7 @@ impl PostgresSdlcRepository {
         app::task_handoff::scheduler_writer(actor, &self.config)?;
         command.validate()?;
         self.current_handoff_owner(task, actor, true).await?;
+        let owner_data = self.owner_data_admission(task, actor, None).await?;
         let hash = app::sdlc::canonical_hash(command)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;
@@ -174,7 +197,8 @@ impl PostgresSdlcRepository {
         )
         .await?;
         let pending = self.pending_handoff_locked(&tx, task, actor, true).await?;
-        let (_, prepared) = self.prepare_handoff_locked(&tx, task, actor, true).await?;
+        let (checked_state, prepared) = self.prepare_handoff_locked(&tx, task, actor, true).await?;
+        Self::bind_owner_data(&tx, &checked_state, owner_data.as_ref(), None, true).await?;
         observed.ensure_for(&prepared)?;
         if pending.receipt.handoff_id != command.handoff_id
             || prepared.state.revision != command.expected_revision

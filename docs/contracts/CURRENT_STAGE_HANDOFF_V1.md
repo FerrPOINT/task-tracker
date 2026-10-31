@@ -394,3 +394,25 @@ expiry, принадлежит прежнему lifecycle endpoint. Current life
 получают owner app proof до SQL-транзакции и повторно проверяют его под lock,
 сохраняя исходный clock. Выполнена изолированная HTTP/PG/SDK проверка с
 каталогом namespace, настоящим technical assignment и без native run.
+
+### Текущий допуск владельца к данным при native admission
+
+Начальное technical reservation и чтение current lifecycle/source либо original
+reservation result проверяют текущий namespace/project допуск исходного человека.
+Используется штатный SDK read proof владельца как дополнительное ограничение
+настоящей машинной capability, а не как человеческий writer grant. При выключенной
+application policy предусмотрен отдельный registered recipient reader; его
+интеграционная конфигурация проверяется отдельно. Переключатели не объединяются.
+
+Исходный owner clock сохраняется через HTTP/cache и transaction fence; scope
+проекта и exact source повторно сверяются под блокировками, затем истечение
+проверяется внутри COMMIT. Пустой набор проектовых links не создаёт допуск
+к исходникам: источник всё равно требует явного разрешения, native membership
+и полномочия протокола остаются обязательными.
+
+Изолированная HTTP/PG проверка включает consent до активации policy, отказ
+новому назначению при отзыве, успешное назначение после выдачи, отзыв cached
+решения по исходному TTL и expiry в настоящем adoption COMMIT с rollback
+assignment/hold/operation и сохранением очереди. Это не полная квалификация
+всех native writers: subsequent start/result/stop/recovery и независимый
+space-only режим остаются обязательными gates consumer/cohort.

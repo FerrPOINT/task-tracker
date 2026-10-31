@@ -32,6 +32,8 @@ mod execution_lease;
 mod handoff;
 #[path = "sdlc_handoff_delivery.rs"]
 mod handoff_delivery;
+#[path = "sdlc_handoff_spaces.rs"]
+mod handoff_spaces;
 #[path = "sdlc_lifecycle.rs"]
 mod lifecycle;
 #[path = "sdlc_reservation.rs"]

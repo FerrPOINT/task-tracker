@@ -380,9 +380,12 @@ impl TaskSourceRepository for PostgresSdlcRepository {
         } else {
             app::sdlc_reservation::reader(actor)?;
         }
-        spaces::confirm_owner_before_transaction(self, task, actor).await?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load_read(&tx, task, actor).await?;
+        if state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+        }
         let current = super::lifecycle::current(&tx, task).await?;
         if let Some(current) = &current {
             if self.review_snapshot(&tx, &state, current).await?.is_none() {
@@ -463,6 +466,9 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             app::sdlc_source::readback(binding, current)?
         };
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = owner_data {
+            owner_data.current()?;
+        }
         Ok(result)
     }
 }
