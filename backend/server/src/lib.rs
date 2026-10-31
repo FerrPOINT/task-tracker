@@ -51,17 +51,23 @@ pub async fn run(
     ready: oneshot::Sender<std::net::SocketAddr>,
     shutdown: oneshot::Receiver<()>,
 ) {
-    let pristine_model_database=infra::task_lifecycle_identity::is_pristine(&config.database.url)
-        .await.expect("failed to inspect task model database");
+    let first_model_bootstrap =
+        infra::task_lifecycle_identity::prepare_bootstrap(&config.database.url)
+            .await
+            .expect("failed to inspect task model database");
     run_migrations(config.database.clone())
         .await
         .expect("failed to run migrations");
     let model_instance = std::env::var("TASKTRACKER_LIFECYCLE__INSTANCE_ID")
         .ok()
         .or_else(|| std::env::var("TASKTRACKER_SDLC__INSTANCE_ID").ok());
-    infra::task_lifecycle_identity::ensure(&config.database.url, model_instance.as_deref(),pristine_model_database)
-        .await
-        .expect("failed to initialize stable task model identity");
+    infra::task_lifecycle_identity::ensure(
+        &config.database.url,
+        model_instance.as_deref(),
+        first_model_bootstrap,
+    )
+    .await
+    .expect("failed to initialize stable task model identity");
     let repos = Arc::new(
         build_repositories(config.database.clone())
             .await

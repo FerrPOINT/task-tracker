@@ -51,6 +51,7 @@ mod m20261022_0000103_identity_deletion;
 
 mod m20261030_0000112_unified_task_lifecycle;
 mod m20261031_0000113_task_handoff_materials;
+mod m20261031_0000114_task_model_bootstrap_provenance;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -151,6 +152,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261029_0000111_configured_analysis_start::Migration),
             Box::new(m20261030_0000112_unified_task_lifecycle::Migration),
             Box::new(m20261031_0000113_task_handoff_materials::Migration),
+            Box::new(m20261031_0000114_task_model_bootstrap_provenance::Migration),
         ]
     }
 }

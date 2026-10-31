@@ -556,7 +556,46 @@ async fn fresh_model_bootstraps_without_execution_and_retains_its_identity() {
             .await
             .unwrap()
     );
+    assert!(
+        infra::task_lifecycle_identity::prepare_bootstrap(&url)
+            .await
+            .unwrap()
+    );
+    // An interruption before migrations retains the same first-bootstrap identity.
+    let bootstrap = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT bootstrap_id FROM task_model_bootstrap_provenance WHERE singleton".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<Uuid>("", "bootstrap_id")
+        .unwrap();
+    assert!(
+        infra::task_lifecycle_identity::prepare_bootstrap(&url)
+            .await
+            .unwrap()
+    );
     migration::Migrator::up(&db, None).await.unwrap();
+    // Simulate process death after schema creation, before model activation.
+    assert!(
+        infra::task_lifecycle_identity::prepare_bootstrap(&url)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        db.query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT bootstrap_id FROM task_model_bootstrap_provenance WHERE singleton".to_owned()
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<Uuid>("", "bootstrap_id")
+        .unwrap(),
+        bootstrap
+    );
     assert!(
         !infra::task_lifecycle_identity::is_pristine(&url)
             .await
@@ -565,6 +604,11 @@ async fn fresh_model_bootstraps_without_execution_and_retains_its_identity() {
     infra::task_lifecycle_identity::ensure(&url, None, true)
         .await
         .unwrap();
+    assert!(
+        !infra::task_lifecycle_identity::prepare_bootstrap(&url)
+            .await
+            .unwrap()
+    );
     let read = || {
         db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT instance_id,(SELECT enabled FROM task_lifecycle_control WHERE singleton) AS enabled FROM sdlc_instance WHERE singleton".to_owned()))
     };
@@ -1028,4 +1072,43 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert_eq!(n.try_get::<i64>("", "pm_runs").unwrap(), 0);
     assert_eq!(n.try_get::<i64>("", "assignments").unwrap(), 0);
     assert_eq!(n.try_get::<i64>("", "permits").unwrap(), 0);
+}
+
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn existing_empty_model_database_does_not_gain_first_bootstrap_authority() {
+    let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name,to_regclass('public.issues') IS NULL AS fresh"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(row.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    assert!(
+        !infra::task_lifecycle_identity::prepare_bootstrap(&url)
+            .await
+            .unwrap()
+    );
+    assert!(
+        infra::task_lifecycle_identity::ensure(&url, None, true)
+            .await
+            .is_err()
+    );
+    infra::task_lifecycle_identity::ensure(&url, None, false)
+        .await
+        .unwrap();
+    let row=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT enabled FROM task_lifecycle_control WHERE singleton) AS enabled,(SELECT count(*) FROM task_model_bootstrap_provenance) AS provenance".to_owned())).await.unwrap().unwrap();
+    assert!(!row.try_get::<bool>("", "enabled").unwrap());
+    assert_eq!(row.try_get::<i64>("", "provenance").unwrap(), 0);
 }
