@@ -619,3 +619,14 @@ Docker разделяет полный unit/typecheck context и production COPY
 Один `pnpm run postinstall` обслуживает оба consumers; `pnpm run build:compile`
 зависит от успешного unit-маркера. Native cache-hit/time qualification пока не выполнена.
 Unit context сохраняет `nginx.conf`, который читает routing test.
+
+### CI download cache
+
+Automatic backend `ci.yml` сохраняет Cargo archives/index/git database через
+`actions/cache@v6`, без compiled target и cache-hook `cargo metadata`.
+Key связывает Rust1.88.0/platform, lock/manifests/config/SDK pins и selected graph;
+prefix restore дополняется Cargo. Download hit не пропускает unit/build.
+`CARGO_INCREMENTAL=0` сохраняет прежнее effective поведение.
+Manual qualification/release helpers не меняются. Archive size/total time и
+hosted/native adoption не измерены; публикация Source их не подтверждает.
+Общий контракт и evidence: [Base](https://github.com/FerrPOINT/services-base/blob/chore/build-performance-20261015/docs/plans/ci-download-cache-source-20261101.md).

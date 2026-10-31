@@ -86,7 +86,16 @@ class QualityRouteTests(unittest.TestCase):
         self.assertIn('cargo test --locked --release -p domain --lib', source)
 
     def test_ci_does_not_restore_unqualified_compiled_targets(self):
-        for filename in ('ci.yml', 'qualification.yml'):
+        automatic = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
+        self.assertNotIn('Swatinem/rust-cache@v2', automatic)
+        caches = automatic.split('uses: actions/cache@v6')[1:]
+        self.assertEqual(len(caches), 1)
+        cache = caches[0].split('\n      - ', 1)[0]
+        paths = cache.split('          path: |\n', 1)[1].split('          key:', 1)[0]
+        self.assertEqual([line.strip() for line in paths.splitlines()],
+                         ['~/.cargo/registry/cache', '~/.cargo/registry/index', '~/.cargo/git/db'])
+        self.assertIn('CARGO_INCREMENTAL: "0"', automatic)
+        for filename in ('qualification.yml',):
             text = (ROOT / '.github/workflows' / filename).read_text(encoding='utf-8')
             parts = text.split('uses: Swatinem/rust-cache@v2')[1:]
             self.assertTrue(parts)

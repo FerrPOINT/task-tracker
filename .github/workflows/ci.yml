@@ -162,10 +162,24 @@ jobs:
         with:
           toolchain: 1.88.0
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo downloads
+        uses: actions/cache@v6
         with:
-          workspaces: task-tracker/backend
-          cache-targets: false
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: >-
+            ${{ format('{0}-{1}-cargo-downloads-v1-rust1.88.0-{2}-{3}-{4}-{5}-{6}',
+            runner.os,
+            runner.arch,
+            hashFiles('task-tracker/backend/Cargo.lock', 'task-tracker/backend/**/Cargo.toml', 'task-tracker/.base-revision', 'task-tracker/.namespace-base-revision', 'task-tracker/.cargo/config.toml', 'task-tracker/backend/.cargo/config.toml'),
+            needs.changes.outputs.backend_build,
+            needs.changes.outputs.cli_build,
+            needs.changes.outputs.openapi_check,
+            needs.changes.outputs.server_checks) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-downloads-v1-rust1.88.0-
       - run: cargo fmt --all -- --check
       - name: Quick domain/SDK unit tests
         if: needs.changes.outputs.server_checks == 'true'
@@ -183,6 +197,7 @@ jobs:
           cargo run --locked -p api --bin gen-openapi > ../openapi/openapi.json.generated
           diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
     env:
+      CARGO_INCREMENTAL: "0"
       CARGO_BUILD_JOBS: 1
   frontend:
     needs:
@@ -200,7 +215,6 @@ jobs:
           path: task-tracker
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Read pinned Base revision
         id: base
         working-directory: task-tracker
