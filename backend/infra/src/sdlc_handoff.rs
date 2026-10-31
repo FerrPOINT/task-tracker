@@ -78,13 +78,6 @@ impl PostgresSdlcRepository {
         if !row.try_get::<bool>("", "enabled").map_err(map_db)? {
             blockers.push(Blocker::ModelNotActive);
         }
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
-        {
-            blockers.push(Blocker::ExecutionNotConfigured);
-        }
         if busy {
             blockers.push(Blocker::ExecutionBusy);
         }
@@ -333,15 +326,6 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
     ) -> Result<domain::task_handoff::RequestedHandoffs, AppError> {
         app::task_handoff::scheduler_reader(actor, &self.config)?;
         query.validate()?;
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&query.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
         let tx = self.db.begin().await.map_err(map_db)?;
         Self::project_access(&tx, query.project_id, actor).await?;
         let rows=tx.query_all(statement("SELECT m.receipt FROM sdlc_tasks t

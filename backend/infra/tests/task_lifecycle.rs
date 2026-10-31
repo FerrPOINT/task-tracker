@@ -859,7 +859,8 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         &url,
         SdlcConfig {
             instance_id: "40000000-0000-4000-8000-000000000001".into(),
-            single_task_project_ids: [project].into_iter().collect(),
+            // New human entry uses real routing/source readiness, not the legacy project opt-in.
+            single_task_project_ids: Default::default(),
             reservation_scheduler_subject: "scheduler-qa".into(),
             orchestrator_subject: "orchestrator-qa".into(),
             verifier_subject: "verifier-qa".into(),
