@@ -74,7 +74,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     services:
       postgres:
         image: postgres:17.6-alpine
@@ -123,6 +123,9 @@ jobs:
           workspaces: task-tracker/backend
           cache-targets: false
       - run: cargo fmt --all -- --check
+      - name: Check declared minimum in the shared Rust workspace
+        if: ${{ !cancelled() && !inputs.http_only }}
+        run: cargo check --locked --workspace --all-targets
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
         if: ${{ !inputs.http_only }}
       - name: Lint affected HTTP test targets
@@ -301,39 +304,13 @@ jobs:
           pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/theme-preview.log 2>&1 &
           pnpm theme:check http://127.0.0.1:4173
   minimum-rust:
-    needs: changes
-    if: ${{ !inputs.http_only && needs.changes.outputs.backend == 'true' }}
+    needs: [changes, backend]
+    if: always() && !inputs.http_only && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Read pinned Base revision
-        id: base
-        working-directory: task-tracker
-        run: |
-          pin=.base-revision
-          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
-          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
-          echo "pin=$pin" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: ${{ steps.base.outputs.sha }}
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - name: Verify pinned Base checkout
-        working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-          cache-targets: false
-      - name: Check declared minimum independently of release builds
-        working-directory: task-tracker/backend
-        run: cargo check --locked --workspace --all-targets
+      - name: Require the shared minimum Rust and backend checks to pass
+        shell: bash
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: test "$BACKEND_RESULT" = success

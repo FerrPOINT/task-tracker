@@ -1,7 +1,10 @@
 """Selection and command contracts; no compiler, install, Docker or runtime."""
 
 import json
+import os
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -95,6 +98,29 @@ class CurrentPerformanceRoutesTests(unittest.TestCase):
         package = json.loads((ROOT / 'frontend/package.json').read_bytes())
         self.assertEqual(package['scripts']['test'], 'pnpm run test:unit')
         self.assertEqual(package['scripts']['build:compile'], 'vite build')
+
+    def test_shared_minimum_rust_guard_refuses_failure_cancellation_and_skip(self):
+        source = (ROOT / '.github/workflows/qualification.yml').read_text(encoding='utf-8')
+        backend = source.split('  backend:\n', 1)[1].split('  frontend:\n', 1)[0]
+        guard = source.split('  minimum-rust:\n', 1)[1]
+        self.assertEqual(source.count('uses: dtolnay/rust-toolchain@stable'), 1)
+        self.assertEqual(source.count('uses: Swatinem/rust-cache@v2'), 1)
+        self.assertEqual(source.count('cargo check --locked --workspace --all-targets'), 1)
+        self.assertIn('if: ${{ !cancelled() && !inputs.http_only }}', backend)
+        self.assertIn('needs: [changes, backend]', guard)
+        self.assertIn("if: always() && !inputs.http_only && needs.changes.outputs.backend == 'true'", guard)
+        self.assertNotIn('uses:', guard)
+        command = 'test "$BACKEND_RESULT" = success'
+        self.assertIn('run: ' + command, guard)
+        bash = shutil.which('bash') if os.name == 'posix' else 'C:/Program Files/Git/bin/bash.exe'
+        if not bash or not Path(bash).is_file():
+            self.skipTest('An inert Bash guard fixture requires POSIX Bash or Git Bash')
+        for result in ('success', 'failure', 'cancelled', 'skipped', ''):
+            with self.subTest(result=result):
+                check = subprocess.run([bash, '--noprofile', '--norc', '-c', command],
+                                       env={**os.environ, 'BACKEND_RESULT': result},
+                                       capture_output=True, check=False)
+                self.assertEqual(check.returncode == 0, result == 'success')
 
 
 if __name__ == '__main__':
