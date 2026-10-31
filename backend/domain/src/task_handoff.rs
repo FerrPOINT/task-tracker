@@ -41,6 +41,7 @@ impl TaskHandoffCommand {
 pub enum TaskExecutionBlocker {
     ModelNotActive,
     ExecutionNotConfigured,
+    ProjectReadOnly,
     RoutingNotConfigured,
     RequiredInputMissing,
     ApplicationAccessDenied,
@@ -367,4 +368,25 @@ pub struct TaskHandoffOperation {
     pub receipt: TaskHandoffReceipt,
     pub execution_requested: bool,
     pub cancellation: Option<CancelTaskHandoffReceipt>,
+}
+
+/// A queued request for the existing scheduler to revalidate, not admission.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestedHandoff {
+    pub handoff_id: uuid::Uuid,
+    pub task_id: uuid::Uuid,
+    pub owner_subject: String,
+    pub entry: CurrentStageEntry,
+    pub core_revision: i64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestedHandoffs {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub project_id: uuid::Uuid,
+    pub observed_at: chrono::DateTime<chrono::Utc>,
+    pub items: Vec<RequestedHandoff>,
+    pub next_cursor: Option<uuid::Uuid>,
 }

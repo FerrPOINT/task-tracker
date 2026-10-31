@@ -1234,6 +1234,40 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .blockers
             .contains(&domain::task_handoff::TaskExecutionBlocker::AlreadyCompleted)
     );
+    // Metadata belongs to the already registered scheduler, never a human or
+    // arbitrary read token. The old saved-only consents are not queued work.
+    db.execute_unprepared("INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES('10000000-0000-4000-8000-000000000003','scheduler@example.test','scheduler','Fixture scheduler','fixture','scheduler-qa'); INSERT INTO project_members(project_id,user_id,role) VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003','member')").await.unwrap();
+    let scheduler = Principal {
+        subject: "scheduler-qa".into(),
+        trusted_human: false,
+        human_session: false,
+        scopes: ["task-tracker:read".into()].into(),
+    };
+    let query = domain::sdlc_candidates::DeliveryCandidatesQuery {
+        project_id: project,
+        after: None,
+        limit: 1,
+    };
+    assert!(
+        repository
+            .requested_handoffs(&actor, query.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .requested_handoffs(&scheduler, query.clone())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        repository
+            .requested_handoff_execution(task, &scheduler)
+            .await
+            .is_err()
+    );
     // Queue ownership is durable, but is not a native running/assignment claim.
     let queued_task = Uuid::parse_str("50000000-0000-4000-8000-000000000004").unwrap();
     let queued_preview = repository
@@ -1328,6 +1362,86 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert_eq!(counts.try_get::<i64>("", "requests").unwrap(), 1);
     assert_eq!(counts.try_get::<i64>("", "pm_runs").unwrap(), 0);
     assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
+    let queued = repository
+        .requested_handoffs(&scheduler, query.clone())
+        .await
+        .unwrap();
+    assert_eq!(queued.items.len(), 1);
+    assert!(queued.next_cursor.is_none());
+    assert_eq!(queued.items[0].task_id, queued_task);
+    assert_eq!(queued.items[0].handoff_id, requested.handoff_id);
+    assert_eq!(queued.items[0].entry.state.stage, Stage::Review);
+    let pending = repository
+        .requested_handoff_execution(queued_task, &scheduler)
+        .await
+        .unwrap();
+    assert_eq!(pending.consent.handoff_id, requested.handoff_id);
+    assert!(pending.assignment.is_none() && pending.lease.is_none() && pending.binding.is_none());
+    assert_eq!(pending.task.stage, Stage::Review);
+    assert_eq!(pending.task.status, Status::Ready);
+    // This isolated metadata fixture uses the real operation ledger/guard.
+    // The full archive API/authority path has its own project_lifecycle tests.
+    async fn fixture_archive(db: &sea_orm::DatabaseConnection, archived: bool) {
+        let operation = Uuid::new_v4();
+        db.execute_unprepared(&format!("DO $$ DECLARE revision bigint; operation uuid:='{operation}'; desired boolean:={archived}; BEGIN
+            SELECT project_lifecycle_revision INTO revision FROM projects WHERE key='CORE' FOR UPDATE;
+            INSERT INTO tracker_project_lifecycle_operations(operation_id,project_id,actor_identity,command,authority_valid_until)
+            SELECT operation,id,jsonb_build_object('issuer','https://fixture.example.test','subject','10000000-0000-4000-8000-000000000001'),jsonb_build_object('operation_id',operation,'expected_revision',revision,'archived',desired),floor(extract(epoch FROM clock_timestamp()))::bigint+30 FROM projects WHERE key='CORE';
+            PERFORM set_config('pdlc.tracker.project_lifecycle_operation',operation::text,true);
+            UPDATE projects SET archived_at=CASE WHEN desired THEN clock_timestamp() ELSE NULL END,project_lifecycle_revision=project_lifecycle_revision+1 WHERE key='CORE';
+            END $$;")).await.unwrap();
+    }
+    // Archival keeps the queued history but removes native launch eligibility.
+    fixture_archive(&db, true).await;
+    assert!(
+        repository
+            .requested_handoffs(&scheduler, query.clone())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        repository
+            .requested_handoff_execution(queued_task, &scheduler)
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .prepare_current_stage_handoff(queued_task, &actor)
+            .await
+            .unwrap()
+            .blockers
+            .contains(&domain::task_handoff::TaskExecutionBlocker::ProjectReadOnly)
+    );
+    fixture_archive(&db, false).await;
+    assert_eq!(
+        repository
+            .requested_handoffs(&scheduler, query.clone())
+            .await
+            .unwrap()
+            .items[0]
+            .handoff_id,
+        requested.handoff_id
+    );
+
+    let mut tail = query.clone();
+    tail.after = Some(queued_task);
+    assert!(
+        repository
+            .requested_handoffs(&scheduler, tail)
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        repository
+            .requested_handoff_execution(queued_task, &actor)
+            .await
+            .is_err()
+    );
 
     let cancel = domain::task_handoff::CancelTaskHandoffCommand {
         expected_revision: current.state.revision,
@@ -1368,6 +1482,21 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         (Stage::Review, Status::Ready)
     );
     assert_eq!(available.state.revision, cancelled.resulting_revision);
+    assert!(
+        repository
+            .requested_handoffs(&scheduler, query.clone())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        repository
+            .requested_handoff_execution(queued_task, &scheduler)
+            .await
+            .is_err()
+    );
+
     let resumed = issues
         .transition_task_lifecycle(
             IssueId::from_uuid(queued_task),
@@ -1411,6 +1540,22 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .unwrap();
     assert_ne!(second.handoff_id, requested.handoff_id);
     assert_eq!(second.entry.state.status, Status::InProgress);
+    let pending = repository
+        .requested_handoff_execution(queued_task, &scheduler)
+        .await
+        .unwrap();
+    assert_eq!(pending.task.status, Status::InProgress);
+    assert_eq!(pending.consent.handoff_id, second.handoff_id);
+    assert_eq!(
+        repository
+            .requested_handoffs(&scheduler, query.clone())
+            .await
+            .unwrap()
+            .items[0]
+            .handoff_id,
+        second.handoff_id
+    );
+
     // Lost old ACKs must not cancel a successor or silently queue the old operation again.
     assert!(
         repository

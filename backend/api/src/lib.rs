@@ -80,6 +80,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::task_handoff::requested,
+        routes::task_handoff::execution,
         routes::task_handoff::preview,
         routes::task_handoff::request,
         routes::task_handoff::operation,

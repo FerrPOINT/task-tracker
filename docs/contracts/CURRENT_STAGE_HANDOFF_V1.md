@@ -251,3 +251,31 @@ PAT: credential исполнения не расширяет ограничен�
 --expected-revision REV --idempotency-key ORIGINAL_CANCEL` сохраняют exact
 payload/revision/key. CLI не подбирает стадию, не создаёт новый ключ после ошибки
 и не повторяет мутацию автоматически.
+
+
+## Чтение очереди существующим scheduler
+
+`GET /api/v1/sdlc/current-stage-candidates` использует прежний bounded query
+project_id/after/limit (1…100) и возвращает только durable human requests.
+Фильтры текущего pointer/revision/owner, отмены и native busy применяются до
+LIMIT. Непоставленные saved-only consent, отменённая история и архивные проекты
+не являются кандидатами. Это обнаружение очереди, не обещание native readiness;
+материалы, policy и внешние владельцы проверяются снова перед назначением.
+
+`GET /api/v1/issues/{id}/handoff/execution` возвращает отдельный strict
+CurrentStageExecution для исходного human basis. Пока request не назначен,
+assignment/lease/binding/result равны null. Ready/InProgress сохраняются, fake
+predecessor/PM completion не появляются. Только зарегистрированный scheduler
+с точным read credential и текущим project ACL получает это чтение; human
+и произвольный read machine не наследуют эти права.
+
+Для выбранной очереди machine reader подтверждает текущие приложения настоящего
+owner вне SQL-транзакции. Затем владелец повторно проверяет тот же handoff и
+проверяет каталог точного source namespace с оригинальным deadline.
+Отказ приложения Fleet закрывает контекст. Старый PM/delivery source scope не
+используется: у текущего human basis свой точный source receipt. Никакой
+native_task_scope для записи это чтение не устанавливает; run claim не создаётся.
+Самостоятельный архив проекта возвращает project_read_only в preview и исключает
+его из discovery без удаления запроса; восстановление сохраняет исходный basis.
+Резервирование, настоящий запуск, результаты и терминальная квитанция ещё требуют
+consumer-интеграции: наличие этого readback их не подтверждает.

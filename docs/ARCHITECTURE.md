@@ -824,3 +824,13 @@ native execution admission. Original expiry не продлевается wrappe
 Owner queue и отмена до claim используют human ledger и общую ревизию. Runtime
 claim будет обслуживаться отдельным consumer, с настоящим назначением/fencing и
 новой проверкой текущих полномочий; публикация согласия сама его не запускает.
+
+
+Current-stage scheduler discovery читает существующий human request ledger;
+нового scheduler, polling daemon или второго владельца стадии нет. SQL фильтрует
+актуальный request pointer/revision и отмены до bounded pagination. Контекст
+сначала устанавливает настоящий owner по закрытому owner read, затем получает
+его app proof вне транзакции и повторно проверяет тот же handoff под lock.
+Каталог точного source namespace проверяется отдельно. Старый PM/delivery source
+scope не выбирается по исторической записи; native_task_scope для записи не
+создаётся. Context не равен claim.

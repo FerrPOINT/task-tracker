@@ -5,7 +5,7 @@ use axum::{
     body::{Body, to_bytes},
     extract::State,
     http::{HeaderMap, Request, StatusCode},
-    routing::get,
+    routing::{get, post},
 };
 use domain::sdlc::{Principal, SdlcConfig, SdlcRepository};
 use domain::sdlc_source::{
@@ -26,32 +26,71 @@ const JWT: &str = "isolated-handoff-fixture-only";
 const FULL: &str = "pdlc_pat_fixture_full_owner_AAAAAAAAAAAAAAAAAA";
 const TRACKER: &str = "pdlc_pat_fixture_tracker_owner_AAAAAAAAAAAAAAA";
 const MACHINE: &str = "pdlc_pat_fixture_machine_owner_AAAAAAAAAAAAAAA";
+const SCHEDULER: &str = "pdlc_pat_fixture_scheduler_read_AAAAAAAAAAAAAAA";
 #[derive(Clone)]
 struct Owners {
     issuer: String,
     routes: Value,
     available: Arc<AtomicBool>,
     fleet_reads: Arc<AtomicUsize>,
+    owner_apps: Arc<AtomicBool>,
+    owner_reads: Arc<AtomicUsize>,
+    change_during_lookup: Arc<AtomicBool>,
+    db: Arc<sea_orm::DatabaseConnection>,
 }
 async fn introspect(State(s): State<Owners>, headers: HeaderMap) -> Json<Value> {
     let bearer = headers.get("authorization").unwrap().to_str().unwrap();
     let full = bearer.contains("_full_");
-    let machine = bearer.contains("_machine_");
+    let scheduler = bearer.contains("_scheduler_");
+    let subject = if scheduler { "scheduler-qa" } else { OWNER };
+    let machine = bearer.contains("_machine_") || scheduler;
     let now = chrono::Utc::now();
     let apps = if full {
         vec!["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
     } else {
         vec!["task-tracker"]
     };
-    let scopes: Vec<String> = apps
+    let mut scopes: Vec<String> = apps
         .iter()
         .flat_map(|app| [format!("{app}:read"), format!("{app}:write")])
         .filter(|scope| !bearer.contains("readonly") || scope.ends_with(":read"))
         .collect();
+    if scheduler {
+        scopes = vec!["task-tracker:read".into()]
+    }
     Json(
-        json!({"sub":OWNER,"email":"operator@example.test","scopes":scopes,"display_name":"Fixture owner",
+        json!({"sub":subject,"email":"operator@example.test","scopes":scopes,"display_name":"Fixture owner",
         "subject_role":if machine{"service_account"}else{"user"},"observed_at":now,"expires_at":now+chrono::Duration::seconds(60),
         "application_access":if machine{Value::Null}else{json!({"schema_version":1,"issuer":s.issuer,"subject":OWNER,"role":"user","applications":apps,"revision":1,"enforced":true,"observed_at":now,"expires_at":now+chrono::Duration::seconds(60)})}}),
+    )
+}
+async fn owner_decisions(
+    State(s): State<Owners>,
+    headers: HeaderMap,
+    Json(query): Json<Value>,
+) -> Json<Value> {
+    assert_eq!(
+        headers.get("authorization").unwrap(),
+        "Bearer isolated-owner-reader-fixture"
+    );
+    assert_eq!(query["subjects"], json!([OWNER]));
+    let open=s.db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT count(*) AS n FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'".to_owned())).await.unwrap().unwrap().try_get::<i64>("","n").unwrap();
+    assert_eq!(
+        open, 0,
+        "owner HTTP must not hold a product transaction open"
+    );
+    s.owner_reads.fetch_add(1, Ordering::SeqCst);
+    if s.change_during_lookup.swap(false, Ordering::SeqCst) {
+        s.db.execute_unprepared("UPDATE issues SET description='Changed while owner HTTP was in flight' WHERE key='CORE-4'").await.unwrap();
+    }
+    let apps = if s.owner_apps.load(Ordering::SeqCst) {
+        vec!["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
+    } else {
+        vec!["task-tracker"]
+    };
+    let now = chrono::Utc::now();
+    Json(
+        json!({"schema_version":1,"decisions":[{"schema_version":1,"issuer":s.issuer,"subject":OWNER,"role":"user","applications":apps,"revision":1,"enforced":true,"observed_at":now,"expires_at":now+chrono::Duration::seconds(60)}]}),
     )
 }
 async fn fleet(
@@ -166,7 +205,7 @@ async fn call(
 #[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
 async fn handoff_http_requires_current_human_access_and_replays_without_reobserving_peers() {
     let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
-    let db = Database::connect(url.as_str()).await.unwrap();
+    let db = Arc::new(Database::connect(url.as_str()).await.unwrap());
     let row = db
         .query_one(Statement::from_string(
             DbBackend::Postgres,
@@ -182,7 +221,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             .ends_with("_task_lifecycle_test")
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
-    migration::Migrator::up(&db, None).await.unwrap();
+    migration::Migrator::up(db.as_ref(), None).await.unwrap();
     db.execute_unprepared(include_str!(
         "../../migration/src/task_lifecycle_fixture.sql"
     ))
@@ -254,7 +293,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         base_commit: "d".repeat(40),
     };
     let verified = VerifiedSource {
-        namespace,
+        namespace:namespace.clone(),
         forge_instance_id: source.forge_instance_id,
         repository_id: source.repository_id,
         public_name: "fixture/source".into(),
@@ -287,15 +326,24 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let available = Arc::new(AtomicBool::new(true));
     let reads = Arc::new(AtomicUsize::new(0));
+    db.execute_unprepared("INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES('10000000-0000-4000-8000-000000000003','scheduler@example.test','scheduler','Fixture scheduler','fixture','scheduler-qa'); INSERT INTO project_members(project_id,user_id,role) VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003','member')").await.unwrap();
+    let owner_apps = Arc::new(AtomicBool::new(true));
+    let owner_reads = Arc::new(AtomicUsize::new(0));
+    let change_during_lookup = Arc::new(AtomicBool::new(false));
     let owners = Owners {
         issuer: issuer.clone(),
         routes: serde_json::to_value(&policy.routing.as_ref().unwrap().routes).unwrap(),
         available: available.clone(),
         fleet_reads: reads.clone(),
+        owner_apps: owner_apps.clone(),
+        owner_reads: owner_reads.clone(),
+        change_during_lookup: change_during_lookup.clone(),
+        db: db.clone(),
     };
     let stub = Router::new()
         .route("/jwks", get(|| async { Json(json!({"keys":[]})) }))
         .route("/auth/tokens/introspect", get(introspect))
+        .route("/auth/access/decisions", post(owner_decisions))
         .route(
             "/internal/runtime/v1/agents/{agent}/configuration",
             get(fleet),
@@ -307,6 +355,14 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
         std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED", "true");
+        std::env::set_var(
+            "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+            "scheduler-qa",
+        );
+        std::env::set_var(
+            "TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN",
+            "isolated-owner-reader-fixture",
+        );
     }
     let config = Arc::new(shared::AppConfig {
         database: shared::DatabaseConfig {
@@ -427,6 +483,64 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert_eq!(accepted["receipt"]["actor_subject"], OWNER);
     assert_eq!(accepted["execution_requested"], true);
     assert!(accepted["cancellation"].is_null());
+    let discovery = "/api/v1/sdlc/current-stage-candidates?project_id=20000000-0000-4000-8000-000000000001&limit=1";
+    assert_eq!(
+        call(&router, "GET", discovery, Some(FULL), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, page) = call(&router, "GET", discovery, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    let execution = format!("{path}/execution");
+    let foreign_reader = "pdlc_pat_fixture_machine_readonly_AAAAAAAAAAAAA";
+    assert_eq!(
+        call(&router, "GET", discovery, Some(foreign_reader), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            &execution,
+            Some(foreign_reader),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let (status, pending) = call(&router, "GET", &execution, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{pending}");
+    assert!(pending["assignment"].is_null() && pending["lease"].is_null());
+    assert_eq!(
+        pending["consent"]["handoff_id"],
+        accepted["receipt"]["handoff_id"]
+    );
+    assert_eq!(owner_reads.load(Ordering::SeqCst), 1);
+    change_during_lookup.store(true, Ordering::SeqCst);
+    assert_eq!(
+        call(&router, "GET", &execution, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    db.execute_unprepared("UPDATE issues SET description='Unicode: кириллица' WHERE key='CORE-4'")
+        .await
+        .unwrap();
+
+    owner_apps.store(false, Ordering::SeqCst);
+    assert_eq!(
+        call(&router, "GET", &execution, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    owner_apps.store(true, Ordering::SeqCst);
     let before = reads.load(Ordering::SeqCst);
     available.store(false, Ordering::SeqCst);
     let (status, replayed) = call(&router, "POST", &path, Some(FULL), command.clone()).await;
@@ -471,7 +585,9 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert_eq!(history["receipt"], accepted["receipt"]);
     assert_eq!(history["cancellation"], cancelled);
     assert_eq!(
-        call(&router, "POST", &path, Some(FULL), command).await.1,
+        call(&router, "POST", &path, Some(FULL), command.clone())
+            .await
+            .1,
         history
     );
     assert_eq!(reads.load(Ordering::SeqCst), before);
@@ -479,6 +595,34 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert_eq!(counts.try_get::<i64>("", "requests").unwrap(), 1);
     assert_eq!(counts.try_get::<i64>("", "pm_runs").unwrap(), 0);
     assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
+    // A foreign active catalog entry cannot stand in for the exact current
+    // human source namespace. This read never installs a writable task scope.
+    available.store(true, Ordering::SeqCst);
+    let (_, fresh) = call(&router, "GET", &path, Some(FULL), Value::Null).await;
+    let mut next = command;
+    next["expected_revision"] = fresh["state"]["revision"].clone();
+    next["confirmed_issue_sha256"] = fresh["issue_sha256"].clone();
+    next["idempotency_key"] = json!("catalog-qualified-request");
+    let (status, queued_again) = call(&router, "POST", &path, Some(FULL), next).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{queued_again}");
+    db.execute_unprepared("INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES('90000000-0000-4000-8000-000000000001','90000000-0000-4000-8000-000000000002',1,'active','{}')").await.unwrap();
+    assert_eq!(
+        call(&router, "GET", &execution, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES($1,$2,1,'active','{}')",[namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    let (status, exact) = call(&router, "GET", &execution, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{exact}");
+    assert_eq!(exact["source_binding"]["namespace"], json!(namespace));
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE tracker_space_catalog SET state='provisioning' WHERE registry_instance_id=$1 AND space_id=$2",[namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    assert_eq!(
+        call(&router, "GET", &execution, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
     stub_task.abort();
     let _ = stub_task.await;
 }

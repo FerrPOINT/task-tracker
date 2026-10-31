@@ -2310,3 +2310,11 @@ JWT fallback; human owner/project admission, приложения и PAT scopes 
 202 означает durable request, а не нативный запуск. Replay возвращает исходную
 операцию вместе с отменой; новый ключ после потери ответа не нужен.
 [Полный контракт](contracts/CURRENT_STAGE_HANDOFF_V1.md).
+
+
+Для existing scheduler добавлены GET `/api/v1/sdlc/current-stage-candidates`
+(прежний project/UUID cursor/limit query) и GET
+`/api/v1/issues/{id}/handoff/execution`. Это узкий read-only native путь;
+человеческая роль и generic read credential не заменяют registered scheduler.
+Owner app proof получается до повторной SQL-транзакции и срок не продлевается.
+Неназначенный CurrentStageExecution не содержит run/assignment/lease.

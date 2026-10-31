@@ -1623,6 +1623,57 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/handoff/execution": {
+      "get": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "read_requested_current_stage_execution",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentStageExecution"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/handoff/operations/{key}": {
       "get": {
         "tags": [
@@ -9135,6 +9186,81 @@
         ]
       }
     },
+    "/api/v1/sdlc/current-stage-candidates": {
+      "get": {
+        "tags": [
+          "routes::task_handoff"
+        ],
+        "operationId": "read_requested_current_stage_handoffs",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestedHandoffs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sdlc/delivery-candidates": {
       "get": {
         "tags": [
@@ -13341,6 +13467,97 @@
           }
         }
       },
+      "CurrentStageAssignment": {
+        "type": "object",
+        "description": "Same owner leases, execution ordinals and fences; all seven existing professions.",
+        "required": [
+          "handoff_id",
+          "assignment_id",
+          "execution_id",
+          "execution",
+          "task_id",
+          "owner_subject",
+          "role",
+          "stage",
+          "cycle",
+          "attempt",
+          "agent_id",
+          "machine_subject",
+          "routing",
+          "fencing_token",
+          "lease_id",
+          "assignment_hash"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "execution": {
+            "$ref": "#/components/schemas/DeliveryExecution"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "handoff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "machine_subject": {
+            "type": "string"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TaskExecutionRole"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TaskRoutingSnapshot"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "CurrentStageEntry": {
         "type": "object",
         "required": [
@@ -13360,6 +13577,118 @@
           }
         },
         "additionalProperties": false
+      },
+      "CurrentStageExecution": {
+        "type": "object",
+        "description": "Versioned separately from historical strict SdlcContext/LifecycleReceipt.\nThe business state remains LifecycleTask projected by its Tracker owner.",
+        "required": [
+          "contract_version",
+          "interaction_protocol",
+          "consent",
+          "task",
+          "source_binding"
+        ],
+        "properties": {
+          "assignment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CurrentStageAssignment"
+              }
+            ]
+          },
+          "binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunBinding"
+              }
+            ]
+          },
+          "consent": {
+            "$ref": "#/components/schemas/TaskHandoffReceipt"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "interaction_protocol": {
+            "$ref": "#/components/schemas/InteractionProtocol"
+          },
+          "lease": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLease"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CurrentStageResult"
+              }
+            ]
+          },
+          "source_binding": {
+            "$ref": "#/components/schemas/TaskSourceBinding"
+          },
+          "task": {
+            "$ref": "#/components/schemas/LifecycleTask"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CurrentStageResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project_manager"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "technical"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/DeliveryResult"
+              }
+            }
+          }
+        ],
+        "description": "This result does not manufacture requirements or impersonate an owner confirmation."
       },
       "CustomFieldListResponse": {
         "type": "object",
@@ -20288,6 +20617,80 @@
         },
         "additionalProperties": false
       },
+      "RequestedHandoff": {
+        "type": "object",
+        "description": "A queued request for the existing scheduler to revalidate, not admission.",
+        "required": [
+          "handoff_id",
+          "task_id",
+          "owner_subject",
+          "entry",
+          "core_revision"
+        ],
+        "properties": {
+          "core_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/CurrentStageEntry"
+          },
+          "handoff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RequestedHandoffs": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "observed_at",
+          "items"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestedHandoff"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "RequirementsDocument": {
         "type": "object",
         "required": [
@@ -22012,6 +22415,7 @@
         "enum": [
           "model_not_active",
           "execution_not_configured",
+          "project_read_only",
           "routing_not_configured",
           "required_input_missing",
           "application_access_denied",

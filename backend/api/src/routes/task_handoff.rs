@@ -2,7 +2,7 @@
 use crate::middleware::auth::UserClaims;
 use axum::{
     Extension, Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -51,6 +51,8 @@ fn repository(
 }
 pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
+        .route("/sdlc/current-stage-candidates", get(requested))
+        .route("/issues/{id}/handoff/execution", get(execution))
         .route("/issues/{id}/handoff", get(preview).post(request))
         .route("/issues/{id}/handoff/operations/{key}", get(operation))
         .route("/issues/{id}/handoff/{handoff_id}/cancel", post(cancel))
@@ -200,4 +202,29 @@ pub async fn cancel(
         .cancel_current_stage_handoff(id, handoff, &actor, &command)
         .await?;
     Ok(response(StatusCode::OK, receipt))
+}
+
+#[utoipa::path(get,operation_id="read_requested_current_stage_handoffs",path="/api/v1/sdlc/current-stage-candidates",params(domain::sdlc_candidates::DeliveryCandidatesQuery),responses((status=200,body=domain::task_handoff::RequestedHandoffs),(status=400),(status=401),(status=403),(status=404),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn requested(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Query(query): Query<domain::sdlc_candidates::DeliveryCandidatesQuery>,
+) -> Result<Response, AppError> {
+    Ok(response(
+        StatusCode::OK,
+        repository(&ctx)?.requested_handoffs(&actor, query).await?,
+    ))
+}
+#[utoipa::path(get,operation_id="read_requested_current_stage_execution",path="/api/v1/issues/{id}/handoff/execution",params(("id"=Uuid,Path)),responses((status=200,body=domain::current_stage_execution::CurrentStageExecution),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn execution(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    Ok(response(
+        StatusCode::OK,
+        repository(&ctx)?
+            .requested_handoff_execution(id, &actor)
+            .await?,
+    ))
 }

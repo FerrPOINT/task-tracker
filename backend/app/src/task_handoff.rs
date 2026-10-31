@@ -195,6 +195,24 @@ pub fn prepare_materials(
     })
 }
 
+/// A current-stage metadata reader is the existing exact scheduler principal.
+/// It cannot borrow a different native request or a write-capable request frame.
+pub fn scheduler_reader(
+    actor: &Principal,
+    config: &domain::sdlc::SdlcConfig,
+) -> Result<(), AppError> {
+    crate::sdlc_lifecycle::scheduler_read(actor, config)?;
+    if actor.trusted_human {
+        return Err(AppError::Forbidden);
+    }
+    if let Some(native) = crate::native_space_access::current()? {
+        if native.identity().subject != actor.subject || native.may_write() {
+            return Err(AppError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
 /// Owner persistence only. A saved consent is not a Fleet claim or a native launch permit.
 pub struct PendingHandoffMaterials {
     pub receipt: TaskHandoffReceipt,
@@ -210,6 +228,20 @@ pub struct SavedHandoffOperation {
 
 #[async_trait::async_trait]
 pub trait CurrentStageHandoffRepository: Send + Sync {
+    /// Reuse the existing bounded project/UUID cursor query. Discovery does not
+    /// reserve capacity, acquire a lease or assert that external owners are ready.
+    async fn requested_handoffs(
+        &self,
+        actor: &Principal,
+        query: domain::sdlc_candidates::DeliveryCandidatesQuery,
+    ) -> Result<domain::task_handoff::RequestedHandoffs, AppError>;
+
+    async fn requested_handoff_execution(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::current_stage_execution::CurrentStageExecution, AppError>;
+
     /// Read the original operation after lost responses, even if inputs changed or
     /// it was cancelled. Current owner, account and project access still apply.
     async fn handoff_operation(
