@@ -42,6 +42,17 @@ pub async fn catalog_client()
 /// processing only, never a synthetic user session or an execution capability.
 pub async fn notification_reader()
 -> Result<pdlc_auth_core::service_bridge::RegisteredSpaceReader, AppError> {
+    Ok(registered_admission_reader().await?.1)
+}
+/// The same verified credential/registration serves known-owner identity lookup.
+/// Returning its original token proof avoids a second, independently resolved actor.
+pub async fn registered_admission_reader() -> Result<
+    (
+        VerifiedCentralToken,
+        pdlc_auth_core::service_bridge::RegisteredSpaceReader,
+    ),
+    AppError,
+> {
     let token = std::env::var("TT_SPACES__ADMISSION_TOKEN")
         .map_err(|_| AppError::Unavailable("space_admission_not_configured".into()))?;
     let registration = std::env::var("TT_SPACES__ADMISSION_READER_SUBJECTS")
@@ -50,12 +61,13 @@ pub async fn notification_reader()
         .try_verified_token(&token)
         .await
         .map_err(|_| AppError::Unavailable("notification_reader_not_confirmed".into()))?;
-    pdlc_auth_core::service_bridge::RegisteredSpaceReader::verified_machine(
-        actor,
+    let reader = pdlc_auth_core::service_bridge::RegisteredSpaceReader::verified_machine(
+        actor.clone(),
         "admin-panel",
         &registration,
     )
-    .map_err(|_| AppError::Forbidden)
+    .map_err(|_| AppError::Forbidden)?;
+    Ok((actor, reader))
 }
 
 #[derive(Debug, Clone)]

@@ -19,6 +19,7 @@ pub struct NativeRequest {
     may_write: bool,
     scopes: std::collections::HashSet<String>,
     owner_access: Arc<tokio::sync::OnceCell<VerifiedApplicationAccess>>,
+    owner_identity: Arc<tokio::sync::OnceCell<SpaceOwnerAuthority>>,
 }
 impl NativeRequest {
     /// The API must first classify the independently registered native protocol.
@@ -62,6 +63,7 @@ impl NativeRequest {
             may_write: mutation,
             scopes: actor.context.scopes.clone(),
             owner_access: Arc::new(tokio::sync::OnceCell::new()),
+            owner_identity: Arc::new(tokio::sync::OnceCell::new()),
         })
     }
     /// The aggregate supplies the immutable human owner after its native task/
@@ -95,6 +97,48 @@ impl NativeRequest {
                 })
                 .await?;
         self.check_owner(proof, owner, required)
+    }
+    /// Identity remains mandatory for a human-origin execution even when both
+    /// optional visibility policies are off. This grants no apps or data access.
+    pub async fn require_known_owner(&self, owner: uuid::Uuid) -> Result<(), AppError> {
+        if owner.is_nil() || owner.to_string() == self.identity.subject || !self.window.is_current()
+        {
+            return Err(AppError::Forbidden);
+        }
+        self.owner_identity
+            .get_or_try_init(|| async {
+                let (actor, _) = crate::space_access::registered_admission_reader().await?;
+                let confirmation = crate::space_access::CENTRAL_BRIDGE
+                    .confirm_known_identity(&actor, owner)
+                    .await
+                    .map_err(|_| {
+                        AppError::Unavailable("current owner identity unavailable".into())
+                    })?
+                    .filter(|confirmation| confirmation.active)
+                    .ok_or(AppError::Forbidden)?;
+                SpaceOwnerAuthority::confirmed(confirmation.identity, confirmation.validity)
+                    .map(|window| {
+                        window
+                            .restrict_deadline(actor.lifetime.monotonic_deadline())
+                            .restrict_deadline(self.window.monotonic_deadline())
+                    })
+                    .ok_or(AppError::Forbidden)
+            })
+            .await?;
+        self.confirmed_owner(owner)
+    }
+    /// Locked repository code may only recheck the already resolved owner.
+    /// It must never initiate identity HTTP while holding the transaction.
+    pub fn confirmed_owner(&self, owner: uuid::Uuid) -> Result<(), AppError> {
+        let proof = self.owner_identity.get().ok_or(AppError::Forbidden)?;
+        if !self.window.is_current()
+            || !proof.is_current()
+            || proof.identity().issuer != self.identity.issuer
+            || proof.identity().subject != owner.to_string()
+        {
+            return Err(AppError::Forbidden);
+        }
+        Ok(())
     }
     fn check_owner(
         &self,
@@ -159,6 +203,10 @@ impl NativeRequest {
     pub fn is_current(&self) -> bool {
         self.window.is_current()
             && self
+                .owner_identity
+                .get()
+                .is_none_or(|proof| proof.is_current())
+            && self
                 .owner_access
                 .get()
                 .is_none_or(|proof| proof.is_current())
@@ -168,6 +216,21 @@ impl NativeRequest {
     }
     pub fn validity(&self) -> Result<AdmissionValidity, AppError> {
         let validity = self.window.bounded_validity().ok_or(AppError::Forbidden)?;
+        let validity = if let Some(owner) = self.owner_identity.get() {
+            if !owner.is_current() {
+                return Err(AppError::Forbidden);
+            }
+            validity
+                .attenuate(
+                    owner
+                        .bounded_validity()
+                        .ok_or(AppError::Forbidden)?
+                        .valid_until,
+                )
+                .ok_or(AppError::Forbidden)?
+        } else {
+            validity
+        };
         let Some(owner) = self.owner_access.get() else {
             return Ok(validity);
         };
@@ -187,7 +250,14 @@ impl NativeRequest {
             .ok_or(AppError::Forbidden)
     }
     pub fn deadline(&self) -> std::time::Instant {
-        let native = self.window.monotonic_deadline();
+        let native = self
+            .owner_identity
+            .get()
+            .map_or(self.window.monotonic_deadline(), |owner| {
+                self.window
+                    .monotonic_deadline()
+                    .min(owner.monotonic_deadline())
+            });
         self.owner_access
             .get()
             .map_or(native, |proof| native.min(proof.monotonic_deadline()))

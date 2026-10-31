@@ -416,3 +416,13 @@ application policy предусмотрен отдельный registered recipi
 assignment/hold/operation и сохранением очереди. Это не полная квалификация
 всех native writers: subsequent start/result/stop/recovery и независимый
 space-only режим остаются обязательными gates consumer/cohort.
+
+
+### Текущая identity при выключенных optional policies
+
+У первоначального native claim и последующих current-state запросов всегда
+проверяется immutable human owner, даже если app/space policy выключены. Reader
+подтверждается и регистрируется один раз на запрос; known-owner lookup использует
+тот же verified actor. Смена owner внутри запроса запрещена. Его исходное окно
+ограничивает native request/commit/response и не возобновляется промежуточным кешем.
+Эта проверка не выдаёт приложения, видимость, проектную роль или execution grant.

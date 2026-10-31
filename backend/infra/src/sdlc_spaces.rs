@@ -31,6 +31,16 @@ pub(super) async fn confirm_owner_before_transaction(
             &["task-tracker", "fleet-control"]
         };
         native.require_owner(owner, required).await?;
+    } else if state.retained_fields.contains_key("execution_handoff_id") {
+        let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
+        if native.identity().subject != actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        native
+            .require_known_owner(
+                Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?,
+            )
+            .await?;
     }
     if state.retained_fields.contains_key("execution_handoff_id") {
         repository.owner_data_admission(task, actor, None).await
@@ -275,6 +285,21 @@ async fn bind_task_scope(
     )).await.map_err(map_db)?.ok_or_else(|| AppError::Unavailable("space_admission_state_missing".into()))?;
     let space_policy = row.try_get::<bool>("", "enforced").map_err(map_db)?;
     let application_policy = app::native_space_access::application_policy_required().await?;
+    if !actor.trusted_human
+        && !application_policy
+        && state.retained_fields.contains_key("execution_handoff_id")
+    {
+        let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
+        if native.identity().subject != actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        native.confirmed_owner(
+            Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?,
+        )?;
+        crate::guarded_db::bind_commit_clock(tx, native.validity()?.valid_until)
+            .await
+            .map_err(map_db)?;
+    }
     if !space_policy && !application_policy {
         return Ok(());
     }

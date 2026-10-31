@@ -27,6 +27,7 @@ const FULL: &str = "pdlc_pat_fixture_full_owner_AAAAAAAAAAAAAAAAAA";
 const TRACKER: &str = "pdlc_pat_fixture_tracker_owner_AAAAAAAAAAAAAAA";
 const MACHINE: &str = "pdlc_pat_fixture_machine_owner_AAAAAAAAAAAAAAA";
 const SCHEDULER: &str = "pdlc_pat_fixture_scheduler_read_AAAAAAAAAAAAAAA";
+const SPACE_READER: &str = "pdlc_pat_fixture_space_reader_AAAAAAAAAAAAAAAAA";
 const SCHEDULER_WRITE: &str = "pdlc_pat_fixture_scheduler_write_AAAAAAAAAAAAAA";
 #[derive(Clone)]
 struct Owners {
@@ -35,6 +36,8 @@ struct Owners {
     available: Arc<AtomicBool>,
     fleet_reads: Arc<AtomicUsize>,
     owner_apps: Arc<AtomicBool>,
+    owner_active: Arc<AtomicBool>,
+    owner_identity_ttl: Arc<AtomicUsize>,
     space_access: Arc<AtomicBool>,
     space_revision: Arc<AtomicUsize>,
     allowed_spaces: Vec<shared::space_access::SpaceRef>,
@@ -46,8 +49,15 @@ async fn introspect(State(s): State<Owners>, headers: HeaderMap) -> Json<Value> 
     let bearer = headers.get("authorization").unwrap().to_str().unwrap();
     let full = bearer.contains("_full_");
     let scheduler = bearer.contains("_scheduler_");
-    let subject = if scheduler { "scheduler-qa" } else { OWNER };
-    let machine = bearer.contains("_machine_") || scheduler;
+    let reader = bearer == format!("Bearer {SPACE_READER}");
+    let subject = if reader {
+        "space-reader-qa"
+    } else if scheduler {
+        "scheduler-qa"
+    } else {
+        OWNER
+    };
+    let machine = bearer.contains("_machine_") || scheduler || reader;
     let now = chrono::Utc::now();
     let apps = if full {
         vec!["task-tracker", "fleet-control", "project-workflow", "ci-cd"]
@@ -59,6 +69,9 @@ async fn introspect(State(s): State<Owners>, headers: HeaderMap) -> Json<Value> 
         .flat_map(|app| [format!("{app}:read"), format!("{app}:write")])
         .filter(|scope| !bearer.contains("readonly") || scope.ends_with(":read"))
         .collect();
+    if reader {
+        scopes = vec!["admin-panel:read".into()];
+    }
     if scheduler {
         scopes = if bearer.contains("_write_") {
             vec!["task-tracker:write".into()]
@@ -101,14 +114,31 @@ async fn owner_decisions(
         json!({"schema_version":1,"decisions":[{"schema_version":1,"issuer":s.issuer,"subject":OWNER,"role":"user","applications":apps,"revision":1,"enforced":true,"observed_at":now,"expires_at":now+chrono::Duration::seconds(60)}]}),
     )
 }
+async fn owner_identity(
+    State(s): State<Owners>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> Json<Value> {
+    assert_eq!(
+        headers.get("authorization").unwrap().to_str().unwrap(),
+        format!("Bearer {SPACE_READER}")
+    );
+    assert_eq!(id.to_string(), OWNER);
+    let open=s.db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT count(*) AS n FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'".to_owned())).await.unwrap().unwrap().try_get::<i64>("","n").unwrap();
+    assert_eq!(open, 0, "known owner HTTP stays outside SQL");
+    let now = chrono::Utc::now().timestamp();
+    Json(
+        json!({"identity":{"issuer":s.issuer,"subject":OWNER},"active":s.owner_active.load(Ordering::SeqCst),"validity":{"observed_at":now,"valid_until":now+s.owner_identity_ttl.load(Ordering::SeqCst) as i64}}),
+    )
+}
 async fn space_decision(
     State(s): State<Owners>,
     headers: HeaderMap,
     Json(query): Json<Value>,
 ) -> Json<Value> {
     assert_eq!(
-        headers.get("authorization").unwrap(),
-        "Bearer isolated-space-reader-fixture"
+        headers.get("authorization").unwrap().to_str().unwrap(),
+        format!("Bearer {SPACE_READER}")
     );
     assert_eq!(
         query["identity"],
@@ -238,9 +268,163 @@ async fn call(
     )
 }
 
+/// Separate-process qualification: no cached activation changes and no policy downgrade.
+async fn qualify_policy_off_identity(
+    router: &Router,
+    db: &sea_orm::DatabaseConnection,
+    namespace: &shared::resource_context::NamespaceRef,
+    project: Uuid,
+    owner_active: &AtomicBool,
+    identity_ttl: &AtomicUsize,
+    space_access: &AtomicBool,
+    space_revision: &AtomicUsize,
+) {
+    assert!(
+        !app::native_space_access::application_policy_required()
+            .await
+            .unwrap()
+    );
+    let path = format!("/api/v1/issues/{TASK}/handoff");
+    let lifecycle = format!("/api/v1/issues/{TASK}/sdlc/lifecycle");
+    let (status, preview) = call(router, "GET", &path, Some(FULL), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["blockers"], json!([]));
+    let command = json!({"expected_revision":preview["state"]["revision"],"expected_routing_policy_version":preview["routing_policy_version"],"confirmed_issue_sha256":preview["issue_sha256"],"idempotency_key":"policy-off-human-consent","requirements":{"goal":"Real human input","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],"acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["Check"],"prerequisites":["Source"]}});
+    let (status, queued) = call(router, "POST", &path, Some(FULL), command).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{queued}");
+    // Real human consent precedes owner metadata/admission activation, as in the app-on case.
+    let producer = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES($1,'producer@example.test','producer','Fixture producer','fixture',$2)",vec![producer.into(),producer.to_string().into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![project.into(), producer.into()],
+    ))
+    .await
+    .unwrap();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES($1,$2,1,'active','{}')",[namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    let reservations = format!("{path}/reservations");
+    let reserve = json!({"handoff_id":queued["receipt"]["handoff_id"],"expected_revision":queued["receipt"]["resulting_revision"],"machine_subject":producer,"idempotency_key":"policy-off-native-claim"});
+    owner_active.store(false, Ordering::SeqCst);
+    assert_eq!(
+        call(
+            router,
+            "POST",
+            &reservations,
+            Some(SCHEDULER_WRITE),
+            reserve.clone()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "both optional policies off still require an active owner"
+    );
+    owner_active.store(true, Ordering::SeqCst);
+    let (status, reserved) = call(
+        router,
+        "POST",
+        &reservations,
+        Some(SCHEDULER_WRITE),
+        reserve,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{reserved}");
+    assert_eq!(reserved["task"]["stage"], "Review");
+    assert!(reserved["binding"].is_null());
+    let heartbeat = json!({"operation":"heartbeat","fence":{"assignment_id":reserved["assignment"]["assignment_id"],"execution_id":reserved["assignment"]["execution_id"],"lease_id":reserved["lease"]["lease_id"],"fencing_token":reserved["assignment"]["fencing_token"],"expected_lease_version":reserved["lease"]["version"]},"idempotency_key":"known-identity-expiry-heartbeat"});
+    identity_ttl.store(2, Ordering::SeqCst);
+    db.execute_unprepared("CREATE SEQUENCE fixture_identity_commit_delay; CREATE FUNCTION fixture_identity_commit_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.valid_until<clock_timestamp()+interval '3 seconds' AND EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE idempotency_key='known-identity-expiry-heartbeat' AND xmin::text=pg_current_xact_id()::text) THEN PERFORM nextval('fixture_identity_commit_delay'); PERFORM pg_sleep(2.1);END IF;RETURN NEW;END $$; CREATE CONSTRAINT TRIGGER a_fixture_identity_commit_delay AFTER INSERT ON tracker_request_commit_fences DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fixture_identity_commit_delay()").await.unwrap();
+    let (status, body) = call(
+        router,
+        "POST",
+        &lifecycle,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "known owner expiry inside actual COMMIT: {body}"
+    );
+    let rolled_back=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT is_called FROM fixture_identity_commit_delay) AS delayed,NOT EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE idempotency_key='known-identity-expiry-heartbeat') AS rolled_back".to_owned())).await.unwrap().unwrap();
+    assert!(
+        rolled_back.try_get::<bool>("", "delayed").unwrap()
+            && rolled_back.try_get::<bool>("", "rolled_back").unwrap()
+    );
+    db.execute_unprepared("DROP TRIGGER a_fixture_identity_commit_delay ON tracker_request_commit_fences; DROP FUNCTION fixture_identity_commit_delay()").await.unwrap();
+    identity_ttl.store(60, Ordering::SeqCst);
+    let (status, retried) = call(
+        router,
+        "POST",
+        &lifecycle,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "same key/fence recover after expired COMMIT: {retried}"
+    );
+    assert_eq!(
+        retried["lease"]["version"].as_i64().unwrap(),
+        reserved["lease"]["version"].as_i64().unwrap() + 1
+    );
+    let (status, repeated) = call(
+        router,
+        "POST",
+        &lifecycle,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{repeated}");
+    assert_eq!(repeated, retried);
+    // Activate spaces only once, after the compatible source fixtures exist.
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) SELECT id,$1,$2 FROM projects ON CONFLICT DO NOTHING",vec![namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    db.execute_unprepared("UPDATE tracker_space_admission_state SET active=true WHERE singleton")
+        .await
+        .unwrap();
+    assert_eq!(
+        call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "space policy is independent of app policy"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    space_access.store(true, Ordering::SeqCst);
+    space_revision.store(2, Ordering::SeqCst);
+    let (status, current) = call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "space-only mode with no app-reader credential: {current}"
+    );
+    owner_active.store(false, Ordering::SeqCst);
+    assert_eq!(
+        call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "fresh disabled identity defeats cached positive space policy"
+    );
+    assert_eq!(
+        call(router, "POST", &lifecycle, Some(SCHEDULER_WRITE), heartbeat)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "original successful command does not bypass disabled owner"
+    );
+}
+
 #[tokio::test]
 #[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
 async fn handoff_http_requires_current_human_access_and_replays_without_reobserving_peers() {
+    // ServiceBridge activation is process configuration, not a mutable test switch.
+    // The manual runner starts this case in a separate process/fresh database.
+    let application_policy = std::env::var_os("TT_HANDOFF_POLICY_OFF_FIXTURE").is_none();
     let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
     let db = Arc::new(Database::connect(url.as_str()).await.unwrap());
     let row = db
@@ -367,6 +551,8 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     let reads = Arc::new(AtomicUsize::new(0));
     db.execute_unprepared("INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES('10000000-0000-4000-8000-000000000003','scheduler@example.test','scheduler','Fixture scheduler','fixture','scheduler-qa'); INSERT INTO project_members(project_id,user_id,role) VALUES('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003','member')").await.unwrap();
     let owner_apps = Arc::new(AtomicBool::new(true));
+    let owner_active = Arc::new(AtomicBool::new(true));
+    let owner_identity_ttl = Arc::new(AtomicUsize::new(60));
     let owner_reads = Arc::new(AtomicUsize::new(0));
     let space_access = Arc::new(AtomicBool::new(false));
     let space_revision = Arc::new(AtomicUsize::new(1));
@@ -377,6 +563,8 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         available: available.clone(),
         fleet_reads: reads.clone(),
         owner_apps: owner_apps.clone(),
+        owner_active: owner_active.clone(),
+        owner_identity_ttl: owner_identity_ttl.clone(),
         space_access: space_access.clone(),
         space_revision: space_revision.clone(),
         allowed_spaces: vec![
@@ -398,6 +586,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         .route("/auth/tokens/introspect", get(introspect))
         .route("/auth/access/decisions", post(owner_decisions))
         .route("/spaces/admission", post(space_decision))
+        .route("/auth/identities/{id}", get(owner_identity))
         .route(
             "/internal/runtime/v1/agents/{agent}/configuration",
             get(fleet),
@@ -408,15 +597,15 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     unsafe {
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
-        std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED", "true");
+        std::env::set_var(
+            "TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED",
+            if application_policy { "true" } else { "false" },
+        );
         std::env::set_var(
             "TT_SPACES__ADMISSION_URL",
             format!("{issuer}/spaces/admission"),
         );
-        std::env::set_var(
-            "TT_SPACES__ADMISSION_TOKEN",
-            "isolated-space-reader-fixture",
-        );
+        std::env::set_var("TT_SPACES__ADMISSION_TOKEN", SPACE_READER);
         std::env::set_var(
             "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
             "scheduler-qa",
@@ -425,6 +614,10 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             "TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN",
             "isolated-owner-reader-fixture",
         );
+        std::env::set_var("TT_SPACES__ADMISSION_READER_SUBJECTS", "space-reader-qa");
+        if !application_policy {
+            std::env::remove_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN");
+        }
     }
     let config = Arc::new(shared::AppConfig {
         database: shared::DatabaseConfig {
@@ -473,6 +666,27 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     context.task_repositories = Arc::new(sources);
     let context = Arc::new(context);
     let router = api::router(context.clone()).with_state(context);
+    if !application_policy {
+        qualify_policy_off_identity(
+            &router,
+            &db,
+            &namespace,
+            project,
+            &owner_active,
+            &owner_identity_ttl,
+            &space_access,
+            &space_revision,
+        )
+        .await;
+        assert_eq!(
+            owner_reads.load(Ordering::SeqCst),
+            0,
+            "policy-off case never needs an application-reader credential"
+        );
+        stub_task.abort();
+        let _ = stub_task.await;
+        return;
+    }
     available.store(false, Ordering::SeqCst);
     let (status, unavailable) = call(&router, "GET", &path, Some(FULL), Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{unavailable}");
@@ -810,6 +1024,16 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             .unwrap_err();
         assert!(error.to_string().contains("dependencies are immutable"));
     }
+    let heartbeat = json!({"operation":"heartbeat","fence":{
+        "assignment_id":reserved["assignment"]["assignment_id"],
+        "execution_id":reserved["assignment"]["execution_id"],
+        "lease_id":reserved["lease"]["lease_id"],
+        "fencing_token":reserved["assignment"]["fencing_token"],
+        "expected_lease_version":reserved["lease"]["version"]},
+        "idempotency_key":"owner-scoped-heartbeat"});
+    let lifecycle_path = format!("/api/v1/issues/{TASK}/sdlc/lifecycle");
+    let heartbeat_operation = format!("{lifecycle_path}/operations/owner-scoped-heartbeat");
+    let absent_result = format!("{lifecycle_path}/results/{}", Uuid::new_v4());
     let operation = format!("{reservations}/first-technical-admission");
     let (status, recovered) = call(&router, "GET", &operation, Some(SCHEDULER), Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{recovered}");
@@ -916,14 +1140,6 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         StatusCode::FORBIDDEN,
         "valid scheduler cannot start for a revoked owner"
     );
-    let heartbeat = json!({"operation":"heartbeat","fence":{
-        "assignment_id":reserved["assignment"]["assignment_id"],
-        "execution_id":reserved["assignment"]["execution_id"],
-        "lease_id":reserved["lease"]["lease_id"],
-        "fencing_token":reserved["assignment"]["fencing_token"],
-        "expected_lease_version":reserved["lease"]["version"]},
-        "idempotency_key":"owner-scoped-heartbeat"});
-    let lifecycle_path = format!("/api/v1/issues/{TASK}/sdlc/lifecycle");
     let (status, body) = call(
         &router,
         "POST",
@@ -937,8 +1153,6 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         StatusCode::FORBIDDEN,
         "revoked owner cannot renew a current execution: {body}"
     );
-    let heartbeat_operation = format!("{lifecycle_path}/operations/owner-scoped-heartbeat");
-    let absent_result = format!("{lifecycle_path}/results/{}", Uuid::new_v4());
     for endpoint in [&heartbeat_operation, &absent_result] {
         let (status, body) = call(&router, "GET", endpoint, Some(SCHEDULER), Value::Null).await;
         assert_eq!(

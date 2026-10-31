@@ -148,3 +148,37 @@ coordinator allowlist: выключенный read API не отменяет mig
 bindings и принимаются отдельно; не активируйте cohort по готовности Tracker.
 См. [контракт](IDENTITY_DELETION.md) и
 [ADR-0012](adr/0012-identity-deletion-owner.md).
+
+
+### Identity reader для передачи текущей стадии
+
+Human-origin execution требует действующего центрального владельца независимо
+от переключателей приложений и пространств. При включённой app policy используется
+существующий application-access reader. При выключенной — существующие
+`TT_SPACES__ADMISSION_TOKEN` и `TT_SPACES__ADMISSION_READER_SUBJECTS`: отдельная
+зарегистрированная service identity с `admin-panel:read`, как у reader рассылки.
+SDK подтверждает known/active immutable owner ID через Auth. Human PAT, generic
+machine writer и незарегистрированный reader этот режим не заменяют. Новые права
+пользователю не выдаются; запись ролей и admission policy не изменяется.
+
+Отсутствующая регистрация — явная неготовность execution, без legacy fallback.
+Политика приложений может быть выключена при включённой политике пространств;
+эта комбинация не требует application-access reader credential. Сроки исходной
+identity/token/policy сохраняются в запросе. Compose/Kubernetes provisioning и
+готовность полного установленного cohort проверяются отдельно от HTTP fixture.
+
+
+`APPLICATION_ACCESS_REQUIRED` подтверждается bridge при старте процесса и далее
+не перечитывается из env. Для проверки другой конфигурации нужен отдельный
+процесс; изменение env внутри работающего теста её не переключает. Активированная
+политика пространств не отключается обратным UPDATE. Варианты до активации и
+после неё квалифицируются на отдельных заполненных fixtures без ослабления guards.
+
+Адресные ручные gates: `app --test native_owner_space` (registration, original
+clock, disabled identity) и `api --test task_handoff` (owned fresh PostgreSQL).
+Последний запускается в двух отдельных процессах/свежих БД: обычный вариант и
+`TT_HANDOFF_POLICY_OFF_FIXTURE=true` до запуска binary. Оба теста ignored по
+умолчанию; рабочую БД не использовать. В policy-off варианте проверяются actual
+claim, deferred COMMIT expiry/rollback и original-key retry, затем однократная
+активация пространств и отзыв owner identity. HTTP owners остаются фикстурами;
+это не реальное исполнение Fleet/Workflow и не установленный runtime cohort.

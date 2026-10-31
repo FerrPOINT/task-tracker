@@ -29,6 +29,16 @@ impl PostgresSdlcRepository {
                     &["task-tracker", "fleet-control", "project-workflow", "ci-cd"],
                 )
                 .await?;
+        } else if let Some(native) = app::native_space_access::current()? {
+            if native.identity().subject != actor.subject || (require_write && !native.may_write())
+            {
+                return Err(AppError::Forbidden);
+            }
+            native
+                .require_known_owner(
+                    Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?,
+                )
+                .await?;
         }
         Ok(())
     }
@@ -143,6 +153,18 @@ impl PostgresSdlcRepository {
         let space = row.try_get::<bool>("", "enforced").map_err(map_db)?;
         let apps = app::native_space_access::application_policy_required().await?;
         if !space && !apps {
+            if let Some(native) = app::native_space_access::current()? {
+                if native.identity().subject != actor.subject || !native.may_write() {
+                    return Err(AppError::Forbidden);
+                }
+                native.confirmed_owner(
+                    Uuid::parse_str(&pending.receipt.actor_subject)
+                        .map_err(|_| AppError::Forbidden)?,
+                )?;
+                crate::guarded_db::bind_commit_clock(tx, native.validity()?.valid_until)
+                    .await
+                    .map_err(map_db)?;
+            }
             return Ok(());
         }
         let native = app::native_space_access::current()?.ok_or(AppError::Forbidden)?;
