@@ -383,7 +383,7 @@ impl TaskSourceRepository for PostgresSdlcRepository {
         let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load_read(&tx, task, actor).await?;
-        if state.retained_fields.contains_key("execution_handoff_id") {
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
             Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
         }
         let current = super::lifecycle::current(&tx, task).await?;
@@ -430,6 +430,9 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             .map(decode)
             .transpose()?;
         if let Some(binding) = &binding {
+            if actor.trusted_human {
+                spaces::require_resource_namespace(&binding.namespace)?;
+            }
             if binding.task_id != task
                 || binding.project_id != state.project_id
                 || binding.owner_subject != state.owner_subject

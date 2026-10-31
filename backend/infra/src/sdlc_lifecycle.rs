@@ -1450,7 +1450,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
-        if state.retained_fields.contains_key("execution_handoff_id") {
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
             Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
         }
         if !state.configured_cli() {

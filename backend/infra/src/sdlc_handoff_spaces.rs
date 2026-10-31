@@ -15,17 +15,29 @@ pub(super) struct OwnerDataAdmission {
 }
 impl OwnerDataAdmission {
     pub(super) fn current(&self) -> Result<(), AppError> {
-        if self.proof.is_current() {
-            Ok(())
-        } else {
-            Err(AppError::Forbidden)
-        }
+        self.check(false).map(|_| ())
+    }
+    fn active_dependency_spaces(&self) -> Result<Vec<SpaceRef>, AppError> {
+        self.check(true)?;
+        let admission = self.proof.admission().map_err(|_| AppError::Forbidden)?;
+        let now = chrono::Utc::now().timestamp();
+        Ok(self
+            .basis
+            .links
+            .iter()
+            .filter(|space| {
+                admission.has_active_space(
+                    &admission.identity,
+                    space,
+                    now,
+                    admission.validity.valid_until,
+                )
+            })
+            .cloned()
+            .collect())
     }
     fn check(&self, write: bool) -> Result<i64, AppError> {
-        let admission = self
-            .proof
-            .bounded_admission()
-            .map_err(|_| AppError::Forbidden)?;
+        let admission = self.proof.admission().map_err(|_| AppError::Forbidden)?;
         if admission.identity.subject != self.basis.owner {
             return Err(AppError::Forbidden);
         }
@@ -148,6 +160,68 @@ impl PostgresSdlcRepository {
         }
         Ok(Some(OwnerDataAdmission { basis, proof }))
     }
+    /// Freeze actual dependency identities in the existing execution ledger. The
+    /// renewable owner read proof never becomes a native write/launch capability.
+    pub(super) async fn freeze_handoff_dependencies(
+        tx: &DatabaseTransaction,
+        pending: &app::task_handoff::PendingHandoffMaterials,
+        assignment: Uuid,
+        actor: &Principal,
+        proof: Option<&OwnerDataAdmission>,
+        observed: &app::task_handoff_observations::MatchedHandoffInputs,
+    ) -> Result<(), AppError> {
+        let Some(native) = app::native_space_access::current()? else {
+            return Ok(());
+        };
+        if native.identity().subject != actor.subject || !native.may_write() {
+            return Err(AppError::Forbidden);
+        }
+        let allowed = proof
+            .map(OwnerDataAdmission::active_dependency_spaces)
+            .transpose()?;
+        tx.query_one(statement(
+            "SELECT project_id FROM tracker_project_space_sets WHERE project_id=$1 FOR SHARE",
+            vec![pending.receipt.project_id.into()],
+        ))
+        .await
+        .map_err(map_db)?;
+        let rows=tx.query_all(statement("SELECT c.registry_instance_id,c.space_id,c.state FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id) WHERE l.project_id=$1 ORDER BY c.registry_instance_id,c.space_id FOR SHARE OF c",vec![pending.receipt.project_id.into()])).await.map_err(map_db)?;
+        let linked = !rows.is_empty();
+        let mut spaces = Vec::new();
+        for row in rows {
+            let space = SpaceRef {
+                registry_instance_id: row.try_get("", "registry_instance_id").map_err(map_db)?,
+                space_id: row.try_get("", "space_id").map_err(map_db)?,
+            };
+            if row.try_get::<String>("", "state").map_err(map_db)? == "active"
+                && allowed
+                    .as_ref()
+                    .is_none_or(|allowed| allowed.contains(&space))
+            {
+                spaces.push(space)
+            }
+        }
+        if linked && spaces.is_empty() {
+            return Err(AppError::Forbidden);
+        }
+        spaces.push(SpaceRef {
+            registry_instance_id: pending.source.namespace.registry_instance_id,
+            space_id: pending.source.namespace.namespace_id,
+        });
+        spaces.sort_by_key(|s| (s.registry_instance_id, s.space_id));
+        spaces.dedup();
+        let until: chrono::DateTime<chrono::Utc> =
+            serde_json::from_value(observed.audit()["valid_until"].clone())
+                .map_err(AppError::internal)?;
+        let mut expiry = until.timestamp().min(native.validity()?.valid_until);
+        if let Some(proof) = proof {
+            expiry = expiry.min(proof.check(true)?);
+        }
+        crate::guarded_db::bind_commit_clock(tx, expiry)
+            .await
+            .map_err(map_db)?;
+        exec(tx,"INSERT INTO tracker_execution_space_grants(assignment_id,task_id,project_id,origin,assignment_version,spaces,required_wiki_space,original_actor,initial_valid_until) VALUES($1,$2,$3,'delivery',NULL,$4,NULL,$5,$6)",vec![assignment.into(),pending.receipt.task_id.into(),pending.receipt.project_id.into(),json_value(&spaces)?,json!({"issuer":native.identity().issuer,"subject":pending.receipt.actor_subject}).into(),expiry.into()]).await
+    }
     pub(super) async fn bind_owner_data(
         tx: &DatabaseTransaction,
         state: &TaskState,
@@ -162,7 +236,18 @@ impl PostgresSdlcRepository {
         if proof.basis != basis {
             return Err(AppError::conflict("current owner data scope changed"));
         }
-        crate::guarded_db::bind_commit_clock(tx, proof.check(write)?)
+        let expiry = proof.check(write)?;
+        // Wire export rounds to whole seconds; a local proof retains its exact
+        // original monotonic deadline, including its last partial second.
+        let wall = chrono::Utc::now();
+        let remaining = proof
+            .proof
+            .monotonic_deadline()
+            .checked_duration_since(std::time::Instant::now())
+            .ok_or(AppError::Forbidden)?;
+        let deadline = wall + chrono::Duration::from_std(remaining).map_err(AppError::internal)?;
+        let original = chrono::DateTime::from_timestamp(expiry, 0).ok_or(AppError::Forbidden)?;
+        crate::guarded_db::bind_commit_deadline(tx, deadline.min(original))
             .await
             .map_err(map_db)
     }

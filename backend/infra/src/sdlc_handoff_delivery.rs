@@ -51,6 +51,16 @@ impl PostgresSdlcRepository {
         let row=tx.query_one(statement("SELECT a.command_hash,o.result,m.source_binding FROM task_handoff_delivery_adoptions a JOIN task_handoff_delivery_outcomes o USING(handoff_id) JOIN task_handoff_materials m USING(task_id,handoff_id) WHERE a.task_id=$1 AND a.actor_subject=$2 AND a.idempotency_key=$3",vec![task.into(),actor.subject.clone().into(),key.into()])).await.map_err(map_db)?;
         let Some(row) = row else {
             tx.commit().await.map_err(map_db)?;
+            // A missing key does not bypass the data boundary or expose which
+            // original operations exist. No owner HTTP may hold this lock open.
+            let owner_data = self.owner_data_admission(task, actor, None).await?;
+            let tx = self.db.begin().await.map_err(map_db)?;
+            let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+            tx.commit().await.map_err(map_db)?;
+            if let Some(owner_data) = owner_data {
+                owner_data.current()?;
+            }
             return Ok(None);
         };
         let source: domain::sdlc_source::TaskSourceBinding =
@@ -287,6 +297,15 @@ impl PostgresSdlcRepository {
             .assignment
             .as_ref()
             .ok_or_else(|| AppError::conflict("actual assignment missing"))?;
+        Self::freeze_handoff_dependencies(
+            &tx,
+            &pending,
+            assignment.assignment_id,
+            actor,
+            owner_data.as_ref(),
+            observed,
+        )
+        .await?;
         let role: TaskExecutionRole = serde_json::from_value(
             serde_json::to_value(assignment.role).map_err(AppError::internal)?,
         )

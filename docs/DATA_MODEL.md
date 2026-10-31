@@ -71,6 +71,15 @@ fallback Unknown для действительных состояний моде
 Обратный переход на старые writers или destructive down-migration не допускается;
 rollback использует совместимые образы и сохраняет новую модель и данные.
 
+Техническая передача текущего этапа сохраняет зависимости в существующем
+`tracker_execution_space_grants` с origin `delivery` (аддитивная118). Состав —
+подтверждённые активные пространства проекта и точный источник репозитория;
+пространства, к которым владелец не допущен, в него не попадают. Это неизменяемая
+история реального assignment/hold, а не возобновляемый допуск. Повтор команды не
+продлевает `initial_valid_until`; его истечение не снимает hold и не доказывает drain.
+Существующие PM/Analysis receipts сохраняют свои схемы. Привязка проверяется при
+commit той же транзакции; отдельный независимо изменяемый реестр не создаётся.
+
 Terminal-idle checkpoint permits reuse the existing `sdlc_idempotency` ledger;
 no migration, canonical lease update, business-state save or outbox write is
 introduced. Replay preserves permit identity/expiry and refreshes only readback

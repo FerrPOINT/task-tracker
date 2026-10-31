@@ -37,6 +37,7 @@ struct Owners {
     owner_apps: Arc<AtomicBool>,
     space_access: Arc<AtomicBool>,
     space_revision: Arc<AtomicUsize>,
+    allowed_spaces: Vec<shared::space_access::SpaceRef>,
     owner_reads: Arc<AtomicUsize>,
     change_during_lookup: Arc<AtomicBool>,
     db: Arc<sea_orm::DatabaseConnection>,
@@ -121,7 +122,7 @@ async fn space_decision(
     let now = chrono::Utc::now().timestamp();
     let spaces = query["spaces"].as_array().unwrap();
     let selected = if s.space_access.load(Ordering::SeqCst) {
-        query["spaces"].clone()
+        json!(s.allowed_spaces)
     } else {
         json!([])
     };
@@ -318,6 +319,8 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         registry_instance_id: Uuid::new_v4(),
         namespace_id: Uuid::new_v4(),
     };
+    let project_a = Uuid::new_v4();
+    let project_b = Uuid::new_v4();
     let binding = json!({"schema_version":1,"namespace":namespace,"resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
         "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
     db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
@@ -376,6 +379,16 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         owner_apps: owner_apps.clone(),
         space_access: space_access.clone(),
         space_revision: space_revision.clone(),
+        allowed_spaces: vec![
+            shared::space_access::SpaceRef {
+                registry_instance_id: namespace.registry_instance_id,
+                space_id: namespace.namespace_id,
+            },
+            shared::space_access::SpaceRef {
+                registry_instance_id: namespace.registry_instance_id,
+                space_id: project_a,
+            },
+        ],
         owner_reads: owner_reads.clone(),
         change_during_lookup: change_during_lookup.clone(),
         db: db.clone(),
@@ -753,6 +766,50 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert!(reserved["binding"].is_null() && reserved["result"].is_null());
     assert_eq!(reserved["task"]["stage"], "Review");
     assert_eq!(reserved["task"]["runtime"], "reserved");
+    let frozen=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT origin,spaces,original_actor FROM tracker_execution_space_grants WHERE assignment_id=$1",vec![Uuid::parse_str(reserved["assignment"]["assignment_id"].as_str().unwrap()).unwrap().into()])).await.unwrap().expect("real technical assignment must freeze its archive dependencies");
+    assert_eq!(frozen.try_get::<String>("", "origin").unwrap(), "delivery");
+    assert_eq!(
+        frozen.try_get::<Value>("", "spaces").unwrap(),
+        json!([{"registry_instance_id":namespace.registry_instance_id,"space_id":namespace.namespace_id}])
+    );
+    assert_eq!(
+        frozen.try_get::<Value>("", "original_actor").unwrap(),
+        json!({"issuer":issuer,"subject":OWNER})
+    );
+
+    let original_dependency_expiry = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT initial_valid_until FROM tracker_execution_space_grants WHERE assignment_id=$1",
+            vec![
+                Uuid::parse_str(reserved["assignment"]["assignment_id"].as_str().unwrap())
+                    .unwrap()
+                    .into(),
+            ],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "initial_valid_until")
+        .unwrap();
+    for statement in [
+        "UPDATE tracker_execution_space_grants SET original_actor='{}' WHERE assignment_id=$1",
+        "DELETE FROM tracker_execution_space_grants WHERE assignment_id=$1",
+    ] {
+        let error = db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                statement,
+                vec![
+                    Uuid::parse_str(reserved["assignment"]["assignment_id"].as_str().unwrap())
+                        .unwrap()
+                        .into(),
+                ],
+            ))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("dependencies are immutable"));
+    }
     let operation = format!("{reservations}/first-technical-admission");
     let (status, recovered) = call(&router, "GET", &operation, Some(SCHEDULER), Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{recovered}");
@@ -825,7 +882,10 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     );
     // The original human space grant is separate from a valid native credential
     // and from current application access. Recheck it for native reads/recovery.
-    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES($1,$2,$3)",vec![project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into()])).await.unwrap();
+    for space in [project_a, project_b] {
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES($1,$2,1,'active','{}')",vec![namespace.registry_instance_id.into(),space.into()])).await.unwrap();
+        db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES($1,$2,$3)",vec![project.into(),namespace.registry_instance_id.into(),space.into()])).await.unwrap();
+    }
     db.execute_unprepared("UPDATE tracker_space_admission_state SET active=true WHERE singleton")
         .await
         .unwrap();
@@ -856,16 +916,310 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         StatusCode::FORBIDDEN,
         "valid scheduler cannot start for a revoked owner"
     );
+    let second_execution_read = format!("{second_path}/execution");
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            &second_execution_read,
+            Some(SCHEDULER),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "unclaimed materials are also private owner data"
+    );
+    let absent_original = format!("{reservations}/absent-original-key");
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            &absent_original,
+            Some(SCHEDULER),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "missing operations cannot bypass the owner data boundary"
+    );
     // This explicitly ignored integration fixture uses a 2s original owner TTL;
     // no production timeout/assertion is shortened to make an automatic test pass.
     tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
     space_revision.store(2, Ordering::SeqCst);
     space_access.store(true, Ordering::SeqCst);
+    let probe_actor = app::space_access::CENTRAL_BRIDGE
+        .try_verified_token(TRACKER)
+        .await
+        .unwrap();
+    let probe_spaces = [
+        shared::space_access::SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: project_a,
+        },
+        shared::space_access::SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: project_b,
+        },
+        shared::space_access::SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: namespace.namespace_id,
+        },
+    ];
+    let probe = app::space_access::admission_client()
+        .await
+        .unwrap()
+        .confirm_many_read(
+            &app::space_access::CENTRAL_BRIDGE,
+            &probe_actor,
+            &probe_spaces,
+        )
+        .await
+        .unwrap();
+    let partial = probe.monotonic_deadline() - std::time::Duration::from_millis(900);
+    tokio::time::sleep_until(partial.into()).await;
+    assert!(
+        probe.is_current(),
+        "the original local decision is still current"
+    );
+    assert!(
+        probe.bounded_admission().is_err(),
+        "a partial second cannot be exported as new whole-second wire metadata"
+    );
     for endpoint in &protected {
         let (status, body) = call(&router, "GET", endpoint, Some(SCHEDULER), Value::Null).await;
         assert_eq!(status, StatusCode::OK, "{endpoint}: {body}");
     }
+    tokio::time::sleep_until(
+        (probe.monotonic_deadline() + std::time::Duration::from_millis(25)).into(),
+    )
+    .await;
+    let (status, pending_context) = call(
+        &router,
+        "GET",
+        &second_execution_read,
+        Some(SCHEDULER),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{pending_context}");
+    assert!(pending_context["assignment"].is_null());
+    assert_eq!(
+        call(
+            &router,
+            "GET",
+            &absent_original,
+            Some(SCHEDULER),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // A genuine human Tracker PAT keeps its own read context. Native owner's
+    // machine restriction must not replace this independent human authorization.
+    use domain::sdlc_lifecycle::LifecycleRepository;
+    unsafe {
+        std::env::set_var(
+            "TT_NAMESPACE__INSTANCE_ID",
+            "40000000-0000-4000-8000-000000000001",
+        );
+    }
+    let verified_human = app::space_access::CENTRAL_BRIDGE
+        .try_verified_token(TRACKER)
+        .await
+        .unwrap();
+    assert_eq!(verified_human.subject_role.as_deref(), Some("user"));
+    let human = Principal {
+        subject: OWNER.into(),
+        trusted_human: true,
+        human_session: false,
+        scopes: ["task-tracker:read".into()].into(),
+    };
+    let user = shared::UserId::from_uuid(OWNER.parse().unwrap());
+    let human_spaces = [
+        shared::space_access::SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: project_a,
+        },
+        shared::space_access::SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: namespace.namespace_id,
+        },
+    ];
+    let proof = app::space_access::admission_client()
+        .await
+        .unwrap()
+        .confirm_many_read(
+            &app::space_access::CENTRAL_BRIDGE,
+            &verified_human,
+            &human_spaces,
+        )
+        .await
+        .unwrap();
+    let spaces =
+        app::space_access::SpaceActor::from_read_proof(user, &verified_human, &proof).unwrap();
+    let frame = Arc::new(
+        app::space_access::CentralRequestContext::verified(
+            user,
+            &verified_human,
+            Some(spaces),
+            app::space_access::RequestOperation::Read,
+        )
+        .unwrap(),
+    );
+    let current = app::space_access::with_request_context(
+        frame.clone(),
+        repository.lifecycle_read(TASK.parse().unwrap(), &human),
+    )
+    .await
+    .expect("a human Tracker reader can inspect project runtime without a native credential");
+    assert_eq!(
+        current.runtime_state,
+        domain::sdlc_lifecycle::RuntimeState::Reserved
+    );
+    let source = app::space_access::with_request_context(
+        frame,
+        repository.task_source(TASK.parse().unwrap(), &human),
+    )
+    .await
+    .expect("the human source reader has explicit source C confirmation");
+    assert!(matches!(
+        source,
+        domain::sdlc_source::TaskSourceReadback::Blocked {
+            binding: Some(_),
+            ..
+        }
+    ));
+    let narrow = app::space_access::admission_client()
+        .await
+        .unwrap()
+        .confirm_many_read(
+            &app::space_access::CENTRAL_BRIDGE,
+            &verified_human,
+            &human_spaces[..1],
+        )
+        .await
+        .unwrap();
+    let narrow =
+        app::space_access::SpaceActor::from_read_proof(user, &verified_human, &narrow).unwrap();
+    let frame = Arc::new(
+        app::space_access::CentralRequestContext::verified(
+            user,
+            &verified_human,
+            Some(narrow),
+            app::space_access::RequestOperation::Read,
+        )
+        .unwrap(),
+    );
+    assert!(
+        app::space_access::with_request_context(
+            frame.clone(),
+            repository.lifecycle_read(TASK.parse().unwrap(), &human)
+        )
+        .await
+        .is_ok(),
+        "project runtime remains readable through A alone"
+    );
+    assert!(
+        app::space_access::with_request_context(
+            frame,
+            repository.task_source(TASK.parse().unwrap(), &human)
+        )
+        .await
+        .is_err(),
+        "project A visibility must not borrow source C metadata missing from this confirmed context"
+    );
     available.store(true, Ordering::SeqCst);
+    // The caller authority below is synthetic; actual public owner commands
+    // and real technical assignments/holds exercise the namespace drain query.
+    use shared::{
+        space_access::{AdmissionValidity, CentralIdentity, SpaceRef},
+        space_lifecycle::{
+            DesiredSpaceState, SpaceMetadata, SpaceOwnerAuthority, SpaceOwnerCommandV2,
+        },
+    };
+    let owner_instance = Uuid::parse_str("40000000-0000-4000-8000-000000000001").unwrap();
+    unsafe {
+        std::env::set_var(
+            "TT_NAMESPACE__REGISTRY_INSTANCE_ID",
+            namespace.registry_instance_id.to_string(),
+        );
+        std::env::set_var("TT_NAMESPACE__INSTANCE_ID", owner_instance.to_string());
+    }
+    let now = chrono::Utc::now().timestamp();
+    let authority = SpaceOwnerAuthority::confirmed(
+        CentralIdentity {
+            issuer: issuer.clone(),
+            subject: Uuid::new_v4().to_string(),
+        },
+        AdmissionValidity::confirmed(now, now + 60, i64::MAX).unwrap(),
+    )
+    .unwrap();
+    let mut ca = SpaceOwnerCommandV2 {
+        schema_version: 2,
+        space: SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: project_a,
+        },
+        participant_instance_id: owner_instance,
+        operation_id: Uuid::new_v4(),
+        revision: 1,
+        desired_state: DesiredSpaceState::Active,
+        metadata: SpaceMetadata {
+            slug: "project-alpha".into(),
+            name: "Project Alpha".into(),
+            description: "Owned integration fixture".into(),
+            responsible_subject: OWNER.into(),
+        },
+    };
+    let mut cb = ca.clone();
+    cb.space.space_id = project_b;
+    cb.operation_id = Uuid::new_v4();
+    cb.metadata.slug = "project-beta".into();
+    for command in [&ca, &cb] {
+        assert!(
+            infra::space_owner::apply(&db, command, &authority)
+                .await
+                .unwrap()
+                .matches(command)
+        );
+    }
+    // The SDK fixture retains its earlier Active observation; the local archive
+    // barrier must win inside that bounded decision window.
+    ca.operation_id = Uuid::new_v4();
+    ca.revision = 2;
+    ca.desired_state = DesiredSpaceState::Archived;
+    assert!(
+        infra::space_owner::apply(&db, &ca, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "the first execution only retained C, before M:N activation"
+    );
+    assert_eq!(
+        call(
+            &router,
+            "POST",
+            &second_reservations,
+            Some(SCHEDULER_WRITE),
+            second_reservation.clone()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "a stale Active decision cannot start through local archived A or ungranted B"
+    );
+    ca.operation_id = Uuid::new_v4();
+    ca.revision = 3;
+    ca.desired_state = DesiredSpaceState::Active;
+    assert!(
+        infra::space_owner::apply(&db, &ca, &authority)
+            .await
+            .unwrap()
+            .matches(&ca)
+    );
     // Delay the short original space clock only in a transaction that actually
     // inserted this task's adoption. A sequence proves the COMMIT path ran even
     // though all task/assignment/hold/operation writes must roll back.
@@ -896,6 +1250,19 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert_eq!(status, StatusCode::CREATED, "{second_execution}");
     assert_eq!(second_execution["task"]["stage"], "Development");
     assert_eq!(second_execution["task"]["status"], "InProgress");
+    let scope=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT spaces,initial_valid_until FROM tracker_execution_space_grants WHERE assignment_id=$1",vec![Uuid::parse_str(second_execution["assignment"]["assignment_id"].as_str().unwrap()).unwrap().into()])).await.unwrap().unwrap();
+    let scopes = scope.try_get::<Value>("", "spaces").unwrap();
+    let mut expected = vec![
+        json!({"registry_instance_id":namespace.registry_instance_id,"space_id":project_a}),
+        json!({"registry_instance_id":namespace.registry_instance_id,"space_id":namespace.namespace_id}),
+    ];
+    expected.sort_by_key(|space| space["space_id"].as_str().unwrap().to_owned());
+    assert_eq!(
+        scopes,
+        json!(expected),
+        "freeze admitted project A and source C; B is not a dependency"
+    );
+
     tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
     space_revision.store(3, Ordering::SeqCst);
     space_access.store(false, Ordering::SeqCst);
@@ -920,6 +1287,48 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         .0,
         StatusCode::FORBIDDEN,
         "original operation replay is also subject to current data admission"
+    );
+    assert!(
+        scope.try_get::<i64>("", "initial_valid_until").unwrap() <= chrono::Utc::now().timestamp()
+    );
+    cb.operation_id = Uuid::new_v4();
+    cb.revision = 2;
+    cb.desired_state = DesiredSpaceState::Archived;
+    assert!(
+        infra::space_owner::apply(&db, &cb, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "ungranted B must not wait for A/C work"
+    );
+    ca.operation_id = Uuid::new_v4();
+    ca.revision = 4;
+    ca.desired_state = DesiredSpaceState::Archived;
+    assert!(
+        !infra::space_owner::apply(&db, &ca, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "expired admission and revoked access do not release A's actual hold"
+    );
+    let old = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT initial_valid_until FROM tracker_execution_space_grants WHERE assignment_id=$1",
+            vec![
+                Uuid::parse_str(reserved["assignment"]["assignment_id"].as_str().unwrap())
+                    .unwrap()
+                    .into(),
+            ],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "initial_valid_until")
+        .unwrap();
+    assert_eq!(
+        old, original_dependency_expiry,
+        "replay never renews frozen dependency admission"
     );
     stub_task.abort();
     let _ = stub_task.await;

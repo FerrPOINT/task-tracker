@@ -336,8 +336,11 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
                 )
                 .await?;
         }
+        let owner_data = self.owner_data_admission(task, actor, None).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let pending = self.pending_handoff_locked(&tx, task, actor, true).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
         if pending.receipt.handoff_id != first.receipt.handoff_id
             || pending.receipt.actor_subject != first.receipt.actor_subject
         {
@@ -366,6 +369,9 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
         }
         let execution = app::task_handoff::seed_current_stage(&pending)?;
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = owner_data {
+            owner_data.current()?;
+        }
         Ok(execution)
     }
 
