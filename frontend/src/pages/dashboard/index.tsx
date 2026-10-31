@@ -1,7 +1,6 @@
 import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
-  Badge,
   Button,
   PageHeader,
   SectionHeader,
@@ -16,7 +15,7 @@ import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useTranslation } from 'react-i18next'
 
 import { useDashboard } from '@/shared/api/hooks'
-import { statusLabel } from '@/shared/lib/status-label'
+import { IssueLifecycleSummary } from '@/features/issues/ui/IssueLifecycleSummary'
 import { useAuthStore } from '@/shared/auth/store'
 import { usePlatformReadiness } from '@pdlc/ui/platform'
 
@@ -91,9 +90,10 @@ export function DashboardPage() {
                           {item.summary}
                         </span>
                       </span>
-                      <Badge tone="muted" className="w-fit">
-                        {statusLabel(item.status, t)}
-                      </Badge>
+                      <IssueLifecycleSummary
+                        lifecycle={item.lifecycle}
+                        legacyStatus={item.status}
+                      />
                     </Link>
                   </ResourceListRow>
                 ))}

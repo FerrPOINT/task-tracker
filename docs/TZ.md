@@ -28,14 +28,25 @@ recovery, not a new Draft or owner answer. The existing task/chat/business input
 is retained and unknown/pending effects block retry. Source candidate only:
 [contract](contracts/pm-bootstrap-technical-retry.md); no installed acceptance.
 
-Видимые действия создания задачи в header/mobile navigation, backlog (включая
-пустой список) и колонках board открывают пустой чат PM в Fleet. Выбранный ключ
-проекта разрешается через существующий GET проекта в immutable UUID для
-`/chats/new?project=<UUID>`. Адрес Fleet берётся только из публичного каталога
-Base или настроенного host bridge; недоступный mapping показывает ошибку без
-ручного fallback. До первого сообщения пользователя задача не создаётся.
-Прежние `/issues/create` и API создания остаются для совместимости. Отправка
-navigation request не считается подтверждением принятого host маршрута.
+## Единая модель задач по умолчанию
+
+Согласованная цель текущего кандидата: каждый проект, включая проект без
+пространства, получает девять стадий Draft, Backlog, Analysis, Architecture,
+Development, Review, Testing, Rework и Deployment. Операционный статус — Ready,
+InProgress или Completed — независим от стадии и состояния агента. Произвольные
+исторические workflow сохраняются для чтения и не изменяют этот каталог.
+
+Видимые действия создания задачи в header/mobile navigation, backlog и доске
+открывают обычную форму `/issues/create` с выбранным проектом. Любой тип задачи
+атомарно получает Draft/Ready без Fleet, Workflow и настройки агентов.
+Человек ведёт задачу через общие серверные переходы с ревизией и повторяемым
+ключом команды. Запуск агента — отдельное явное действие для текущего этапа,
+после проверки материалов, полномочий и готовности исполнения. PM-чат остаётся
+отдельным агентным сценарием и не является обязательным способом создания.
+
+[Контракт и текущие границы реализации](plans/unified-task-lifecycle-20261030.md).
+Следующие исторические агентные контракты описывают исполнение и квитанции,
+а не требование настраивать SDLC ради обычной задачи.
 
 Bounded source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md).
 Single-task candidate refs are server allocated under owner project policy and

@@ -668,6 +668,20 @@ impl TaskState {
                 && confirmation.stage == self.confirmation_stage()
         })
     }
+    /// Historical execution data is retained, but it is no longer live authority.
+    pub fn manual_context(&self, actor: &Principal) -> SdlcContext {
+        let mut context = self.context(actor);
+        context.assignment = None;
+        context.expected_assignment_version = None;
+        context.critical_review = None;
+        context.permissions = Permissions {
+            can_answer: false,
+            can_confirm: false,
+        };
+        context.waiting_reason = Some("manual_control".into());
+        context
+    }
+
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
             && self.clarifying()
@@ -800,6 +814,16 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn prepare_current_stage_handoff(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+    ) -> Result<crate::task_handoff::PreparedCurrentStageHandoff, AppError> {
+        Err(AppError::Unavailable(
+            "current_stage_handoff_not_configured".into(),
+        ))
+    }
+
     fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
         None
     }

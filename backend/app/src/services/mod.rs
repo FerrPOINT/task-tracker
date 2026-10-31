@@ -1,5 +1,5 @@
 mod helpers;
-pub use helpers::default_board_columns;
+pub use helpers::{default_board_columns, project_board_columns};
 
 pub mod admin;
 pub mod attachment;
@@ -51,3 +51,5 @@ pub use worklog::WorklogServiceImpl;
 
 #[cfg(test)]
 mod tests;
+
+pub mod task_lifecycle;

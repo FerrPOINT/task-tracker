@@ -82,6 +82,17 @@ impl Compiler {
             Field::Text => self.full_text(operator, values),
             Field::Status => self.status_clause("s.name", operator, values),
             Field::StatusCategory => self.status_clause("s.category", operator, values),
+            Field::Stage | Field::LifecycleStatus => {
+                let column = if field == Field::Stage {
+                    "task_lifecycle_effective_stage(t.state)"
+                } else {
+                    "task_lifecycle_effective_status(t.state)"
+                };
+                let predicate = self.case_insensitive_scalar_clause(column, operator, values)?;
+                Ok(format!(
+                    "EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=i.id AND {predicate})"
+                ))
+            }
             Field::Labels => self.label_clause(operator, values),
             Field::Sprint => self.sprint_clause(operator, values),
             Field::Assignee | Field::Reporter => self.user_clause(field, operator, values),
@@ -170,8 +181,13 @@ impl Compiler {
         values: &[Value],
     ) -> Result<String, JqlCompileError> {
         let predicate = self.case_insensitive_comparison(column, operator, values, false)?;
+        let identity = if column == "s.name" {
+            "COALESCE(task_lifecycle_legacy_status_id(i.status_id), i.status_id)"
+        } else {
+            "i.status_id"
+        };
         Ok(format!(
-            "EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND {predicate})"
+            "EXISTS (SELECT 1 FROM statuses s WHERE s.id = {identity} AND {predicate})"
         ))
     }
 
@@ -419,7 +435,7 @@ mod tests {
 
         assert_eq!(
             query.predicate,
-            "(EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (LOWER(s.name) = $1)) AND (i.tsv_search @@ websearch_to_tsquery('simple', $2)))"
+            "(EXISTS (SELECT 1 FROM statuses s WHERE s.id = COALESCE(task_lifecycle_legacy_status_id(i.status_id), i.status_id) AND (LOWER(s.name) = $1)) AND (i.tsv_search @@ websearch_to_tsquery('simple', $2)))"
         );
         assert_eq!(
             query.parameters,

@@ -7,6 +7,8 @@ export interface SearchFilters {
   q?: string
   project_key?: string
   status?: string
+  lifecycle_stage?: components['schemas']['LifecycleStage']
+  lifecycle_status?: components['schemas']['LifecycleStatus']
   assignee_id?: string
   priority?: string
   sort_by?: string
@@ -30,6 +32,8 @@ export async function searchIssues(filters: SearchFilters = {}): Promise<Issue[]
           q: filters.q,
           project_key: filters.project_key,
           status: filters.status,
+          lifecycle_stage: filters.lifecycle_stage,
+          lifecycle_status: filters.lifecycle_status,
           assignee_id: filters.assignee_id,
           priority: filters.priority,
           sort_by: filters.sort_by,

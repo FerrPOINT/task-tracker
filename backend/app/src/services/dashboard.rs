@@ -44,6 +44,7 @@ impl crate::context::DashboardService for DashboardServiceImpl {
             })
             .await?;
         let dtos = super::helpers::build_issue_dtos_for_dashboard(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),

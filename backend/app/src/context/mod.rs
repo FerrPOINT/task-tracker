@@ -57,6 +57,7 @@ pub struct AppContext {
 
 #[derive(Clone)]
 pub struct Services {
+    pub task_lifecycle: Arc<crate::services::task_lifecycle::TaskLifecycleService>,
     pub auth: Arc<dyn AuthService>,
     pub totp: Arc<dyn TotpService>,
     pub oidc: Option<Arc<crate::oidc::OidcService>>,
@@ -204,6 +205,12 @@ impl AppContext {
             events: events.clone(),
             authz: authz.clone(),
             services: Services {
+                task_lifecycle: Arc::new(
+                    crate::services::task_lifecycle::TaskLifecycleService::new(
+                        repos.issues.clone(),
+                        authz.clone(),
+                    ),
+                ),
                 auth,
                 totp,
                 oidc,

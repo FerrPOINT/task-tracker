@@ -55,6 +55,8 @@ impl crate::context::SearchService for SearchServiceImpl {
             query.limit = 50;
         }
         query.offset = filters.offset.unwrap_or(0);
+        super::helpers::apply_task_lifecycle_filters(self.issues.as_ref(), &filters, &mut query)
+            .await?;
         // Relevance is undefined for LIKE search, so the default ordering is
         // recency: newest hits first. ASC would bury freshly created issues
         // behind hundreds of older matches on the first page.
@@ -143,8 +145,10 @@ impl crate::context::SearchService for SearchServiceImpl {
                 query.jql_user_id = Some(UserId::from_uuid(uuid));
             }
         }
+        super::helpers::finalize_task_lifecycle_query(self.issues.as_ref(), &mut query).await?;
         let issues = self.issues.list(query).await?;
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),

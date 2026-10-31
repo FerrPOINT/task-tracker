@@ -51,6 +51,7 @@ impl IssueServiceImpl {
     ) -> Result<Option<IssueDto>, AppError> {
         match self.issues.get_by_id_include_deleted(issue_id).await {
             Ok(original) => super::helpers::build_issue_dtos_with_projects(
+                self.issues.clone(),
                 Arc::clone(&self.projects),
                 Arc::clone(&self.users),
                 Arc::clone(&self.labels),
@@ -343,6 +344,7 @@ impl crate::context::IssueService for IssueServiceImpl {
                             other => other,
                         })?;
                     return super::helpers::build_issue_dtos_with_projects(
+                        self.issues.clone(),
                         Arc::clone(&self.projects),
                         Arc::clone(&self.users),
                         Arc::clone(&self.labels),
@@ -367,11 +369,20 @@ impl crate::context::IssueService for IssueServiceImpl {
                 "description must not exceed 100000 characters",
             ));
         }
+        let lifecycle_status = self.issues.initial_task_lifecycle_status().await?;
         let status_id = StatusId::from_uuid(
             cmd.status_id
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?,
         );
+        let status_id = if let Some(initial) = lifecycle_status {
+            if status_id.as_uuid() != uuid::Uuid::from_u128(1) && status_id != initial {
+                return Err(AppError::conflict("new_task_requires_draft_ready"));
+            }
+            initial
+        } else {
+            status_id
+        };
         match self.statuses.get_by_id(status_id).await {
             Ok(_) => {}
             Err(AppError::NotFound(_)) => return Err(AppError::invalid_input("status_id")),
@@ -478,6 +489,11 @@ impl crate::context::IssueService for IssueServiceImpl {
         let issue = issue.ok_or_else(|| {
             AppError::conflict("could not allocate a unique issue key, try again")
         })?;
+        let issue = if lifecycle_status.is_some() {
+            self.issues.get_by_id(issue.id).await?
+        } else {
+            issue
+        };
         self.events.publish(shared::TrackerEvent::IssueCreated {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
@@ -497,6 +513,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             .await;
         }
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -510,6 +527,9 @@ impl crate::context::IssueService for IssueServiceImpl {
         &self,
         cmd: crate::commands::TransitionIssueCommand,
     ) -> Result<IssueDto, AppError> {
+        if self.issues.task_lifecycle_active().await? {
+            return Err(AppError::conflict("task_lifecycle_transition_required"));
+        }
         let issue = self.issues.get_by_id(cmd.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, cmd.actor_id)
@@ -523,6 +543,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         }
         if cmd.target_status_id == issue.status_id {
             return super::helpers::build_issue_dtos_with_projects(
+                self.issues.clone(),
                 Arc::clone(&self.projects),
                 Arc::clone(&self.users),
                 Arc::clone(&self.labels),
@@ -586,6 +607,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         )
         .await;
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -636,6 +658,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             .await?;
         let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
         super::helpers::build_issue_dto(
+            self.issues.clone(),
             self.users.clone(),
             self.labels.clone(),
             issue,
@@ -657,6 +680,9 @@ impl crate::context::IssueService for IssueServiceImpl {
         let project = self.projects.get_by_id(issue.project_id).await?;
         let previous_assignee_id = issue.assignee_id;
 
+        if cmd.status_id.is_some() && self.issues.task_lifecycle_active().await? {
+            return Err(AppError::conflict("task_lifecycle_transition_required"));
+        }
         let status_change = if let Some(status_id) = cmd.status_id.as_deref() {
             let sid = status_id
                 .parse()
@@ -817,6 +843,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             .await;
         }
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -843,6 +870,8 @@ impl crate::context::IssueService for IssueServiceImpl {
             query.limit = 50;
         }
         query.offset = filters.offset.unwrap_or(0);
+        super::helpers::apply_task_lifecycle_filters(self.issues.as_ref(), &filters, &mut query)
+            .await?;
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
             query.search_text = Some(q.to_string());
         }
@@ -927,8 +956,10 @@ impl crate::context::IssueService for IssueServiceImpl {
                 query.jql_user_id = Some(UserId::from_uuid(uuid));
             }
         }
+        super::helpers::finalize_task_lifecycle_query(self.issues.as_ref(), &mut query).await?;
         let issues = self.issues.list(query).await?;
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -956,6 +987,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             })
             .await?;
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -991,6 +1023,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             project_key: project.key.to_string(),
         });
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
@@ -1055,6 +1088,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         };
         let issues = self.issues.list(query).await?;
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),

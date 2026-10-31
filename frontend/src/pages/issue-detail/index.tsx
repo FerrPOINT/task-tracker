@@ -48,7 +48,7 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import { useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
@@ -79,7 +79,6 @@ export function IssueDetailPage() {
     onCopied: () => toast.success(t('issue.keyCopied')),
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
-  const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
@@ -268,7 +267,6 @@ export function IssueDetailPage() {
               <CardContent className="text-sm">
                 <IssueMetaEditor
                   issue={issue}
-                  columns={boardQuery.data?.columns ?? []}
                   sprints={sprintsQuery.data ?? []}
                   disabled={updateIssue.isPending}
                   onChange={(patch) =>

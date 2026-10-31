@@ -1,3 +1,4 @@
+import { IssueLifecycleSummary } from '@/features/issues/ui/IssueLifecycleSummary'
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
@@ -60,6 +61,7 @@ function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode })
             </span>
           </span>
           <span className="flex items-center gap-2 sm:shrink-0">
+            <IssueLifecycleSummary lifecycle={issue.lifecycle} />
             <PriorityBadge priority={issue.priority} />
             <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
           </span>

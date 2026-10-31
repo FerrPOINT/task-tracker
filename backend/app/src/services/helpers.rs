@@ -30,7 +30,7 @@ pub async fn resolve_names(
 }
 
 pub fn issue_status_column(status_id: StatusId) -> String {
-    default_board_columns()
+    legacy_board_columns()
         .into_iter()
         .find(|c| c.id == status_id)
         .map(|c| c.name.as_ref().to_string())
@@ -190,6 +190,7 @@ pub fn build_issue_dto_from_lookups(
 }
 
 pub async fn build_issue_dto(
+    repository: Arc<dyn domain::IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
     labels: Arc<dyn LabelRepository>,
     issue: Issue,
@@ -206,12 +207,18 @@ pub async fn build_issue_dto(
     .flatten()
     .filter_map(|(id, name)| name.map(|name| (id, name)))
     .collect::<HashMap<_, _>>();
-    Ok(build_issue_dto_from_lookups(
-        issue,
-        &project_names,
-        &user_names,
-        &label_names,
-    ))
+    let mut rows = hydrate_task_lifecycles(
+        repository,
+        vec![build_issue_dto_from_lookups(
+            issue,
+            &project_names,
+            &user_names,
+            &label_names,
+        )],
+    )
+    .await?;
+    rows.pop()
+        .ok_or_else(|| AppError::internal("single issue read projection missing"))
 }
 
 async fn issue_user_name_lookup(
@@ -262,6 +269,7 @@ async fn issue_label_name_lookup(
 }
 
 pub async fn build_issue_dtos(
+    repository: Arc<dyn domain::IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
     labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
@@ -274,13 +282,20 @@ pub async fn build_issue_dtos(
         .iter()
         .map(|issue| (issue.project_id, project_name.to_string()))
         .collect::<HashMap<_, _>>();
-    Ok(issues
-        .into_iter()
-        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names))
-        .collect())
+    hydrate_task_lifecycles(
+        repository,
+        issues
+            .into_iter()
+            .map(|issue| {
+                build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names)
+            })
+            .collect(),
+    )
+    .await
 }
 
 async fn build_issue_dtos_prefetched(
+    repository: Arc<dyn domain::IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
     labels: Arc<dyn LabelRepository>,
@@ -302,28 +317,36 @@ async fn build_issue_dtos_prefetched(
     let user_names = issue_user_name_lookup(users, &issues).await?;
     let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
     let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
-    Ok(issues
-        .into_iter()
-        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names))
-        .collect())
+    hydrate_task_lifecycles(
+        repository,
+        issues
+            .into_iter()
+            .map(|issue| {
+                build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names)
+            })
+            .collect(),
+    )
+    .await
 }
 
 pub async fn build_issue_dtos_with_projects(
+    repository: Arc<dyn domain::IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
     labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    build_issue_dtos_prefetched(projects, users, labels, issues).await
+    build_issue_dtos_prefetched(repository, projects, users, labels, issues).await
 }
 
 pub async fn build_issue_dtos_for_dashboard(
+    repository: Arc<dyn domain::IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
     labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    build_issue_dtos_prefetched(projects, users, labels, issues).await
+    build_issue_dtos_prefetched(repository, projects, users, labels, issues).await
 }
 
 fn todo_status() -> StatusId {
@@ -340,6 +363,21 @@ fn done_status() -> StatusId {
 }
 
 pub fn default_board_columns() -> Vec<BoardColumn> {
+    domain::task_lifecycle::default_board_columns()
+}
+
+/// The global cutover barrier is not a per-project setting. Fresh installations
+/// activate before bootstrap; a filled installation keeps its old writers coherent
+/// until the single atomic import. The database canonicalizes a concurrent cutover.
+pub fn project_board_columns(model_active: bool) -> Vec<BoardColumn> {
+    if model_active {
+        default_board_columns()
+    } else {
+        legacy_board_columns()
+    }
+}
+
+fn legacy_board_columns() -> Vec<BoardColumn> {
     vec![
         BoardColumn {
             id: todo_status(),
@@ -411,4 +449,84 @@ mod tests {
         assert_eq!(dto.reporter_name.as_deref(), Some("Reporter"));
         assert_eq!(dto.status, "To Do");
     }
+}
+
+async fn hydrate_task_lifecycles(
+    repository: Arc<dyn domain::IssueRepository>,
+    mut issues: Vec<crate::dto::IssueDto>,
+) -> Result<Vec<crate::dto::IssueDto>, AppError> {
+    if issues.is_empty() || !repository.task_lifecycle_active().await? {
+        return Ok(issues);
+    }
+    let ids = issues
+        .iter()
+        .map(|row| {
+            row.id
+                .parse::<shared::IssueId>()
+                .map_err(AppError::internal)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let states = repository.task_lifecycle_states(&ids).await?;
+    for (row, id) in issues.iter_mut().zip(ids) {
+        let state = states.get(&id).copied().ok_or_else(|| {
+            AppError::Unavailable("task_lifecycle_read_projection_missing".into())
+        })?;
+        row.status = format!("{:?}", state.status);
+        row.lifecycle = Some(state);
+    }
+    Ok(issues)
+}
+
+pub async fn apply_task_lifecycle_filters(
+    repository: &dyn domain::IssueRepository,
+    filters: &crate::context::SearchFilters,
+    query: &mut domain::IssueQuery,
+) -> Result<(), AppError> {
+    if filters.lifecycle_stage.is_none() && filters.lifecycle_status.is_none() {
+        return Ok(());
+    }
+    if filters
+        .status
+        .as_deref()
+        .is_some_and(|value| !value.is_empty())
+    {
+        return Err(AppError::invalid_input(
+            "use lifecycle filters separately from legacy status",
+        ));
+    }
+    if !repository.task_lifecycle_active().await? {
+        return Err(AppError::Unavailable("task_lifecycle_not_active".into()));
+    }
+    query.lifecycle_stage = filters.lifecycle_stage;
+    query.lifecycle_status = filters.lifecycle_status;
+    Ok(())
+}
+
+/// The immutable baseline mapping is shared with import, never chosen by a name.
+pub async fn finalize_task_lifecycle_query(
+    repository: &dyn domain::IssueRepository,
+    query: &mut domain::IssueQuery,
+) -> Result<(), AppError> {
+    let requires_core = query
+        .jql
+        .as_ref()
+        .is_some_and(domain::jql::Expr::uses_task_lifecycle);
+    if !requires_core && query.status_id.is_none() {
+        return Ok(());
+    }
+    let active = repository.task_lifecycle_active().await?;
+    if requires_core && !active {
+        return Err(AppError::Unavailable("task_lifecycle_not_active".into()));
+    }
+    if active
+        && let Some(state) = query
+            .status_id
+            .and_then(|id| domain::task_lifecycle::import_baseline_status(id.as_uuid()))
+    {
+        query.status_id = Some(domain::task_lifecycle::projection_status_id(
+            state.stage,
+            state.status,
+        ));
+    }
+    Ok(())
 }

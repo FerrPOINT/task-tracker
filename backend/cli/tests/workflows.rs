@@ -2503,3 +2503,6 @@ fn help_hides_token_environment_value() {
     assert!(!stdout.contains("help-only-fixture-token"));
     assert!(!String::from_utf8_lossy(&output.stderr).contains("help-only-fixture-token"));
 }
+
+#[path = "workflows/task_lifecycle.rs"]
+mod task_lifecycle;

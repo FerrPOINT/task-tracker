@@ -49,6 +49,8 @@ mod m20261021_0000101_native_sdlc_spaces;
 mod m20261022_0000102_request_commit_clock;
 mod m20261022_0000103_identity_deletion;
 
+mod m20261030_0000112_unified_task_lifecycle;
+
 pub struct Migrator;
 struct PublishedMigrator;
 struct ProjectRepositoryMigrator;
@@ -146,6 +148,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261028_0000109_configured_initial_adoption::Migration),
             Box::new(m20261028_0000110_configured_checkpoint_absence::Migration),
             Box::new(m20261029_0000111_configured_analysis_start::Migration),
+            Box::new(m20261030_0000112_unified_task_lifecycle::Migration),
         ]
     }
 }
@@ -155,3 +158,6 @@ mod project_repository_tests;
 
 #[cfg(test)]
 mod unified_space_tests;
+
+#[cfg(test)]
+mod task_lifecycle_tests;

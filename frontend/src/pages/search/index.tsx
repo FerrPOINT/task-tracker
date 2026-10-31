@@ -29,6 +29,10 @@ import { useState, useMemo, useEffect } from 'react'
 import { useIssues, useUsers } from '@/shared/api/hooks'
 import { SearchRequestError, type Issue } from '@/api/search'
 
+import { type TaskStage, type TaskLifecycle } from '@/api/task-lifecycle'
+import { useTaskLifecycleCatalog } from '@/features/issues/model/task-lifecycle'
+import { lifecycleStatusLabels, stageLabels } from '@/shared/lib/task-lifecycle-labels'
+
 const PAGE_SIZE = 25
 
 const SORT_OPTIONS = [
@@ -45,10 +49,11 @@ const PRIORITY_OPTIONS = ['lowest', 'low', 'medium', 'high', 'highest']
 function titleCasePriority(p: string): string {
   return p.charAt(0).toUpperCase() + p.slice(1)
 }
-const STATUS_OPTIONS = ['todo', 'in_progress', 'review', 'done']
 
 export default function SearchPage() {
   const { t } = useTranslation()
+  const catalog = useTaskLifecycleCatalog()
+  const canonical = catalog.data?.enabled === true
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get('q') ?? ''
   const committedJql = searchParams.get('jql') ?? ''
@@ -66,6 +71,9 @@ export default function SearchPage() {
 
   const projectKey = searchParams.get('project_key') ?? undefined
   const status = searchParams.get('status') ?? undefined
+  const stage = searchParams.get('lifecycle_stage') as TaskStage | null
+  const operationalStatus = searchParams.get('lifecycle_status') as
+    TaskLifecycle['state']['status'] | null
   const assigneeId = searchParams.get('assignee_id') ?? undefined
   const priority = searchParams.get('priority') ?? undefined
   const sort = searchParams.get('sort') ?? 'created_desc'
@@ -84,6 +92,8 @@ export default function SearchPage() {
       q: mode === 'simple' ? debouncedQuery || undefined : undefined,
       project_key: mode === 'simple' ? projectKey : undefined,
       status: mode === 'simple' ? status : undefined,
+      lifecycle_stage: mode === 'simple' && stage ? stage : undefined,
+      lifecycle_status: mode === 'simple' && operationalStatus ? operationalStatus : undefined,
       assignee_id: mode === 'simple' ? assigneeId : undefined,
       priority: mode === 'simple' ? priority : undefined,
       sort_by: mode === 'simple' ? sort.split('_')[0] : undefined,
@@ -92,7 +102,19 @@ export default function SearchPage() {
       limit: PAGE_SIZE + 1,
       offset: (page - 1) * PAGE_SIZE,
     }),
-    [debouncedQuery, projectKey, status, assigneeId, priority, sort, committedJql, mode, page],
+    [
+      debouncedQuery,
+      projectKey,
+      status,
+      stage,
+      operationalStatus,
+      assigneeId,
+      priority,
+      sort,
+      committedJql,
+      mode,
+      page,
+    ],
   )
 
   const { data: issues, isLoading, error, refetch } = useIssues(filters)
@@ -121,6 +143,7 @@ export default function SearchPage() {
       const next = new URLSearchParams(prev)
       if (value) next.set(key, value)
       else next.delete(key)
+      if (key === 'lifecycle_stage' || key === 'lifecycle_status') next.delete('status')
       next.delete('page')
       return next
     })
@@ -137,6 +160,8 @@ export default function SearchPage() {
         'jql',
         'project_key',
         'status',
+        'lifecycle_stage',
+        'lifecycle_status',
         'assignee_id',
         'priority',
         'sort',
@@ -156,7 +181,15 @@ export default function SearchPage() {
       next.set('mode', nextMode)
       next.delete('page')
       if (nextMode === 'jql') {
-        for (const key of ['q', 'project_key', 'status', 'assignee_id', 'priority'])
+        for (const key of [
+          'q',
+          'project_key',
+          'status',
+          'lifecycle_stage',
+          'lifecycle_status',
+          'assignee_id',
+          'priority',
+        ])
           next.delete(key)
         next.delete('sort')
       } else {
@@ -188,14 +221,21 @@ export default function SearchPage() {
   }
 
   const hasFilters =
-    projectKey || status || assigneeId || priority || sort !== 'created_desc' || query
+    projectKey ||
+    status ||
+    stage ||
+    operationalStatus ||
+    assigneeId ||
+    priority ||
+    sort !== 'created_desc' ||
+    query
   const activeFilterCount =
-    [projectKey, status, assigneeId, priority].filter(Boolean).length +
+    [projectKey, status, stage, operationalStatus, assigneeId, priority].filter(Boolean).length +
     Number(sort !== 'created_desc')
 
   const projectName =
     projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
-  const statusLabel = status ? t(`status.${status}`) : t('search.status')
+  const statusLabel = (operationalStatus && lifecycleStatusLabels[operationalStatus]) || 'Статус'
   const priorityLabel = priority ? t(`priority.${priority.toLowerCase()}`) : t('search.priority')
   const assigneeName =
     users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
@@ -231,6 +271,14 @@ export default function SearchPage() {
       {mode === 'simple' ? (
         <Card className="mb-6">
           <CardContent className="space-y-3 pt-6">
+            {canonical && status && (
+              <Notice tone="info" appearance="inline">
+                <span>Сохранённый фильтр: {t(`status.${status}`, { defaultValue: status })}</span>
+                <Button variant="ghost" size="sm" onClick={() => setFilter('status', undefined)}>
+                  Очистить сохранённый статус
+                </Button>
+              </Notice>
+            )}
             <div className="min-w-0">
               <SearchInput
                 aria-label={t('search.placeholder')}
@@ -289,24 +337,53 @@ export default function SearchPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-between"
+                    disabled={!canonical}
+                  >
+                    {(stage && stageLabels[stage]) || 'Стадия'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setFilter('lifecycle_stage', undefined)}>
+                    Все стадии
+                  </DropdownMenuItem>
+                  {catalog.data?.stages.map((value) => (
+                    <DropdownMenuItem
+                      key={value}
+                      onClick={() => setFilter('lifecycle_stage', value)}
+                    >
+                      {stageLabels[value]}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-between"
+                    disabled={!canonical}
+                  >
                     {statusLabel}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem
                     className="min-h-10"
-                    onClick={() => setFilter('status', undefined)}
+                    onClick={() => setFilter('lifecycle_status', undefined)}
                   >
                     {t('search.allStatuses')}
                   </DropdownMenuItem>
-                  {STATUS_OPTIONS.map((s) => (
+                  {catalog.data?.statuses.map((value) => (
                     <DropdownMenuItem
                       className="min-h-10"
-                      key={s}
-                      onClick={() => setFilter('status', s)}
+                      key={value}
+                      onClick={() => setFilter('lifecycle_status', value)}
                     >
-                      {t(`status.${s}`)}
+                      {lifecycleStatusLabels[value]}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -485,8 +562,11 @@ function SearchResultRow({ issue }: { issue: Issue }) {
           </TextLink>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted sm:max-w-[45%] sm:flex-nowrap">
+          {issue.lifecycle && <Badge tone="muted">{stageLabels[issue.lifecycle.stage]}</Badge>}
           <Badge tone="muted" className="shrink-0">
-            {t(`status.${normalizedStatus}`, issue.status)}
+            {issue.lifecycle
+              ? lifecycleStatusLabels[issue.lifecycle.status]
+              : t(`status.${normalizedStatus}`, issue.status)}
           </Badge>
           <span className="shrink-0">{t(`priority.${normalizedPriority}`, issue.priority)}</span>
           <span className="min-w-0 truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>

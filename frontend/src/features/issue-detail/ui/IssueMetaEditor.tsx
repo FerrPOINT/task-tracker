@@ -1,20 +1,17 @@
+import { TaskLifecycleStatusGate } from '@/features/issues/ui/TaskLifecyclePanel'
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
 import { Select, Button, Notice } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
-import type { Board } from '@/api/board'
-import { statusLabel } from '@/shared/lib/status-label'
-import { useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
+import { useUsers } from '@/shared/api/hooks'
 
 const priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
 interface IssueMetaEditorProps {
   issue: Issue
-  columns: Board['columns']
   sprints?: Sprint[]
   onChange: (patch: {
-    status_id?: string
     priority?: string
     assignee_id?: string | null
     sprint_id?: string | null
@@ -22,33 +19,9 @@ interface IssueMetaEditorProps {
   disabled?: boolean
 }
 
-export function IssueMetaEditor({
-  issue,
-  columns,
-  sprints,
-  onChange,
-  disabled,
-}: IssueMetaEditorProps) {
+export function IssueMetaEditor({ issue, sprints, onChange, disabled }: IssueMetaEditorProps) {
   const { t } = useTranslation()
   const usersQuery = useUsers()
-  const statusesQuery = useStatuses()
-  const transitionsQuery = useTransitions()
-
-  // Available target statuses for the current status, per workflow transitions.
-  // Falls back to all statuses (minus the current one) when transitions are unavailable.
-  const statusOptions = useMemo(() => {
-    const all =
-      statusesQuery.data && statusesQuery.data.length > 0
-        ? statusesQuery.data.map((s) => ({ id: s.id, name: s.name }))
-        : columns.map((c) => ({ id: c.id, name: c.name }))
-    const fromTransitions = (transitionsQuery.data ?? [])
-      .filter((tr) => tr.from_status_id === issue.status_id)
-      .map((tr) => tr.to_status_id)
-    if (fromTransitions.length === 0) return all
-    const allowed = new Set([issue.status_id, ...fromTransitions])
-    return all.filter((s) => allowed.has(s.id))
-  }, [statusesQuery.data, transitionsQuery.data, columns, issue.status_id])
-
   const assigneeOptions = useMemo<
     Array<{ value: string; label: string; disabled?: boolean }>
   >(() => {
@@ -75,24 +48,7 @@ export function IssueMetaEditor({
 
   return (
     <div className="space-y-4 text-sm">
-      <div className="space-y-1.5">
-        <label htmlFor="issue-status" className="block text-text-muted">
-          {t('issue.status')}
-        </label>
-        <Select
-          id="issue-status"
-          value={issue.status_id}
-          onValueChange={(nextValue) => onChange({ status_id: nextValue })}
-          disabled={disabled}
-          className="w-full"
-          options={[
-            ...(statusOptions.map((s) => ({
-              value: String(s.id),
-              label: String(statusLabel(s.name, t)),
-            })) ?? []),
-          ]}
-        />
-      </div>
+      <TaskLifecycleStatusGate issueId={issue.id} disabled={disabled} />
 
       <div className="space-y-1.5">
         <label htmlFor="issue-priority" className="block text-text-muted">

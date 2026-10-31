@@ -47,3 +47,5 @@ pub mod space_catalog;
 pub mod project_access;
 
 pub mod identity_deletion;
+
+pub mod task_lifecycle;

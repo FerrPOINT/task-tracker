@@ -28,6 +28,8 @@ mod critical_pm_reservation;
 mod discussion;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_handoff.rs"]
+mod handoff;
 #[path = "sdlc_lifecycle.rs"]
 mod lifecycle;
 #[path = "sdlc_reservation.rs"]
@@ -340,12 +342,27 @@ impl PostgresSdlcRepository {
         Ok(state)
     }
 
+    async fn manual_controlled(tx: &DatabaseTransaction, task: Uuid) -> Result<bool, AppError> {
+        tx.query_one(statement(
+            "SELECT manual_control FROM sdlc_tasks WHERE task_id=$1",
+            vec![task.into()],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or_else(|| AppError::not_found("SDLC binding", task))?
+        .try_get("", "manual_control")
+        .map_err(map_db)
+    }
+
     async fn bind_current_task(
         tx: &DatabaseTransaction,
         config: &SdlcConfig,
         state: &TaskState,
         actor: &Principal,
     ) -> Result<(), AppError> {
+        if Self::manual_controlled(tx, state.task_id).await? {
+            return Err(AppError::conflict("task_lifecycle_handoff_required"));
+        }
         if state.configured_cli()
             && !actor.trusted_human
             && app::sdlc_reservation::scheduler(actor, config).is_err()
@@ -400,7 +417,17 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
-        let state = Self::load_with_config(tx, config, task, actor).await?;
+        let state = Self::load_binding(tx, config, task, actor).await?;
+        if Self::manual_controlled(tx, task).await? {
+            // Retained human history is readable. No scheduler/producer receives
+            // an old assignment as current authority after manual takeover.
+            if !actor.trusted_human {
+                return Err(AppError::Forbidden);
+            }
+            spaces::bind_task(tx, config, &state, actor).await?;
+            return Ok(state);
+        }
+        Self::bind_current_task(tx, config, &state, actor).await?;
         if !state.configured_cli() {
             app::sdlc::authorize_pm_read(&state, actor)?;
         }
@@ -955,6 +982,14 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn prepare_current_stage_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::task_handoff::PreparedCurrentStageHandoff, AppError> {
+        self.prepare_handoff(task, actor).await
+    }
+
     fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
         Some(self)
     }
@@ -1789,6 +1824,11 @@ impl SdlcRepository for PostgresSdlcRepository {
     async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load_read(&tx, task, actor).await?;
+        if Self::manual_controlled(&tx, task).await? {
+            let context = state.manual_context(actor);
+            tx.commit().await.map_err(map_db)?;
+            return Ok(context);
+        }
         let mut context = state.context(actor);
         if state.configured_cli() {
             context.assignment = lifecycle::configured_assignment(&tx, &state, actor).await?;

@@ -102,6 +102,8 @@ pub struct UpdateProjectRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IssueResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<domain::task_lifecycle::State>,
     pub id: String,
     pub key: String,
     pub summary: String,
@@ -206,6 +208,8 @@ pub struct SearchQuery {
     pub project_key: Option<String>,
     pub priority: Option<String>,
     pub status: Option<String>,
+    pub lifecycle_stage: Option<domain::sdlc_lifecycle::LifecycleStage>,
+    pub lifecycle_status: Option<domain::sdlc_lifecycle::LifecycleStatus>,
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,

@@ -1289,6 +1289,16 @@ impl IssueRepo {
             let placeholder = Self::push_uuid_param(&mut params, status_id.as_uuid());
             clauses.push(format!("i.status_id = {placeholder}"));
         }
+        if let Some(stage) = query.lifecycle_stage {
+            let value = serde_json::to_value(stage).map_err(AppError::internal)?;
+            let placeholder = Self::push_text_param(&mut params, value.as_str().unwrap());
+            clauses.push(format!("EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=i.id AND task_lifecycle_effective_stage(t.state)={placeholder})"));
+        }
+        if let Some(status) = query.lifecycle_status {
+            let value = serde_json::to_value(status).map_err(AppError::internal)?;
+            let placeholder = Self::push_text_param(&mut params, value.as_str().unwrap());
+            clauses.push(format!("EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=i.id AND task_lifecycle_effective_status(t.state)={placeholder})"));
+        }
         if let Some(assignee_id) = query.assignee_id {
             let placeholder = Self::push_uuid_param(&mut params, assignee_id.as_uuid());
             clauses.push(format!("i.assignee_id = {placeholder}"));
@@ -1376,6 +1386,16 @@ impl IssueRepo {
 }
 
 impl IssueRepo {
+    /// One predicate for counts and page selection, evaluated in the query snapshot.
+    fn backlog_condition(todo_status: StatusId) -> sea_orm::Condition {
+        sea_orm::Condition::any()
+            .add(sea_orm::Condition::all()
+                .add(Expr::cust("(SELECT enabled FROM task_lifecycle_control WHERE singleton)"))
+                .add(Expr::cust("EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND task_lifecycle_effective_stage(t.state) IN ('Draft','Backlog') AND task_lifecycle_effective_status(t.state)='Ready')")))
+            .add(sea_orm::Condition::all()
+                .add(Expr::cust("NOT (SELECT enabled FROM task_lifecycle_control WHERE singleton)"))
+                .add(issue::Column::StatusId.eq(todo_status.as_uuid())))
+    }
     /// Advisory-lock key derived from the target status id: serializes all
     /// movers into the same column so the in-transaction WIP count cannot
     /// be raced by a concurrent transaction.
@@ -1389,6 +1409,56 @@ impl IssueRepo {
 
 #[async_trait]
 impl IssueRepository for IssueRepo {
+    async fn task_lifecycle_columns(
+        &self,
+        project: ProjectId,
+    ) -> Result<Vec<domain::task_lifecycle::StageProjection>, AppError> {
+        crate::repos_task_lifecycle::columns(self.db.as_ref(), project).await
+    }
+    async fn task_lifecycle_states(
+        &self,
+        ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, domain::task_lifecycle::State>, AppError> {
+        crate::repos_task_lifecycle::states(&self.db, ids).await
+    }
+    async fn task_lifecycle_active(&self) -> Result<bool, AppError> {
+        crate::repos_task_lifecycle::active(&self.db).await
+    }
+    async fn initial_task_lifecycle_status(&self) -> Result<Option<StatusId>, AppError> {
+        crate::repos_task_lifecycle::initial_status(&self.db).await
+    }
+    async fn task_stage_board_snapshot(
+        &self,
+        project: ProjectId,
+        may_edit: bool,
+    ) -> Result<domain::task_lifecycle::StageBoardSnapshot, AppError> {
+        crate::repos_task_lifecycle::board_snapshot(&self.db, project, may_edit).await
+    }
+
+    async fn project_task_lifecycles(
+        &self,
+        project: ProjectId,
+        may_edit: bool,
+    ) -> Result<Vec<domain::task_lifecycle::Readback>, AppError> {
+        crate::repos_task_lifecycle::project(&self.db, project, may_edit).await
+    }
+
+    async fn task_lifecycle(
+        &self,
+        task: IssueId,
+        may_edit: bool,
+    ) -> Result<domain::task_lifecycle::Readback, AppError> {
+        crate::repos_task_lifecycle::read(&self.db, task, may_edit).await
+    }
+    async fn transition_task_lifecycle(
+        &self,
+        task: IssueId,
+        actor: UserId,
+        command: &domain::task_lifecycle::TransitionCommand,
+    ) -> Result<domain::task_lifecycle::Readback, AppError> {
+        crate::repos_task_lifecycle::change(&self.db, task, actor, command).await
+    }
+
     async fn repository_links(&self, task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
         let rows=self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT snapshot FROM task_repository_links WHERE issue_id=$1 ORDER BY created_at,repository_id LIMIT 100",[sea_orm::Value::Uuid(Some(Box::new(task.as_uuid())))])).await.map_err(crate::db_error::map)?;
         rows.into_iter()
@@ -1592,6 +1662,18 @@ impl IssueRepository for IssueRepo {
         if let Some(sid) = query.status_id {
             select = select.filter(issue::Column::StatusId.eq(sid.as_uuid()));
         }
+        if let Some(stage) = query.lifecycle_stage {
+            let value = serde_json::to_value(stage).map_err(AppError::internal)?;
+            select=select.filter(Expr::cust_with_values(
+                "EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND task_lifecycle_effective_stage(t.state)=$1)",
+                [value.as_str().unwrap()]));
+        }
+        if let Some(status) = query.lifecycle_status {
+            let value = serde_json::to_value(status).map_err(AppError::internal)?;
+            select=select.filter(Expr::cust_with_values(
+                "EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND task_lifecycle_effective_status(t.state)=$1)",
+                [value.as_str().unwrap()]));
+        }
         if let Some(aid) = query.assignee_id {
             select = select.filter(issue::Column::AssigneeId.eq(aid.as_uuid()));
         }
@@ -1659,7 +1741,7 @@ impl IssueRepository for IssueRepo {
     ) -> Result<u64, AppError> {
         issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(Self::backlog_condition(todo_status_id))
             .filter(issue::Column::SprintId.is_null())
             .filter(issue::Column::DeletedAt.is_null())
             .count(&*self.db)
@@ -1676,7 +1758,7 @@ impl IssueRepository for IssueRepo {
     ) -> Result<Vec<Issue>, AppError> {
         let models = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(Self::backlog_condition(todo_status_id))
             .filter(issue::Column::SprintId.is_null())
             .filter(issue::Column::DeletedAt.is_null())
             .order_by_desc(issue::Column::CreatedAt)
@@ -1821,6 +1903,13 @@ impl IssueRepository for IssueRepo {
         txn.query_one(sea_orm::Statement::from_sql_and_values(
             sea_orm::DbBackend::Postgres,
             "SELECT tracker_begin_issue_purge($1)",
+            [id.as_uuid().into()],
+        ))
+        .await
+        .map_err(crate::db_error::map)?;
+        txn.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT task_lifecycle_purge_manual_core($1)",
             [id.as_uuid().into()],
         ))
         .await
@@ -2071,7 +2160,7 @@ fn map_project(m: project::Model) -> Project {
     }
 }
 
-fn map_issue(m: issue::Model) -> Issue {
+pub(crate) fn map_issue(m: issue::Model) -> Issue {
     Issue {
         id: IssueId::from_uuid(m.id),
         project_id: ProjectId::from_uuid(m.project_id),
@@ -2147,7 +2236,7 @@ fn map_board(m: board::Model) -> Board {
     }
 }
 
-fn map_sprint(m: sprint::Model) -> Sprint {
+pub(crate) fn map_sprint(m: sprint::Model) -> Sprint {
     Sprint {
         id: SprintId::from_uuid(m.id),
         project_id: ProjectId::from_uuid(m.project_id),
@@ -2997,6 +3086,12 @@ struct StatusRepo {
 
 #[async_trait]
 impl StatusRepository for StatusRepo {
+    async fn list_public(&self) -> Result<Vec<Status>, AppError> {
+        let models=status::Entity::find().filter(Expr::cust(
+            "statuses.id NOT IN (SELECT task_lifecycle_status_id(stage,phase) FROM (VALUES('Draft'),('Backlog'),('Analysis'),('Architecture'),('Development'),('Review'),('Testing'),('Rework'),('Deployment')) stages(stage) CROSS JOIN (VALUES('Ready'),('InProgress'),('Completed')) phases(phase))"
+        )).order_by_asc(status::Column::Position).all(&*self.db).await.map_err(crate::db_error::map)?;
+        Ok(models.into_iter().map(map_status).collect())
+    }
     async fn list_all(&self) -> Result<Vec<Status>, AppError> {
         let models = status::Entity::find()
             .order_by_asc(status::Column::Position)

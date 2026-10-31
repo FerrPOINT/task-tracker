@@ -65,5 +65,6 @@ pub async fn transition_issue(
         time_spent_seconds: dto.time_spent_seconds,
         created_at: dto.created_at,
         updated_at: dto.updated_at,
+        lifecycle: dto.lifecycle,
     }))
 }

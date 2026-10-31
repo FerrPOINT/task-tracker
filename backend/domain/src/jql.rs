@@ -16,6 +16,20 @@ pub enum Expr {
     Or(Box<Expr>, Box<Expr>),
 }
 
+impl Expr {
+    pub fn uses_task_lifecycle(&self) -> bool {
+        match self {
+            Self::Clause { field, .. } | Self::IsEmpty { field, .. } => {
+                matches!(field, Field::Stage | Field::LifecycleStatus)
+            }
+            Self::Not(value) => value.uses_task_lifecycle(),
+            Self::And(left, right) | Self::Or(left, right) => {
+                left.uses_task_lifecycle() || right.uses_task_lifecycle()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Field {
     Key,
@@ -26,6 +40,8 @@ pub enum Field {
     ProjectKey,
     Status,
     StatusCategory,
+    Stage,
+    LifecycleStatus,
     IssueType,
     Assignee,
     Reporter,
@@ -450,6 +466,8 @@ impl Field {
             "projectkey" => Some(Self::ProjectKey),
             "status" => Some(Self::Status),
             "statuscategory" => Some(Self::StatusCategory),
+            "stage" => Some(Self::Stage),
+            "lifecyclestatus" => Some(Self::LifecycleStatus),
             "issuetype" => Some(Self::IssueType),
             "assignee" => Some(Self::Assignee),
             "reporter" => Some(Self::Reporter),
@@ -678,5 +696,24 @@ mod tests {
 
         let expr = parse("not assignee IS EMPTY").expect("valid JQL");
         assert!(matches!(expr, Expr::Not(..)));
+    }
+}
+
+#[cfg(test)]
+mod task_lifecycle_query_tests {
+    use super::*;
+    #[test]
+    fn stage_and_operational_status_are_distinct_from_legacy_status_names() {
+        for query in [
+            "stage = Analysis AND lifecycleStatus = Ready",
+            "NOT (stage IN (Development, Rework)) OR lifecycleStatus != Completed",
+        ] {
+            assert!(parse(query).unwrap().uses_task_lifecycle());
+        }
+        assert!(
+            !parse("status = Done OR priority = High")
+                .unwrap()
+                .uses_task_lifecycle()
+        );
     }
 }

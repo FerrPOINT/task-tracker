@@ -122,7 +122,7 @@ impl PostgresSdlcRepository {
         Ok(namespace)
     }
 
-    async fn retained_source_policy(
+    pub(super) async fn retained_source_policy(
         tx: &DatabaseTransaction,
         project: Uuid,
         revision: Option<i64>,

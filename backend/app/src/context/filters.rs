@@ -4,6 +4,8 @@ pub struct SearchFilters {
     pub project_key: Option<String>,
     pub priority: Option<String>,
     pub status: Option<String>,
+    pub lifecycle_stage: Option<domain::sdlc_lifecycle::LifecycleStage>,
+    pub lifecycle_status: Option<domain::sdlc_lifecycle::LifecycleStatus>,
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,

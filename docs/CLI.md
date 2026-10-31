@@ -1,5 +1,30 @@
 # CLI — Task Tracker
 
+## Единые стадии и ручные переходы (кандидат)
+
+Команды используют обычный HTTP transport и права текущего пользователя:
+
+```bash
+task-tracker lifecycle catalog
+task-tracker lifecycle get --issue PROJ-1
+task-tracker lifecycle transition --issue PROJ-1 --action start \
+  --expected-revision 1 --idempotency-key human-start-original
+```
+
+Действия: `start`, `complete`, `request_rework`, `reopen`. Ревизия обязательна;
+выбирать действие следует из readback сервера. При повторе после потери ответа
+сохранять исходные ревизию, действие и ключ. CLI не повторяет write автоматически
+и не создаёт agent run. Старые status writers после активации дают понятный
+конфликт; замена UUID статуса не является переходом стадии.
+
+Wire-проверки CLI выполнены в изолированном тесте. Это не подтверждает установку
+нового бинарника или production-приёмку. [Полный контракт](plans/unified-task-lifecycle-20261030.md).
+
+При поиске через JQL доступны отдельные `stage` и `lifecycleStatus`:
+`stage = Review AND lifecycleStatus = Ready`. Сохранённый `status = Done`
+продолжает выбирать согласованное Deployment/Completed; это read alias,
+не разрешение обойти lifecycle через старую status-write команду.
+
 Поставка sdlc1 принята 2026-10-03: три backend обновлены после fresh backup, QA/rollback, live acceptance и наблюдения. [Установка](CLI_INSTALL.md), [проверки и ограничения](CLI_VALIDATION.md). Команды/API/exit codes сохранены; Linux x86_64/WSL, без version bumps/tags/public release.
 
 Консольный клиент для работы с API. Бинарник: `task-tracker`.

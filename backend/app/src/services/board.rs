@@ -115,8 +115,30 @@ impl BoardServiceImpl {
             .issues
             .count_backlog(board.project_id, todo_status)
             .await? as usize;
-        let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
-        {
+        let columns: Vec<BoardColumnDto> = if self.issues.task_lifecycle_active().await? {
+            let states = self
+                .issues
+                .project_task_lifecycles(board.project_id, false)
+                .await?;
+            if states.len() != issues.len() {
+                return Err(AppError::conflict("task_lifecycle_board_import_incomplete"));
+            }
+            self.issues
+                .task_lifecycle_columns(board.project_id)
+                .await?
+                .into_iter()
+                .map(|column| BoardColumnDto {
+                    id: column.projection_status_id.to_string(),
+                    name: format!("{:?}", column.stage),
+                    wip_limit: column.wip_limit,
+                    issue_ids: states
+                        .iter()
+                        .filter(|row| row.state.stage == column.stage)
+                        .map(|row| row.task_id.to_string())
+                        .collect(),
+                })
+                .collect()
+        } else if board.columns.iter().all(|c| c.id.as_uuid().is_nil()) {
             db_statuses
                 .iter()
                 .map(|s| BoardColumnDto {
@@ -178,6 +200,7 @@ impl BoardServiceImpl {
             });
 
         let issue_dtos = super::helpers::build_issue_dtos(
+            self.issues.clone(),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             issues,
@@ -265,6 +288,7 @@ impl crate::context::BoardService for BoardServiceImpl {
 
         let project_label = project_key.to_string();
         let sprint_issues = super::helpers::build_issue_dtos(
+            self.issues.clone(),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             sprint_issues_raw,
@@ -287,6 +311,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             )
             .await?;
         let backlog_issues = super::helpers::build_issue_dtos(
+            self.issues.clone(),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             backlog_issues_raw,
@@ -317,6 +342,9 @@ impl crate::context::BoardService for BoardServiceImpl {
         self.authz
             .require_project_edit(project.id, requester)
             .await?;
+        if self.issues.task_lifecycle_active().await? {
+            return Err(AppError::conflict("task_lifecycle_transition_required"));
+        }
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let issue = self.issues.get_by_id(issue_id).await?;
         if issue.project_id != board.project_id {

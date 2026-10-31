@@ -7,10 +7,33 @@ import { MemoryRouter, useLocation } from 'react-router'
 import SearchPage from './'
 import { SearchRequestError } from '@/api/search'
 
+const catalogReady = vi.hoisted(() => ({ value: true }))
 const useIssues = vi.hoisted(() => vi.fn())
 const useProjects = vi.hoisted(() => vi.fn())
 const useUsers = vi.hoisted(() => vi.fn())
 vi.mock('@/shared/api/hooks', () => ({ useIssues, useProjects, useUsers }))
+
+vi.mock('@/features/issues/model/task-lifecycle', () => ({
+  useTaskLifecycleCatalog: () => ({
+    data: catalogReady.value
+      ? {
+          enabled: true,
+          stages: [
+            'Draft',
+            'Backlog',
+            'Analysis',
+            'Architecture',
+            'Development',
+            'Review',
+            'Testing',
+            'Rework',
+            'Deployment',
+          ],
+          statuses: ['Ready', 'InProgress', 'Completed'],
+        }
+      : undefined,
+  }),
+}))
 
 const issue = (number: number) => ({
   id: `i${number}`,
@@ -58,11 +81,42 @@ function mockHooks(data = [issue(1)], error: Error | null = null) {
 }
 
 afterEach(() => {
+  catalogReady.value = true
   vi.useRealTimers()
   vi.clearAllMocks()
 })
 
 describe('SearchPage', () => {
+  it('preserves a saved baseline filter until the user explicitly changes it', () => {
+    mockHooks()
+    renderPage('/search?status=done&project_scope=all')
+    expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' }))
+    expect(screen.getByText(/Сохранённый фильтр:/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить сохранённый статус' }))
+    expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ status: undefined }))
+    expect(screen.getByTestId('location')).toHaveTextContent('project_scope=all')
+  })
+  it('never drops URL lifecycle predicates while the catalogue is still loading', () => {
+    catalogReady.value = false
+    mockHooks()
+    renderPage('/search?lifecycle_stage=Review&lifecycle_status=Ready')
+    expect(screen.getByRole('button', { name: 'Готова к работе' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Ревью' })).toBeDisabled()
+    expect(useIssues).toHaveBeenLastCalledWith(
+      expect.objectContaining({ lifecycle_stage: 'Review', lifecycle_status: 'Ready' }),
+    )
+  })
+  it('replaces a saved legacy filter when a new canonical stage is selected', async () => {
+    mockHooks()
+    renderPage('/search?status=done')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Стадия' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Разработка' }))
+    expect(useIssues).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: undefined, lifecycle_stage: 'Development' }),
+    )
+    expect(screen.getByTestId('location')).not.toHaveTextContent('status=done')
+  })
+
   it('renders search form and results', () => {
     mockHooks()
     renderPage()

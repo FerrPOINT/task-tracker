@@ -75,6 +75,8 @@ impl ProjectDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<domain::task_lifecycle::State>,
     pub id: String,
     pub key: String,
     pub summary: String,
@@ -112,6 +114,7 @@ impl IssueDto {
         reporter_name: Option<String>,
     ) -> Self {
         Self {
+            lifecycle: None,
             id: issue.id.to_string(),
             key: issue.key.to_string(),
             summary: issue.summary.as_ref().to_string(),

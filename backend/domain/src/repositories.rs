@@ -467,6 +467,62 @@ pub struct ProjectQuery {
 
 #[async_trait]
 pub trait IssueRepository: Send + Sync {
+    async fn task_lifecycle_active(&self) -> Result<bool, AppError> {
+        Ok(false)
+    }
+    async fn task_lifecycle_states(
+        &self,
+        _ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, crate::task_lifecycle::State>, AppError> {
+        Err(AppError::Unavailable(
+            "task_lifecycle_states_not_supported".into(),
+        ))
+    }
+    async fn task_lifecycle_columns(
+        &self,
+        _project: ProjectId,
+    ) -> Result<Vec<crate::task_lifecycle::StageProjection>, AppError> {
+        Err(AppError::Unavailable(
+            "task_lifecycle_columns_not_supported".into(),
+        ))
+    }
+    async fn initial_task_lifecycle_status(&self) -> Result<Option<StatusId>, AppError> {
+        Ok(None)
+    }
+    async fn task_stage_board_snapshot(
+        &self,
+        _project: ProjectId,
+        _may_edit: bool,
+    ) -> Result<crate::task_lifecycle::StageBoardSnapshot, AppError> {
+        Err(AppError::Unavailable(
+            "task_stage_board_not_supported".into(),
+        ))
+    }
+
+    async fn project_task_lifecycles(
+        &self,
+        _project: ProjectId,
+        _may_edit: bool,
+    ) -> Result<Vec<crate::task_lifecycle::Readback>, AppError> {
+        Err(AppError::Unavailable("task_lifecycle_not_supported".into()))
+    }
+
+    async fn task_lifecycle(
+        &self,
+        _task: IssueId,
+        _may_edit: bool,
+    ) -> Result<crate::task_lifecycle::Readback, AppError> {
+        Err(AppError::Unavailable("task_lifecycle_not_supported".into()))
+    }
+    async fn transition_task_lifecycle(
+        &self,
+        _task: IssueId,
+        _actor: UserId,
+        _command: &crate::task_lifecycle::TransitionCommand,
+    ) -> Result<crate::task_lifecycle::Readback, AppError> {
+        Err(AppError::Unavailable("task_lifecycle_not_supported".into()))
+    }
+
     async fn repository_links(&self, _task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
         Err(AppError::Unavailable(
             "repository_links_not_implemented".into(),
@@ -615,6 +671,10 @@ pub trait IssueRepository: Send + Sync {
 
 #[async_trait]
 pub trait StatusRepository: Send + Sync {
+    /// User-facing legacy catalogue excludes internal lifecycle projection rows.
+    async fn list_public(&self) -> Result<Vec<Status>, AppError> {
+        self.list_all().await
+    }
     async fn get_by_id(&self, id: StatusId) -> Result<Status, AppError>;
     async fn list_all(&self) -> Result<Vec<Status>, AppError>;
     async fn get_default(&self) -> Result<Status, AppError>;

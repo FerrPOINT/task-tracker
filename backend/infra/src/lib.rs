@@ -29,3 +29,11 @@ mod identity_memberships;
 pub mod db_error;
 
 pub mod identity_deletion;
+
+mod repos_task_lifecycle;
+
+pub mod task_lifecycle_events;
+
+pub mod task_lifecycle_identity;
+
+mod task_lifecycle_projection;

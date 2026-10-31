@@ -71,6 +71,10 @@ pub async fn events(
             }
         })
         .filter_map(|event| event);
+    let stream = futures_util::StreamExt::take_until(
+        stream,
+        tokio::time::sleep(std::time::Duration::from_secs(45)),
+    );
     Ok((
         [
             (
@@ -96,6 +100,7 @@ fn parse_user_id(claims: &app::auth::UserClaims) -> Result<UserId, AppError> {
 
 async fn event_visible_to(ctx: &app::AppContext, event: &TrackerEvent, requester: UserId) -> bool {
     match event {
+        TrackerEvent::TaskLifecycleActivated => true,
         TrackerEvent::NotificationCreated { recipient_id } => {
             recipient_id == &requester.to_string()
         }

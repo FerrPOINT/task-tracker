@@ -160,7 +160,7 @@ fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
     }
 }
 
-fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
+pub(crate) fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
     crate::dto::IssueResponse {
         id: i.id,
         key: i.key,
@@ -183,6 +183,7 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         time_spent_seconds: i.time_spent_seconds,
         created_at: i.created_at,
         updated_at: i.updated_at,
+        lifecycle: i.lifecycle,
     }
 }
 

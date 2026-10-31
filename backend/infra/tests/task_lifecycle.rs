@@ -1,0 +1,775 @@
+use domain::{
+    sdlc_lifecycle::{LifecycleStage as Stage, LifecycleStatus as Status},
+    task_lifecycle::{Action, TransitionCommand},
+};
+use infra::repos::SeaOrmRepositories;
+use migration::MigratorTrait;
+use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+use shared::{IssueId, UserId};
+use uuid::Uuid;
+
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn task_lifecycle_commands_replay_and_serialize_competing_human_transitions() {
+    let url =
+        std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").expect("owned test database required");
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name,to_regclass('public.issues') IS NULL AS fresh"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(row.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/task_lifecycle_fixture.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared("SELECT task_lifecycle_activate('10000000-0000-4000-8000-000000000001',task_lifecycle_inventory_snapshot())").await.unwrap();
+    let mut listener = sea_orm::sqlx::postgres::PgListener::connect(url.as_str())
+        .await
+        .unwrap();
+    listener.listen("pdlc_task_lifecycle").await.unwrap();
+    let repo = SeaOrmRepositories::new(Database::connect(url.as_str()).await.unwrap()).issues;
+    let task = IssueId::from_uuid(Uuid::parse_str("50000000-0000-4000-8000-000000000001").unwrap());
+    let actor = UserId::from_uuid(Uuid::parse_str("10000000-0000-4000-8000-000000000001").unwrap());
+    let project = shared::ProjectId::from_uuid(
+        Uuid::parse_str("20000000-0000-4000-8000-000000000001").unwrap(),
+    );
+    let legacy_todo = shared::StatusId::from_uuid(Uuid::from_u128(1));
+    assert_eq!(repo.count_backlog(project, legacy_todo).await.unwrap(), 1);
+    let page = repo
+        .list_backlog_page(project, legacy_todo, 1, 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].id, task);
+    assert!(
+        repo.list_backlog_page(project, legacy_todo, 1, 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let initial = repo.task_lifecycle(task, true).await.unwrap();
+    assert_eq!(
+        (
+            initial.state.stage,
+            initial.state.status,
+            initial.state.revision
+        ),
+        (Stage::Backlog, Status::Ready, 1)
+    );
+    let sprint = Uuid::parse_str("60000000-0000-4000-8000-000000000001").unwrap();
+    db.execute_unprepared("INSERT INTO sprints(id,project_id,name,state) VALUES('60000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','Preserved future sprint','future'); UPDATE issues SET sprint_id='60000000-0000-4000-8000-000000000001' WHERE key='CORE-1'").await.unwrap();
+    let command = TransitionCommand {
+        action: Action::Start,
+        expected_revision: 1,
+        idempotency_key: "start-one".into(),
+    };
+    let first = repo
+        .transition_task_lifecycle(task, actor, &command)
+        .await
+        .unwrap();
+    assert_eq!(
+        (first.state.stage, first.state.status, first.state.revision),
+        (Stage::Backlog, Status::InProgress, 2)
+    );
+    assert_eq!(
+        repo.transition_task_lifecycle(task, actor, &command)
+            .await
+            .unwrap()
+            .state,
+        first.state
+    );
+    // This shared projection is also called by the agent writer: changing state
+    // must not silently remove the issue from planning or distort sprint reports.
+    assert_eq!(
+        repo.get_by_id(task)
+            .await
+            .unwrap()
+            .sprint_id
+            .map(|id| id.as_uuid()),
+        Some(sprint)
+    );
+    let changed = TransitionCommand {
+        action: Action::Complete,
+        expected_revision: 2,
+        idempotency_key: "start-one".into(),
+    };
+    assert!(
+        repo.transition_task_lifecycle(task, actor, &changed)
+            .await
+            .is_err()
+    );
+    let stale = TransitionCommand {
+        action: Action::Complete,
+        expected_revision: 1,
+        idempotency_key: "stale".into(),
+    };
+    assert!(
+        repo.transition_task_lifecycle(task, actor, &stale)
+            .await
+            .is_err()
+    );
+    let a = TransitionCommand {
+        action: Action::Complete,
+        expected_revision: 2,
+        idempotency_key: "race-a".into(),
+    };
+    let b = TransitionCommand {
+        action: Action::Complete,
+        expected_revision: 2,
+        idempotency_key: "race-b".into(),
+    };
+    let (a, b) = tokio::join!(
+        repo.transition_task_lifecycle(task, actor, &a),
+        repo.transition_task_lifecycle(task, actor, &b)
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    let final_state = repo.task_lifecycle(task, true).await.unwrap().state;
+    assert_eq!(
+        (final_state.stage, final_state.status, final_state.revision),
+        (Stage::Analysis, Status::Ready, 3)
+    );
+    for _ in 0..2 {
+        let notice = tokio::time::timeout(std::time::Duration::from_secs(2), listener.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let event: shared::TrackerEvent = serde_json::from_str(notice.payload()).unwrap();
+        assert_eq!(event.project_key(), "CORE");
+    }
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(50), listener.recv())
+            .await
+            .is_err()
+    );
+    let counts=db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT (SELECT count(*) FROM task_lifecycle_history WHERE task_id='50000000-0000-4000-8000-000000000001') AS history,(SELECT count(*) FROM task_lifecycle_events WHERE task_id='50000000-0000-4000-8000-000000000001') AS events,(SELECT count(*) FROM sdlc_pm_executions) AS executions".to_owned())).await.unwrap().unwrap();
+    assert_eq!(counts.try_get::<i64>("", "history").unwrap(), 3);
+    assert_eq!(counts.try_get::<i64>("", "executions").unwrap(), 0);
+    assert_eq!(counts.try_get::<i64>("", "events").unwrap(), 3);
+    let mut state = final_state;
+    for stage in [
+        Stage::Analysis,
+        Stage::Architecture,
+        Stage::Development,
+        Stage::Review,
+        Stage::Testing,
+        Stage::Deployment,
+    ] {
+        assert_eq!(state.stage, stage);
+        for action in [Action::Start, Action::Complete] {
+            let command = TransitionCommand {
+                action,
+                expected_revision: state.revision,
+                idempotency_key: format!("walk-{}-{action:?}", state.revision),
+            };
+            if stage == Stage::Analysis && action == Action::Complete {
+                db.execute_unprepared("UPDATE issues SET description='' WHERE key='CORE-1'")
+                    .await
+                    .unwrap();
+                assert!(
+                    repo.transition_task_lifecycle(task, actor, &command)
+                        .await
+                        .is_err()
+                );
+                assert_eq!(repo.task_lifecycle(task, true).await.unwrap().state, state);
+                db.execute_unprepared("UPDATE issues SET description='Unicode: кириллица' WHERE key='CORE-1'; INSERT INTO task_lifecycle_board_limits(project_id,stage,wip_limit) VALUES('20000000-0000-4000-8000-000000000001','Architecture',0)").await.unwrap();
+                assert!(
+                    repo.transition_task_lifecycle(task, actor, &command)
+                        .await
+                        .is_err()
+                );
+                assert_eq!(repo.task_lifecycle(task, true).await.unwrap().state, state);
+                db.execute_unprepared(
+                    "UPDATE task_lifecycle_board_limits SET wip_limit=1 WHERE stage='Architecture'",
+                )
+                .await
+                .unwrap();
+            }
+            state = repo
+                .transition_task_lifecycle(task, actor, &command)
+                .await
+                .unwrap()
+                .state;
+        }
+    }
+    assert_eq!(
+        (state.stage, state.status),
+        (Stage::Deployment, Status::Completed)
+    );
+    state = repo
+        .transition_task_lifecycle(
+            task,
+            actor,
+            &TransitionCommand {
+                action: Action::Reopen,
+                expected_revision: state.revision,
+                idempotency_key: "reopen-final".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .state;
+    assert_eq!((state.stage, state.status), (Stage::Rework, Status::Ready));
+    // Core board content, status projection and action revision must share one snapshot.
+    let snapshot = repo.task_stage_board_snapshot(project, true).await.unwrap();
+    assert_eq!(snapshot.columns.len(), 9);
+    assert_eq!(snapshot.cards.len(), 4);
+    assert!(snapshot.sprint.is_none());
+    for card in &snapshot.cards {
+        assert_eq!(
+            card.issue.status_id,
+            domain::task_lifecycle::projection_status_id(
+                card.lifecycle.state.stage,
+                card.lifecycle.state.status
+            )
+        );
+        assert_eq!(card.reporter_name.as_deref(), Some("Operator"));
+    }
+    let concurrent_command = TransitionCommand {
+        action: Action::Start,
+        expected_revision: state.revision,
+        idempotency_key: "snapshot-race".into(),
+    };
+    let (snapshot, changed) = tokio::join!(
+        repo.task_stage_board_snapshot(project, true),
+        repo.transition_task_lifecycle(task, actor, &concurrent_command)
+    );
+    let changed = changed.unwrap();
+    let snapshot = snapshot.unwrap();
+    let card = snapshot
+        .cards
+        .iter()
+        .find(|card| card.issue.id == task)
+        .unwrap();
+    assert!([state.revision, changed.state.revision].contains(&card.lifecycle.state.revision));
+    assert_eq!(
+        card.issue.status_id,
+        domain::task_lifecycle::projection_status_id(
+            card.lifecycle.state.stage,
+            card.lifecycle.state.status
+        )
+    );
+    // Return to Ready through a genuine domain operation for the filter fixtures below.
+    let done = repo
+        .transition_task_lifecycle(
+            task,
+            actor,
+            &TransitionCommand {
+                action: Action::Complete,
+                expected_revision: changed.state.revision,
+                idempotency_key: "snapshot-race-complete".into(),
+            },
+        )
+        .await
+        .unwrap();
+    state = repo
+        .transition_task_lifecycle(
+            task,
+            actor,
+            &TransitionCommand {
+                action: Action::RequestRework,
+                expected_revision: done.state.revision,
+                idempotency_key: "filter-rework".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .state;
+    // A lifecycle status spans multiple stages. Apply both predicates before pagination.
+    let all = repo
+        .task_lifecycle_states(&page.iter().map(|i| i.id).collect::<Vec<_>>())
+        .await
+        .unwrap();
+    assert_eq!(all[&task], state);
+    let query = domain::IssueQuery {
+        project_id: Some(project),
+        lifecycle_status: Some(Status::Ready),
+        sort_by: Some("created".into()),
+        sort_order: Some("asc".into()),
+        limit: 1,
+        ..Default::default()
+    };
+    let first = repo.list(query.clone()).await.unwrap();
+    let second = repo
+        .list(domain::IssueQuery {
+            offset: 1,
+            ..query.clone()
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_ne!(first[0].id, second[0].id);
+    assert!(
+        repo.list(domain::IssueQuery {
+            offset: 2,
+            ..query.clone()
+        })
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    let staged = repo
+        .list(domain::IssueQuery {
+            lifecycle_stage: Some(Stage::Rework),
+            ..query.clone()
+        })
+        .await
+        .unwrap();
+    assert_eq!(staged.iter().map(|i| i.id).collect::<Vec<_>>(), vec![task]);
+    let expr = domain::jql::parse("project = CORE").unwrap();
+    assert_eq!(
+        repo.list(domain::IssueQuery {
+            jql: Some(expr),
+            lifecycle_stage: Some(Stage::Rework),
+            ..query
+        })
+        .await
+        .unwrap()
+        .iter()
+        .map(|i| i.id)
+        .collect::<Vec<_>>(),
+        vec![task]
+    );
+
+    assert_eq!(
+        db.query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT count(*) AS n FROM sdlc_delivery_results".to_owned()
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "n")
+        .unwrap(),
+        0
+    );
+    // Mandatory core state must not make ordinary trash/restore/admin purge unusable.
+    let disposable =
+        IssueId::from_uuid(Uuid::parse_str("50000000-0000-4000-8000-000000000002").unwrap());
+    assert!(repo.purge(disposable).await.is_err());
+    repo.delete(disposable).await.unwrap();
+    repo.restore(disposable).await.unwrap();
+    repo.delete(disposable).await.unwrap();
+    repo.purge(disposable).await.unwrap();
+    assert!(repo.get_by_id_include_deleted(disposable).await.is_err());
+    assert_eq!(repo.task_lifecycle(task, true).await.unwrap().state, state);
+    let left=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM task_lifecycle_history WHERE task_id='50000000-0000-4000-8000-000000000002') AS history,(SELECT count(*) FROM task_lifecycle_purge_permits) AS permits".to_owned())).await.unwrap().unwrap();
+    assert_eq!(left.try_get::<i64>("", "history").unwrap(), 0);
+    assert_eq!(left.try_get::<i64>("", "permits").unwrap(), 0);
+}
+
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn historical_idle_task_transfers_to_manual_control_without_fabricating_execution() {
+    let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let identity = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name,to_regclass('public.issues') IS NULL AS fresh"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        identity
+            .try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(identity.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/task_lifecycle_fixture.sql"
+    ))
+    .await
+    .unwrap();
+    // A real historical business aggregate without an agent assignment is idle.
+    // This fixture intentionally creates no completion, lease or deployment proof.
+    db.execute_unprepared(r#"INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
+        VALUES('50000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',
+        '20000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001',
+        '10000000-0000-4000-8000-000000000001',
+        '{"tracker_instance_id":"40000000-0000-4000-8000-000000000001","project_id":"20000000-0000-4000-8000-000000000001",
+        "task_id":"50000000-0000-4000-8000-000000000001","root_task_id":"50000000-0000-4000-8000-000000000001",
+        "owner_subject":"10000000-0000-4000-8000-000000000001","stage":"Analysis","status":"InProgress",
+        "assignment":null,"confirmation_revision":null,"questions":[],"revisions":[],"confirmations":[],"evidence":[]}');
+        INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
+        SELECT '50000000-0000-4000-8000-000000000002',tracker_instance_id,project_id,
+            '50000000-0000-4000-8000-000000000002',owner_subject,
+            (state-'status')||jsonb_build_object('task_id','50000000-0000-4000-8000-000000000002',
+                'root_task_id','50000000-0000-4000-8000-000000000002','stage','Clarification')
+        FROM sdlc_tasks WHERE task_id='50000000-0000-4000-8000-000000000001';
+        SELECT task_lifecycle_activate('10000000-0000-4000-8000-000000000001',task_lifecycle_inventory_snapshot());"#).await.unwrap();
+    let task = IssueId::from_uuid(Uuid::parse_str("50000000-0000-4000-8000-000000000001").unwrap());
+    let actor = UserId::from_uuid(Uuid::parse_str("10000000-0000-4000-8000-000000000001").unwrap());
+    let repo = SeaOrmRepositories::new(Database::connect(url.as_str()).await.unwrap()).issues;
+    let clarification =
+        IssueId::from_uuid(Uuid::parse_str("50000000-0000-4000-8000-000000000002").unwrap());
+    let first_command = TransitionCommand {
+        action: Action::Start,
+        expected_revision: 1,
+        idempotency_key: "clarification-start".into(),
+    };
+    let started = repo
+        .transition_task_lifecycle(clarification, actor, &first_command)
+        .await
+        .unwrap();
+    assert_eq!(started.state.stage, Stage::Draft);
+    assert_eq!(
+        started.draft_submode,
+        Some(domain::sdlc::DraftSubmode::Clarification)
+    );
+    assert_eq!(
+        repo.task_lifecycle(clarification, true)
+            .await
+            .unwrap()
+            .draft_submode,
+        started.draft_submode
+    );
+    let completed = repo
+        .transition_task_lifecycle(
+            clarification,
+            actor,
+            &TransitionCommand {
+                action: Action::Complete,
+                expected_revision: 2,
+                idempotency_key: "clarification-complete".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (completed.state.stage, completed.state.status),
+        (Stage::Backlog, Status::Ready)
+    );
+    assert!(completed.draft_submode.is_none());
+    let original = repo
+        .transition_task_lifecycle(clarification, actor, &first_command)
+        .await
+        .unwrap();
+    assert_eq!(original.state, started.state);
+    assert_eq!(original.draft_submode, started.draft_submode);
+    assert!(original.allowed_actions.is_empty());
+    let old = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT state FROM sdlc_tasks WHERE task_id='50000000-0000-4000-8000-000000000001'"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<serde_json::Value>("", "state")
+        .unwrap();
+    let initial = repo.task_lifecycle(task, true).await.unwrap();
+    assert!(!initial.execution_busy);
+    assert_eq!(initial.allowed_actions.len(), 1);
+    // Ordinary SQL writers cannot flip custody or use a mismatched manual permit.
+    assert!(db.execute_unprepared("UPDATE sdlc_tasks SET manual_control=true WHERE task_id='50000000-0000-4000-8000-000000000001'").await.is_err());
+    let first = repo
+        .transition_task_lifecycle(
+            task,
+            actor,
+            &TransitionCommand {
+                action: Action::Complete,
+                expected_revision: 1,
+                idempotency_key: "human-takeover".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (first.state.stage, first.state.status, first.state.revision),
+        (Stage::Architecture, Status::Ready, 2)
+    );
+    let row=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT t.manual_control,h.previous_state,(SELECT count(*) FROM sdlc_pm_executions) AS runs,(SELECT count(*) FROM sdlc_delivery_results) AS results FROM sdlc_tasks t JOIN task_lifecycle_custody_history h ON h.task_id=t.task_id WHERE t.task_id='50000000-0000-4000-8000-000000000001'".to_owned())).await.unwrap().unwrap();
+    assert!(row.try_get::<bool>("", "manual_control").unwrap());
+    assert_eq!(
+        row.try_get::<serde_json::Value>("", "previous_state")
+            .unwrap(),
+        old
+    );
+    assert_eq!(row.try_get::<i64>("", "runs").unwrap(), 0);
+    assert_eq!(row.try_get::<i64>("", "results").unwrap(), 0);
+    assert!(
+        db.execute_unprepared("UPDATE task_lifecycle_custody_history SET previous_state='{}'")
+            .await
+            .is_err()
+    );
+    assert!(db.execute_unprepared("UPDATE sdlc_tasks SET state=jsonb_set(state,'{stage}','\"Development\"') WHERE task_id='50000000-0000-4000-8000-000000000001'").await.is_err());
+    assert!(db.execute_unprepared("UPDATE sdlc_tasks SET manual_control=false WHERE task_id='50000000-0000-4000-8000-000000000001'").await.is_err());
+    // The takeover does not leave a permanent old Analysis guard on later human work.
+    let next = repo
+        .transition_task_lifecycle(
+            task,
+            actor,
+            &TransitionCommand {
+                action: Action::Start,
+                expected_revision: 2,
+                idempotency_key: "architecture-start".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (next.state.stage, next.state.status),
+        (Stage::Architecture, Status::InProgress)
+    );
+}
+
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn fresh_model_bootstraps_without_execution_and_retains_its_identity() {
+    let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(
+        infra::task_lifecycle_identity::is_pristine(&url)
+            .await
+            .unwrap()
+    );
+    migration::Migrator::up(&db, None).await.unwrap();
+    assert!(
+        !infra::task_lifecycle_identity::is_pristine(&url)
+            .await
+            .unwrap()
+    );
+    infra::task_lifecycle_identity::ensure(&url, None, true)
+        .await
+        .unwrap();
+    let read = || {
+        db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT instance_id,(SELECT enabled FROM task_lifecycle_control WHERE singleton) AS enabled FROM sdlc_instance WHERE singleton".to_owned()))
+    };
+    let first = read().await.unwrap().unwrap();
+    let identity = first.try_get::<String>("", "instance_id").unwrap();
+    assert!(!Uuid::parse_str(&identity).unwrap().is_nil());
+    assert!(first.try_get::<bool>("", "enabled").unwrap());
+    infra::task_lifecycle_identity::ensure(&url, None, false)
+        .await
+        .unwrap();
+    assert!(
+        infra::task_lifecycle_identity::ensure(&url, Some("different-installation"), false)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        read()
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<String>("", "instance_id")
+            .unwrap(),
+        identity
+    );
+    let fixture=include_str!("../../migration/src/task_lifecycle_fixture.sql").replace("INSERT INTO sdlc_instance(singleton,instance_id) VALUES(true,'40000000-0000-4000-8000-000000000001');","");
+    let split = fixture.find("INSERT INTO issues(").unwrap();
+    db.execute_unprepared(&fixture[..split]).await.unwrap();
+    let project = shared::ProjectId::from_uuid(
+        Uuid::parse_str("20000000-0000-4000-8000-000000000001").unwrap(),
+    );
+    let repo = SeaOrmRepositories::new(Database::connect(url.as_str()).await.unwrap()).issues;
+    let empty = repo.task_stage_board_snapshot(project, true).await.unwrap();
+    assert!(empty.cards.is_empty());
+    assert_eq!(empty.columns.len(), 9);
+    db.execute_unprepared(&fixture[split..]).await.unwrap();
+    let rows = db
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT state FROM sdlc_tasks ORDER BY task_id".to_owned(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 4);
+    for row in rows {
+        let state = row.try_get::<serde_json::Value>("", "state").unwrap();
+        assert_eq!(state["stage"], "Draft");
+        assert_eq!(state["status"], "Ready");
+        assert!(state["assignment"].is_null());
+        assert!(state.get("lifecycle").is_none());
+    }
+    let board = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT json_array_length(columns) AS n FROM boards".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(board.try_get::<i32>("", "n").unwrap(), 9);
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT count(*) AS n FROM sdlc_pm_executions".to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.try_get::<i64>("", "n").unwrap(), 0);
+}
+
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn current_stage_handoff_preparation_is_owner_scoped_read_only_and_tracks_material_changes() {
+    use domain::sdlc::{Principal, SdlcConfig, SdlcRepository};
+    use domain::task_handoff::TaskExecutionBlocker as Blocker;
+    let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name,to_regclass('public.issues') IS NULL AS fresh"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(row.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/task_lifecycle_fixture.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared("SELECT task_lifecycle_activate('10000000-0000-4000-8000-000000000001',task_lifecycle_inventory_snapshot())").await.unwrap();
+    let repository = infra::sdlc::PostgresSdlcRepository::connect(
+        &url,
+        SdlcConfig {
+            instance_id: "40000000-0000-4000-8000-000000000001".into(),
+            single_task_project_ids: Default::default(),
+            reservation_scheduler_subject: "scheduler-qa".into(),
+            orchestrator_subject: "orchestrator-qa".into(),
+            verifier_subject: "verifier-qa".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let actor = Principal {
+        subject: "10000000-0000-4000-8000-000000000001".into(),
+        trusted_human: true,
+        human_session: true,
+        scopes: Default::default(),
+    };
+    let task = Uuid::parse_str("50000000-0000-4000-8000-000000000001").unwrap();
+    let first = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(first.state.stage, Stage::Backlog);
+    assert_eq!(first.state.status, Status::Ready);
+    assert_eq!(first.entry.unwrap().role.key(), "project_manager");
+    assert_eq!(first.issue_sha256.len(), 64);
+    assert_eq!(
+        first.blockers,
+        vec![
+            Blocker::ExecutionNotConfigured,
+            Blocker::RoutingNotConfigured,
+            Blocker::SourceUnavailable
+        ]
+    );
+    assert!(first.routing.is_none() && first.source.is_none());
+    let repeated = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(repeated.issue_sha256, first.issue_sha256);
+    assert_eq!(repeated.state, first.state);
+    let mut machine = actor.clone();
+    machine.human_session = false;
+    machine.trusted_human = false;
+    assert!(
+        repository
+            .prepare_current_stage_handoff(task, &machine)
+            .await
+            .is_err()
+    );
+    db.execute_unprepared("UPDATE issues SET position=position+100 WHERE key='CORE-1'")
+        .await
+        .unwrap();
+    assert_eq!(
+        repository
+            .prepare_current_stage_handoff(task, &actor)
+            .await
+            .unwrap()
+            .issue_sha256,
+        first.issue_sha256
+    );
+    db.execute_unprepared(
+        "UPDATE issues SET description='Changed real handoff materials' WHERE key='CORE-1'",
+    )
+    .await
+    .unwrap();
+    let changed = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(changed.state, first.state);
+    assert_ne!(changed.issue_sha256, first.issue_sha256);
+    let row=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_pm_executions) AS runs,(SELECT count(*) FROM task_lifecycle_history) AS history".to_owned())).await.unwrap().unwrap();
+    assert_eq!(row.try_get::<i64>("", "runs").unwrap(), 0);
+    assert_eq!(row.try_get::<i64>("", "history").unwrap(), 4);
+    // Imported ordinary tasks are manually owned. Retained history grants no run.
+    let context = repository.context(task, &actor).await.unwrap();
+    assert!(context.assignment.is_none());
+    assert_eq!(context.waiting_reason.as_deref(), Some("manual_control"));
+    assert!(repository.context(task, &machine).await.is_err());
+    assert!(repository.read(task, &machine).await.is_err());
+    assert!(repository.read(task, &actor).await.is_ok());
+    let history = serde_json::to_value(repository.read(task, &actor).await.unwrap()).unwrap();
+    let error = repository
+        .execute(
+            task,
+            &actor,
+            domain::sdlc::SdlcCommand::Confirm {
+                revision: 1,
+                command: domain::sdlc::ConfirmCommand {
+                    content_hash: "a".repeat(64),
+                    idempotency_key: "retired-human-confirm".into(),
+                    expected_routing_policy_version: None,
+                },
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("task_lifecycle_handoff_required")
+    );
+    assert_eq!(
+        serde_json::to_value(repository.read(task, &actor).await.unwrap()).unwrap(),
+        history
+    );
+}

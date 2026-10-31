@@ -646,18 +646,7 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
             "result does not match running task role",
         ));
     }
-    let next = match result {
-        DeliveryResult::Analyst { .. } => LifecycleStage::Architecture,
-        DeliveryResult::Architect { .. } => LifecycleStage::Development,
-        DeliveryResult::Developer { .. } => LifecycleStage::Review,
-        DeliveryResult::Reviewer {
-            verdict: ReviewVerdict::Approved,
-            ..
-        } => LifecycleStage::Testing,
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Passed,
-            ..
-        } => LifecycleStage::Deployment,
+    let action = match result {
         DeliveryResult::Reviewer {
             verdict: ReviewVerdict::Rework,
             ..
@@ -665,15 +654,19 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
         | DeliveryResult::Tester {
             verdict: TestVerdict::Rework,
             ..
-        } => LifecycleStage::Rework,
-        DeliveryResult::DevOps { .. } => LifecycleStage::Deployment,
+        } => domain::task_lifecycle::Action::RequestRework,
+        _ => domain::task_lifecycle::Action::Complete,
     };
-    let version = task
-        .version
-        .checked_add(1)
-        .filter(|v| *v <= MAX_SAFE_VERSION)
-        .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
-    task.version = version;
+    let next_state = domain::task_lifecycle::transition(
+        domain::task_lifecycle::State {
+            stage: task.stage,
+            status: task.status,
+            revision: task.version,
+        },
+        action,
+    )?;
+    let next = next_state.stage;
+    task.version = next_state.revision;
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
     task.resume_chat_id = None;

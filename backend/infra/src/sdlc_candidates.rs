@@ -18,7 +18,7 @@ JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id
 LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
 LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
  AND started.command IS NOT NULL AND started.actor_subject=t.owner_subject
-WHERE t.project_id=$1 AND t.tracker_instance_id=$2
+WHERE t.project_id=$1 AND t.tracker_instance_id=$2 AND NOT t.manual_control
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb
   AND (t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/auth/store'
+import { apiBaseUrl } from '@/api/client'
 import { connectAuthenticatedEventStream } from '@pdlc/ui/lib'
 
 type TrackerEvent = {
@@ -20,9 +21,11 @@ function invalidateIssueCollectionQueries(
   qc.invalidateQueries({ queryKey: ['reports'] })
   if (projectKey) {
     qc.invalidateQueries({ queryKey: ['project', projectKey] })
+    qc.invalidateQueries({ queryKey: ['project-stage-board', projectKey] })
     qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
   } else {
     qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['project-stage-board'] })
     qc.invalidateQueries({ queryKey: ['backlog'] })
   }
 }
@@ -35,6 +38,7 @@ function invalidateIssueSummaryQueries(
   invalidateIssueCollectionQueries(qc, projectKey)
   if (issueId) {
     qc.invalidateQueries({ queryKey: ['issue', issueId] })
+    qc.invalidateQueries({ queryKey: ['task-lifecycle', issueId] })
   }
 }
 
@@ -59,9 +63,11 @@ function invalidateSprintEventQueries(qc: ReturnType<typeof useQueryClient>, pro
   qc.invalidateQueries({ queryKey: ['reports'] })
   if (projectKey) {
     qc.invalidateQueries({ queryKey: ['project', projectKey] })
+    qc.invalidateQueries({ queryKey: ['project-stage-board', projectKey] })
     qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
   } else {
     qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['project-stage-board'] })
     qc.invalidateQueries({ queryKey: ['backlog'] })
   }
 }
@@ -77,13 +83,25 @@ export function useTrackerEvents() {
   useEffect(() => {
     if (!token) return
     return connectAuthenticatedEventStream({
-      url: '/api/v1/events',
+      url: `${apiBaseUrl}/api/v1/events`,
+      onOpen: () => {
+        invalidateIssueEventQueries(qc)
+        qc.invalidateQueries({ queryKey: ['issue'] })
+        qc.invalidateQueries({ queryKey: ['task-lifecycle'] })
+        qc.invalidateQueries({ queryKey: ['task-lifecycle-catalog'] })
+      },
       token,
       eventTypes: ['tracker'],
       onEvent: (_type, payload) => {
         const evt = payload as TrackerEvent
         const pk = evt.project_key
         switch (evt.type) {
+          case 'task_lifecycle_activated':
+            qc.invalidateQueries({ queryKey: ['issue'] })
+            qc.invalidateQueries({ queryKey: ['task-lifecycle'] })
+            qc.invalidateQueries({ queryKey: ['task-lifecycle-catalog'] })
+            invalidateIssueEventQueries(qc)
+            break
           case 'issue_created':
           case 'issue_updated':
           case 'issue_deleted':

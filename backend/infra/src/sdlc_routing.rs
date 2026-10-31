@@ -57,7 +57,7 @@ impl PostgresSdlcRepository {
         Ok(())
     }
 
-    async fn policy(
+    pub(super) async fn policy(
         tx: &DatabaseTransaction,
         project: Uuid,
         version: Option<i64>,

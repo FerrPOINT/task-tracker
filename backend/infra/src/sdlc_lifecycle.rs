@@ -58,16 +58,19 @@ pub(super) async fn project_issue_status(
         )
         .await?;
     }
-    exec(tx,"INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
-        SELECT $1,i.id,i.status_id,s.id,u.id,clock_timestamp() FROM issues i
-        JOIN statuses s ON s.id=$3
-        JOIN users u ON u.central_sub=$4 AND u.is_active
-        WHERE i.id=$2 AND i.status_id<>s.id",
-        vec![Uuid::now_v7().into(),task.into(),status_id.into(),actor.subject.clone().into()]).await?;
-    exec(
+    let user = tx
+        .query_one(statement(
+            "SELECT id FROM users WHERE central_sub=$1 AND is_active FOR SHARE",
+            vec![actor.subject.clone().into()],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or(AppError::Forbidden)?;
+    crate::task_lifecycle_projection::project_status(
         tx,
-        "UPDATE issues SET status_id=$2,sprint_id=NULL,updated_at=clock_timestamp() WHERE id=$1",
-        vec![task.into(), status_id.into()],
+        task,
+        user.try_get("", "id").map_err(map_db)?,
+        status_id,
     )
     .await
 }
@@ -111,6 +114,13 @@ pub(super) async fn configured_assignment(
 ) -> Result<Option<PmAssignment>, AppError> {
     if !state.configured_cli() {
         return Ok(None);
+    }
+    if PostgresSdlcRepository::manual_controlled(tx, state.task_id).await? {
+        return if actor.trusted_human || app::sdlc_reservation::reader(actor).is_ok() {
+            Ok(None)
+        } else {
+            Err(AppError::Forbidden)
+        };
     }
     if state.stage == Stage::Draft || state.stage == Stage::Backlog {
         app::sdlc::authorize_pm_read(state, actor)?;

@@ -80,6 +80,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::task_lifecycle::task_lifecycle_catalog,
+        routes::task_lifecycle::task_stage_board,
+        routes::task_lifecycle::get_task_lifecycle,
+        routes::task_lifecycle::transition_task_lifecycle,
         routes::identity_memberships::get,
         routes::identity_deletion::check,
         routes::identity_deletion::freeze,
@@ -636,6 +640,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             post(routes::board::move_issue),
         )
         .route(
+            "/task-lifecycle",
+            get(routes::task_lifecycle::task_lifecycle_catalog),
+        )
+        .route(
+            "/issues/{id}/lifecycle",
+            get(routes::task_lifecycle::get_task_lifecycle),
+        )
+        .route(
+            "/issues/{id}/lifecycle/transitions",
+            post(routes::task_lifecycle::transition_task_lifecycle),
+        )
+        .route(
             "/issues",
             post(routes::issues::create_issue).get(routes::issues::search_issues),
         )
@@ -805,6 +821,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             routes::project_contexts::reader_auth,
         ));
     let space_api = Router::new()
+        .route(
+            "/projects/{project_key}/board",
+            get(routes::task_lifecycle::task_stage_board),
+        )
         .route("/sdlc/project-access", get(routes::project_access::get))
         .route("/spaces/visible", get(routes::space_catalog::visible))
         .route(

@@ -49,6 +49,34 @@ const issueData = {
   time_spent_seconds: 5400,
 }
 
+// This page unit fixture supplies the new owner read boundary too. Transport and
+// failure/cutover behavior are exercised by the dedicated lifecycle wire tests.
+vi.mock('@/api/task-lifecycle', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/task-lifecycle')>()),
+  getTaskLifecycleCatalog: async () => ({
+    enabled: true,
+    stages: [
+      'Draft',
+      'Backlog',
+      'Analysis',
+      'Architecture',
+      'Development',
+      'Review',
+      'Testing',
+      'Rework',
+      'Deployment',
+    ],
+    statuses: ['Ready', 'InProgress', 'Completed'],
+  }),
+  getTaskLifecycle: async (id: string) => ({
+    task_id: id,
+    state: { stage: 'Development', status: 'InProgress', revision: 1 },
+    allowed_actions: [],
+    execution_busy: false,
+    draft_submode: null,
+  }),
+}))
+
 vi.mock('@/api/issue', () => ({
   getIssue: (...args: unknown[]) => mockGetIssue(...args),
   updateIssue: vi.fn(),
@@ -60,30 +88,6 @@ vi.mock('@/api/issue', () => ({
 
 vi.mock('@/shared/api/hooks', () => ({
   useIssue: (...args: unknown[]) => mockUseIssue(...args),
-  useBoard: () => ({
-    data: {
-      columns: [
-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [] },
-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
-      ],
-      issues: [],
-      project_id: 'p1',
-      project_key: 'TT',
-      sprint: {
-        id: 's1',
-        name: 'Sprint 1',
-        goal: '',
-        state: 'active',
-        issue_ids: [],
-        velocity: 0,
-        remaining_days: null,
-        start_date: null,
-        end_date: null,
-      },
-    },
-    isLoading: false,
-    error: null,
-  }),
   useSprints: () => ({
     data: [
       {

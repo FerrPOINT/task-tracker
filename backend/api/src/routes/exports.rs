@@ -122,6 +122,7 @@ fn map_issue(issue: app::dto::IssueDto) -> IssueResponse {
         time_spent_seconds: issue.time_spent_seconds,
         created_at: issue.created_at,
         updated_at: issue.updated_at,
+        lifecycle: issue.lifecycle,
     }
 }
 

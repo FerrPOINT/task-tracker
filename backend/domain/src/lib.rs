@@ -24,6 +24,7 @@ pub mod sdlc_routing;
 pub mod sdlc_source;
 pub mod sdlc_terminal_idle_recovery;
 pub mod stubs;
+pub mod task_lifecycle;
 pub mod value_objects;
 
 pub use email_port::*;
@@ -46,6 +47,9 @@ pub struct IssueQuery {
     pub accessible_project_ids: Option<Vec<ProjectId>>,
     pub sprint_id: Option<SprintId>,
     pub status_id: Option<StatusId>,
+    pub lifecycle_stage: Option<crate::sdlc_lifecycle::LifecycleStage>,
+    pub lifecycle_status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+
     pub assignee_id: Option<UserId>,
     pub priority: Option<String>,
     pub search_text: Option<String>,
@@ -71,6 +75,8 @@ impl Default for IssueQuery {
             accessible_project_ids: None,
             sprint_id: None,
             status_id: None,
+            lifecycle_stage: None,
+            lifecycle_status: None,
             assignee_id: None,
             priority: None,
             search_text: None,
@@ -131,3 +137,5 @@ pub struct StatusDto {
 pub mod sdlc_pm_bootstrap_retry;
 pub mod task_documents;
 pub mod task_repositories;
+
+pub mod task_handoff;

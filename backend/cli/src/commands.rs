@@ -74,6 +74,11 @@ pub fn query(path: &str, pairs: Vec<(&str, Option<String>)>) -> String {
 
 #[derive(Subcommand)]
 pub enum WorkCommand {
+    /// Единые стадии, состояние задачи и ручные переходы
+    Lifecycle {
+        #[command(subcommand)]
+        command: LifecycleCommand,
+    },
     /// Справочник статусов
     Statuses,
     /// Справочник типов задач
@@ -105,6 +110,24 @@ pub enum WorkCommand {
     Worklog {
         #[command(subcommand)]
         command: WorklogCommand,
+    },
+}
+#[derive(Subcommand)]
+pub enum LifecycleCommand {
+    Catalog,
+    Get {
+        #[arg(long)]
+        issue: String,
+    },
+    Transition {
+        #[arg(long)]
+        issue: String,
+        #[arg(long, value_parser=["start","complete","request_rework","reopen"])]
+        action: String,
+        #[arg(long, value_parser=clap::value_parser!(i64).range(1..=9007199254740991))]
+        expected_revision: i64,
+        #[arg(long)]
+        idempotency_key: String,
     },
 }
 #[derive(Subcommand)]
@@ -687,6 +710,18 @@ fn request(api: &Api, method: Method, path: &str) -> Result<reqwest::RequestBuil
 }
 pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
     match command {
+        WorkCommand::Lifecycle { command } => match command {
+            LifecycleCommand::Catalog => api.get("/api/v1/task-lifecycle").await,
+            LifecycleCommand::Get { issue } => api.get(&format!("/api/v1/issues/{}/lifecycle",enc(&issue_id(api,&issue).await?))).await,
+            LifecycleCommand::Transition { issue, action, expected_revision, idempotency_key } => {
+                anyhow::ensure!(!idempotency_key.is_empty() && idempotency_key.len()<=128
+                    && !idempotency_key.chars().any(char::is_control),"Некорректный idempotency key");
+                let id=issue_id(api,&issue).await?;
+                api.post(&format!("/api/v1/issues/{}/lifecycle/transitions",enc(&id)),json!({
+                    "action":action,"expected_revision":expected_revision,"idempotency_key":idempotency_key,
+                })).await
+            }
+        },
         WorkCommand::Statuses => api.get("/api/v1/statuses").await,
         WorkCommand::IssueTypes => api.get("/api/v1/issue-types").await,
         WorkCommand::Transitions { issue } => {

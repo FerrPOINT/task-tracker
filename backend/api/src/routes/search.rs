@@ -34,6 +34,8 @@ pub async fn search_global(
                 q: q.q,
                 project_key: q.project_key,
                 priority: q.priority,
+                lifecycle_stage: q.lifecycle_stage,
+                lifecycle_status: q.lifecycle_status,
                 status: q.status,
                 assignee_id: q.assignee_id,
                 sort_by: q.sort_by,
@@ -74,5 +76,6 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         time_spent_seconds: i.time_spent_seconds,
         created_at: i.created_at,
         updated_at: i.updated_at,
+        lifecycle: i.lifecycle,
     }
 }

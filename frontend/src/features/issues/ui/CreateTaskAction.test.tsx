@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CreateTaskAction, newPmChatUrl } from './CreateTaskAction'
+import { CreateAgentTaskAction as CreateTaskAction, newPmChatUrl } from './CreateAgentTaskAction'
 
 const mocks = vi.hoisted(() => ({
   services: vi.fn(),

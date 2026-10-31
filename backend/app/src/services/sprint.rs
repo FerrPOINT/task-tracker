@@ -259,6 +259,7 @@ impl SprintService for SprintServiceImpl {
             project_key: project.key.to_string(),
         });
         super::helpers::build_issue_dtos_with_projects(
+            self.issues.clone(),
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
             Arc::clone(&self.labels),

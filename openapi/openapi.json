@@ -1239,6 +1239,36 @@
             }
           },
           {
+            "name": "lifecycle_stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LifecycleStage"
+                }
+              ]
+            }
+          },
+          {
+            "name": "lifecycle_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LifecycleStatus"
+                }
+              ]
+            }
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -1464,6 +1494,112 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/lifecycle": {
+      "get": {
+        "tags": [
+          "routes::task_lifecycle"
+        ],
+        "operationId": "get_task_lifecycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskLifecycleReadback"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/lifecycle/transitions": {
+      "post": {
+        "tags": [
+          "routes::task_lifecycle"
+        ],
+        "operationId": "transition_task_lifecycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskLifecycleTransitionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskLifecycleReadback"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -8987,6 +9123,36 @@
             }
           },
           {
+            "name": "lifecycle_stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LifecycleStage"
+                }
+              ]
+            }
+          },
+          {
+            "name": "lifecycle_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LifecycleStatus"
+                }
+              ]
+            }
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -9092,6 +9258,31 @@
                   "items": {
                     "$ref": "#/components/schemas/StatusResponse"
                   }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/task-lifecycle": {
+      "get": {
+        "tags": [
+          "routes::task_lifecycle"
+        ],
+        "operationId": "task_lifecycle_catalog",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskLifecycleCatalog"
                 }
               }
             }
@@ -9789,6 +9980,53 @@
           },
           "503": {
             "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/board": {
+      "get": {
+        "tags": [
+          "routes::task_lifecycle"
+        ],
+        "operationId": "task_stage_board",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBoard"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -13954,6 +14192,16 @@
             "items": {
               "type": "string"
             }
+          },
+          "lifecycle": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskLifecycleState"
+              }
+            ]
           },
           "original_estimate_seconds": {
             "type": [
@@ -21255,6 +21503,84 @@
           "value": {}
         }
       },
+      "TaskBoard": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_key",
+          "columns",
+          "issues",
+          "sprint",
+          "backlog_total"
+        ],
+        "properties": {
+          "backlog_total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskBoardColumn"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskBoardCard"
+            }
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_key": {
+            "type": "string"
+          },
+          "sprint": {
+            "$ref": "#/components/schemas/SprintResponse"
+          }
+        }
+      },
+      "TaskBoardCard": {
+        "type": "object",
+        "required": [
+          "issue",
+          "lifecycle"
+        ],
+        "properties": {
+          "issue": {
+            "$ref": "#/components/schemas/IssueResponse"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/TaskLifecycleReadback"
+          }
+        }
+      },
+      "TaskBoardColumn": {
+        "type": "object",
+        "required": [
+          "stage",
+          "issue_ids"
+        ],
+        "properties": {
+          "issue_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "wip_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "TaskCatalogItem": {
         "type": "object",
         "required": [
@@ -21362,6 +21688,136 @@
             "format": "int32"
           }
         }
+      },
+      "TaskLifecycleAction": {
+        "type": "string",
+        "enum": [
+          "start",
+          "complete",
+          "request_rework",
+          "reopen"
+        ]
+      },
+      "TaskLifecycleCatalog": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "stages",
+          "statuses"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStage"
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStatus"
+            }
+          }
+        }
+      },
+      "TaskLifecycleReadback": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "state",
+          "allowed_actions",
+          "execution_busy"
+        ],
+        "properties": {
+          "allowed_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskLifecycleTransitionOption"
+            }
+          },
+          "draft_submode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftSubmode"
+              }
+            ]
+          },
+          "execution_busy": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskLifecycleState"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskLifecycleState": {
+        "type": "object",
+        "required": [
+          "stage",
+          "status",
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskLifecycleTransitionCommand": {
+        "type": "object",
+        "required": [
+          "action",
+          "expected_revision",
+          "idempotency_key"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TaskLifecycleAction"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskLifecycleTransitionOption": {
+        "type": "object",
+        "required": [
+          "action",
+          "target"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TaskLifecycleAction"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TaskLifecycleState"
+          }
+        },
+        "additionalProperties": false
       },
       "TaskPullEvidence": {
         "type": "object",

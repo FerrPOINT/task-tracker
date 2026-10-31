@@ -319,6 +319,11 @@ impl IssueRepository for MemoryIssueRepository {
     }
 
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        if query.lifecycle_stage.is_some() || query.lifecycle_status.is_some() {
+            return Err(AppError::Unavailable(
+                "task_lifecycle_filter_not_supported".into(),
+            ));
+        }
         let issues = self.issues.lock().unwrap();
         let mut result: Vec<Issue> = issues
             .iter()
@@ -651,7 +656,7 @@ fn jql_field_values(field: crate::jql::Field, issue: &Issue) -> Option<Vec<Strin
         Field::Created => Some(vec![issue.created_at.to_rfc3339()]),
         Field::Updated => Some(vec![issue.updated_at.to_rfc3339()]),
         Field::DueDate => issue.due_date.map(|value| vec![value.to_rfc3339()]),
-        Field::StatusCategory | Field::Labels => None,
+        Field::StatusCategory | Field::Labels | Field::Stage | Field::LifecycleStatus => None,
     }
 }
 

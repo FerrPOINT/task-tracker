@@ -1,5 +1,76 @@
 # Дата-модель Task Tracker
 
+## Общая модель состояния задачи (кандидат)
+
+[Согласованный контракт](plans/unified-task-lifecycle-20261030.md) реализуется;
+миграция рабочих окружений и общая приёмка пока не выполнены.
+
+Стадия и статус находятся в существующем `sdlc_tasks.state`; обязательная часть
+не требует routing, Fleet, Workflow или фиктивного assignment. Для обычной задачи
+`state_origin=manual_core`; это признак происхождения, не роль и не полномочие.
+Обычная подзадача сохраняет собственный lifecycle и существующие связи иерархии.
+Её создание не создаёт delivery decomposition.
+
+`core_revision` — общая ревизия JSON-состояния. Старые execution versions,
+fencing и receipts сохраняют свой смысл. `task_lifecycle_history` хранит автора,
+команду, прежнее/новое состояние и ключ повтора. Прежний агентный аудит сохраняется
+в его owner-таблицах. `task_lifecycle_events` фиксируется вместе с изменением;
+событие — сигнал перечитать ресурс, а не дополнительный источник состояния.
+
+`manual_control` описывает текущего владельца изменения, независимо от происхождения
+задачи. Историческая assignment сама по себе не блокирует человека: проверяются
+точные terminal receipts и актуальные holds, а не истечение времени lease.
+Первая передача незанятой исторической задачи сохраняет исходный JSON и execution
+head в `task_lifecycle_custody_history`. Строки этой истории неизменяемы. Текущая
+ручная проекция не публикует старый cursor как новую queued execution; повторный
+запуск требует отдельного явного handoff. Само ручное действие не создаёт receipts.
+Human history read сохраняет исходный aggregate; его current context уже не
+выдаёт прежнюю assignment, expected assignment version или права подтверждения.
+Legacy machine reader не превращает сохранённую историю в действующее назначение.
+
+`task_lifecycle_history.next_submode` сохраняет подрежим исходного результата для
+повтора команды после последующего перехода. Clarification сохраняется в Draft,
+снимается при выходе из Draft и не берётся из более нового состояния при replay.
+
+Обычная задача без execution/custody history поддерживает прежние trash/restore
+и явное окончательное удаление администратором. В одной purge-транзакции удаляется
+её core-проекция и связанная ручная история, затем содержимое задачи. Такой permit
+не разрешает обычный UPDATE/DELETE истории. Реальная execution/custody history
+сохраняет прежний запрет на purge; миграция ничего не удаляет.
+
+Доска читает issue content, lifecycle, labels/names, WIP и sprint из одного
+repeatable-read snapshot. Соединение с core проверяется до построения карточек;
+отсутствующий state не превращается в пропущенную задачу или Unknown.
+
+`task_lifecycle_status_id(stage,status)` задаёт внутреннюю совместимую проекцию.
+Её 27 записей не являются 27 пользовательскими статусами: публичная модель имеет
+только Ready/InProgress/Completed. Категория todo относится к Draft/Backlog Ready,
+done — только к Deployment Completed; остальные сочетания являются работой.
+`task_lifecycle_legacy_status_id` — read-only обратное соответствие четырёх точных
+пар переноса. Оно сохраняет стандартные сохранённые поисковые запросы, включая
+отрицание; новые поля JQL stage/lifecycleStatus читают общий effective state.
+Общий writer проекции используется человеком и агентом и после активации сохраняет
+sprint_id: изменение стадии не должно незаметно удалять задачу из планирования.
+
+`task_lifecycle_board_limits` хранит WIP стадии проекта; контроль сериализует вход
+в стадию и повторно считает заполненность в транзакции. Исторические boards и
+статусы сохраняются. Новые проекты получают девять колонок в транзакции создания.
+
+`task_lifecycle_effective_stage/status` — одинаковая проекция исторического
+Clarification для inventory, фильтров и backlog. Только unmarked Draft/Clarification
+может иметь прежний отсутствующий status и читаться как Ready; технические стадии
+с отсутствующим статусом блокируются. Историческое состояние не обновляется
+ради исправления отображения. Batch-чтение common DTO исключает N+1 и старый
+fallback Unknown для действительных состояний модели.
+
+Схема аддитивна, активация отдельна. `task_lifecycle_inventory_snapshot()` снимает
+метаданные живых и удалённых задач; неизвестные статусы и противоречия отражаются
+как блокирующие причины. `task_lifecycle_activate(actor,expected_inventory)`
+повторно сравнивает снимок под барьером writers и переносит пакет атомарно.
+Перенос старого Done означает Deployment/Completed, без agent/deployment receipts.
+Обратный переход на старые writers или destructive down-migration не допускается;
+rollback использует совместимые образы и сохраняет новую модель и данные.
+
 Terminal-idle checkpoint permits reuse the existing `sdlc_idempotency` ledger;
 no migration, canonical lease update, business-state save or outbox write is
 introduced. Replay preserves permit identity/expiry and refreshes only readback

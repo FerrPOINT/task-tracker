@@ -5,6 +5,8 @@ import { useTrackerEvents } from './useTrackerEvents'
 import { useAuthStore } from '@/shared/auth/store'
 import { connectAuthenticatedEventStream } from '@pdlc/ui/lib'
 
+vi.mock('@/api/client', () => ({ apiBaseUrl: '/tracker' }))
+
 vi.mock('@pdlc/ui/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/lib')>()),
   connectAuthenticatedEventStream: vi.fn(() => vi.fn()),
@@ -22,7 +24,7 @@ function Subscriber() {
 
 describe('useTrackerEvents', () => {
   afterEach(() => {
-    useAuthStore.getState().logout()
+    act(() => useAuthStore.getState().logout())
     vi.mocked(connectAuthenticatedEventStream).mockClear()
     vi.unstubAllGlobals()
   })
@@ -37,10 +39,47 @@ describe('useTrackerEvents', () => {
     )
     expect(connectAuthenticatedEventStream).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: '/api/v1/events',
+        url: '/tracker/api/v1/events',
         token: 'test.token+/=',
       }),
     )
+  })
+
+  it('refetches lifecycle, details and all stage boards when the protected stream reconnects', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    const options = vi.mocked(connectAuthenticatedEventStream).mock.lastCall?.[0]
+    act(() => {
+      options?.onOpen?.()
+    })
+    for (const queryKey of [['project-stage-board'], ['task-lifecycle'], ['issue']])
+      expect(invalidate).toHaveBeenCalledWith({ queryKey })
+  })
+
+  it('refetches existing task panels after model activation without a page reload', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    act(() => emit('task_lifecycle_activated', {}))
+    for (const queryKey of [
+      ['task-lifecycle-catalog'],
+      ['task-lifecycle'],
+      ['issue'],
+      ['project-stage-board'],
+      ['search'],
+    ])
+      expect(invalidate).toHaveBeenCalledWith({ queryKey })
   })
 
   it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {

@@ -51,9 +51,17 @@ pub async fn run(
     ready: oneshot::Sender<std::net::SocketAddr>,
     shutdown: oneshot::Receiver<()>,
 ) {
+    let pristine_model_database=infra::task_lifecycle_identity::is_pristine(&config.database.url)
+        .await.expect("failed to inspect task model database");
     run_migrations(config.database.clone())
         .await
         .expect("failed to run migrations");
+    let model_instance = std::env::var("TASKTRACKER_LIFECYCLE__INSTANCE_ID")
+        .ok()
+        .or_else(|| std::env::var("TASKTRACKER_SDLC__INSTANCE_ID").ok());
+    infra::task_lifecycle_identity::ensure(&config.database.url, model_instance.as_deref(),pristine_model_database)
+        .await
+        .expect("failed to initialize stable task model identity");
     let repos = Arc::new(
         build_repositories(config.database.clone())
             .await
@@ -144,6 +152,10 @@ pub async fn run(
         }
     });
 
+    let lifecycle_events_handle = tokio::spawn(infra::task_lifecycle_events::run(
+        config.database.url.clone(),
+        ctx.events.clone(),
+    ));
     let address = format!("{}:{}", config.server.address, config.server.port);
     let listener = tokio::net::TcpListener::bind(address)
         .await
@@ -177,6 +189,7 @@ pub async fn run(
 
     // Cancel the background digest task on shutdown.
     digest_handle.abort();
+    lifecycle_events_handle.abort();
 }
 
 /// Run a single email-digest cycle.

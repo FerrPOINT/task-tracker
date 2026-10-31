@@ -6,7 +6,14 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { IssueMetaEditor } from './IssueMetaEditor'
 import type { Issue } from '@/api/issue'
-import type { Board } from '@/api/board'
+
+vi.mock('@/features/issues/ui/TaskLifecyclePanel', () => ({
+  TaskLifecycleStatusGate: ({ issueId }: { issueId: string }) => (
+    <section aria-label="Task lifecycle" data-issue={issueId}>
+      Стадия и статус
+    </section>
+  ),
+}))
 
 beforeAll(() => {
   i18n.changeLanguage('en')
@@ -18,23 +25,6 @@ vi.mock('@/shared/api/hooks', () => ({
       { id: 'u1', username: 'alice', display_name: 'Alice' },
       { id: 'u2', username: 'bob', display_name: 'Bob' },
       { id: 'u3', username: 'charlie', display_name: 'Charlie' },
-    ],
-    isLoading: false,
-    error: null,
-  }),
-  useStatuses: () => ({
-    data: [
-      { id: 's1', name: 'Open' },
-      { id: 's2', name: 'In Progress' },
-      { id: 's3', name: 'Done' },
-    ],
-    isLoading: false,
-    error: null,
-  }),
-  useTransitions: () => ({
-    data: [
-      { id: 't1', from_status_id: 's1', to_status_id: 's2' },
-      { id: 't2', from_status_id: 's1', to_status_id: 's3' },
     ],
     isLoading: false,
     error: null,
@@ -71,16 +61,14 @@ const issue: Issue = {
   sprint_id: null,
 }
 
-const columns: Board['columns'] = [
-  { id: 's1', name: 'Open', issue_ids: [] },
-  { id: 's2', name: 'In Progress', issue_ids: [] },
-  { id: 's3', name: 'Done', issue_ids: [] },
-]
-
 describe('IssueMetaEditor', () => {
   it('renders metadata select fields', async () => {
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
-    expect(screen.getByText(/status/i)).toBeInTheDocument()
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
+    expect(screen.getByRole('region', { name: 'Task lifecycle' })).toHaveAttribute(
+      'data-issue',
+      issue.id,
+    )
+    expect(screen.queryByLabelText(/^status$/i)).not.toBeInTheDocument()
     expect(screen.getByText(/priority/i)).toBeInTheDocument()
     expect(screen.getByText(/assignee/i)).toBeInTheDocument()
     const options = (await choiceOptions(screen.getByLabelText(/priority/i))).map(
@@ -92,13 +80,13 @@ describe('IssueMetaEditor', () => {
 
   it('calls onChange when priority is changed', async () => {
     const onChange = vi.fn()
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
     await chooseValue(screen.getByLabelText(/priority/i), 'Low')
     expect(onChange).toHaveBeenCalledWith({ priority: 'Low' })
   })
 
   it('offers every active directory user for assignment', async () => {
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
     expect(
       (await choiceOptions(screen.getByLabelText(/assignee/i))).some(
         (option) => option.textContent === 'Charlie',
@@ -112,7 +100,7 @@ describe('IssueMetaEditor', () => {
       assignee_id: 'u4',
       assignee_name: 'Former User',
     }
-    render(wrapper(<IssueMetaEditor issue={staleIssue} columns={columns} onChange={vi.fn()} />))
+    render(wrapper(<IssueMetaEditor issue={staleIssue} onChange={vi.fn()} />))
     fireEvent.keyDown(screen.getByLabelText(/assignee/i), { key: 'Enter' })
     const option = await screen.findByRole('option', { name: 'Former User' })
     expect(option).toHaveAttribute('data-disabled')
