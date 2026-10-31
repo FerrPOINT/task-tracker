@@ -281,13 +281,13 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
             vec![task.into(),frozen.requirement.revision.into(),frozen.requirement.content_hash.clone().into(),json_value(&frozen.requirement)?]).await?;
         exec(&tx,"INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)",
             vec![frozen.confirmation.id.into(),task.into(),frozen.confirmation.revision.into(),frozen.confirmation.content_hash.clone().into(),json_value(&frozen.confirmation)?]).await?;
-        exec(&tx,"INSERT INTO task_handoff_materials(handoff_id,task_id,actor_id,actor_subject,idempotency_key,command_hash,previous_revision,resulting_revision,confirmation_id,requirement_revision,requirements_sha256,receipt,previous_state,next_state,routing,source_binding)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+        exec(&tx,"INSERT INTO task_handoff_materials(handoff_id,task_id,actor_id,actor_subject,idempotency_key,command_hash,previous_revision,resulting_revision,confirmation_id,requirement_revision,requirements_sha256,receipt,routing,source_binding)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
             vec![receipt.handoff_id.into(),task.into(),actor_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),
                 prepared.state.revision.into(),receipt.resulting_revision.into(),receipt.confirmation_id.into(),receipt.requirement_revision.into(),receipt.requirements_sha256.clone().into(),
-                json_value(receipt)?,previous.into(),next.clone().into(),json_value(&frozen.routing)?,json_value(&frozen.source)?]).await?;
-        exec(&tx,"INSERT INTO task_handoff_material_write_permits(task_id,transaction_id,handoff_id) VALUES($1,pg_current_xact_id(),$2)",
-            vec![task.into(),receipt.handoff_id.into()]).await?;
+                json_value(receipt)?,json_value(&frozen.routing)?,json_value(&frozen.source)?]).await?;
+        exec(&tx,"INSERT INTO task_handoff_material_write_permits(task_id,transaction_id,handoff_id,previous_state,next_state) VALUES($1,pg_current_xact_id(),$2,$3,$4)",
+            vec![task.into(),receipt.handoff_id.into(),previous.into(),next.clone().into()]).await?;
         exec(
             &tx,
             "UPDATE sdlc_tasks SET state=$2,manual_control=true WHERE task_id=$1",

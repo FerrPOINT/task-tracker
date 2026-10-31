@@ -119,7 +119,9 @@ Confirmation текущей стадии. `CurrentStageHandoffRepository::save_h
 исходные CAS/fingerprint/routing и сохраняет всё одной транзакцией.
 
 Аддитивная миграция113 хранит immutable `task_handoff_materials`: исходный command
-hash, actor, прежний/новый snapshot, ревизии, настоящий receipt, routing и source.
+hash, actor, ревизии, настоящий receipt, routing и source. Точные прежний/новый
+snapshots живут только в transaction permit и удаляются до commit: повторные
+подтверждения не размножают полную историю задачи в постоянном ledger.
 Связь подтверждения с требованиями защищена FK. Точный transaction permit сверяет
 текущего reporter/owner, текущие routing/source heads, namespace и неизменность
 всех полей состояния кроме добавленного подтверждения. Он не позволяет выделить

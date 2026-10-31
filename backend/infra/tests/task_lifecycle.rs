@@ -1113,6 +1113,34 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert_eq!(n.try_get::<i64>("", "pm_runs").unwrap(), 0);
     assert_eq!(n.try_get::<i64>("", "assignments").unwrap(), 0);
     assert_eq!(n.try_get::<i64>("", "permits").unwrap(), 0);
+    // Immutable audit size stays independent of the growing requirements history.
+    // Full before/after aggregate snapshots are only transient transaction permits.
+    let audit=db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT max(octet_length(to_jsonb(m)::text))-min(octet_length(to_jsonb(m)::text)) AS growth FROM task_handoff_materials m".to_owned())).await.unwrap().unwrap();
+    assert!(audit.try_get::<i32>("", "growth").unwrap() < 1024);
+    db.execute_unprepared("UPDATE issues SET deleted_at=clock_timestamp() WHERE key='CORE-2'")
+        .await
+        .unwrap();
+    let error = db
+        .execute_unprepared(
+            "SELECT task_lifecycle_purge_manual_core('50000000-0000-4000-8000-000000000002')",
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("task_lifecycle_execution_history_retained")
+    );
+    db.execute_unprepared("UPDATE issues SET deleted_at=NULL WHERE key='CORE-2'")
+        .await
+        .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]

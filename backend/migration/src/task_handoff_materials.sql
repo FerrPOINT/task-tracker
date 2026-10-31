@@ -12,8 +12,6 @@ CREATE TABLE task_handoff_materials (
     requirement_revision bigint NOT NULL,
     requirements_sha256 text NOT NULL,
     receipt jsonb NOT NULL,
-    previous_state jsonb NOT NULL,
-    next_state jsonb NOT NULL,
     routing jsonb NOT NULL,
     source_binding jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -34,8 +32,7 @@ CREATE TABLE task_handoff_materials (
         AND source_binding->'requirement_revision'=to_jsonb(requirement_revision)
         AND routing->>'content_hash'=requirements_sha256 AND source_binding->>'content_hash'=requirements_sha256
         AND routing->>'snapshot_id'=receipt->>'routing_snapshot_id'
-        AND source_binding->>'routing_snapshot_id'=receipt->>'routing_snapshot_id'
-        AND next_state->>'human_handoff_id'=handoff_id::text) IS TRUE)
+        AND source_binding->>'routing_snapshot_id'=receipt->>'routing_snapshot_id') IS TRUE)
 );
 CREATE TRIGGER task_handoff_materials_immutable BEFORE UPDATE OR DELETE ON task_handoff_materials
 FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
@@ -44,6 +41,8 @@ CREATE TABLE task_handoff_material_write_permits (
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     transaction_id xid8 NOT NULL,
     handoff_id uuid NOT NULL REFERENCES task_handoff_materials(handoff_id) ON DELETE RESTRICT,
+    previous_state jsonb NOT NULL,
+    next_state jsonb NOT NULL,
     PRIMARY KEY(task_id,transaction_id)
 );
 
@@ -57,7 +56,8 @@ LANGUAGE sql STABLE AS $$
             JOIN sdlc_requirements r ON r.task_id=m.task_id AND r.revision=m.requirement_revision
             JOIN sdlc_confirmations c ON c.task_id=m.task_id AND c.id=m.confirmation_id
             WHERE p.task_id=task AND p.transaction_id=pg_current_xact_id()
-                AND m.next_state=next_snapshot AND m.previous_state=t.state AND m.previous_revision=t.core_revision
+                AND p.next_state=next_snapshot AND p.previous_state=t.state AND m.previous_revision=t.core_revision
+                AND next_snapshot->>'human_handoff_id'=m.handoff_id::text
                 AND m.actor_subject=t.owner_subject
                 AND EXISTS(SELECT 1 FROM issues i JOIN users u ON u.id=i.reporter_id
                     WHERE i.id=t.task_id AND u.id=m.actor_id AND u.central_sub=m.actor_subject AND u.is_active)
@@ -130,3 +130,12 @@ CREATE TRIGGER sdlc_analysis_gate BEFORE UPDATE ON sdlc_tasks
 FOR EACH ROW WHEN (NOT task_lifecycle_manual_write_permitted(OLD.task_id,NEW.state)
     AND NOT task_handoff_material_write_permitted(OLD.task_id,NEW.state))
 EXECUTE FUNCTION sdlc_analysis_gate();
+
+-- Genuine consent is retained history, as enforced by its FK. Return the existing
+-- explicit conflict before partial purge work, rather than leaking an FK/500 error.
+DO $$ DECLARE definition text; anchor text := '    IF NOT t.manual_control OR'; BEGIN
+    definition:=pg_get_functiondef('task_lifecycle_purge_manual_core(uuid)'::regprocedure);
+    IF position(anchor IN definition)=0 THEN RAISE EXCEPTION 'handoff_purge_guard_anchor_missing'; END IF;
+    EXECUTE replace(definition,anchor,
+        '    IF EXISTS(SELECT 1 FROM task_handoff_materials WHERE task_id=task) OR NOT t.manual_control OR');
+END $$;

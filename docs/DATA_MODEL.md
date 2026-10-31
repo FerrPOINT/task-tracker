@@ -2425,8 +2425,9 @@ No new table, permit family, task tree or scheduler is introduced.
 
 Аддитивная миграция113 добавляет `task_handoff_materials` и краткоживущий
 transaction permit. Ledger содержит actor, исходный idempotency key/command hash,
-ревизии, точные прежний/новый snapshots, настоящий human receipt и frozen
-routing/source. Требования и подтверждение сохраняются в прежних immutable
+ревизии, настоящий human receipt и frozen routing/source. Точные прежний/новый
+snapshots находятся в краткоживущем transaction permit, не копируя постоянно всю
+предыдущую историю при каждом подтверждении. Требования и подтверждение сохраняются в прежних immutable
 `sdlc_requirements`/`sdlc_confirmations` с FK; stage/status не изменяются.
 Это история согласия, а не agent run или основание считать runtime запущенным.
 Подробности и незавершённая consumer-граница:
