@@ -934,8 +934,12 @@ impl LifecycleRepository for PostgresSdlcRepository {
         let hash = app::sdlc::canonical_hash(
             &json!({"operation":"submit_delivery_proposal","payload":command}),
         )?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, true).await?;
+        }
         if !state.configured_cli() {
             return Err(AppError::conflict(
                 "retired execution is read-only; a configured assignment is required",
@@ -964,6 +968,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             authorize_proposal_grant(&tx, &state, &receipt, actor).await?;
             spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
             tx.commit().await.map_err(map_db)?;
+            if let Some(owner_data) = &owner_data {
+                owner_data.current()?;
+            }
             return Ok((receipt, true));
         }
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
@@ -1038,6 +1045,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'delivery.proposal_submitted',$3)",
             vec![proposal.proposal_id.into(),task.into(),payload.into()]).await?;
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = &owner_data {
+            owner_data.current()?;
+        }
         Ok((proposal, false))
     }
 
@@ -1048,8 +1058,12 @@ impl LifecycleRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<DeliveryProposalReceipt, AppError> {
         app::sdlc::validate_key(key)?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+        }
         let server_read = state.configured_cli()
             && !actor.human_session
             && app::sdlc_reservation::reader(actor).is_ok();
@@ -1093,6 +1107,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
         }
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = &owner_data {
+            owner_data.current()?;
+        }
         Ok(receipt)
     }
 
@@ -1102,8 +1119,12 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         result_id: Uuid,
     ) -> Result<DeliveryInput, AppError> {
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+        }
         if !state.configured_cli() {
             if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
                 app::sdlc_lifecycle::producer(actor, false)?;
@@ -1124,6 +1145,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             DeliveryInput::Delivery(serde_json::from_value(payload).map_err(|_| corrupt())?)
         };
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = &owner_data {
+            owner_data.current()?;
+        }
         Ok(result)
     }
 
@@ -1139,13 +1163,20 @@ impl LifecycleRepository for PostgresSdlcRepository {
         app::sdlc_reservation::scheduler(actor, &self.config)?;
         app::sdlc_lifecycle::validate_command(&command)?;
         let hash = app::sdlc::canonical_hash(&command)?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, true).await?;
+        }
         if let Some((original_hash, result)) = operation(&tx, task, actor, command.key()).await? {
             if original_hash != hash {
                 return Err(AppError::conflict("delivery key payload conflict"));
             }
             tx.commit().await.map_err(map_db)?;
+            if let Some(owner_data) = &owner_data {
+                owner_data.current()?;
+            }
             return Ok((result, true));
         }
         if state.configured_cli()
@@ -1439,6 +1470,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
             .await?;
         }
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = &owner_data {
+            owner_data.current()?;
+        }
         Ok((receipt, false))
     }
 
@@ -1498,12 +1532,19 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
         app::sdlc::validate_key(key)?;
+        let owner_data = spaces::confirm_owner_before_transaction(self, task, actor).await?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.load(&tx, task, actor).await?;
+        let state = self.load(&tx, task, actor).await?;
+        if !actor.trusted_human && state.retained_fields.contains_key("execution_handoff_id") {
+            Self::bind_owner_data(&tx, &state, owner_data.as_ref(), None, false).await?;
+        }
         let (_, result) = operation(&tx, task, actor, key)
             .await?
             .ok_or_else(|| AppError::not_found("delivery operation", key))?;
         tx.commit().await.map_err(map_db)?;
+        if let Some(owner_data) = &owner_data {
+            owner_data.current()?;
+        }
         Ok(result)
     }
 }

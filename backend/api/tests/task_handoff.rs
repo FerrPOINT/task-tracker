@@ -916,6 +916,37 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         StatusCode::FORBIDDEN,
         "valid scheduler cannot start for a revoked owner"
     );
+    let heartbeat = json!({"operation":"heartbeat","fence":{
+        "assignment_id":reserved["assignment"]["assignment_id"],
+        "execution_id":reserved["assignment"]["execution_id"],
+        "lease_id":reserved["lease"]["lease_id"],
+        "fencing_token":reserved["assignment"]["fencing_token"],
+        "expected_lease_version":reserved["lease"]["version"]},
+        "idempotency_key":"owner-scoped-heartbeat"});
+    let lifecycle_path = format!("/api/v1/issues/{TASK}/sdlc/lifecycle");
+    let (status, body) = call(
+        &router,
+        "POST",
+        &lifecycle_path,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "revoked owner cannot renew a current execution: {body}"
+    );
+    let heartbeat_operation = format!("{lifecycle_path}/operations/owner-scoped-heartbeat");
+    let absent_result = format!("{lifecycle_path}/results/{}", Uuid::new_v4());
+    for endpoint in [&heartbeat_operation, &absent_result] {
+        let (status, body) = call(&router, "GET", endpoint, Some(SCHEDULER), Value::Null).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "private current execution route {endpoint}: {body}"
+        );
+    }
     let second_execution_read = format!("{second_path}/execution");
     assert_eq!(
         call(
@@ -995,6 +1026,65 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         (probe.monotonic_deadline() + std::time::Duration::from_millis(25)).into(),
     )
     .await;
+    let (status, renewed) = call(
+        &router,
+        "POST",
+        &lifecycle_path,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "valid exact scheduler and owner may renew: {renewed}"
+    );
+    assert_eq!(
+        renewed["lease"]["version"].as_i64().unwrap(),
+        reserved["lease"]["version"].as_i64().unwrap() + 1
+    );
+    assert_eq!(renewed["task"]["stage"], reserved["task"]["stage"]);
+    for token in [FULL, TRACKER, MACHINE, SCHEDULER] {
+        assert_eq!(
+            call(
+                &router,
+                "POST",
+                &lifecycle_path,
+                Some(token),
+                heartbeat.clone()
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN,
+            "only the exact scheduler write credential may renew"
+        );
+    }
+    let (status, recovered) = call(
+        &router,
+        "GET",
+        &heartbeat_operation,
+        Some(SCHEDULER),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{recovered}");
+    assert_eq!(recovered, renewed);
+    let (status, repeated) = call(
+        &router,
+        "POST",
+        &lifecycle_path,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{repeated}");
+    assert_eq!(repeated, renewed, "repeat never renews twice");
+    assert_eq!(
+        call(&router, "GET", &absent_result, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
     let (status, pending_context) = call(
         &router,
         "GET",
@@ -1287,6 +1377,27 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         .0,
         StatusCode::FORBIDDEN,
         "original operation replay is also subject to current data admission"
+    );
+    for endpoint in [&heartbeat_operation, &absent_result] {
+        let (status, body) = call(&router, "GET", endpoint, Some(SCHEDULER), Value::Null).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "revoked native history {endpoint}: {body}"
+        );
+    }
+    let (status, body) = call(
+        &router,
+        "POST",
+        &lifecycle_path,
+        Some(SCHEDULER_WRITE),
+        heartbeat.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "an original successful command cannot bypass revocation: {body}"
     );
     assert!(
         scope.try_get::<i64>("", "initial_valid_until").unwrap() <= chrono::Utc::now().timestamp()

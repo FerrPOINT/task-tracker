@@ -296,9 +296,14 @@ async fn bind_task_scope(
     if !state.configured_cli() {
         app::sdlc::authorize_pm_read(state, actor)?;
     }
-    if matches!(scope, TaskScope::Current) {
+    if matches!(scope, TaskScope::Current)
+        && app::sdlc_reservation::scheduler(actor, config).is_err()
+    {
         super::lifecycle::authorize_read(tx, state, actor).await?;
     }
+    // The exact registered scheduler writer manages reservations/leases; it is
+    // not the assigned producer. Its native task, owner and project checks below
+    // still apply. A generic write token cannot enter this branch.
     if application_policy {
         let owner = Uuid::parse_str(&state.owner_subject).map_err(|_| AppError::Forbidden)?;
         if owner.to_string() != state.owner_subject {

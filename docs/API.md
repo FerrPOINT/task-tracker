@@ -2350,3 +2350,13 @@ owner-space допуск; отсутствующий ключ не раскры�
 Обычный человеческий читатель использует свой human context; для source требуется
 допуск к точному пространству источника дополнительно к доступу к проекту.
 Это изменение проверок existing routes, без изменения публичных DTO.
+
+
+Current technical lifecycle commands, result reads and proposal/operation reads
+получают owner proof до SQL-транзакции и повторно проверяют его исходный срок
+под блокировкой. Исходный ключ успешной команды не обходит отзыв допуска.
+Точно зарегистрированный scheduler writer обслуживает lease/reservation,
+а не выдаёт себя за assigned producer; product/native/project проверки сохраняются.
+Изолированно проверены heartbeat, original result, отсутствие двойного продления,
+read-vs-write credentials и отзыв после успеха. Реальный start/result/terminal
+cohort и безопасный cleanup после отзыва ещё требуют отдельной приёмки.
