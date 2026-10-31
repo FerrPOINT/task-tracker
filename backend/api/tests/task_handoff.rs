@@ -332,8 +332,11 @@ async fn qualify_policy_off_identity(
     assert_eq!(reserved["task"]["stage"], "Review");
     assert!(reserved["binding"].is_null());
     let heartbeat = json!({"operation":"heartbeat","fence":{"assignment_id":reserved["assignment"]["assignment_id"],"execution_id":reserved["assignment"]["execution_id"],"lease_id":reserved["lease"]["lease_id"],"fencing_token":reserved["assignment"]["fencing_token"],"expected_lease_version":reserved["lease"]["version"]},"idempotency_key":"known-identity-expiry-heartbeat"});
-    identity_ttl.store(2, Ordering::SeqCst);
-    db.execute_unprepared("CREATE SEQUENCE fixture_identity_commit_delay; CREATE FUNCTION fixture_identity_commit_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.valid_until<clock_timestamp()+interval '3 seconds' AND EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE idempotency_key='known-identity-expiry-heartbeat' AND xmin::text=pg_current_xact_id()::text) THEN PERFORM nextval('fixture_identity_commit_delay'); PERFORM pg_sleep(2.1);END IF;RETURN NEW;END $$; CREATE CONSTRAINT TRIGGER a_fixture_identity_commit_delay AFTER INSERT ON tracker_request_commit_fences DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fixture_identity_commit_delay()").await.unwrap();
+    // Keep enough whole seconds to reach the deferred operation under the native
+    // wire clock. The trigger then waits for THIS exact fence and original
+    // identity to expire, rather than relying on a wall-second phase/fixed sleep.
+    identity_ttl.store(5, Ordering::SeqCst);
+    db.execute_unprepared("CREATE SEQUENCE fixture_identity_commit_delay; CREATE FUNCTION fixture_identity_commit_delay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.valid_until<clock_timestamp()+interval '6 seconds' AND EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE idempotency_key='known-identity-expiry-heartbeat' AND xmin::text=pg_current_xact_id()::text) THEN PERFORM nextval('fixture_identity_commit_delay'); PERFORM pg_sleep(GREATEST(0,extract(epoch FROM NEW.valid_until-clock_timestamp()))+1.1);END IF;RETURN NEW;END $$; CREATE CONSTRAINT TRIGGER a_fixture_identity_commit_delay AFTER INSERT ON tracker_request_commit_fences DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fixture_identity_commit_delay()").await.unwrap();
     let (status, body) = call(
         router,
         "POST",
