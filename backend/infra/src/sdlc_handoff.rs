@@ -25,7 +25,7 @@ impl PostgresSdlcRepository {
         Ok(prepared)
     }
 
-    async fn prepare_handoff_locked(
+    pub(super) async fn prepare_handoff_locked(
         &self,
         tx: &DatabaseTransaction,
         task: Uuid,
@@ -42,7 +42,9 @@ impl PostgresSdlcRepository {
             if actor.human_session {
                 return Err(AppError::Forbidden);
             }
-            app::sdlc_reservation::reader(actor)?;
+            if app::task_handoff::scheduler_writer(actor, &self.config).is_err() {
+                app::sdlc_reservation::reader(actor)?;
+            }
         }
         let state = Self::load_binding(tx, &self.config, task, actor).await?;
         if actor.trusted_human && actor.subject != state.owner_subject {
@@ -156,6 +158,24 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository {
+    async fn prepare_requested_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PreparedCurrentStageHandoff, AppError> {
+        self.prepare_handoff_delivery(task, actor).await
+    }
+    async fn reserve_current_stage_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::task_handoff::ReserveTaskHandoffCommand,
+        observed: &app::task_handoff_observations::MatchedHandoffInputs,
+    ) -> Result<(domain::current_stage_execution::CurrentStageExecution, bool), AppError> {
+        self.adopt_handoff_delivery(task, actor, command, observed)
+            .await
+    }
+
     async fn current_owner_handoff(
         &self,
         task: Uuid,
@@ -639,7 +659,7 @@ impl PostgresSdlcRepository {
         Ok(())
     }
 
-    async fn pending_handoff_locked(
+    pub(super) async fn pending_handoff_locked(
         &self,
         tx: &DatabaseTransaction,
         task: Uuid,

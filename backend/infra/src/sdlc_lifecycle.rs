@@ -372,7 +372,33 @@ fn exact_fence(
     Ok(())
 }
 
+pub(super) struct DeliveryReservationAllocation {
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub lease_id: Uuid,
+    pub execution: DeliveryExecution,
+}
 impl PostgresSdlcRepository {
+    pub(super) async fn allocate_delivery_reservation(
+        tx: &DatabaseTransaction,
+    ) -> Result<DeliveryReservationAllocation, AppError> {
+        let ordinal = tx
+            .query_one(statement(
+                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
+                vec![],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(corrupt)?
+            .try_get::<i64>("", "ordinal")
+            .map_err(map_db)?;
+        Ok(DeliveryReservationAllocation {
+            assignment_id: Uuid::now_v7(),
+            execution_id: Uuid::now_v7(),
+            lease_id: Uuid::now_v7(),
+            execution: DeliveryExecution::from_ordinal(ordinal)?,
+        })
+    }
     pub(super) async fn save_delivery_projection(
         tx: &DatabaseTransaction,
         actor: &Principal,
@@ -521,16 +547,19 @@ impl PostgresSdlcRepository {
         Ok(())
     }
 
-    async fn delivery_reserve(
+    pub(super) async fn delivery_reserve(
         &self,
         tx: &DatabaseTransaction,
         actor: &Principal,
         receipt: &mut LifecycleReceipt,
         expected_version: i64,
         machine_subject: Option<&str>,
+        allocation: Option<DeliveryReservationAllocation>,
     ) -> Result<(), AppError> {
+        let human=tx.query_one(statement("SELECT task_handoff_current_delivery_origin(task_id,state) AS human FROM sdlc_tasks WHERE task_id=$1",vec![receipt.task.task_id.into()])).await.map_err(map_db)?.ok_or_else(corrupt)?.try_get::<bool>("","human").map_err(map_db)?;
         if receipt.task.version != expected_version
-            || receipt.task.status != LifecycleStatus::Ready
+            || (receipt.task.status != LifecycleStatus::Ready
+                && !(human && receipt.task.status == LifecycleStatus::InProgress))
             || receipt.task.runtime != RuntimeState::Queued
             || receipt.assignment.is_some()
         {
@@ -601,22 +630,16 @@ impl PostgresSdlcRepository {
             .ok_or_else(corrupt)?
             .try_get::<i64>("", "n")
             .map_err(map_db)?;
-        let ordinal = tx
-            .query_one(statement(
-                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
-                vec![],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or_else(corrupt)?
-            .try_get::<i64>("", "ordinal")
-            .map_err(map_db)?;
-        let execution = DeliveryExecution::from_ordinal(ordinal)?;
+        let allocation = match allocation {
+            Some(allocation) => allocation,
+            None => Self::allocate_delivery_reservation(tx).await?,
+        };
+        allocation.execution.validate()?;
         let observed_at = now(tx).await?;
         let mut assignment = DeliveryAssignment {
-            assignment_id: Uuid::now_v7(),
-            execution_id: Uuid::now_v7(),
-            execution: Some(execution),
+            assignment_id: allocation.assignment_id,
+            execution_id: allocation.execution_id,
+            execution: Some(allocation.execution),
             task_id: receipt.task.task_id,
             owner_subject: receipt.task.owner_subject.clone(),
             role,
@@ -628,7 +651,7 @@ impl PostgresSdlcRepository {
             routing: receipt.task.routing.clone(),
             previous_result_id: receipt.task.previous_result_id,
             fencing_token: token,
-            lease_id: Uuid::now_v7(),
+            lease_id: allocation.lease_id,
             assignment_hash: String::new(),
         };
         assignment.assignment_hash = app::sdlc_lifecycle::assignment_hash(&assignment)?;
@@ -1234,6 +1257,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     &mut receipt,
                     *expected_task_version,
                     machine_subject.as_deref(),
+                    None,
                 )
                 .await?;
             }

@@ -400,3 +400,76 @@ pub struct CurrentHandoffStatus {
     pub core_revision: i64,
     pub can_cancel: bool,
 }
+
+/// A registered scheduler claims the exact human request; role/stage/agent are owner-derived.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReserveTaskHandoffCommand {
+    pub handoff_id: uuid::Uuid,
+    pub expected_revision: i64,
+    pub machine_subject: String,
+    pub idempotency_key: String,
+}
+impl ReserveTaskHandoffCommand {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_command_fields(self.expected_revision, &self.idempotency_key)?;
+        let subject = uuid::Uuid::parse_str(&self.machine_subject)
+            .map_err(|_| AppError::validation("invalid configured producer identity"))?;
+        if self.handoff_id.is_nil()
+            || subject.is_nil()
+            || subject.to_string() != self.machine_subject
+            || self.expected_revision > 9_007_199_254_740_989
+        {
+            return Err(AppError::validation("invalid current-stage reservation"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod native_reservation_input_tests {
+    use super::*;
+    #[test]
+    fn registered_reservation_cannot_inject_owner_stage_agent_or_lease() {
+        let value = serde_json::json!({"handoff_id":uuid::Uuid::new_v4(),"expected_revision":3,"machine_subject":uuid::Uuid::new_v4().to_string(),"idempotency_key":"original-native-key"});
+        serde_json::from_value::<ReserveTaskHandoffCommand>(value.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        for key in [
+            "stage",
+            "role",
+            "agent_id",
+            "owner_subject",
+            "lease_ttl",
+            "previous_result_id",
+        ] {
+            let mut injected = value.clone();
+            injected[key] = serde_json::json!("caller-selected");
+            assert!(
+                serde_json::from_value::<ReserveTaskHandoffCommand>(injected).is_err(),
+                "{key}"
+            );
+        }
+        for (key, invalid) in [
+            ("expected_revision", serde_json::json!(0)),
+            (
+                "expected_revision",
+                serde_json::json!(9_007_199_254_740_990_i64),
+            ),
+            (
+                "machine_subject",
+                serde_json::json!(uuid::Uuid::nil().to_string()),
+            ),
+        ] {
+            let mut changed = value.clone();
+            changed[key] = invalid;
+            assert!(
+                serde_json::from_value::<ReserveTaskHandoffCommand>(changed)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+    }
+}

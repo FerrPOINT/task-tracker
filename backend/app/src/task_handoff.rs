@@ -213,6 +213,22 @@ pub fn scheduler_reader(
     Ok(())
 }
 
+pub fn scheduler_writer(
+    actor: &Principal,
+    config: &domain::sdlc::SdlcConfig,
+) -> Result<(), AppError> {
+    crate::sdlc_reservation::scheduler(actor, config)?;
+    if actor.trusted_human {
+        return Err(AppError::Forbidden);
+    }
+    if let Some(native) = crate::native_space_access::current()? {
+        if native.identity().subject != actor.subject || !native.may_write() {
+            return Err(AppError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
 /// Owner persistence only. A saved consent is not a Fleet claim or a native launch permit.
 pub struct PendingHandoffMaterials {
     pub receipt: TaskHandoffReceipt,
@@ -228,6 +244,20 @@ pub struct SavedHandoffOperation {
 
 #[async_trait::async_trait]
 pub trait CurrentStageHandoffRepository: Send + Sync {
+    async fn prepare_requested_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PreparedCurrentStageHandoff, AppError>;
+
+    async fn reserve_current_stage_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::task_handoff::ReserveTaskHandoffCommand,
+        observed: &crate::task_handoff_observations::MatchedHandoffInputs,
+    ) -> Result<(domain::current_stage_execution::CurrentStageExecution, bool), AppError>;
+
     async fn current_owner_handoff(
         &self,
         task: Uuid,

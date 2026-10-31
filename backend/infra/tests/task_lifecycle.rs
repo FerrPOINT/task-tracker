@@ -847,14 +847,11 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
     let migrations = migration::Migrator::migrations();
-    assert!(
-        migrations
-            .last()
-            .unwrap()
-            .name()
-            .ends_with("0000116_human_routing_inventory")
-    );
-    migration::Migrator::up(&db, Some((migrations.len() - 1) as u32))
+    let before_routing_index = migrations
+        .iter()
+        .position(|m| m.name().ends_with("0000116_human_routing_inventory"))
+        .unwrap();
+    migration::Migrator::up(&db, Some(before_routing_index as u32))
         .await
         .unwrap();
     db.execute_unprepared(include_str!(
@@ -1801,6 +1798,266 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .unwrap()
         .unwrap();
     assert_eq!(permits.try_get::<i64>("", "n").unwrap(), 0);
+    let facts = |prepared: &domain::task_handoff::PreparedCurrentStageHandoff| {
+        let entry = prepared.entry.unwrap();
+        let fleet = app::sdlc_configuration::MatchedConfiguration {
+            selection_sha256: app::sdlc_configuration::MatchedConfiguration::selection_hash(
+                entry.route(prepared.routing.as_ref().unwrap()),
+                entry.role.key(),
+                entry.mode.key(),
+            )
+            .unwrap(),
+            observation_ref: Uuid::new_v4(),
+            observed_at: chrono::Utc::now(),
+        };
+        let mut source = prepared.source.as_ref().unwrap().verification.clone();
+        source.observed_at = chrono::Utc::now();
+        app::task_handoff_observations::MatchedHandoffInputs::bind(prepared, fleet, source).unwrap()
+    };
+    let before_native = repository
+        .prepare_current_stage_handoff(queued_task, &actor)
+        .await
+        .unwrap();
+    let native_request = command(&before_native, "request-genuine-technical");
+    let (native_consent, _) = repository
+        .request_current_stage_handoff(queued_task, &actor, &native_request, &facts(&before_native))
+        .await
+        .unwrap();
+    let writer = Principal {
+        subject: scheduler.subject.clone(),
+        trusted_human: false,
+        human_session: false,
+        scopes: ["task-tracker:write".into()].into(),
+    };
+    assert!(
+        repository
+            .prepare_requested_handoff(queued_task, &scheduler)
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .prepare_requested_handoff(queued_task, &actor)
+            .await
+            .is_err()
+    );
+    let prepared = repository
+        .prepare_requested_handoff(queued_task, &writer)
+        .await
+        .unwrap();
+    let observed = facts(&prepared);
+    let producer = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub) VALUES($1,'producer@example.test','producer','Fixture producer','fixture',$2);",vec![producer.into(),producer.to_string().into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![project.into(), producer.into()],
+    ))
+    .await
+    .unwrap();
+    let reserve = domain::task_handoff::ReserveTaskHandoffCommand {
+        handoff_id: native_consent.handoff_id,
+        expected_revision: prepared.state.revision,
+        machine_subject: producer.to_string(),
+        idempotency_key: "native-first-current-stage".into(),
+    };
+    // Expire only the stored proof at commit. Real assignment, hold, head and
+    // business state must all roll back together; no sleep or fake terminal.
+    db.execute_unprepared("CREATE FUNCTION injected_adoption_expiry() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.observations=jsonb_set(NEW.observations,'{valid_until}',to_jsonb((clock_timestamp()-interval '1 second')::text)); RETURN NEW; END $$; CREATE TRIGGER injected_adoption_expiry BEFORE INSERT ON task_handoff_delivery_adoptions FOR EACH ROW EXECUTE FUNCTION injected_adoption_expiry()").await.unwrap();
+    let expired = repository
+        .reserve_current_stage_handoff(queued_task, &writer, &reserve, &observed)
+        .await
+        .unwrap_err();
+    assert!(
+        expired
+            .to_string()
+            .contains("task_handoff_native_adoption_invalid_or_expired"),
+        "{expired:?}"
+    );
+    db.execute_unprepared("DROP TRIGGER injected_adoption_expiry ON task_handoff_delivery_adoptions;DROP FUNCTION injected_adoption_expiry()").await.unwrap();
+    assert_eq!(
+        repository
+            .prepare_requested_handoff(queued_task, &writer)
+            .await
+            .unwrap()
+            .state,
+        prepared.state
+    );
+    let (reserved, replayed) = repository
+        .reserve_current_stage_handoff(queued_task, &writer, &reserve, &observed)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(
+        (reserved.task.stage, reserved.task.status),
+        (Stage::Review, Status::InProgress)
+    );
+    assert_eq!(
+        reserved.task.runtime,
+        domain::sdlc_lifecycle::RuntimeState::Reserved
+    );
+    let assignment = reserved.assignment.as_ref().unwrap();
+    assert_eq!(assignment.handoff_id, native_consent.handoff_id);
+    assert_eq!(assignment.machine_subject, producer.to_string());
+    assert!(assignment.fencing_token > 0);
+    assert!(reserved.lease.is_some());
+    assert!(reserved.binding.is_none());
+    assert!(reserved.result.is_none());
+    assert!(
+        repository
+            .current_owner_handoff(queued_task, &actor)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let again = repository
+        .reserve_current_stage_handoff(queued_task, &writer, &reserve, &observed)
+        .await
+        .unwrap();
+    assert!(again.1);
+    assert_eq!(
+        serde_json::to_value(again.0).unwrap(),
+        serde_json::to_value(&reserved).unwrap()
+    );
+    let busy = issues
+        .task_lifecycle(IssueId::from_uuid(queued_task), true)
+        .await
+        .unwrap();
+    assert!(busy.execution_busy);
+    assert_eq!(busy.state.revision, prepared.state.revision + 2);
+    assert!(
+        issues
+            .transition_task_lifecycle(
+                IssueId::from_uuid(queued_task),
+                actor_id,
+                &TransitionCommand {
+                    action: Action::Complete,
+                    expected_revision: busy.state.revision,
+                    idempotency_key: "cannot-overwrite-reserved-native".into()
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .cancel_current_stage_handoff(
+                queued_task,
+                native_consent.handoff_id,
+                &actor,
+                &domain::task_handoff::CancelTaskHandoffCommand {
+                    expected_revision: busy.state.revision,
+                    idempotency_key: "cannot-cancel-claimed-native".into()
+                }
+            )
+            .await
+            .is_err()
+    );
+    let storage=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_delivery_assignments) AS assignments,(SELECT count(*) FROM sdlc_delivery_holds) AS holds,(SELECT count(*) FROM sdlc_pm_executions) AS pm,(SELECT count(*) FROM task_handoff_delivery_seed_permits) AS permits".to_owned())).await.unwrap().unwrap();
+    assert_eq!(storage.try_get::<i64>("", "assignments").unwrap(), 1);
+    assert_eq!(storage.try_get::<i64>("", "holds").unwrap(), 1);
+    assert_eq!(storage.try_get::<i64>("", "pm").unwrap(), 0);
+    assert_eq!(storage.try_get::<i64>("", "permits").unwrap(), 0);
+    // Classification of retained human origin is not a write capability.
+    let origin=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT task_handoff_current_delivery_origin(task_id,state-'lifecycle'-'runtime_state'-'waiting_reason') AS retained FROM sdlc_tasks WHERE task_id=$1",vec![queued_task.into()])).await.unwrap().unwrap();
+    assert!(origin.try_get::<bool>("", "retained").unwrap());
+    assert!(db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE sdlc_tasks SET state=state-'lifecycle'-'runtime_state'-'waiting_reason',manual_control=true WHERE task_id=$1",vec![queued_task.into()])).await.is_err());
+    let ready_task = Uuid::parse_str("50000000-0000-4000-8000-000000000001").unwrap();
+    let ready_state = issues
+        .task_lifecycle(IssueId::from_uuid(ready_task), true)
+        .await
+        .unwrap();
+    assert_eq!(ready_state.state.stage, Stage::Backlog);
+    let ready_state = issues
+        .transition_task_lifecycle(
+            IssueId::from_uuid(ready_task),
+            actor_id,
+            &TransitionCommand {
+                action: Action::Start,
+                expected_revision: ready_state.state.revision,
+                idempotency_key: "human-start-backlog".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+    issues
+        .transition_task_lifecycle(
+            IssueId::from_uuid(ready_task),
+            actor_id,
+            &TransitionCommand {
+                action: Action::Complete,
+                expected_revision: ready_state.state.revision,
+                idempotency_key: "human-ready-analysis".into(),
+            },
+        )
+        .await
+        .unwrap();
+    for (next_task, slot_available) in [(ready_task, true), (task, false)] {
+        let plan = repository
+            .prepare_current_stage_handoff(next_task, &actor)
+            .await
+            .unwrap();
+        let key = if slot_available {
+            "ready-analysis-request"
+        } else {
+            "third-task-waits"
+        };
+        let (consent, _) = repository
+            .request_current_stage_handoff(next_task, &actor, &command(&plan, key), &facts(&plan))
+            .await
+            .unwrap();
+        let admission = repository
+            .prepare_requested_handoff(next_task, &writer)
+            .await
+            .unwrap();
+        let request = domain::task_handoff::ReserveTaskHandoffCommand {
+            handoff_id: consent.handoff_id,
+            expected_revision: admission.state.revision,
+            machine_subject: producer.to_string(),
+            idempotency_key: key.into(),
+        };
+        let result = repository
+            .reserve_current_stage_handoff(next_task, &writer, &request, &facts(&admission))
+            .await;
+        if slot_available {
+            let current = result.unwrap().0;
+            assert_eq!(
+                (current.task.stage, current.task.status),
+                (Stage::Analysis, Status::Ready)
+            );
+            assert!(current.assignment.unwrap().fencing_token > assignment.fencing_token);
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("technical pool capacity held")
+            );
+            let queued = repository
+                .current_owner_handoff(next_task, &actor)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(queued.can_cancel);
+            repository
+                .cancel_current_stage_handoff(
+                    next_task,
+                    consent.handoff_id,
+                    &actor,
+                    &domain::task_handoff::CancelTaskHandoffCommand {
+                        expected_revision: queued.core_revision,
+                        idempotency_key: "cancel-third-waiting".into(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+    }
+    let pool=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_delivery_holds) AS held,(SELECT count(*) FROM task_handoff_delivery_adoptions) AS admissions,(SELECT count(*) FROM sdlc_pm_executions) AS pm".to_owned())).await.unwrap().unwrap();
+    assert_eq!(pool.try_get::<i64>("", "held").unwrap(), 2);
+    assert_eq!(pool.try_get::<i64>("", "admissions").unwrap(), 2);
+    assert_eq!(pool.try_get::<i64>("", "pm").unwrap(), 0);
 }
 
 #[tokio::test]

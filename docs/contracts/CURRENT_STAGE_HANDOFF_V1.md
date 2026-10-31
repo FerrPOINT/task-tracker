@@ -330,3 +330,32 @@ project source. Название ссылки, автор связи и врем
 Сохранение источника не создаёт Forge branch, agent run или результат. Actual
 reservation должна отдельно связать genuine human source receipt с native
 assignment и проверять актуальные права/конфигурацию.
+
+
+## Реальное техническое резервирование
+
+Владелец хранилища реализует отдельный strict `ReserveTaskHandoffCommand`: исходный
+handoff ID, текущая core revision, постоянный configured producer и original key.
+Роль, стадия, агент, capacity и lease не выбираются вызывающей стороной. Только
+зарегистрированный scheduler с write credential может подтвердить этот запрос;
+обычный пользователь, generic machine и read credential назначения не создают.
+
+Используются настоящие `sdlc_delivery_assignments`, общий mutex/два slots,
+существующие ordinal/fencing sequences и execution lease. Новая117 хранит связь
+реального назначения с human consent, исходную операцию и результат; снимки
+previous/next state существуют только в удаляемом transaction permit. Перед
+записью заново проверяются материалы и исходные Fleet/Forge observations.
+Просроченное подтверждение откатывает курсор, assignment и hold вместе.
+
+Adoption сохраняет стадию и Ready/InProgress, удаляет только queued pointer,
+фиксирует execution origin и передаёт управление существующему lifecycle.
+Workflow business key сохраняется, либо получается от первого настоящего
+execution ordinal; PM creation/completion/Analysis intent и legacy flow marker
+не создаются. Отмена незахваченной очереди после claim запрещена. Повтор exact
+команды читает original result, не создаёт второе назначение.
+
+Этот repository-путь проверен с синтетическими peer observations на настоящей
+изолированной PostgreSQL: Review/InProgress, Analysis/Ready, два общих slots,
+отказ третьего без потери очереди, original-key replay и whole-transaction
+expiry rollback. Это не live Fleet/Workflow/native запуск. HTTP/native consumers,
+PM current-stage admission, полный cohort и dev-приёмка ещё требуют завершения.

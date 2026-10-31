@@ -54,6 +54,7 @@ mod m20261031_0000113_task_handoff_materials;
 mod m20261031_0000114_task_model_bootstrap_provenance;
 mod m20261031_0000115_current_stage_request;
 mod m20261031_0000116_human_routing_inventory;
+mod m20261031_0000117_current_stage_delivery_adoption;
 
 pub struct Migrator;
 struct PublishedMigrator;
@@ -157,6 +158,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261031_0000114_task_model_bootstrap_provenance::Migration),
             Box::new(m20261031_0000115_current_stage_request::Migration),
             Box::new(m20261031_0000116_human_routing_inventory::Migration),
+            Box::new(m20261031_0000117_current_stage_delivery_adoption::Migration),
         ]
     }
 }

@@ -855,3 +855,11 @@ Project source входит в материал handoff как канониче�
 не зависит от display caption или created_by; добавление другого репозитория
 меняет fingerprint и требует новой проверки. Namespace/kind/IDs существующей
 связи должны совпадать; конкурентный INSERT не перезаписывает чужую запись.
+
+
+Human technical entry адаптируется к существующему delivery ledger, сохраняя
+его строгие assignment/result envelopes. Дополнительная FK-связь хранит human
+origin; новая команда не выдаётся за старое создание через PM. Narrow guards
+признают реальное human consent вместо требования старого PM publication,
+но canonical projection, результаты, fencing и capacity остаются обязательными.
+Retained-origin classification сама по себе не является write capability.

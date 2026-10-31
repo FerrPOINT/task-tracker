@@ -2469,3 +2469,18 @@ snapshot_id, generation)`. Payload остаётся в immutable `task_handoff_m
 индекса и audit происходят одной транзакцией под тем же task lock. Исторические
 подтверждения/отмены не удаляются; повтор запроса не выделяет новую generation.
 Миграция116 добавляет индекс существующих human records без изменения их payload.
+
+
+### Native adoption из human consent
+
+`task_handoff_delivery_adoptions` связывает genuine consent с настоящим
+`sdlc_delivery_assignments.assignment_id` (deferred FK), native execution ID и
+ordinal. `task_handoff_delivery_outcomes` хранит исходный result для восстановления
+после потери ответа. `task_handoff_delivery_seed_permits` содержит previous/next
+snapshot только внутри транзакции и удаляется до commit. Deferred guard требует
+реального assignment/hold, итогового core revision и первоначального срока
+owner observations. Операция не добавляет строку в PM executions.
+
+Общие leases/fences/capacity и результаты остаются в прежних owner-ledgers.
+`execution_handoff_id` — происхождение текущего исполнения; queued
+`human_handoff_id` потребляется атомарно. Это не второй источник стадии.
