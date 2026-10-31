@@ -16,3 +16,9 @@ CREATE TABLE sdlc_analysis_capacity_holds(assignment_id uuid PRIMARY KEY,root_ta
 
 CREATE TABLE sdlc_task_source_bindings(task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),payload jsonb NOT NULL);
 CREATE TABLE sdlc_pm_completions(task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),assignment_id uuid NOT NULL,execution_id uuid NOT NULL,assignment_version bigint NOT NULL);
+
+-- Exact frozen technical-origin columns for the owner drain classifier.
+-- Authentic assignments/holds are covered separately by the full migration fixture.
+CREATE TABLE sdlc_delivery_assignments(assignment_id uuid PRIMARY KEY,task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),payload jsonb NOT NULL);
+CREATE TABLE sdlc_delivery_holds(assignment_id uuid PRIMARY KEY,task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id));
+CREATE TABLE task_handoff_materials(task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),routing jsonb NOT NULL,source_binding jsonb NOT NULL);

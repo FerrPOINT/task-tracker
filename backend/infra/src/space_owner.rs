@@ -28,7 +28,9 @@ async fn drained(
 ) -> Result<bool, AppError> {
     // Frozen grants survive link removal. Legacy work uses its immutable source
     // snapshot; an unclassified legacy execution blocks rather than guessing a space.
-    // Only accepted terminal receipts / released analysis holds establish quiescence.
+    // Only accepted terminal receipts / released holds establish quiescence.
+    // Technical assignments use their exact frozen routing source, never a newer
+    // task binding. Missing or contradictory provenance cannot prove drain.
     let query = r#"SELECT
  NOT EXISTS(
    SELECT 1 FROM sdlc_assignments a
@@ -46,6 +48,29 @@ async fn drained(
      OR (g.assignment_id IS NULL AND (
        NOT EXISTS(SELECT 1 FROM sdlc_task_source_bindings b WHERE b.task_id=h.root_task_id)
        OR EXISTS(SELECT 1 FROM sdlc_task_source_bindings b WHERE b.task_id=h.root_task_id AND b.payload->'namespace'->>'registry_instance_id'=$1::text AND b.payload->'namespace'->>'namespace_id'=$2::text)))
+ ) AND NOT EXISTS(
+   SELECT 1 FROM sdlc_delivery_holds h
+   LEFT JOIN sdlc_delivery_assignments a ON a.assignment_id=h.assignment_id AND a.task_id=h.task_id
+   LEFT JOIN tracker_execution_space_grants g ON g.assignment_id=h.assignment_id
+   LEFT JOIN LATERAL (
+     SELECT count(*) AS source_count,
+       bool_and(tracker_valid_space_ref(jsonb_build_object(
+         'registry_instance_id',source.namespace->>'registry_instance_id',
+         'space_id',source.namespace->>'namespace_id'))) AS valid,
+       bool_or(source.namespace->>'registry_instance_id'=$1::text
+         AND source.namespace->>'namespace_id'=$2::text) AS matches
+     FROM (
+       SELECT m.source_binding->'namespace' AS namespace FROM task_handoff_materials m
+       WHERE m.task_id=h.task_id AND m.routing->>'snapshot_id'=a.payload->'routing'->>'snapshot_id'
+       UNION
+       SELECT b.payload->'namespace' FROM sdlc_task_source_bindings b
+       WHERE b.task_id=h.task_id AND b.payload->>'routing_snapshot_id'=a.payload->'routing'->>'snapshot_id'
+     ) source
+   ) frozen ON true
+   WHERE a.assignment_id IS NULL OR frozen.source_count<>1 OR frozen.valid IS NOT TRUE
+     OR frozen.matches IS TRUE
+     OR (g.assignment_id IS NOT NULL AND g.spaces @> jsonb_build_array(
+       jsonb_build_object('registry_instance_id',$1::uuid,'space_id',$2::uuid)))
  ) AS drained"#;
     let row = tx
         .query_one(sql(

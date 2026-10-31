@@ -359,3 +359,14 @@ execution ordinal; PM creation/completion/Analysis intent и legacy flow marker
 отказ третьего без потери очереди, original-key replay и whole-transaction
 expiry rollback. Это не live Fleet/Workflow/native запуск. HTTP/native consumers,
 PM current-stage admission, полный cohort и dev-приёмка ещё требуют завершения.
+
+### Архивирование пространства при техническом исполнении
+
+Owner drain учитывает реальные technical capacity holds наряду с PM/Analysis.
+Источник определяется по routing snapshot конкретного назначения и immutable
+human либо legacy source receipt. Новый snapshot задачи не перенаправляет
+незавершённое исполнение в другое пространство. Чужое пространство не блокируется
+классифицированным заданием; отсутствующий или противоречивый источник закрывает
+подтверждение drain. Таймер, истёкший lease и повтор owner-команды не заменяют
+подтверждённое завершение и освобождение hold. Это проверено изолированно,
+включая реальные технические reservations; установленный dev этим не обновлён.

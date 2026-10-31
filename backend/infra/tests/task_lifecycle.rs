@@ -927,7 +927,7 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         base_commit: "d".repeat(40),
     };
     let verified = VerifiedSource {
-        namespace,
+        namespace: namespace.clone(),
         forge_instance_id: source.forge_instance_id,
         repository_id: source.repository_id,
         public_name: "fixture/source".into(),
@@ -2058,6 +2058,102 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert_eq!(pool.try_get::<i64>("", "held").unwrap(), 2);
     assert_eq!(pool.try_get::<i64>("", "admissions").unwrap(), 2);
     assert_eq!(pool.try_get::<i64>("", "pm").unwrap(), 0);
+    // Real owner commands must not acknowledge drain while the actual technical
+    // assignments above still hold capacity. A foreign namespace is independent.
+    use shared::{
+        space_access::{AdmissionValidity, CentralIdentity, SpaceRef},
+        space_lifecycle::{
+            DesiredSpaceState, SpaceMetadata, SpaceOwnerAuthority, SpaceOwnerCommandV2,
+        },
+    };
+    let instance = Uuid::parse_str("40000000-0000-4000-8000-000000000001").unwrap();
+    // This ignored integration test is the only selected test in its owned process.
+    unsafe {
+        std::env::set_var(
+            "TT_NAMESPACE__REGISTRY_INSTANCE_ID",
+            namespace.registry_instance_id.to_string(),
+        );
+        std::env::set_var("TT_NAMESPACE__INSTANCE_ID", instance.to_string());
+    }
+    let now = chrono::Utc::now().timestamp();
+    let authority = SpaceOwnerAuthority::confirmed(
+        CentralIdentity {
+            issuer: "https://auth.example.test".into(),
+            subject: Uuid::new_v4().to_string(),
+        },
+        AdmissionValidity::confirmed(now, now + 60, i64::MAX).unwrap(),
+    )
+    .unwrap();
+    let mut source_command = SpaceOwnerCommandV2 {
+        schema_version: 2,
+        space: SpaceRef {
+            registry_instance_id: namespace.registry_instance_id,
+            space_id: namespace.namespace_id,
+        },
+        participant_instance_id: instance,
+        operation_id: Uuid::new_v4(),
+        revision: 1,
+        desired_state: DesiredSpaceState::Active,
+        metadata: SpaceMetadata {
+            slug: "source-space".into(),
+            name: "Source space".into(),
+            description: "Owned fixture".into(),
+            responsible_subject: actor.subject.clone(),
+        },
+    };
+    let ack = infra::space_owner::apply(&db, &source_command, &authority)
+        .await
+        .unwrap();
+    assert!(ack.matches(&source_command));
+    let mut neighbor = source_command.clone();
+    neighbor.space.space_id = Uuid::new_v4();
+    neighbor.operation_id = Uuid::new_v4();
+    neighbor.metadata.slug = "neighbor-space".into();
+    assert!(
+        infra::space_owner::apply(&db, &neighbor, &authority)
+            .await
+            .unwrap()
+            .matches(&neighbor)
+    );
+    neighbor.operation_id = Uuid::new_v4();
+    neighbor.revision = 2;
+    neighbor.desired_state = DesiredSpaceState::Archived;
+    assert!(
+        infra::space_owner::apply(&db, &neighbor, &authority)
+            .await
+            .unwrap()
+            .matches(&neighbor)
+    );
+    source_command.operation_id = Uuid::new_v4();
+    source_command.revision = 2;
+    source_command.desired_state = DesiredSpaceState::Archived;
+    let archive = infra::space_owner::apply(&db, &source_command, &authority)
+        .await
+        .unwrap();
+    assert!(
+        !archive.drained,
+        "technical assignments must prevent a false archive acknowledgement"
+    );
+    assert!(!archive.matches(&source_command));
+    assert!(
+        !infra::space_owner::apply(&db, &source_command, &authority)
+            .await
+            .unwrap()
+            .drained
+    );
+    let state = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT state FROM tracker_space_catalog WHERE registry_instance_id=$1 AND space_id=$2",
+            vec![
+                namespace.registry_instance_id.into(),
+                namespace.namespace_id.into(),
+            ],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.try_get::<String>("", "state").unwrap(), "archiving");
 }
 
 #[tokio::test]

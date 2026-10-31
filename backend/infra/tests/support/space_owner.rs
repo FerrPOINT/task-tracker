@@ -308,4 +308,128 @@ pub async fn verify(db: &DatabaseConnection) {
         state, "active",
         "late archived ACK must not roll back a newer restore"
     );
+
+    // Focused classifier rows model accepted assignment/source receipts. The full
+    // lifecycle fixture separately exercises genuine reservations and holds.
+    let d = SpaceRef {
+        space_id: id(14),
+        ..a.clone()
+    };
+    let e = SpaceRef {
+        space_id: id(15),
+        ..a.clone()
+    };
+    let f = SpaceRef {
+        space_id: id(16),
+        ..a.clone()
+    };
+    let mut cd = command(d.clone(), "human-source");
+    let mut ce = command(e.clone(), "newer-source");
+    let mut cf = command(f.clone(), "unrelated-source");
+    for cmd in [&cd, &ce, &cf] {
+        assert!(
+            infra::space_owner::apply(db, cmd, &authority)
+                .await
+                .unwrap()
+                .drained
+        );
+    }
+    for task in [id(204), id(205)] {
+        db.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO sdlc_tasks(task_id,project_id) VALUES($1,$2)",
+            [task.into(), id(1).into()],
+        ))
+        .await
+        .unwrap();
+    }
+    let routing = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO sdlc_delivery_assignments(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+        [
+            id(504).into(),
+            id(204).into(),
+            serde_json::json!({"routing":{"snapshot_id":routing}}).into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO sdlc_delivery_holds(assignment_id,task_id) VALUES($1,$2)",
+        [id(504).into(), id(204).into()],
+    ))
+    .await
+    .unwrap();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO task_handoff_materials(task_id,routing,source_binding) VALUES($1,$2,$3)",[id(204).into(),serde_json::json!({"snapshot_id":routing}).into(),serde_json::json!({"namespace":{"registry_instance_id":d.registry_instance_id,"namespace_id":d.space_id}}).into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO sdlc_task_source_bindings(task_id,payload) VALUES($1,$2)",[id(204).into(),serde_json::json!({"routing_snapshot_id":Uuid::new_v4(),"namespace":{"registry_instance_id":e.registry_instance_id,"namespace_id":e.space_id}}).into()])).await.unwrap();
+    for cmd in [&mut cd, &mut ce, &mut cf] {
+        cmd.operation_id = Uuid::new_v4();
+        cmd.revision += 1;
+        cmd.desired_state = DesiredSpaceState::Archived;
+    }
+    assert!(
+        infra::space_owner::apply(db, &ce, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "a newer source snapshot is not the running assignment's source"
+    );
+    assert!(
+        !infra::space_owner::apply(db, &cd, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "the exact frozen human source holds drain"
+    );
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO sdlc_delivery_holds(assignment_id,task_id) VALUES($1,$2)",
+        [id(505).into(), id(205).into()],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        !infra::space_owner::apply(db, &cf, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "an unclassified hold cannot prove any archive drained"
+    );
+    let unknown_routing = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO sdlc_delivery_assignments(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+        [
+            id(505).into(),
+            id(205).into(),
+            serde_json::json!({"routing":{"snapshot_id":unknown_routing}}).into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO task_handoff_materials(task_id,routing,source_binding) VALUES($1,$2,$3)",[id(205).into(),serde_json::json!({"snapshot_id":unknown_routing}).into(),serde_json::json!({"namespace":{"registry_instance_id":"not-a-uuid","namespace_id":e.space_id}}).into()])).await.unwrap();
+    assert!(
+        !infra::space_owner::apply(db, &cf, &authority)
+            .await
+            .unwrap()
+            .drained,
+        "malformed provenance is not a foreign-space exemption"
+    );
+    // In this dependency-only fixture, removal models accepted terminal/release.
+    // No timer, expired lease, or acknowledgement alone releases a real hold.
+    db.execute_unprepared("DELETE FROM sdlc_delivery_holds WHERE assignment_id IN ('00000000-0000-4000-8000-000000000504','00000000-0000-4000-8000-000000000505')").await.unwrap();
+    assert!(
+        infra::space_owner::apply(db, &cd, &authority)
+            .await
+            .unwrap()
+            .drained
+    );
+    assert!(
+        infra::space_owner::apply(db, &cf, &authority)
+            .await
+            .unwrap()
+            .drained
+    );
 }
