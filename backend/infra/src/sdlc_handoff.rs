@@ -51,7 +51,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         // Match the current reporter as well as the retained owner identity.
-        let current=tx.query_one(statement("SELECT u.central_sub,(p.archived_at IS NOT NULL) AS project_read_only FROM issues i JOIN users u ON u.id=i.reporter_id JOIN projects p ON p.id=i.project_id WHERE i.id=$1 AND u.is_active FOR SHARE OF u",vec![task.into()]))
+        let current=tx.query_one(statement("SELECT u.id,u.central_sub,p.owner_id,(p.archived_at IS NOT NULL) AS project_read_only FROM issues i JOIN users u ON u.id=i.reporter_id JOIN projects p ON p.id=i.project_id WHERE i.id=$1 AND u.is_active FOR SHARE OF u,p",vec![task.into()]))
             .await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
         if current
             .try_get::<Option<String>>("", "central_sub")
@@ -60,6 +60,16 @@ impl PostgresSdlcRepository {
             != Some(state.owner_subject.as_str())
         {
             return Err(AppError::Forbidden);
+        }
+        let owner_id: Uuid = current.try_get("", "id").map_err(map_db)?;
+        if current.try_get::<Uuid>("", "owner_id").map_err(map_db)? != owner_id {
+            tx.query_one(statement(
+                "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
+                vec![state.project_id.into(), owner_id.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
         }
         let row=tx.query_one(statement("SELECT state,core_revision,CASE WHEN $2 THEN task_lifecycle_runtime_busy(task_id) ELSE task_lifecycle_execution_busy(task_id) END AS busy,
             (SELECT enabled FROM task_lifecycle_control WHERE singleton) AS enabled FROM sdlc_tasks WHERE task_id=$1",vec![task.into(),pending_request_read.into()]))
@@ -366,6 +376,7 @@ impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository
             AND t.root_task_id=t.task_id AND m.execution_requested
             AND (SELECT enabled FROM task_lifecycle_control WHERE singleton)
             AND m.actor_subject=t.owner_subject AND m.resulting_revision=t.core_revision
+            AND (p.owner_id=owner.id OR EXISTS(SELECT 1 FROM project_members member WHERE member.project_id=p.id AND member.user_id=owner.id))
             AND m.receipt->'entry'->'state'->>'stage'=CASE WHEN t.state->>'stage'='Clarification' THEN 'Draft' ELSE t.state->>'stage' END
             AND m.receipt->'entry'->'state'->>'status'=COALESCE(t.state->>'status','Ready')
             AND NOT task_lifecycle_runtime_busy(t.task_id)

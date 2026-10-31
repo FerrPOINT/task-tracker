@@ -1841,6 +1841,54 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .await
             .is_err()
     );
+    // A scheduler's own membership cannot preserve a revoked human owner's
+    // right to start work. Discovery filters before pagination; admission rechecks.
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE projects SET owner_id=(SELECT id FROM users WHERE central_sub=$2) WHERE id=$1",
+        vec![project.into(), scheduler.subject.clone().into()],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .requested_handoffs(
+                &scheduler,
+                domain::sdlc_candidates::DeliveryCandidatesQuery {
+                    project_id: project,
+                    after: None,
+                    limit: 10
+                }
+            )
+            .await
+            .unwrap()
+            .items
+            .is_empty(),
+        "revoked owner must not be offered to the scheduler"
+    );
+    assert!(
+        repository
+            .prepare_requested_handoff(queued_task, &writer)
+            .await
+            .is_err(),
+        "machine membership cannot replace revoked owner access"
+    );
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub=$2",vec![project.into(),actor.subject.clone().into()])).await.unwrap();
+    assert!(
+        repository
+            .prepare_requested_handoff(queued_task, &writer)
+            .await
+            .is_ok(),
+        "explicit owner membership remains a valid start right"
+    );
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub=$2)",vec![project.into(),actor.subject.clone().into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE projects SET owner_id=(SELECT id FROM users WHERE central_sub=$2) WHERE id=$1",
+        vec![project.into(), actor.subject.clone().into()],
+    ))
+    .await
+    .unwrap();
     let prepared = repository
         .prepare_requested_handoff(queued_task, &writer)
         .await
