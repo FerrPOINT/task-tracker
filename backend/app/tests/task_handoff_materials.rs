@@ -78,6 +78,7 @@ fn fixture(
         owner_subject: actor.subject.clone(),
         state: core,
         issue_sha256: "a".repeat(64),
+        issue_materials_sha256: "e".repeat(64),
         entry: Some(CurrentStageEntry::derive(core, false).unwrap()),
         routing: Some(routing),
         source: Some(source),

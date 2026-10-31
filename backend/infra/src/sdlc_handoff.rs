@@ -32,15 +32,21 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<(TaskState, PreparedCurrentStageHandoff), AppError> {
-        if !actor.human_session
-            || !actor.trusted_human
-            || app::sdlc::has_pm_grant(&actor.scopes)
-            || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
-        {
-            return Err(AppError::Forbidden);
+        if actor.trusted_human {
+            if !actor.human_session
+                || app::sdlc::has_pm_grant(&actor.scopes)
+                || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+            {
+                return Err(AppError::Forbidden);
+            }
+        } else {
+            if actor.human_session {
+                return Err(AppError::Forbidden);
+            }
+            app::sdlc_reservation::reader(actor)?;
         }
         let state = Self::load_binding(tx, &self.config, task, actor).await?;
-        if !state.owner(actor) {
+        if actor.trusted_human && !state.owner(actor) {
             return Err(AppError::Forbidden);
         }
         // Match the current reporter as well as the retained owner identity.
@@ -50,7 +56,7 @@ impl PostgresSdlcRepository {
             .try_get::<Option<String>>("", "central_sub")
             .map_err(map_db)?
             .as_deref()
-            != Some(actor.subject.as_str())
+            != Some(state.owner_subject.as_str())
         {
             return Err(AppError::Forbidden);
         }
@@ -120,6 +126,7 @@ impl PostgresSdlcRepository {
             FROM issues i WHERE i.id=$1 AND i.deleted_at IS NULL",vec![task.into()]))
             .await.map_err(map_db)?.ok_or_else(||AppError::not_found("issue",task))?;
         let material: Json = row.try_get("", "material").map_err(map_db)?;
+        let issue_materials_sha256 = app::sdlc::canonical_hash(&material)?;
         let issue_sha256 = app::sdlc::canonical_hash(&json!({"issue":material,"state":core,
             "routing":routing.as_ref().map(|p|json!({"version":p.version,"hash":p.routing_hash})),
             "source":source.as_ref().map(|p|json!({"revision":p.source_revision,"hash":p.source_hash}))}))?;
@@ -129,6 +136,7 @@ impl PostgresSdlcRepository {
             owner_subject: state.owner_subject.clone(),
             state: core,
             issue_sha256,
+            issue_materials_sha256,
             entry,
             routing,
             source,
@@ -140,6 +148,55 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository {
+    async fn pending_handoff_materials(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<app::task_handoff::PendingHandoffMaterials, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let (state, prepared) = self.prepare_handoff_locked(&tx, task, actor).await?;
+        let handoff = state
+            .retained_fields
+            .get("human_handoff_id")
+            .and_then(Json::as_str)
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| AppError::conflict("current_stage_handoff_consent_required"))?;
+        let row=tx.query_one(statement("SELECT receipt,routing,source_binding FROM task_handoff_materials WHERE task_id=$1 AND handoff_id=$2",
+            vec![task.into(),handoff.into()])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("current_stage_handoff_consent_missing"))?;
+        let receipt: domain::task_handoff::TaskHandoffReceipt =
+            serde_json::from_value(row.try_get::<Json>("", "receipt").map_err(map_db)?)
+                .map_err(AppError::internal)?;
+        let routing: domain::sdlc_routing::TaskRoutingSnapshot =
+            serde_json::from_value(row.try_get::<Json>("", "routing").map_err(map_db)?)
+                .map_err(AppError::internal)?;
+        let source: domain::sdlc_source::TaskSourceBinding =
+            serde_json::from_value(row.try_get::<Json>("", "source_binding").map_err(map_db)?)
+                .map_err(AppError::internal)?;
+        if !Self::manual_controlled(&tx, task).await?
+            || !prepared.blockers.is_empty()
+            || prepared.state.revision != receipt.resulting_revision
+            || prepared.state.stage != receipt.entry.state.stage
+            || prepared.state.status != receipt.entry.state.status
+            || prepared.issue_materials_sha256 != receipt.issue_materials_sha256
+            || prepared.owner_subject != receipt.actor_subject
+            || prepared.routing.as_ref() != Some(&routing.policy)
+            || prepared.source.as_ref().is_none_or(|p| {
+                p.source_revision != source.source_revision || p.source_hash != source.policy_hash
+            })
+            || Self::source_namespace(&tx, state.project_id).await? != source.namespace
+        {
+            return Err(AppError::conflict(
+                "current_stage_handoff_inputs_changed_or_blocked",
+            ));
+        }
+        tx.commit().await.map_err(map_db)?;
+        Ok(app::task_handoff::PendingHandoffMaterials {
+            receipt,
+            routing,
+            source,
+        })
+    }
+
     async fn save_handoff_materials(
         &self,
         task: Uuid,

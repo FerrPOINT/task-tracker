@@ -1006,6 +1006,47 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         (Stage::Development, Status::InProgress)
     );
     assert_eq!(after.state.revision, receipt.resulting_revision);
+    let pending = repository
+        .pending_handoff_materials(task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(pending.receipt.handoff_id, receipt.handoff_id);
+    assert_eq!(pending.routing.snapshot_id, receipt.routing_snapshot_id);
+    assert_eq!(pending.source.confirmation_id, receipt.confirmation_id);
+    assert_eq!(
+        pending.receipt.issue_materials_sha256,
+        preview.issue_materials_sha256
+    );
+    // Content may change without changing core_revision. Such consent cannot launch.
+    db.execute_unprepared(
+        "UPDATE issues SET description='Changed after real consent' WHERE key='CORE-2'",
+    )
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_err()
+    );
+    assert!(
+        repository
+            .save_handoff_materials(task, &actor, &original)
+            .await
+            .unwrap()
+            .1
+    );
+    db.execute_unprepared(
+        "UPDATE issues SET description='Human edited materials after preview' WHERE key='CORE-2'",
+    )
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .pending_handoff_materials(task, &actor)
+            .await
+            .is_ok()
+    );
     let saved = repository.read(task, &actor).await.unwrap();
     assert!(saved.assignment.is_none());
     assert!(

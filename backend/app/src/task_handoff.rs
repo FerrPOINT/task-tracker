@@ -155,6 +155,7 @@ pub fn prepare_materials(
         actor_subject: actor.subject.clone(),
         entry,
         confirmed_issue_sha256: prepared.issue_sha256.clone(),
+        issue_materials_sha256: prepared.issue_materials_sha256.clone(),
         resulting_revision,
         requirement_revision: requirement.revision,
         requirements_sha256: requirement.content_hash.clone(),
@@ -175,8 +176,21 @@ pub fn prepare_materials(
 }
 
 /// Owner persistence only. A saved consent is not a Fleet claim or a native launch permit.
+pub struct PendingHandoffMaterials {
+    pub receipt: TaskHandoffReceipt,
+    pub routing: TaskRoutingSnapshot,
+    pub source: TaskSourceBinding,
+}
+
 #[async_trait::async_trait]
 pub trait CurrentStageHandoffRepository: Send + Sync {
+    /// A verified current consent, not native execution admission. Recheck again at claim.
+    async fn pending_handoff_materials(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PendingHandoffMaterials, AppError>;
+
     async fn save_handoff_materials(
         &self,
         task: Uuid,
