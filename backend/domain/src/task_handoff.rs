@@ -60,6 +60,7 @@ pub struct TaskHandoffPreview {
     pub state: State,
     pub issue_sha256: Option<String>,
     pub routing_policy_version: Option<i64>,
+    pub current_request: Option<CurrentHandoffStatus>,
     pub required_applications: Vec<String>,
     pub blockers: Vec<TaskExecutionBlocker>,
 }
@@ -389,4 +390,13 @@ pub struct RequestedHandoffs {
     pub observed_at: chrono::DateTime<chrono::Utc>,
     pub items: Vec<RequestedHandoff>,
     pub next_cursor: Option<uuid::Uuid>,
+}
+
+/// Current owner readback for the human interface, independent of Fleet access.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CurrentHandoffStatus {
+    pub operation: TaskHandoffOperation,
+    pub core_revision: i64,
+    pub can_cancel: bool,
 }

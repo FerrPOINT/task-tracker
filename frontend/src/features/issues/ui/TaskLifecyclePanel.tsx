@@ -1,3 +1,4 @@
+import { TaskHandoffAction } from './TaskHandoffAction'
 import { Badge, Button, ErrorState, LoadingState, toast } from '@pdlc/ui/ui'
 import {
   useLifecycleTransition,
@@ -49,9 +50,11 @@ export function TaskLifecycleActions({
 }
 export function TaskLifecyclePanel({
   issueId,
+  summary,
   disabled = false,
 }: {
   issueId: string
+  summary?: string
   disabled?: boolean
 }) {
   const query = useTaskLifecycle(issueId)
@@ -67,20 +70,21 @@ export function TaskLifecyclePanel({
       </div>
       {value.draft_submode === 'clarification' && <Badge tone="muted">Уточнение</Badge>}
       {value.execution_busy && (
-        <p className="text-xs text-text-muted">
-          Выполнение ещё не завершено. Ручные переходы временно недоступны.
-        </p>
+        <p className="text-xs text-text-muted">Ручные переходы временно недоступны.</p>
       )}
       <TaskLifecycleActions lifecycle={value} disabled={disabled} />
+      <TaskHandoffAction issueId={issueId} summary={summary} disabled={disabled} />
     </section>
   )
 }
 
 export function TaskLifecycleStatusGate({
   issueId,
+  summary,
   disabled = false,
 }: {
   issueId: string
+  summary?: string
   disabled?: boolean
 }) {
   const catalog = useTaskLifecycleCatalog()
@@ -88,7 +92,7 @@ export function TaskLifecycleStatusGate({
   if (!catalog.data)
     return <ErrorState message={catalog.error?.message ?? 'Модель задач недоступна'} />
   return catalog.data.enabled ? (
-    <TaskLifecyclePanel issueId={issueId} disabled={disabled} />
+    <TaskLifecyclePanel issueId={issueId} summary={summary} disabled={disabled} />
   ) : (
     <ErrorState message="Модель задач обновляется. Изменение стадии временно недоступно." />
   )

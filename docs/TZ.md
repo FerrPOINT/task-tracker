@@ -1732,3 +1732,12 @@ Without the action there is no Analysis intent or configured discovery candidate
 After start, existing accepted role results advance the same task; seven roles /
 eight modes remain one root task, with no children or manual per-role advance.
 Synthetic source tests are not full seven-role native/live acceptance.
+
+
+### Явная работа с агентом из карточки
+
+Передача текущей стадии открывается отдельным действием. До явного подтверждения
+материалов POST не отправляется. Отсутствие настроенного исполнения не мешает
+ручной работе. Владелец видит сохранённый запрос после повторного открытия карточки
+и может отменить его только по текущему серверному разрешению. Потеря ответа
+не создаёт новый запрос автоматически; исходная операция доступна для проверки.

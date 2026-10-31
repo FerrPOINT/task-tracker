@@ -48,7 +48,7 @@ export function IssueMetaEditor({ issue, sprints, onChange, disabled }: IssueMet
 
   return (
     <div className="space-y-4 text-sm">
-      <TaskLifecycleStatusGate issueId={issue.id} disabled={disabled} />
+      <TaskLifecycleStatusGate issueId={issue.id} summary={issue.summary} disabled={disabled} />
 
       <div className="space-y-1.5">
         <label htmlFor="issue-priority" className="block text-text-muted">

@@ -228,6 +228,12 @@ pub struct SavedHandoffOperation {
 
 #[async_trait::async_trait]
 pub trait CurrentStageHandoffRepository: Send + Sync {
+    async fn current_owner_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<Option<domain::task_handoff::CurrentHandoffStatus>, AppError>;
+
     /// Reuse the existing bounded project/UUID cursor query. Discovery does not
     /// reserve capacity, acquire a lease or assert that external owners are ready.
     async fn requested_handoffs(

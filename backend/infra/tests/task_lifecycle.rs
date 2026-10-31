@@ -1362,6 +1362,23 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert_eq!(counts.try_get::<i64>("", "requests").unwrap(), 1);
     assert_eq!(counts.try_get::<i64>("", "pm_runs").unwrap(), 0);
     assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
+    let own_status = repository
+        .current_owner_handoff(queued_task, &actor)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(own_status.can_cancel);
+    assert_eq!(
+        own_status.operation.receipt.handoff_id,
+        requested.handoff_id
+    );
+    assert_eq!(own_status.core_revision, requested.resulting_revision);
+    assert!(
+        repository
+            .current_owner_handoff(queued_task, &scheduler)
+            .await
+            .is_err()
+    );
     let queued = repository
         .requested_handoffs(&scheduler, query.clone())
         .await
@@ -1482,6 +1499,14 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         (Stage::Review, Status::Ready)
     );
     assert_eq!(available.state.revision, cancelled.resulting_revision);
+    assert!(
+        repository
+            .current_owner_handoff(queued_task, &actor)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
     assert!(
         repository
             .requested_handoffs(&scheduler, query.clone())

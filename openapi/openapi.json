@@ -13467,6 +13467,28 @@
           }
         }
       },
+      "CurrentHandoffStatus": {
+        "type": "object",
+        "description": "Current owner readback for the human interface, independent of Fleet access.",
+        "required": [
+          "operation",
+          "core_revision",
+          "can_cancel"
+        ],
+        "properties": {
+          "can_cancel": {
+            "type": "boolean"
+          },
+          "core_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/TaskHandoffOperation"
+          }
+        },
+        "additionalProperties": false
+      },
       "CurrentStageAssignment": {
         "type": "object",
         "description": "Same owner leases, execution ordinals and fences; all seven existing professions.",
@@ -22522,6 +22544,16 @@
             "items": {
               "$ref": "#/components/schemas/TaskExecutionBlocker"
             }
+          },
+          "current_request": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CurrentHandoffStatus"
+              }
+            ]
           },
           "issue_sha256": {
             "type": [

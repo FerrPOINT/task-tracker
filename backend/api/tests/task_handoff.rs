@@ -293,7 +293,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         base_commit: "d".repeat(40),
     };
     let verified = VerifiedSource {
-        namespace:namespace.clone(),
+        namespace: namespace.clone(),
         forge_instance_id: source.forge_instance_id,
         repository_id: source.repository_id,
         public_name: "fixture/source".into(),
@@ -483,6 +483,26 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert_eq!(accepted["receipt"]["actor_subject"], OWNER);
     assert_eq!(accepted["execution_requested"], true);
     assert!(accepted["cancellation"].is_null());
+    let no_peer_reads = reads.load(Ordering::SeqCst);
+    let (status, owned) = call(&router, "GET", &path, Some(TRACKER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{owned}");
+    assert_eq!(
+        owned["current_request"]["operation"]["receipt"]["handoff_id"],
+        accepted["receipt"]["handoff_id"]
+    );
+    assert_eq!(owned["current_request"]["can_cancel"], true);
+    let (_, readonly) = call(
+        &router,
+        "GET",
+        &path,
+        Some("pdlc_pat_fixture_tracker_readonly_AAAAAAAAAAAAA"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(readonly["current_request"]["can_cancel"], false);
+    let (_, pending_view) = call(&router, "GET", &path, Some(FULL), Value::Null).await;
+    assert_eq!(pending_view["blockers"], json!(["execution_busy"]));
+    assert_eq!(reads.load(Ordering::SeqCst), no_peer_reads);
     let discovery = "/api/v1/sdlc/current-stage-candidates?project_id=20000000-0000-4000-8000-000000000001&limit=1";
     assert_eq!(
         call(&router, "GET", discovery, Some(FULL), Value::Null)
@@ -579,6 +599,12 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             .await
             .1,
         cancelled
+    );
+    assert!(
+        call(&router, "GET", &path, Some(TRACKER), Value::Null)
+            .await
+            .1["current_request"]
+            .is_null()
     );
     let (status, history) = call(&router, "GET", &operation, Some(TRACKER), Value::Null).await;
     assert_eq!(status, StatusCode::OK);

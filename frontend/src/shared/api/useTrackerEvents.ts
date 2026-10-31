@@ -1,3 +1,4 @@
+import { handoffKeys } from './task-handoff-keys'
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/auth/store'
@@ -49,12 +50,15 @@ function invalidateIssueEventQueries(
 ) {
   invalidateIssueSummaryQueries(qc, projectKey, issueId)
   if (issueId) {
+    qc.invalidateQueries({ queryKey: handoffKeys.task(issueId) })
     qc.invalidateQueries({ queryKey: ['issue-labels', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-links', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-custom-fields', issueId] })
     qc.invalidateQueries({ queryKey: ['attachments', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-votes', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-watchers', issueId] })
+  } else {
+    qc.invalidateQueries({ queryKey: handoffKeys.all })
   }
 }
 
@@ -109,7 +113,10 @@ export function useTrackerEvents() {
             invalidateIssueEventQueries(qc, pk, evt.issue_id)
             break
           case 'issue_commented':
-            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })
+            if (evt.issue_id) {
+              qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })
+              qc.invalidateQueries({ queryKey: handoffKeys.task(evt.issue_id) })
+            }
             break
           case 'worklog_logged':
             if (evt.issue_id) {

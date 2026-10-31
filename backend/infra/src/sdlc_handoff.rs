@@ -154,6 +154,64 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository {
+    async fn current_owner_handoff(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<Option<domain::task_handoff::CurrentHandoffStatus>, AppError> {
+        if !actor.trusted_human
+            || app::sdlc::has_pm_grant(&actor.scopes)
+            || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+        {
+            return Err(AppError::Forbidden);
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if state.owner_subject != actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        let reporter=tx.query_one(statement("SELECT u.central_sub FROM issues i JOIN users u ON u.id=i.reporter_id WHERE i.id=$1 AND u.is_active FOR SHARE OF u",vec![task.into()])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+        if reporter
+            .try_get::<Option<String>>("", "central_sub")
+            .map_err(map_db)?
+            .as_deref()
+            != Some(actor.subject.as_str())
+        {
+            return Err(AppError::Forbidden);
+        }
+        let row=tx.query_one(statement("SELECT m.receipt,m.execution_requested,c.receipt AS cancellation,t.core_revision,
+            t.manual_control AND NOT task_lifecycle_runtime_busy(t.task_id) AND p.archived_at IS NULL AND c.handoff_id IS NULL AS can_cancel
+            FROM sdlc_tasks t JOIN projects p ON p.id=t.project_id
+            JOIN task_handoff_materials m ON m.task_id=t.task_id AND m.handoff_id::text=t.state->>'human_handoff_id' AND m.execution_requested
+            LEFT JOIN task_handoff_cancellations c ON c.task_id=m.task_id AND c.handoff_id=m.handoff_id
+            WHERE t.task_id=$1 AND m.actor_subject=$2",vec![task.into(),actor.subject.clone().into()])).await.map_err(map_db)?;
+        let current = row
+            .map(|row| -> Result<_, AppError> {
+                Ok(domain::task_handoff::CurrentHandoffStatus {
+                    core_revision: row.try_get("", "core_revision").map_err(map_db)?,
+                    can_cancel: row.try_get("", "can_cancel").map_err(map_db)?,
+                    operation: domain::task_handoff::TaskHandoffOperation {
+                        receipt: serde_json::from_value(
+                            row.try_get::<Json>("", "receipt").map_err(map_db)?,
+                        )
+                        .map_err(AppError::internal)?,
+                        execution_requested: row
+                            .try_get("", "execution_requested")
+                            .map_err(map_db)?,
+                        cancellation: row
+                            .try_get::<Option<Json>>("", "cancellation")
+                            .map_err(map_db)?
+                            .map(serde_json::from_value)
+                            .transpose()
+                            .map_err(AppError::internal)?,
+                    },
+                })
+            })
+            .transpose()?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(current)
+    }
+
     async fn handoff_operation(
         &self,
         task: Uuid,

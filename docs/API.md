@@ -2318,3 +2318,10 @@ JWT fallback; human owner/project admission, приложения и PAT scopes 
 человеческая роль и generic read credential не заменяют registered scheduler.
 Owner app proof получается до повторной SQL-транзакции и срок не продлевается.
 Неназначенный CurrentStageExecution не содержит run/assignment/lease.
+
+
+Preview handoff дополнительно возвращает `current_request` с исходной operation,
+`core_revision` и серверным `can_cancel`. Tracker-only owner сохраняет возможность
+увидеть и отменить свою незахваченную очередь после отзыва приложений запуска.
+Read-only PAT этого права не получает. UI использует исходную operation при
+потере ответа; автоматического повторного POST нет.

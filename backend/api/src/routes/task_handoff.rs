@@ -77,13 +77,10 @@ pub async fn preview(
         state,
         issue_sha256: None,
         routing_policy_version: None,
+        current_request: None,
         required_applications: APPLICATIONS.iter().map(|s| (*s).to_owned()).collect(),
         blockers: vec![],
     };
-    if dispatch_access(&proof).is_err() {
-        view.blockers.push(Blocker::ApplicationAccessDenied);
-        return Ok(response(StatusCode::OK, view));
-    }
     let Some(service) = ctx
         .sdlc
         .as_ref()
@@ -95,6 +92,18 @@ pub async fn preview(
     let binding = service.repository.read(id, &actor).await?;
     if binding.owner_subject != actor.subject {
         view.blockers.push(Blocker::OwnerConsentRequired);
+        return Ok(response(StatusCode::OK, view));
+    }
+    view.current_request = repository(&ctx)?.current_owner_handoff(id, &actor).await?;
+    if let Some(current) = view.current_request.as_mut() {
+        current.can_cancel &= proof.context.allows_service("task-tracker", "POST");
+    }
+    if dispatch_access(&proof).is_err() {
+        view.blockers.push(Blocker::ApplicationAccessDenied);
+        return Ok(response(StatusCode::OK, view));
+    }
+    if view.current_request.is_some() {
+        view.blockers.push(Blocker::ExecutionBusy);
         return Ok(response(StatusCode::OK, view));
     }
     let prepared = service

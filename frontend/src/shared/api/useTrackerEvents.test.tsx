@@ -23,6 +23,22 @@ function Subscriber() {
 }
 
 describe('useTrackerEvents', () => {
+  it('retires material consent on comments but preserves it for work accounting', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    act(() => emit('issue_commented', { issue_id: 'issue-1', project_key: 'TT' }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['task-handoff', 'issue-1'] })
+    invalidate.mockClear()
+    act(() => emit('worklog_logged', { issue_id: 'issue-1', project_key: 'TT' }))
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['task-handoff', 'issue-1'] })
+  })
+
   afterEach(() => {
     act(() => useAuthStore.getState().logout())
     vi.mocked(connectAuthenticatedEventStream).mockClear()
@@ -58,7 +74,12 @@ describe('useTrackerEvents', () => {
     act(() => {
       options?.onOpen?.()
     })
-    for (const queryKey of [['project-stage-board'], ['task-lifecycle'], ['issue']])
+    for (const queryKey of [
+      ['project-stage-board'],
+      ['task-lifecycle'],
+      ['issue'],
+      ['task-handoff'],
+    ])
       expect(invalidate).toHaveBeenCalledWith({ queryKey })
   })
 
@@ -129,6 +150,7 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['task-handoff', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-labels', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })
