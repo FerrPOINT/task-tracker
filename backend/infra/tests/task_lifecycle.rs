@@ -846,7 +846,17 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .ends_with("_task_lifecycle_test")
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
-    migration::Migrator::up(&db, None).await.unwrap();
+    let migrations = migration::Migrator::migrations();
+    assert!(
+        migrations
+            .last()
+            .unwrap()
+            .name()
+            .ends_with("0000116_human_routing_inventory")
+    );
+    migration::Migrator::up(&db, Some((migrations.len() - 1) as u32))
+        .await
+        .unwrap();
     db.execute_unprepared(include_str!(
         "../../migration/src/task_lifecycle_fixture.sql"
     ))
@@ -1216,6 +1226,23 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
             .await
             .is_ok()
     );
+    // Upgrade populated consent history without rewriting any receipt/payload or inventing native work.
+    let before_index=db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY handoff_id) AS history FROM task_handoff_materials m".to_owned())).await.unwrap().unwrap().try_get::<serde_json::Value>("","history").unwrap();
+    migration::Migrator::up(&db, None).await.unwrap();
+    migration::Migrator::up(&db, None).await.unwrap();
+    let after_index=db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY handoff_id) AS history FROM task_handoff_materials m".to_owned())).await.unwrap().unwrap().try_get::<serde_json::Value>("","history").unwrap();
+    assert_eq!(before_index, after_index);
+    let indexed=db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT (SELECT count(*) FROM task_handoff_materials) AS expected,(SELECT count(*) FROM task_handoff_routing_generations) AS actual,(SELECT count(*) FROM sdlc_task_routing_generations) AS reviews,(SELECT count(*) FROM sdlc_pm_executions) AS executions".to_owned())).await.unwrap().unwrap();
+    assert!(indexed.try_get::<i64>("", "expected").unwrap() > 0);
+    assert_eq!(
+        indexed.try_get::<i64>("", "expected").unwrap(),
+        indexed.try_get::<i64>("", "actual").unwrap()
+    );
+    assert_eq!(indexed.try_get::<i64>("", "reviews").unwrap(), 0);
+    assert_eq!(indexed.try_get::<i64>("", "executions").unwrap(), 0);
     // Baseline status3 is Done, not Review: its agreed Deployment/Completed state
     // must not silently start a new agent or a real deployment.
     let completed = repository
@@ -1317,6 +1344,28 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .await
         .unwrap();
     assert!(!replayed);
+    let frozen=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
+        "SELECT payload,generation FROM sdlc_routing_snapshot_inventory WHERE task_id=$1 AND snapshot_id=$2",
+        vec![queued_task.into(),requested.routing_snapshot_id.into()])).await.unwrap().unwrap();
+    let pending_basis = repository
+        .pending_handoff_materials(queued_task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(
+        frozen.try_get::<serde_json::Value>("", "payload").unwrap(),
+        serde_json::to_value(&pending_basis.routing).unwrap()
+    );
+    assert!(frozen.try_get::<i64>("", "generation").unwrap() >= 1);
+    assert!(
+        db.execute_unprepared("UPDATE task_handoff_routing_generations SET generation=generation")
+            .await
+            .is_err()
+    );
+    assert!(
+        db.execute_unprepared("DELETE FROM task_handoff_routing_generations")
+            .await
+            .is_err()
+    );
     assert!(
         repository
             .request_current_stage_handoff(queued_task, &actor, &queued_command, &observed)
@@ -1565,6 +1614,23 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
         .await
         .unwrap();
     assert_ne!(second.handoff_id, requested.handoff_id);
+    let second_routing=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
+        "SELECT generation FROM sdlc_routing_snapshot_inventory WHERE task_id=$1 AND snapshot_id=$2",
+        vec![queued_task.into(),second.routing_snapshot_id.into()])).await.unwrap().unwrap();
+    assert_eq!(
+        second_routing.try_get::<i64>("", "generation").unwrap(),
+        frozen.try_get::<i64>("", "generation").unwrap() + 1
+    );
+    let retained_routing=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,
+        "SELECT payload FROM sdlc_routing_snapshot_inventory WHERE task_id=$1 AND snapshot_id=$2",
+        vec![queued_task.into(),requested.routing_snapshot_id.into()])).await.unwrap().unwrap();
+    assert_eq!(
+        retained_routing
+            .try_get::<serde_json::Value>("", "payload")
+            .unwrap(),
+        frozen.try_get::<serde_json::Value>("", "payload").unwrap()
+    );
+
     assert_eq!(second.entry.state.status, Status::InProgress);
     let pending = repository
         .requested_handoff_execution(queued_task, &scheduler)

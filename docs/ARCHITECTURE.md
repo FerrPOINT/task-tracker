@@ -834,3 +834,16 @@ Current-stage scheduler discovery читает существующий human re
 Каталог точного source namespace проверяется отдельно. Старый PM/delivery source
 scope не выбирается по исторической записи; native_task_scope для записи не
 создаётся. Context не равен claim.
+
+
+### Human basis и общий routing inventory
+
+Человеческая передача текущего этапа является самостоятельным реальным источником
+frozen routing. Её нельзя подменять строкой critical PM review, Analysis intent
+или fake PM completion. Общая read-through проекция читает исходный immutable
+payload consent; отдельный индекс сохраняет generation и уникальность snapshot.
+Новые и прежние producers сериализуются на одной строке задачи и не переиспользуют
+чужой snapshot/generation. Этот индекс не резервирует capacity, не получает lease
+и не подтверждает запуск. Нативное назначение обязано отдельно потребить queued
+pointer и сохранить свой genuine human basis, чтобы завершённый запуск не стал
+повторно выглядеть незахваченной очередью.

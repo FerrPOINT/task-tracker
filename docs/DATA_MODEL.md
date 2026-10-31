@@ -2457,3 +2457,15 @@ runtime/terminal predicate выделен в task_lifecycle_runtime_busy без 
 тела. Отмена удаляет только exact queued pointer и увеличивает core_revision;
 старый operation replay не отменяет successor. Нативный claim/stop/result остаются
 отдельной ещё незавершённой consumer-границей.
+
+
+### Происхождение frozen routing при человеческой передаче
+
+`task_handoff_routing_generations` хранит только индекс `(task_id, handoff_id,
+snapshot_id, generation)`. Payload остаётся в immutable `task_handoff_materials`.
+Общий `sdlc_routing_snapshot_inventory` включает начальные, реальные critical-review
+и человеческие snapshots с явными владельцами. Generation задаёт порядок
+подтверждений, а не число выполненных PM reviews. Создание human consent, запись
+индекса и audit происходят одной транзакцией под тем же task lock. Исторические
+подтверждения/отмены не удаляются; повтор запроса не выделяет новую generation.
+Миграция116 добавляет индекс существующих human records без изменения их payload.

@@ -306,3 +306,11 @@ POST и отмена не повторяются автоматически. П�
 определяют реальные routing/source и owner observations, а доступность исполнения —
 настроенный сервис. Старые PM/delivery команды сохраняют прежние контракты и gates.
 Отсутствие маршрутов не разрешает запуск; ручная модель остаётся независимой.
+
+
+Human routing включён в общий inventory через отдельный immutable индекс116.
+Generation отражает порядок frozen snapshots, а не факт PM review. Payload
+не копируется: проекция читает настоящий `task_handoff_materials.routing`. При
+отмене он сохраняется как история; следующий consent получает новую generation.
+Legacy initial/review snapshots сохраняют прежние gates и не могут занять
+уже использованный snapshot или generation. Native reservation этим не создаётся.
