@@ -280,14 +280,34 @@ async fn bind_task_scope(
     if !space_policy {
         return Ok(());
     }
-    let scope = serde_json::json!({
+    let native_scope = serde_json::json!({
         "schema_version":1,"task_id":state.task_id,"project_id":state.project_id,
         "identity":native.identity(),"validity":native.validity()?,
         "writable":matches!(scope, TaskScope::Current) && native.may_write()
     });
+    // Transaction-local current origin is chosen from the verified aggregate,
+    // not a caller selector. Retained reads explicitly keep the legacy source.
+    let handoff: Option<Uuid> = if matches!(scope, TaskScope::Current) {
+        state
+            .retained_fields
+            .get("execution_handoff_id")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid current execution origin"))
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    tx.execute(statement(
+        "SELECT set_config('pdlc.tracker.current_handoff',$1,true)",
+        vec![handoff.map(|id| id.to_string()).unwrap_or_default().into()],
+    ))
+    .await
+    .map_err(map_db)?;
     tx.execute(statement(
         "SELECT tracker_bind_native_task($1::jsonb)",
-        vec![scope.into()],
+        vec![native_scope.into()],
     ))
     .await
     .map_err(map_db)?;

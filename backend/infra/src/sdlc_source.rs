@@ -392,10 +392,39 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             .as_ref()
             .map(|c| c.task.routing.confirmation_id)
             .or_else(|| state.confirmations.last().map(|c| c.id));
-        let binding: Option<TaskSourceBinding> = tx.query_one(statement(
-            "SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1 AND confirmation_id=$2",
-            vec![task.into(),confirmation.into()],
-        )).await.map_err(map_db)?.as_ref().map(decode).transpose()?;
+        let handoff: Option<Uuid> = state
+            .retained_fields
+            .get("execution_handoff_id")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid current execution origin"))
+            })
+            .transpose()?;
+        let (query, values) = if let Some(handoff) = handoff {
+            // Select the genuine human receipt only for the confirmed current
+            // origin/routing; never fall back to an unrelated legacy binding.
+            (
+                "SELECT m.source_binding AS payload FROM task_handoff_materials m JOIN task_handoff_delivery_adoptions a USING(task_id,handoff_id) WHERE m.task_id=$1 AND (m.source_binding->>'confirmation_id')::uuid=$2 AND m.handoff_id=$3 AND task_handoff_current_delivery_origin(m.task_id,$4)",
+                vec![
+                    task.into(),
+                    confirmation.into(),
+                    handoff.into(),
+                    json_value(&state)?,
+                ],
+            )
+        } else {
+            (
+                "SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1 AND confirmation_id=$2",
+                vec![task.into(), confirmation.into()],
+            )
+        };
+        let binding: Option<TaskSourceBinding> = tx
+            .query_one(statement(query, values))
+            .await
+            .map_err(map_db)?
+            .as_ref()
+            .map(decode)
+            .transpose()?;
         if let Some(binding) = &binding {
             if binding.task_id != task
                 || binding.project_id != state.project_id

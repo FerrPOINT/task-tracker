@@ -377,3 +377,11 @@ human либо legacy source receipt. Новый snapshot задачи не пе
 соответствующих строк. Отзыв участия после сохранения consent закрывает запуск,
 даже если scheduler остаётся участником проекта. Согласованная центральная
 видимость пространства остаётся дополнительным независимым ограничением.
+
+Текущий source readback после human admission читает exact human source receipt
+по execution origin и confirmation; legacy ветка сохраняет собственную историю.
+Нативный current scope выбирает источник по тому же origin из проверенного
+агрегата, retained scope очищает этот selector. Клиент его не задаёт.
+Reserved возвращает source binding вместе с ExecutionNotRunning, пока настоящего
+старта нет; source readback не фабрикует запуск. Repository/readback проверен
+на реальной изолированной БД; полный native HTTP/owner-space gate ещё открыт.

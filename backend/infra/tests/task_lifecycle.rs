@@ -1951,6 +1951,24 @@ async fn current_stage_human_materials_commit_atomically_replay_and_preserve_pro
     assert!(reserved.lease.is_some());
     assert!(reserved.binding.is_none());
     assert!(reserved.result.is_none());
+    let current_source = repository
+        .task_source(queued_task, &scheduler)
+        .await
+        .unwrap();
+    match current_source {
+        domain::sdlc_source::TaskSourceReadback::Blocked {
+            reason: domain::sdlc_source::SourceBlockReason::ExecutionNotRunning,
+            binding: Some(binding),
+            ..
+        } => {
+            assert_eq!(binding.namespace, namespace);
+            assert_eq!(
+                binding.routing_snapshot_id,
+                reserved.task.routing.snapshot_id
+            );
+        }
+        _ => panic!("current human source missing or execution incorrectly reported running"),
+    }
     assert!(
         repository
             .current_owner_handoff(queued_task, &actor)
