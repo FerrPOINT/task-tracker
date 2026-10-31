@@ -106,7 +106,7 @@ impl PostgresSdlcRepository {
         Ok(())
     }
 
-    async fn source_namespace(
+    pub(super) async fn source_namespace(
         tx: &DatabaseTransaction,
         project: Uuid,
     ) -> Result<NamespaceRef, AppError> {

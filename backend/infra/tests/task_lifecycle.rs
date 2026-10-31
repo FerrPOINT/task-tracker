@@ -773,3 +773,259 @@ async fn current_stage_handoff_preparation_is_owner_scoped_read_only_and_tracks_
         history
     );
 }
+
+// Owner observations below are synthetic; this proves persistence, not a live launch.
+#[tokio::test]
+#[ignore = "owned fresh *_task_lifecycle_test PostgreSQL required"]
+async fn current_stage_human_materials_commit_atomically_replay_and_preserve_progress() {
+    use app::task_handoff::CurrentStageHandoffRepository;
+    use domain::sdlc::{Principal, SdlcConfig, SdlcRepository};
+    use domain::sdlc_source::{
+        SetSourcePolicy, SourcePolicySpec, TaskSourceRepository, VerifiedSource,
+    };
+    use domain::task_handoff::TaskHandoffCommand;
+    use serde_json::json;
+    let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    let db = Database::connect(url.as_str()).await.unwrap();
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name,to_regclass('public.issues') IS NULL AS fresh"
+                .to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        row.try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_task_lifecycle_test")
+    );
+    assert!(row.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    db.execute_unprepared(include_str!(
+        "../../migration/src/task_lifecycle_fixture.sql"
+    ))
+    .await
+    .unwrap();
+    db.execute_unprepared("SELECT task_lifecycle_activate('10000000-0000-4000-8000-000000000001',task_lifecycle_inventory_snapshot())").await.unwrap();
+    let project = Uuid::parse_str("20000000-0000-4000-8000-000000000001").unwrap();
+    let repository = infra::sdlc::PostgresSdlcRepository::connect(
+        &url,
+        SdlcConfig {
+            instance_id: "40000000-0000-4000-8000-000000000001".into(),
+            single_task_project_ids: [project].into_iter().collect(),
+            reservation_scheduler_subject: "scheduler-qa".into(),
+            orchestrator_subject: "orchestrator-qa".into(),
+            verifier_subject: "verifier-qa".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let actor = Principal {
+        subject: "10000000-0000-4000-8000-000000000001".into(),
+        trusted_human: true,
+        human_session: true,
+        scopes: Default::default(),
+    };
+    let mut routes = json!({});
+    for (index, role) in [
+        "project_manager",
+        "analyst",
+        "architect",
+        "developer",
+        "reviewer",
+        "tester",
+        "devops",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let suffix = role.replace('_', "-");
+        routes[*role] = json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":1,"instruction_profile":"single-task-v1",
+            "instruction_manifest_sha256":"b".repeat(64),"namespace_id":(index+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
+            "workflow_id":(index+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),"profile":format!("single-task-v1-{suffix}"),
+            "workflow_catalog_version":1,"workflow_catalog_sha256":"c".repeat(64)});
+    }
+    repository
+        .set_routing_policy(
+            project,
+            &actor,
+            domain::sdlc_routing::SetRoutingPolicy {
+                expected_version: None,
+                routes: serde_json::from_value(routes).unwrap(),
+                idempotency_key: "fixture-routing".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let namespace = shared::resource_context::NamespaceRef {
+        registry_instance_id: Uuid::new_v4(),
+        namespace_id: Uuid::new_v4(),
+    };
+    let binding = json!({"schema_version":1,"namespace":namespace,"resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
+        "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES($1,$2,$3,1,'active',$4)",
+        [project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()])).await.unwrap();
+    let source = SourcePolicySpec {
+        forge_instance_id: Uuid::new_v4(),
+        repository_id: Uuid::new_v4(),
+        base_ref: "refs/heads/main".into(),
+        base_commit: "d".repeat(40),
+    };
+    let verified = VerifiedSource {
+        namespace,
+        forge_instance_id: source.forge_instance_id,
+        repository_id: source.repository_id,
+        public_name: "fixture/source".into(),
+        base_ref: source.base_ref.clone(),
+        base_commit: source.base_commit.clone(),
+        default_ref: source.base_ref.clone(),
+        protected_refs: vec![],
+        observed_at: chrono::Utc::now(),
+    };
+    repository
+        .set_source_policy(
+            project,
+            &actor,
+            SetSourcePolicy {
+                expected_source_revision: None,
+                source,
+                idempotency_key: "fixture-source".into(),
+            },
+            verified,
+        )
+        .await
+        .unwrap();
+    let command = |preview: &domain::task_handoff::PreparedCurrentStageHandoff,
+                   key: &str|
+     -> TaskHandoffCommand {
+        serde_json::from_value(json!({
+        "expected_revision":preview.state.revision,"expected_routing_policy_version":preview.routing.as_ref().unwrap().version,
+        "confirmed_issue_sha256":preview.issue_sha256,"idempotency_key":key,"requirements":{"goal":"Actual human consent",
+        "scope":["Current source"],"exclusions":[],"scenarios":["Retain current progress"],"acceptance_criteria":["Actual verified result"],
+        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["result-check"],"prerequisites":["source-input"]}})).unwrap()
+    };
+    let task = Uuid::parse_str("50000000-0000-4000-8000-000000000002").unwrap();
+    let before = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    assert!(before.blockers.is_empty(), "{:?}", before.blockers);
+    assert_eq!(
+        (before.state.stage, before.state.status),
+        (Stage::Development, Status::InProgress)
+    );
+    let stale = command(&before, "stale-materials");
+    db.execute_unprepared(
+        "UPDATE issues SET description='Human edited materials after preview' WHERE key='CORE-2'",
+    )
+    .await
+    .unwrap();
+    assert!(
+        repository
+            .save_handoff_materials(task, &actor, &stale)
+            .await
+            .is_err()
+    );
+    let preview = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    let original = command(&preview, "current-human-original");
+    // Fail after the requirement and confirmation inserts, proving whole-tx rollback.
+    db.execute_unprepared("CREATE FUNCTION injected_handoff_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$; CREATE TRIGGER injected_handoff_failure BEFORE INSERT ON task_handoff_materials FOR EACH ROW EXECUTE FUNCTION injected_handoff_failure()").await.unwrap();
+    assert!(
+        repository
+            .save_handoff_materials(task, &actor, &original)
+            .await
+            .is_err()
+    );
+    db.execute_unprepared("DROP TRIGGER injected_handoff_failure ON task_handoff_materials; DROP FUNCTION injected_handoff_failure()").await.unwrap();
+    let n=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_requirements) AS requirements,(SELECT count(*) FROM sdlc_confirmations) AS confirmations".to_owned())).await.unwrap().unwrap();
+    assert_eq!(n.try_get::<i64>("", "requirements").unwrap(), 0);
+    assert_eq!(n.try_get::<i64>("", "confirmations").unwrap(), 0);
+    let (receipt, replayed) = repository
+        .save_handoff_materials(task, &actor, &original)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(receipt.entry.state, preview.state);
+    assert_eq!(receipt.resulting_revision, preview.state.revision + 1);
+    assert_eq!(receipt.entry.role.key(), "developer");
+    let after = repository
+        .prepare_current_stage_handoff(task, &actor)
+        .await
+        .unwrap();
+    assert_eq!(
+        (after.state.stage, after.state.status),
+        (Stage::Development, Status::InProgress)
+    );
+    assert_eq!(after.state.revision, receipt.resulting_revision);
+    let saved = repository.read(task, &actor).await.unwrap();
+    assert!(saved.assignment.is_none());
+    assert!(
+        !saved.retained_fields.contains_key("flow")
+            && !saved.retained_fields.contains_key("lifecycle")
+    );
+    assert_eq!(
+        saved.confirmations.last().unwrap().stage,
+        domain::sdlc::Stage::Development
+    );
+    assert_eq!(
+        saved.revisions.last().unwrap().author_subject,
+        actor.subject
+    );
+    assert!(
+        repository
+            .save_handoff_materials(task, &actor, &original)
+            .await
+            .unwrap()
+            .1
+    );
+    let mut changed = original.clone();
+    changed.requirements.goal = "Changed reused payload".into();
+    assert!(
+        repository
+            .save_handoff_materials(task, &actor, &changed)
+            .await
+            .is_err()
+    );
+    let mut machine = actor.clone();
+    machine.human_session = false;
+    machine.trusted_human = false;
+    assert!(
+        repository
+            .save_handoff_materials(task, &machine, &original)
+            .await
+            .is_err()
+    );
+    // A real human input cannot silently authorize a raw stage write or a legacy producer.
+    assert!(db.execute_unprepared("UPDATE sdlc_tasks SET state=jsonb_set(state,'{stage}','\"Deployment\"'::jsonb) WHERE task_id='50000000-0000-4000-8000-000000000002'").await.is_err());
+    let a = command(&after, "race-human-a");
+    let b = command(&after, "race-human-b");
+    let (a, b) = tokio::join!(
+        repository.save_handoff_materials(task, &actor, &a),
+        repository.save_handoff_materials(task, &actor, &b)
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    // PM entry is genuine Backlog consent as well; it is not a reset to Draft.
+    let pm_task = Uuid::parse_str("50000000-0000-4000-8000-000000000001").unwrap();
+    let pm = repository
+        .prepare_current_stage_handoff(pm_task, &actor)
+        .await
+        .unwrap();
+    let (pm_receipt, _) = repository
+        .save_handoff_materials(pm_task, &actor, &command(&pm, "human-backlog"))
+        .await
+        .unwrap();
+    assert_eq!(pm_receipt.entry.state.stage, Stage::Backlog);
+    assert_eq!(pm_receipt.entry.role.key(), "project_manager");
+    let n=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM task_handoff_materials) AS consents,(SELECT count(*) FROM sdlc_requirements) AS requirements,(SELECT count(*) FROM sdlc_confirmations) AS confirmations,(SELECT count(*) FROM sdlc_pm_executions) AS pm_runs,(SELECT count(*) FROM sdlc_delivery_assignments) AS assignments,(SELECT count(*) FROM task_handoff_material_write_permits) AS permits".to_owned())).await.unwrap().unwrap();
+    assert_eq!(n.try_get::<i64>("", "consents").unwrap(), 3);
+    assert_eq!(n.try_get::<i64>("", "requirements").unwrap(), 3);
+    assert_eq!(n.try_get::<i64>("", "confirmations").unwrap(), 3);
+    assert_eq!(n.try_get::<i64>("", "pm_runs").unwrap(), 0);
+    assert_eq!(n.try_get::<i64>("", "assignments").unwrap(), 0);
+    assert_eq!(n.try_get::<i64>("", "permits").unwrap(), 0);
+}

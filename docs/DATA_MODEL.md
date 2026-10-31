@@ -2419,3 +2419,15 @@ ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
 No new table, permit family, task tree or scheduler is introduced.
+
+
+### Подтверждение текущего этапа человеком
+
+Аддитивная миграция113 добавляет `task_handoff_materials` и краткоживущий
+transaction permit. Ledger содержит actor, исходный idempotency key/command hash,
+ревизии, точные прежний/новый snapshots, настоящий human receipt и frozen
+routing/source. Требования и подтверждение сохраняются в прежних immutable
+`sdlc_requirements`/`sdlc_confirmations` с FK; stage/status не изменяются.
+Это история согласия, а не agent run или основание считать runtime запущенным.
+Подробности и незавершённая consumer-граница:
+[CURRENT_STAGE_HANDOFF_V1](contracts/CURRENT_STAGE_HANDOFF_V1.md).

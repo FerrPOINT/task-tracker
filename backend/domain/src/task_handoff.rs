@@ -77,12 +77,15 @@ pub struct TaskHandoffReceipt {
     pub task_id: uuid::Uuid,
     pub project_id: uuid::Uuid,
     pub actor_subject: String,
-    pub entry_state: State,
+    pub entry: CurrentStageEntry,
+    pub confirmed_issue_sha256: String,
     pub resulting_revision: i64,
     pub requirement_revision: i64,
     pub requirements_sha256: String,
     pub confirmation_id: uuid::Uuid,
     pub routing_snapshot_id: uuid::Uuid,
+    pub source_binding_id: uuid::Uuid,
+    pub idempotency_key: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 

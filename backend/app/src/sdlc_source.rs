@@ -129,11 +129,47 @@ pub fn freeze_binding(
     routing: &TaskRoutingSnapshot,
     policy: &ProjectSourcePolicy,
 ) -> Result<TaskSourceBinding, AppError> {
+    if state.draft_flow()? != Some(domain::sdlc::DraftFlow::SingleTaskV1) {
+        return Err(AppError::conflict(
+            "exact owner source confirmation differs",
+        ));
+    }
+    freeze_confirmed_binding(state, confirmation, routing, policy)
+}
+
+/// A real human confirmation may originate at any current stage, without a
+/// counterfeit Draft origin or a historical agent publication.
+pub fn freeze_handoff_binding(
+    state: &TaskState,
+    entry: domain::task_lifecycle::State,
+    confirmation: &Confirmation,
+    routing: &TaskRoutingSnapshot,
+    policy: &ProjectSourcePolicy,
+) -> Result<TaskSourceBinding, AppError> {
+    if state.stage != entry.stage.canonical()
+        || state.status != Some(entry.status)
+        || confirmation.stage != state.stage
+        || state.revisions.last().is_none_or(|r| {
+            r.revision != confirmation.revision || r.content_hash != confirmation.content_hash
+        })
+    {
+        return Err(AppError::conflict(
+            "human source confirmation differs from the current stage",
+        ));
+    }
+    freeze_confirmed_binding(state, confirmation, routing, policy)
+}
+
+fn freeze_confirmed_binding(
+    state: &TaskState,
+    confirmation: &Confirmation,
+    routing: &TaskRoutingSnapshot,
+    policy: &ProjectSourcePolicy,
+) -> Result<TaskSourceBinding, AppError> {
     state.require_root()?;
     validate_policy(policy)?;
     let candidate = candidate_ref(state.task_id);
-    if state.draft_flow()? != Some(domain::sdlc::DraftFlow::SingleTaskV1)
-        || candidate == policy.source.base_ref
+    if candidate == policy.source.base_ref
         || candidate == policy.verification.default_ref
         || policy.verification.protected_refs.contains(&candidate)
         || state.tracker_instance_id != policy.tracker_instance_id

@@ -21,7 +21,25 @@ impl PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        let (_, prepared) = self.prepare_handoff_locked(&tx, task, actor).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(prepared)
+    }
+
+    async fn prepare_handoff_locked(
+        &self,
+        tx: &DatabaseTransaction,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<(TaskState, PreparedCurrentStageHandoff), AppError> {
+        if !actor.human_session
+            || !actor.trusted_human
+            || app::sdlc::has_pm_grant(&actor.scopes)
+            || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+        {
+            return Err(AppError::Forbidden);
+        }
+        let state = Self::load_binding(tx, &self.config, task, actor).await?;
         if !state.owner(actor) {
             return Err(AppError::Forbidden);
         }
@@ -67,7 +85,7 @@ impl PostgresSdlcRepository {
         } else {
             Some(CurrentStageEntry::derive(core, false)?)
         };
-        let routing = match Self::policy(&tx, state.project_id, None).await {
+        let routing = match Self::policy(tx, state.project_id, None).await {
             Ok(policy) => {
                 app::sdlc_draft_flow::validate_policy(
                     &policy,
@@ -82,7 +100,7 @@ impl PostgresSdlcRepository {
             }
             Err(error) => return Err(error),
         };
-        let source = match Self::retained_source_policy(&tx, state.project_id, None).await {
+        let source = match Self::retained_source_policy(tx, state.project_id, None).await {
             Ok(policy) => Some(policy),
             Err(AppError::NotFound(_)) => {
                 blockers.push(Blocker::SourceUnavailable);
@@ -105,17 +123,122 @@ impl PostgresSdlcRepository {
         let issue_sha256 = app::sdlc::canonical_hash(&json!({"issue":material,"state":core,
             "routing":routing.as_ref().map(|p|json!({"version":p.version,"hash":p.routing_hash})),
             "source":source.as_ref().map(|p|json!({"revision":p.source_revision,"hash":p.source_hash}))}))?;
-        tx.commit().await.map_err(map_db)?;
-        Ok(PreparedCurrentStageHandoff {
+        let prepared = PreparedCurrentStageHandoff {
             task_id: task,
             project_id: state.project_id,
-            owner_subject: state.owner_subject,
+            owner_subject: state.owner_subject.clone(),
             state: core,
             issue_sha256,
             entry,
             routing,
             source,
             blockers,
-        })
+        };
+        Ok((state, prepared))
+    }
+}
+
+#[async_trait]
+impl app::task_handoff::CurrentStageHandoffRepository for PostgresSdlcRepository {
+    async fn save_handoff_materials(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::task_handoff::TaskHandoffCommand,
+    ) -> Result<(domain::task_handoff::TaskHandoffReceipt, bool), AppError> {
+        command.validate()?;
+        if !actor.human_session
+            || !actor.trusted_human
+            || app::sdlc::has_pm_grant(&actor.scopes)
+            || app::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+        {
+            return Err(AppError::Forbidden);
+        }
+        let hash = app::sdlc::canonical_hash(command)?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        // Re-check the current account, project, reporter and aggregate even on replay.
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        if !state.owner(actor) {
+            return Err(AppError::Forbidden);
+        }
+        let reporter = tx.query_one(statement(
+            "SELECT u.id FROM issues i JOIN users u ON u.id=i.reporter_id WHERE i.id=$1 AND u.central_sub=$2 AND u.is_active FOR SHARE OF u",
+            vec![task.into(),actor.subject.clone().into()])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+        let actor_id: Uuid = reporter.try_get("", "id").map_err(map_db)?;
+        if let Some(saved) = tx.query_one(statement(
+            "SELECT command_hash,receipt FROM task_handoff_materials WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+            vec![task.into(), actor.subject.clone().into(), command.idempotency_key.clone().into()])).await.map_err(map_db)? {
+            if saved.try_get::<String>("", "command_hash").map_err(map_db)? != hash {
+                return Err(AppError::conflict("task_handoff_idempotency_conflict"));
+            }
+            let receipt = serde_json::from_value(saved.try_get::<Json>("", "receipt").map_err(map_db)?).map_err(AppError::internal)?;
+            tx.commit().await.map_err(map_db)?;
+            return Ok((receipt, true));
+        }
+        // Lock current routing/source heads as well as their immutable revisions.
+        // Every authoring path takes the same project row before updating these heads.
+        let (state, prepared) = self.prepare_handoff_locked(&tx, task, actor).await?;
+        if let Some(source) = &prepared.source {
+            if Self::source_namespace(&tx, state.project_id).await? != source.verification.namespace
+            {
+                return Err(AppError::conflict("source policy namespace changed"));
+            }
+        }
+        let frozen = app::task_handoff::prepare_materials(
+            &state,
+            actor,
+            &prepared,
+            command,
+            app::task_handoff::HandoffAllocation {
+                handoff_id: Uuid::new_v4(),
+                confirmation_id: Uuid::new_v4(),
+                routing_snapshot_id: Uuid::new_v4(),
+                source_binding_id: Uuid::new_v4(),
+                observed_at: chrono::Utc::now(),
+            },
+        )?;
+        let receipt = &frozen.receipt;
+        // Preserve the original JSON byte values (including historical timestamps
+        // and absent optional keys); append only this real human consent.
+        let raw = tx
+            .query_one(statement(
+                "SELECT state FROM sdlc_tasks WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::not_found("SDLC binding", task))?;
+        let previous: Json = raw.try_get("", "state").map_err(map_db)?;
+        let mut next = previous.clone();
+        next["revisions"]
+            .as_array_mut()
+            .ok_or_else(|| AppError::conflict("invalid requirements history"))?
+            .push(serde_json::to_value(&frozen.requirement).map_err(AppError::internal)?);
+        next["confirmations"]
+            .as_array_mut()
+            .ok_or_else(|| AppError::conflict("invalid confirmation history"))?
+            .push(serde_json::to_value(&frozen.confirmation).map_err(AppError::internal)?);
+        next["confirmation_revision"] = json!(receipt.requirement_revision);
+        next["human_handoff_id"] = json!(receipt.handoff_id);
+        exec(&tx,"INSERT INTO sdlc_requirements(task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4)",
+            vec![task.into(),frozen.requirement.revision.into(),frozen.requirement.content_hash.clone().into(),json_value(&frozen.requirement)?]).await?;
+        exec(&tx,"INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)",
+            vec![frozen.confirmation.id.into(),task.into(),frozen.confirmation.revision.into(),frozen.confirmation.content_hash.clone().into(),json_value(&frozen.confirmation)?]).await?;
+        exec(&tx,"INSERT INTO task_handoff_materials(handoff_id,task_id,actor_id,actor_subject,idempotency_key,command_hash,previous_revision,resulting_revision,confirmation_id,requirement_revision,requirements_sha256,receipt,previous_state,next_state,routing,source_binding)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+            vec![receipt.handoff_id.into(),task.into(),actor_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),
+                prepared.state.revision.into(),receipt.resulting_revision.into(),receipt.confirmation_id.into(),receipt.requirement_revision.into(),receipt.requirements_sha256.clone().into(),
+                json_value(receipt)?,previous.into(),next.clone().into(),json_value(&frozen.routing)?,json_value(&frozen.source)?]).await?;
+        exec(&tx,"INSERT INTO task_handoff_material_write_permits(task_id,transaction_id,handoff_id) VALUES($1,pg_current_xact_id(),$2)",
+            vec![task.into(),receipt.handoff_id.into()]).await?;
+        exec(
+            &tx,
+            "UPDATE sdlc_tasks SET state=$2,manual_control=true WHERE task_id=$1",
+            vec![task.into(), next.into()],
+        )
+        .await?;
+        exec(&tx,"DELETE FROM task_handoff_material_write_permits WHERE task_id=$1 AND transaction_id=pg_current_xact_id()",vec![task.into()]).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok((frozen.receipt, false))
     }
 }
