@@ -8,6 +8,25 @@ frozen qualification; старый environment не считается пров�
 
 ## Текущий performance candidate — 31 октября 2026
 
+SeaORM `mock` принадлежит dev-dependencies **infra и migration**. В актуальном
+Source migration103/104 тоже используют MockDatabase под `cfg(test)`; старого
+infra-only рецепта недостаточно. Production PostgreSQL/rustls/JSON/UUID/chrono/
+macros сохранены, команды server/domain/CLI и Cargo.lock не меняются. Это Source
+разделение feature graphs; Rust compilation/resources ещё не измерены. На ручной
+native вехе из `backend` проверить normal server graph отдельно от test graphs:
+
+```sh
+cargo tree --locked --offline -p server --edges features,no-dev
+cargo build --locked --release -p server --bin server
+cargo test --locked -p infra --test repos_mock
+cargo test --locked -p migration --lib
+```
+
+Tree — диагностическое описание, не замена build/test. Workspace tests и
+`--all-targets` намеренно включают dev features; их graph не сравнивается с
+normal server как одна и та же компиляция. Полные release/ignored DB gates ниже
+сохраняются. Команды здесь не назначают промежуточную сборку во время разработки.
+
 Оптимизации перенесены на main `fa60e0e2` в отдельной task branch. Текущие Rust
 исходники, Cargo manifests/lock, SDK `ed61ec63` и UI `03a35d80` сохранены.
 Frontend preparation/CI используют Node 22.22.2, как текущие Docker recipes.

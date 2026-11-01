@@ -71,6 +71,40 @@ class QualityRouteTests(unittest.TestCase):
         self.assertNotIn('--workspace', gates['backend:build']['argv'][-1])
         self.assertNotIn('--workspace', gates['cli:build']['argv'][-1])
 
+    def test_normal_database_graph_keeps_postgres_without_test_mock(self):
+        import tomllib
+
+        workspace = tomllib.loads((ROOT / 'backend/Cargo.toml').read_text(encoding='utf-8'))['workspace']
+        self.assertEqual(workspace['resolver'], '3')
+        orm = workspace['dependencies']['sea-orm']
+        self.assertIs(orm['default-features'], False)
+        self.assertNotIn('mock', orm['features'])
+        self.assertLessEqual({'sqlx-postgres', 'runtime-tokio-rustls', 'macros',
+                             'with-json', 'with-uuid', 'with-chrono'}, set(orm['features']))
+        for member in workspace['members']:
+            package = tomllib.loads((ROOT / 'backend' / member / 'Cargo.toml').read_text(encoding='utf-8'))
+            with self.subTest(member=member):
+                orm = package.get('dependencies', {}).get('sea-orm', {})
+                self.assertNotIn('mock', orm.get('features', []))
+
+    def test_mock_is_available_to_infra_and_migration_tests(self):
+        import tomllib
+
+        for member in ('infra', 'migration'):
+            package = tomllib.loads((ROOT / 'backend' / member / 'Cargo.toml').read_text(encoding='utf-8'))
+            with self.subTest(member=member):
+                orm = package['dev-dependencies']['sea-orm']
+                self.assertIs(orm['workspace'], True)
+                self.assertIn('mock', orm['features'])
+
+    def test_database_manifest_edits_select_source_contract_without_frontend(self):
+        for path in ('backend/Cargo.toml', 'backend/infra/Cargo.toml', 'backend/migration/Cargo.toml'):
+            with self.subTest(path=path):
+                gates = {gate['id'] for gate in self.plan(path)['gates']}
+                self.assertIn('tooling:quality-routes', gates)
+                self.assertIn('backend:build', gates)
+                self.assertNotIn('frontend:build', gates)
+
     def test_units_and_static_checks_precede_any_producer(self):
         gates = self.plan('scripts/new-generator.py')['gates']
         first = next(i for i, g in enumerate(gates) if g.get('kind') == 'artifact')

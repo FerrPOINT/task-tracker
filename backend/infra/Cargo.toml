@@ -28,6 +28,7 @@ migration = { path = "../migration" }
 lettre.workspace = true
 
 [dev-dependencies]
+sea-orm = { workspace = true, features = ["mock"] }
 axum.workspace = true
 serial_test = "3.2"
 tokio = { workspace = true, features = ["macros", "rt"] }
