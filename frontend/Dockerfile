@@ -66,6 +66,7 @@ RUN --mount=type=bind,from=unit,source=/tmp/frontend-unit-check,target=/tmp/fron
 RUN pnpm run build:compile
 
 FROM nginx:alpine
+ENV NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE=1
 ARG VITE_NAMESPACE_ENABLED="false"
 LABEL io.pdlc.namespace-ui.enabled=${VITE_NAMESPACE_ENABLED}
 COPY --from=builder /app/dist /usr/share/nginx/html
