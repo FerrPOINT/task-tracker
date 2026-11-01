@@ -630,3 +630,15 @@ prefix restore дополняется Cargo. Download hit не пропуска�
 Manual qualification/release helpers не меняются. Archive size/total time и
 hosted/native adoption не измерены; публикация Source их не подтверждает.
 Общий контракт и evidence: [Base](https://github.com/FerrPOINT/services-base/blob/chore/build-performance-20261015/docs/plans/ci-download-cache-source-20261101.md).
+
+## Встроенный selector: 1 ноября 2026
+
+`python scripts/build.py` без аргументов выбирает текущие local changes относительно
+HEAD; это не cold bootstrap. Встроенный selector принят отдельно из Base
+`c6bc382dd89c77ad4d4e85000966ae70821211f0`. Чистый implicit HEAD использует один
+read-only Git status вместо трёх процессов; dirty paths сохраняют прежний net diff.
+Explicit service/`--all`, invalidation и неизвестные пути сохраняют прежний смысл.
+SDK/UI/skills и compiler pins не меняются. Общий контракт и ограничения измерений:
+[BUILD_PERFORMANCE](https://github.com/FerrPOINT/services-base/blob/c6bc382dd89c77ad4d4e85000966ae70821211f0/docs/BUILD_PERFORMANCE.md).
+Публикация этого candidate не переключает current main checkout и не подтверждает
+native build/cache/resource qualification.
