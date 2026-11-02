@@ -1,0 +1,22 @@
+{
+  "source": "136ba054f128ee8e62f5ef1e5ffe11b5f59c6019",
+  "build": "9eba4cb8b2704f9e992eee365e6c40e1",
+  "images": {
+    "task-backend": "sha256:30b7ff601b99d926d7480801d4ba9a8c57e023e2d53e35278c32016158589ab7",
+    "task-web": "sha256:7529b073c797972e544be0e02c3bb423fa5cf7b6ca3fe3f4c317744074e02482"
+  },
+  "fleet_preserved": true,
+  "task_context_preserved": true,
+  "stage": "Backlog",
+  "status": "Ready",
+  "requirement_revision": 2,
+  "stage_columns": 9,
+  "backlog_total": 1,
+  "screenshot": {
+    "file": "live-1920.png",
+    "width": 65536,
+    "height": 4292542531,
+    "sha256": "e448b740a1742ecfc1a621d5b40542c41d2c942a35335c51e15b153a2d3ee266",
+    "fixture": false
+  }
+}

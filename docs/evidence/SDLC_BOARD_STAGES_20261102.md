@@ -40,4 +40,24 @@ legacy Clarification относится к Draft. Обычным задачам 
 Full-page captures сохранены без редактирования. WebKit использует native DPR2;
 ширина viewport 2560 соответствует PNG 5120 px.
 
-Установка runtime проверяется отдельно после сборки защищённым оператором Base.
+## Приёмка установленной версии
+
+Normal Build/Apply в sdlc3 завершены 2026-11-02. Исходники приложения:
+`136ba054f128ee8e62f5ef1e5ffe11b5f59c6019`, build:
+`9eba4cb8b2704f9e992eee365e6c40e1`. Образы и проверки сохранности:
+[installed-runtime.json](../assets/screens/sdlc-board-stages-20261102/installed-runtime.json).
+
+API установленного Tracker возвращает девять стадий. SDLC3-1 видна в Backlog,
+операционный статус Ready, подтверждённая редакция требований 2. Бэклог содержит
+одну задачу; при отсутствии спринта sprint_issues пуст. Контекст задачи и образы
+Fleet сохранены. В браузере проверены доска, карточка и переход в бэклог/обратно.
+[Снимок установленной доски](../assets/screens/sdlc-board-stages-20261102/live-1920.png).
+
+Для сборки применён host operator Base `f666e82a7101d8ee472ce180062f4eabf941a33d`:
+[consumer UI binding](https://github.com/FerrPOINT/services-base/pull/440).
+Публикация Base согласована с актуальным main; 44 scoped unit tests — PASS.
+SDK/UI pins продукта не менялись. Kubernetes rollout не проверялся.
+
+Глобальный Docker groups audit имеет ранее существовавшие нарушения в соседних
+ресурсах; собственных board-stages QA-контейнеров после cleanup нет.
+
