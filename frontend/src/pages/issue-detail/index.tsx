@@ -288,13 +288,13 @@ export function IssueDetailPage() {
                 <TabsList className="grid! w-full grid-cols-6 gap-1 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-5">
                   <TabsTrigger
                     value="activity"
-                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
+                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
                   >
                     {t('issue.activity')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="comments"
-                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
+                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
                   >
                     {t('issue.comments')}
                   </TabsTrigger>
@@ -307,13 +307,13 @@ export function IssueDetailPage() {
                   </TabsTrigger>
                   <TabsTrigger
                     value="attachments"
-                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
+                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
                   >
                     {t('attachments.title')}
                   </TabsTrigger>
                   <TabsTrigger
                     value="sdlc"
-                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
+                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
                   >
                     {t('sdlc.title')}
                   </TabsTrigger>
