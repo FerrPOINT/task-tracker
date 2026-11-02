@@ -285,14 +285,38 @@ export function IssueDetailPage() {
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
-                  <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
-                  <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
-                  <TabsTrigger ref={worklogTabRef} value="worklog">
+                <TabsList className="grid! w-full grid-cols-6 gap-1 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-5">
+                  <TabsTrigger
+                    value="activity"
+                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
+                  >
+                    {t('issue.activity')}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="comments"
+                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
+                  >
+                    {t('issue.comments')}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    ref={worklogTabRef}
+                    value="worklog"
+                    className="col-span-2 sm:col-span-1 lg:col-span-2 xl:col-span-1"
+                  >
                     {t('timeTracking.worklog.title')}
                   </TabsTrigger>
-                  <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
-                  <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
+                  <TabsTrigger
+                    value="attachments"
+                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
+                  >
+                    {t('attachments.title')}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="sdlc"
+                    className="col-span-3 sm:col-span-1 lg:col-span-3 xl:col-span-1"
+                  >
+                    {t('sdlc.title')}
+                  </TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
                   {commentsQuery.error && (
