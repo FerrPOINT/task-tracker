@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { Outlet, useOutletContext, useParams, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
+  ActionGroup,
   PageHeader,
   SectionNavigation,
   SectionNavigationItem,
@@ -142,7 +143,7 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
           {t('projectSettings.saveError')}
         </Notice>
       )}
-      <div className="flex gap-2">
+      <ActionGroup align="start">
         <Button type="submit" disabled={!dirty || !name.trim() || update.isPending}>
           {update.isPending ? t('common.saving') : t('common.save')}
         </Button>
@@ -158,7 +159,7 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
         >
           {t('common.cancel')}
         </Button>
-      </div>
+      </ActionGroup>
     </form>
   )
 }

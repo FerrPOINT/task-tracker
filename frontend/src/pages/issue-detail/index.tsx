@@ -1,5 +1,7 @@
-import { useClipboard } from '@pdlc/ui/lib'
+import { ContentSection } from '@pdlc/ui/ui'
+import { useClipboard, useMediaQuery } from '@pdlc/ui/lib'
 import {
+  ActionGroup,
   Badge,
   TextLink,
   ProjectAvatar,
@@ -23,7 +25,7 @@ import {
 } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 
@@ -193,7 +195,7 @@ export function IssueDetailPage() {
               {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
             </Badge>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ActionGroup align="start" className="ml-auto">
             <Button
               variant="secondary"
               size="sm"
@@ -244,21 +246,23 @@ export function IssueDetailPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </ActionGroup>
         </div>
 
         <IssueDetailLayout
           description={
-            <section className="min-w-0 border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
-              <IssueDescriptionEditor
-                issue={issue}
-                disabled={updateIssue.isPending}
-                onSubmit={async (patch) => {
-                  await updateIssue.mutateAsync(patch)
-                  toast.success(t('common.saved'))
-                }}
-              />
-            </section>
+            <ContentSection asChild dividers="start">
+              <section className="min-w-0 lg:col-start-1 lg:row-start-1">
+                <IssueDescriptionEditor
+                  issue={issue}
+                  disabled={updateIssue.isPending}
+                  onSubmit={async (patch) => {
+                    await updateIssue.mutateAsync(patch)
+                    toast.success(t('common.saved'))
+                  }}
+                />
+              </section>
+            </ContentSection>
           }
           details={
             <Card>
@@ -304,7 +308,7 @@ export function IssueDetailPage() {
                     />
                   )}
                   {activityLoading ? (
-                    <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+                    <LoadingState scope="local" message={t('issue.loadingActivity')} />
                   ) : hasActivityData || !activityError ? (
                     <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
                   ) : null}
@@ -319,7 +323,7 @@ export function IssueDetailPage() {
                       onRetry={() => void worklogsQuery.refetch()}
                     />
                   ) : worklogsQuery.isLoading ? (
-                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+                    <LoadingState scope="local" message={t('common.loading')} />
                   ) : (
                     <WorklogTab
                       worklogs={worklogs}
@@ -340,7 +344,7 @@ export function IssueDetailPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                  <CardContent className="pt-5">
+                  <CardContent>
                     <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
@@ -353,7 +357,7 @@ export function IssueDetailPage() {
                   </CardContent>
                 </Card>
                 <Card className="md:col-span-2">
-                  <CardContent className="pt-5">
+                  <CardContent>
                     <LinkEditor issueId={issue.id} currentKey={issue.key} />
                     {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                       <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
@@ -427,21 +431,6 @@ export function IssueDetailPage() {
 
 const desktopLayoutQuery = '(min-width: 1024px)'
 
-function getDesktopLayout() {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(desktopLayoutQuery).matches
-  )
-}
-
-function subscribeDesktopLayout(onChange: () => void) {
-  if (typeof window.matchMedia !== 'function') return () => {}
-  const query = window.matchMedia(desktopLayoutQuery)
-  query.addEventListener('change', onChange)
-  return () => query.removeEventListener('change', onChange)
-}
-
 function IssueDetailLayout({
   description,
   details,
@@ -453,7 +442,7 @@ function IssueDetailLayout({
   activity: ReactNode
   supplemental: ReactNode
 }) {
-  const desktop = useSyncExternalStore(subscribeDesktopLayout, getDesktopLayout, () => false)
+  const desktop = useMediaQuery(desktopLayoutQuery)
 
   return (
     <div

@@ -36,6 +36,68 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('AttachmentPanel', () => {
+  it('distinguishes a failed read from confirmed emptiness and retries only explicitly', () => {
+    const refetch = vi.fn()
+    mockAttachments.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: Object.assign(new Error('private server detail'), { status: 503 }),
+      refetch,
+    })
+    render(wrapper(<AttachmentPanel issueId="failed-read" />))
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load attachments')
+    expect(screen.queryByText(/no files/i)).not.toBeInTheDocument()
+    expect(refetch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it.each([401, 403])('hides cached attachment data after access is lost with %s', (status) => {
+    mockAttachments.mockReturnValue({
+      data: [
+        {
+          id: 'hidden',
+          file_name: 'sensitive.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 64,
+        },
+      ],
+      isLoading: false,
+      error: Object.assign(new Error('private'), { status }),
+      refetch: vi.fn(),
+    })
+    render(wrapper(<AttachmentPanel issueId="denied-read" />))
+    expect(screen.queryByText('sensitive.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sensitive.pdf/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /access|доступ/i })).toBeInTheDocument()
+  })
+
+  it('retains confirmed attachments with an explanation during a temporary read failure', () => {
+    mockAttachments.mockReturnValue({
+      data: [
+        {
+          id: 'retained',
+          file_name: 'retained.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 64,
+        },
+      ],
+      isLoading: false,
+      error: Object.assign(new Error('private'), { status: 503 }),
+      refetch: vi.fn(),
+    })
+    render(wrapper(<AttachmentPanel issueId="partial-read" />))
+    expect(screen.getByText('retained.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Could not load attachments')
+  })
+
+  it('does not claim emptiness for an unstarted read', () => {
+    mockAttachments.mockReturnValue({ data: undefined, isLoading: false, error: null })
+    render(wrapper(<AttachmentPanel issueId="unstarted-read" />))
+    expect(screen.queryByText(/no files/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+  })
+
   it('renders attachment list and upload button', () => {
     mockAttachments.mockReturnValue({
       data: [

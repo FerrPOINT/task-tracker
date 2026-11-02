@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, type ReactNode } from 'react'
-import { ErrorState, LoadingState, SearchableSelect } from '@pdlc/ui/ui'
+import { TextLink, ErrorState, LoadingState, SearchableSelect } from '@pdlc/ui/ui'
 import { observeSpaceContext, useSpaceSession } from '@/shared/auth/space-session'
 import {
   readSpaceLocation,
@@ -44,9 +44,9 @@ export function SpaceContextBoundary({
     return (
       <div className="space-y-3">
         <ErrorState message="Контекст пространства или проекта неоднозначен. Выберите его явно." />
-        <Link className="text-accent underline" to={spaceProjectLocation(null)}>
-          Открыть все доступные проекты
-        </Link>
+        <TextLink asChild>
+          <Link to={spaceProjectLocation(null)}>Открыть все доступные проекты</Link>
+        </TextLink>
       </div>
     )
   if (!session) return <ErrorState message="Нужна подтверждённая центральная сессия." />

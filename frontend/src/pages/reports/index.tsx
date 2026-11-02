@@ -1,4 +1,5 @@
-import { Notice } from '@pdlc/ui/ui'
+import { ActionGroup, Notice } from '@pdlc/ui/ui'
+import { downloadBlob, useDebouncedValue } from '@pdlc/ui/lib'
 import {
   Table,
   TableHeader,
@@ -7,7 +8,7 @@ import {
   TableBody,
   TableCell,
   Select,
-  ProjectPicker,
+  SearchableSelect,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -15,6 +16,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
   Button,
   ErrorState,
@@ -22,11 +24,14 @@ import {
   PageHeader,
   LoadingState,
   EmptyState,
+  ResourceStateView,
+  resourceErrorState,
+  type ResourceState,
 } from '@pdlc/ui/ui'
 
 import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
 import { useScopedMutation } from '@/shared/api/useScopedMutation'
-import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -72,7 +77,7 @@ function ReportPanel({
   isLoading,
   hasData,
   isEmpty,
-  hasError,
+  error,
   emptyMessage,
   onRetry,
   children,
@@ -82,41 +87,38 @@ function ReportPanel({
   isLoading: boolean
   hasData: boolean
   isEmpty: boolean
-  hasError: boolean
+  error: unknown
   emptyMessage: string
   onRetry: () => void
   children: ReactNode
 }) {
   const { t } = useTranslation()
+  let state: ResourceState
+  if (isLoading && !hasData) {
+    state = { kind: 'loading', message: t('reports.loading') }
+  } else if (error) {
+    state = resourceErrorState(error, onRetry, { hasData })
+    if (state.kind === 'error' || state.kind === 'partial-error') {
+      state = {
+        ...state,
+        message: t(state.kind === 'partial-error' ? 'reports.refreshError' : 'reports.loadError'),
+      }
+    }
+  } else {
+    // An unselected sprint has a product-owned prompt, not an implicit loading state.
+    state = !hasData || isEmpty ? { kind: 'empty', message: emptyMessage } : { kind: 'ready' }
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <p className="text-sm text-text-muted">{subtitle}</p>
+        <CardDescription tone="muted">{subtitle}</CardDescription>
       </CardHeader>
       <CardContent className="min-w-0 overflow-x-clip">
-        {isLoading && !hasData ? (
-          <LoadingState message={t('reports.loading')} />
-        ) : (
-          <>
-            {hasError && (
-              <ErrorState
-                message={t(hasData ? 'reports.refreshError' : 'reports.loadError')}
-                onRetry={onRetry}
-              />
-            )}
-            {hasData ? (
-              isEmpty ? (
-                <EmptyState message={emptyMessage} />
-              ) : (
-                children
-              )
-            ) : !hasError ? (
-              <EmptyState message={emptyMessage} />
-            ) : null}
-          </>
-        )}
+        <ResourceStateView state={state} scope="local">
+          {isEmpty ? <EmptyState message={emptyMessage} /> : children}
+        </ResourceStateView>
       </CardContent>
     </Card>
   )
@@ -125,16 +127,24 @@ function ReportPanel({
 export function ReportsPage() {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
-  const projectsQuery = useProjects()
-  const projects = projectsQuery.data ?? []
   const requestedProjectKey = searchParams.get('project_key') ?? ''
+  const [projectQuery, setProjectQuery] = useState({ q: '', offset: 0 })
+  const projectSearch = useDebouncedValue(projectQuery.q, 200)
+  const projectsQuery = useProjectChoiceCatalog(
+    requestedProjectKey,
+    projectQuery.offset,
+    projectSearch,
+  )
+  const projects = projectsQuery.data ?? []
   const sprintId = searchParams.get('sprint_id') ?? ''
   const [exportError, setExportError] = useState<string | null>(null)
   const [failedExport, setFailedExport] = useState<IssueExportFormat | null>(null)
   const requestedTab = searchParams.get('tab')
   const tab: TabValue = isReportTab(requestedTab) ? requestedTab : 'velocity'
   const pendingTab = useRef<TabValue | null>(null)
-  const selectedProject = projects.find((project) => project.key === requestedProjectKey)
+  const selectedProject = projectsQuery.selected
+  const catalogEmpty =
+    projectQuery.offset === 0 && !projectQuery.q && !projectsQuery.hasMore && projects.length === 0
   const projectId = selectedProject?.id ?? ''
   const projectKey = selectedProject?.key
   const sprintsQuery = useSprints(tab === 'burndown' ? projectKey : undefined)
@@ -186,12 +196,7 @@ export function ReportsPage() {
           })
         : fetchIssueExport(projectKey, format),
     onSuccess: (file) => {
-      const url = URL.createObjectURL(file.blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = file.filename
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(file.blob, file.filename)
     },
     onError: (_error, request) => {
       setExportError(t('reports.exportError'))
@@ -224,18 +229,35 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="report-project">{t('reports.project')}</Label>
-          <ProjectPicker
+          <SearchableSelect
             id="report-project"
-            aria-label={t('reports.project')}
-            value={projectId}
-            options={projects.map((p) => ({ value: p.id, label: p.name, projectKey: p.key }))}
-            placeholder={t('reports.selectProject')}
-            disabled={
-              (projectsQuery.isLoading || Boolean(projectsQuery.error)) && projects.length === 0
+            label={t('reports.project')}
+            value={requestedProjectKey}
+            selectedLabel={
+              projectsQuery.selectedPending
+                ? t('search.checkingProject')
+                : selectedProject
+                  ? `${selectedProject.name} (${selectedProject.key})`
+                  : undefined
             }
-            onChange={(nextId) => {
-              const nextProject = projects.find((project) => project.id === nextId)
-              updateParams({ project_key: nextProject?.key, sprint_id: undefined })
+            options={projects.map((p) => ({ value: p.key, label: `${p.name} (${p.key})` }))}
+            placeholder={t('reports.selectProject')}
+            search={projectQuery.q}
+            onSearch={
+              projectsQuery.searchable
+                ? (q) => setProjectQuery({ q: Array.from(q).slice(0, 200).join(''), offset: 0 })
+                : undefined
+            }
+            offset={projectQuery.offset}
+            pageSize={PROJECT_CHOICE_PAGE_SIZE}
+            total={projectsQuery.catalog?.total}
+            hasNext={projectsQuery.hasMore}
+            onPage={(offset) => setProjectQuery((previous) => ({ ...previous, offset }))}
+            loading={projectsQuery.isLoading || projectQuery.q !== projectSearch}
+            error={projectsQuery.isError ? t('reports.projectsError') : undefined}
+            onRetry={() => void projectsQuery.refetch()}
+            onChange={(key) => {
+              updateParams({ project_key: key || undefined, sprint_id: undefined })
               setExportError(null)
               setFailedExport(null)
             }}
@@ -273,8 +295,9 @@ export function ReportsPage() {
           </div>
         )}
 
-        <div
-          className="flex gap-2 sm:ml-auto"
+        <ActionGroup
+          align="start"
+          className="sm:ml-auto"
           aria-label={t('reports.export')}
           aria-busy={exporting !== null}
         >
@@ -298,7 +321,7 @@ export function ReportsPage() {
             <Download className="mr-1.5 h-4 w-4" />
             {exporting === 'json' ? t('reports.exporting') : t('reports.exportJson')}
           </Button>
-        </div>
+        </ActionGroup>
       </div>
 
       {projectsQuery.error && (
@@ -364,25 +387,24 @@ export function ReportsPage() {
         </Notice>
       )}
 
-      {projectsQuery.isLoading && projects.length === 0 ? (
+      {(projectsQuery.isLoading && !selectedProject) || projectsQuery.selectedPending ? (
         <LoadingState message={t('reports.loadingProjects')} />
-      ) : projectsQuery.error && projects.length === 0 ? null : !projectId ? (
-        <div className="space-y-3 py-8 text-center text-text-muted">
-          <p>
-            {t(
-              projects.length === 0
-                ? 'reports.noProjects'
-                : requestedProjectKey
-                  ? 'reports.unknownProject'
-                  : 'reports.noProject',
-            )}
-          </p>
-          {projects.length === 0 && (
-            <Button asChild variant="outline">
-              <Link to="/projects">{t('projects.title')}</Link>
-            </Button>
-          )}
-        </div>
+      ) : projectsQuery.error && !selectedProject ? null : projectsQuery.selectedUnavailable ? (
+        <ErrorState
+          message={t('reports.unknownProject')}
+          onRetry={() => void projectsQuery.retrySelected()}
+        />
+      ) : !projectId ? (
+        <EmptyState
+          message={t(catalogEmpty ? 'reports.noProjects' : 'reports.noProject')}
+          action={
+            catalogEmpty ? (
+              <Button asChild variant="outline">
+                <Link to="/projects">{t('projects.title')}</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <Tabs value={tab} onValueChange={changeTab}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
@@ -407,7 +429,7 @@ export function ReportsPage() {
               isLoading={velocity.isLoading}
               hasData={Boolean(velocity.data)}
               isEmpty={velocity.data?.sprints.length === 0}
-              hasError={Boolean(velocity.error)}
+              error={velocity.error}
               emptyMessage={t('reports.velocity.empty')}
               onRetry={() => void velocity.refetch()}
             >
@@ -464,7 +486,7 @@ export function ReportsPage() {
               isLoading={burndown.isLoading}
               hasData={Boolean(burndown.data)}
               isEmpty={burndown.data?.points.length === 0}
-              hasError={Boolean(burndown.error)}
+              error={burndown.error}
               emptyMessage={t(
                 selectedSprintId
                   ? 'reports.burndown.empty'
@@ -523,7 +545,7 @@ export function ReportsPage() {
               isLoading={cumulativeFlow.isLoading}
               hasData={Boolean(cumulativeFlow.data)}
               isEmpty={cumulativeFlow.data?.points.length === 0}
-              hasError={Boolean(cumulativeFlow.error)}
+              error={cumulativeFlow.error}
               emptyMessage={t('reports.cumulativeFlow.empty')}
               onRetry={() => void cumulativeFlow.refetch()}
             >
@@ -597,7 +619,7 @@ export function ReportsPage() {
               isLoading={controlChart.isLoading}
               hasData={Boolean(controlChart.data)}
               isEmpty={controlChart.data?.points.length === 0}
-              hasError={Boolean(controlChart.error)}
+              error={controlChart.error}
               emptyMessage={t('reports.controlChart.empty')}
               onRetry={() => void controlChart.refetch()}
             >

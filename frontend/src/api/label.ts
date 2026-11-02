@@ -1,13 +1,15 @@
 import { api } from './client'
+import { ApiError, InvalidResponseError } from '@pdlc/ui/lib'
 import type { components } from './generated'
 
 export type Label = components['schemas']['LabelResponse']
 
 export async function listProjectLabels(projectKey: string): Promise<Label[]> {
-  const { data, error } = await api.GET('/api/v1/projects/{project_key}/labels', {
+  const { data, error, response } = await api.GET('/api/v1/projects/{project_key}/labels', {
     params: { path: { project_key: projectKey } },
   })
-  if (error || !data) throw new Error('Failed to load labels')
+  if (error || !response.ok) throw new ApiError(response.status, 'Failed to load labels')
+  if (!data || !Array.isArray(data.labels)) throw new InvalidResponseError(response.status)
   return data.labels
 }
 
@@ -21,10 +23,11 @@ export async function createLabel(projectKey: string, name: string, color: strin
 }
 
 export async function listIssueLabels(issueId: string): Promise<Label[]> {
-  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/labels', {
+  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/labels', {
     params: { path: { issue_id: issueId } },
   })
-  if (error || !data) throw new Error('Failed to load issue labels')
+  if (error || !response.ok) throw new ApiError(response.status, 'Failed to load issue labels')
+  if (!data || !Array.isArray(data.labels)) throw new InvalidResponseError(response.status)
   return data.labels
 }
 

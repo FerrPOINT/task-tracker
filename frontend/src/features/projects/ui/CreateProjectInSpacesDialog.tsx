@@ -6,6 +6,9 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 import {
+  ActionGroup,
+  TextLink,
+  FormField,
   Fieldset,
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +25,7 @@ import {
   ErrorState,
   Input,
   LoadingState,
+  Notice,
   Textarea,
 } from '@pdlc/ui/ui'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -146,14 +150,14 @@ function CreateForm({
     <div className="space-y-4">
       {original ? (
         <div className="space-y-3">
-          <p role="status">
+          <Notice role="status" tone="warning" appearance="inline">
             Сохранён исходный запрос: {original.key} · {original.name}. Исход ещё не подтверждён.
-          </p>
+          </Notice>
           <p className="text-sm text-text-muted">
             Повтор использует тот же уникальный ключ проекта. Проверка найденного проекта сама по
             себе не подтверждает авторство исходного создания.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <ActionGroup align="start">
             <Button type="button" disabled={busy} onClick={() => lookup.mutate(original)}>
               Проверить проект по ключу
             </Button>
@@ -165,7 +169,7 @@ function CreateForm({
             >
               Повторить исходный запрос
             </Button>
-          </div>
+          </ActionGroup>
           {lookup.isError && (
             <ErrorState message="Найденный проект не подтверждён. Отсутствие ответа или 404 не отменяет исходный запрос; журнал сохранён." />
           )}
@@ -174,12 +178,11 @@ function CreateForm({
               <p>
                 Найден проект: {lookup.data.key} · {lookup.data.name}.
               </p>
-              <Link
-                className="text-accent underline"
-                to={'/projects/' + encodeURIComponent(lookup.data.key) + '/board'}
-              >
-                Открыть найденный проект
-              </Link>
+              <TextLink asChild>
+                <Link to={'/projects/' + encodeURIComponent(lookup.data.key) + '/board'}>
+                  Открыть найденный проект
+                </Link>
+              </TextLink>
               <Button
                 type="button"
                 variant="outline"
@@ -217,22 +220,29 @@ function CreateForm({
           })}
         >
           <Fieldset disabled={!catalogReady || busy} className="min-w-0 space-y-3">
-            <label className="block space-y-1" htmlFor={id + '-key'}>
-              <span>Ключ проекта</span>
-              <Input id={id + '-key'} maxLength={10} autoComplete="off" {...form.register('key')} />
-            </label>
-            {form.formState.errors.key && (
-              <p role="alert">Ключ: от 1 до 10 латинских букв, цифр или дефисов.</p>
-            )}
-            <label className="block space-y-1" htmlFor={id + '-name'}>
-              <span>Название проекта</span>
-              <Input id={id + '-name'} {...form.register('name')} />
-            </label>
-            {form.formState.errors.name && <p role="alert">Укажите название до 200 символов.</p>}
-            <label className="block space-y-1" htmlFor={id + '-description'}>
-              <span>Описание проекта</span>
-              <Textarea id={id + '-description'} {...form.register('description')} />
-            </label>
+            <FormField
+              id={id + '-key'}
+              label="Ключ проекта"
+              error={
+                form.formState.errors.key
+                  ? 'Ключ: от 1 до 10 латинских букв, цифр или дефисов.'
+                  : undefined
+              }
+            >
+              {(attrs) => (
+                <Input {...attrs} maxLength={10} autoComplete="off" {...form.register('key')} />
+              )}
+            </FormField>
+            <FormField
+              id={id + '-name'}
+              label="Название проекта"
+              error={form.formState.errors.name ? 'Укажите название до 200 символов.' : undefined}
+            >
+              {(attrs) => <Input {...attrs} {...form.register('name')} />}
+            </FormField>
+            <FormField id={id + '-description'} label={'Описание проекта'}>
+              {(attrs) => <Textarea {...attrs} {...form.register('description')} />}
+            </FormField>
           </Fieldset>
           <Controller
             name="spaces"
@@ -247,7 +257,9 @@ function CreateForm({
             )}
           />
           {form.formState.errors.spaces && (
-            <p role="alert">Выберите хотя бы одно активное пространство.</p>
+            <Notice role="alert" tone="danger" appearance="inline">
+              Выберите хотя бы одно активное пространство.
+            </Notice>
           )}
           <Button type="submit" disabled={!catalogReady || busy || !form.formState.isValid}>
             Создать проект
@@ -270,7 +282,7 @@ function CreateForm({
               Перед созданием другого проекта проверьте этот ключ.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex justify-end gap-2">
+          <ActionGroup align="end">
             <AlertDialogCancel>Продолжить проверку</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -283,7 +295,7 @@ function CreateForm({
             >
               Прекратить повторы
             </AlertDialogAction>
-          </div>
+          </ActionGroup>
         </AlertDialogContent>
       </AlertDialog>
     </div>

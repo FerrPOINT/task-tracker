@@ -110,6 +110,12 @@ keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
 
 ## Общие поля выбора Base
 
+Свободная строка с локальными подсказками использует AutocompleteInput Base:
+options/value/defaultValue/onValueChange(string). Произвольные значения остаются допустимыми;
+закрытый Select для этого не подходит. Native input, ref, FormData, reset, popup и клавиатура
+принадлежат Base; запросы и сохранение — продукту. Не добавлять list/datalist или локальный
+popup.
+
 Сначала искать общий UI в Base: search → show → example. Общие исправления
 вносить в Base; продукт передаёт данные, права, преобразования и сохранение.
 Для закрытого списка с одним значением — Select; для нескольких — MultiSelect.
@@ -132,7 +138,12 @@ UI/SDK/skills pins независимы; установка и production — о
 Общий контракт добавлять в Base вместе с metadata и примером, затем явно
 обновлять UI pin потребителя. Локальная копия не заменяет эту интеграцию.
 
-Перед созданием или изменением UI читать [маршрут разработки со справочником Base](https://github.com/FerrPOINT/services-base/blob/ae2b41291eee5af752daff89f760fba5aff41783/base-modules/ui/reference/guides/agent.md).
+Перед созданием или изменением UI читать [маршрут разработки со справочником Base](https://github.com/FerrPOINT/services-base/blob/f7998b33d87e9ade59bbd6907a8145a70b0b8c00/base-modules/ui/reference/guides/agent.md).
+
+Для компоновки и ревью web UI применять [рабочий маршрут Base](https://github.com/FerrPOINT/services-base/blob/f7998b33d87e9ade59bbd6907a8145a70b0b8c00/docs/platform/DESIGN_SYSTEM.md#рабочий-маршрут-изменения-ui):
+задача → контракт → группы полей → применимые состояния → доказательство.
+Source guard, unit и browser-приёмка различаются; ссылка на правила не обновляет UI/SDK/skills pins.
+
 Из корня продукта с подготовленным frontend: `pnpm --dir frontend exec pdlc-ui`.
 Сначала сверить `.base-ui-revision` и выполнить `check` один раз в начале задачи
 или после смены UI pin; затем `search "задача"` либо адресный `show`, при
@@ -145,13 +156,19 @@ UI/SDK/skills pins независимы; установка и production — о
 продукта и IAB затронутого поведения. Источники, hosted CI и runtime — разные gates.
 
 Button, Input, Textarea, Checkbox, RadioGroup/Radio, Switch, меню, Card, Table, Disclosure,
-Dialog и Toaster/toast использовать из публичного @pdlc/ui. Общий дефект
+Dialog, ActionGroup и Toaster/toast использовать из публичного @pdlc/ui. Общий дефект
 исправлять в Base; продукт сохраняет данные, права и сохранение. Прямой Sonner,
 копии примитивов и продуктовые определения общих tokens не добавлять.
 Брендинг применяется общим runtime; draft preview изолируется BrandingScope.
+Декоративные значки записей используют IconMark, без локальных круглых подложек,
+размеров и декоративной палитры. Рядом с подписью label не нужен; вид события,
+сортировка, Markdown и данные остаются у Tracker. Сверять наличие API в UI pin.
 Размеры однострочных контролов и типографика/padding TabsTrigger принадлежат
 Base; локальные h-10/min-h-10 и мобильные копии не добавлять. Textarea,
 ширина предметной панели, внешний margin и компоновка сохраняют свой контракт.
+Строки явных действий используют ActionGroup (SSR — action_group): перенос и gap
+принадлежат Base, внешние margin/width/grid — экрану. Выбор значения использует
+RadioGroup/Select; контекст ресурса не превращается в фиктивную строку действий.
 Канонический контракт — Base docs/platform/DESIGN_SYSTEM.md и docs/BRANDING.md.
 UI/SDK/skills pins независимы; source-изменения не означают установку.
 
@@ -162,7 +179,6 @@ UI/SDK/skills pins независимы; source-изменения не озна
 applied migrations сохранять; ProjectRef/SpaceRef/V3 отдельны. Полный gate на
 интегрированной вехе, в ходе реализации scoped checks. Runtime не активировать
 по готовности одного продукта; не выбирать первый Project/Space неявно.
-
 
 Контекст центрального запроса содержит immutable identity, свежую глобальную
 роль, product scopes и исходный срок допуска. Не повышать роль в JIT и не
@@ -187,9 +203,135 @@ service_account factory и сохранять исходный proof до кон
 Legacy registered reader не заменяет эту проверку kind. Known policy revision
 выбирает cache entry, но не является полномочием или owner revision.
 
+## Подписи и карточки вариантов выбора
+
+После проверки API в принятом UI pin используйте label или children Checkbox/Radio
+для обычной подписи, appearance="card" — для варианта с рамкой и описанием.
+Не копируйте label с border/rounded/padding и не оборачивайте такой выбор в
+Card asChild. Base владеет hit target, focus, checked/disabled и нативной формой;
+продукт — данными, правами и обработчиком. Внешняя grid/flex-компоновка допустима.
+SSR использует checkbox_control/radio_control с appearance='card'; отдельный
+click-handler или повторное input/change для оформления не нужен.
+Контракт и пример: Base docs/platform/CHOICE_CONTROLS.md, pdlc-ui example Checkbox --case cards.
+
+Видимый выбор файла использует `Input type="file"` Base: кнопка выбора,
+focus и disabled следуют теме и branding. Native файловый диалог остаётся у ОС;
+чтение, проверка содержимого/размера и отправка — у продукта. Скрытый технический
+file input за Button допустим; видимый raw input не добавлять. Для обновления
+оформления сверять UI pin; CLI/Telegram без web UI не получают новых зависимостей.
+
+Подписи web-полей оформлять публичным Label; подпись/подсказку/ошибку одного
+поля — FormField Base. Продукт сохраняет текст, htmlFor/id, required, данные
+и обработчики; не копировать типографику подписи и фон/рамку/радиусы/padding
+Input/Textarea. Внешняя компоновка, высота Textarea и моноширинный код допустимы.
+
+## Композиция списков и страниц
+
+Пагинация использует PageNavigation либо подходящий OffsetPageNavigation Base.
+URL, курсоры, проверка допустимости страницы и callbacks принадлежат продукту.
+Невалидное состояние блокируется disabled, запрос — pending; не создавать
+фиктивные страницы или повторы кнопок. ResourceList linked-actions оформляет
+сам anchor через interactive ResourceListRow, а независимое действие — рядом.
+Сначала сверять наличие API по точному UI pin; локальные hover/focus/размеры
+вместо общего контракта не добавлять.
+
+Границу перед группой полей задаёт Fieldset separated; native legend/disabled/FormData
+и данные остаются у владельца. Для Disclosure используйте appearance, tone=muted/danger
+и size=sm вместо локальных border/padding, цветов и типографики. Внешние margin,
+ширина и предметное содержимое остаются у продукта; наличие props сверять по UI pin.
+
+## Меню аккаунта Base
+
+При принятом UI pin с AccountMenu использовать общую композицию аккаунта,
+темы и выхода. AppShell применяет её сам; renderHeader требует явного
+AccountMenu в actions общего PlatformHeader. Identity, permissions,
+logout/pending и предметные пункты beforeTheme/children остаются у продукта;
+не копировать trigger, popup или theme/logout layout. Контракт и пример
+сначала читать через pdlc-ui; custom API/SSO и установленный runtime не меняются.
+
+Состояния зависимых редакторов показывать через ResourceStateView Base;
+локальный регион использует scope="local". Пустота подтверждается успешным
+ответом. Reader сохраняет HTTP status через ApiError и отличает malformed
+success; общий error mapping не заменять текстовым Error без статуса.
+При временном сбое можно оставить подтверждённые данные и локальный ввод,
+блокируя запись через Fieldset/disabled и guard обработчика. Query keys,
+зависимости ресурсов и границы draft между задачами остаются у Tracker.
+
+## Коллекции боковой навигации
+
+После проверки UI pin используйте SidebarList Base для списка и separated
+для его разделителя, nested — для отступа вложенной коллекции. asChild
+сохраняет native nav/ul/li/section, hidden, ID и обработчики без DOM-оболочки.
+Ключ mapped-узла передавать внешнему SidebarList. Данные, ACL, URL, раскрытие
+и внешние margin/width остаются у продукта; внутренний base-sidebar-list и
+его border/padding/gap не копировать. Сначала pdlc-ui show и один example.
+
+## Markdown комментария
+
+Markdown остаётся у Tracker: skipHtml, политика ссылок и исходный body сохраняются.
+Блоки кода выводятся через CodeBlock Base; renderer mapping держать вне render,
+чтобы повторный рендер/смена темы не заменяли сфокусированный pre. Не копировать
+его tabindex, фон и прокрутку. Новый парсер в Base не добавлять.
+
+Текст бокового пункта после проверки UI pin использует SidebarItemLabel Base.
+Не копировать base-sidebar-item-label/truncate: compact и сокращение общие.
+Иконка, полное aria-label/title, маршрут, current state и callbacks остаются
+продукту. У текстового slot нет собственного SSR macro; отдельную кнопку
+или focus target вокруг подписи не добавлять.
+
+## Общий inline-код и выделение записи
+
+После проверки UI pin используйте InlineCode для оформленного одиночного кода,
+Prose для prepared текста, CodeBlock для многострочного блока и
+ResourceListDescription technical для подписи без поверхности. Не копируйте
+фон/padding/radius native code. ResourceListRow highlighted задаёт только
+оформление: текущий ID, aria-current, ref/tabIndex и действия остаются у продукта.
+SSR: inline_code и resource_list_row из штатного экспорта Base.
+Каноническое руководство — Base docs/platform/DESIGN_SYSTEM.md и pdlc-ui.
+
+## Граница render-ошибки React
+
+После проверки UI pin использовать RenderBoundary Base; собственные
+getDerivedStateFromError/componentDidCatch не добавлять. Fallback, отчёт,
+данные и явный reset key остаются у продукта. Граница не очищает журнал и
+не повторяет операцию; HTTP, async, event handlers и SSR обслуживаются отдельно.
+Контракт и поиск: Base docs/platform/DESIGN_SYSTEM.md и `pdlc-ui show RenderBoundary`.
+
+## Условия браузера и responsive-поведение
+
+После проверки UI pin применять useMediaQuery из Base вместо локальных
+matchMedia/listener/useSyncExternalStore пар. Query, grid, данные и действия
+остаются у владельца. Для чистого оформления достаточно CSS. Callback перед
+React update сохраняет focus исчезающего control; mount/query changes не должны
+записывать данные. Контракт: Base DESIGN_SYSTEM.md и `pdlc-ui show useMediaQuery`.
+
+## Геометрия live-истории
+
+Геометрия live-истории использует useScrollViewport Base после проверки UI pin.
+Стабильные host-строки отмечаются data-scroll-anchor. Completion вызывается после
+commit старой страницы; live append не подтверждает её загрузку. При ошибке
+completion.cancel() отменяет restore без навигации. Scope — ресурс/фильтр;
+загрузка, порядок, follow/unread и active tab остаются у продукта. Одиночный
+scrollIntoView к предметной записи не требует новой обёртки.
+
 ## Проверка Git-гигиены
 
 Перед коммитом: `python3 -B scripts/check_repository_hygiene.py --index`.
 Перед публикацией проверять точный кандидат через `--ref <commit>`. Установка
 hooks и допустимые артефакты: [правила](docs/REPOSITORY_HYGIENE.md).
 Копии проверки принадлежат Base; SDK/UI pins не меняются.
+
+
+Подписи колонок ResourceList используют ResourceListHeader после проверки UI pin.
+Base задаёт фон, шрифт и те же density insets, что строки. Product grid columns,
+responsive visibility, права и действия сохраняются; при auto tracks используйте
+одну родительскую сетку и subgrid строк, чтобы содержимое не сдвигало колонки.
+
+
+## Источник классов Base UI
+
+Tailwind должен сканировать тот же установленный @pdlc/ui, из которого приложение
+импортирует компоненты. Для frontend/src/index.css используйте
+`@source "../node_modules/@pdlc/ui/src";`. Соседний checkout Base не заменяет
+принятый UI pin. При workspace link допустим один и тот же физический пакет;
+общий UI contract guard проверяет владельца пакета, а не имя папки.

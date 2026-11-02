@@ -56,3 +56,69 @@ Browser fixture задаёт согласованный каталог Namespace
 после последующего отказа валидации; восстановленный из session journal запрос
 также не считается первым. Для неопределённого исхода автоматический сброс
 не выполняется. Backend и HTTP-контракт не меняются.
+
+## Общие описания записей времени — 2026-10-26
+
+Мобильные записи времени используют ResourceListTitle и DescriptionItem Base:
+дата, длительность, остаток и необязательный комментарий представлены term/value
+парами внутри dl. Локальные стили этих подписей удалены. Форматирование, ноль,
+условие комментария, ACL, callbacks и desktop Table остаются у Tracker.
+UI pin 6dca218, SDK/skills pins и lockfile не меняются.
+
+Два regression cases сначала дали RED на прежней реализации; затем все десять
+выбранных Worklog cases, TypeScript, scoped lint и UI contract PASS. В IAB
+проверены 24 контекста трёх тем, viewport 320/375/1920/2560 и двух typography
+presets; дополнительно границы 639/640 и 1535/1536, zero/foreign/empty на
+375/1920, callbacks edit/delete, отказ удаления и восстановление фокуса.
+Использован настоящий WorklogTab с синтетическими DTO и обработчиками, без
+продуктовых записей или backend/Auth/runtime приёмки. Whole-module proof
+проверяет четыре пары и остальную логику; evidence: private
+wiki-worklog-compositions-20261026.
+
+## Общие подписи автора и времени — 2026-10-26
+
+Шесть подписей CommentItem и ActivityFeed используют ResourceListTitle и
+ResourceListDescription Base. Сохранены p/span semantics, fallback автора,
+Markdown, сортировка, права и callbacks. Две предметные фразы событий остаются
+частями предложения; их контейнер наследует body typography Base.
+UI pin 6dca218 и lockfile прежние, новый API не требуется.
+
+Исходный scoped прогон: 16 cases, TypeScript/lint/UI contract PASS. После
+описанного ниже исправления ActivityFeed девять cases этого файла заменяют
+прежние пять: итог этого набора — 20 distinct cases, без двойного подсчёта.
+В IAB подтверждены 96 сочетаний CommentItem/ActivityFeed, три темы, настоящие
+viewport320/375/1920/2560, standard/large и обычное/длинное содержимое.
+Проверены неизвестный автор, чужие записи, пустота, edit/delete identity.
+Это source fixture без backend/Auth/installed acceptance.
+
+Отдельно исправлена прежняя потеря длительности события: ru/en loggedTime
+содержали только глагол, хотя ActivityFeed передавал duration. Теперь оба
+перевода включают {{duration}}. Четыре regression cases (ru/en, 0m/1h 30m)
+сначала дали RED, затем GREEN; повторены ActivityFeed, types и scoped lint.
+Остальные ключи переводов совпадают с baseline; IAB подтвердил оба языка.
+Evidence: private message-captions-20261026.
+
+## Общая рамка форм проекта, спринта и времени — 2026-10-26
+
+Три предметных диалога используют FormDialog Base из UI producer
+`ee10d583dbc5cf9b0c8679944c542b07363e670d`. Удалены локальные form/header/footer
+frames; поля, DTO, права и сохранение остаются у Tracker. Сохранены native
+key validation, stopPropagation проекта, date range и undefined/null-контракт
+спринта, React Hook Form и timer списания времени. Async client validation
+не объявляется write Promise: реальная запись передаёт собственный pending.
+Pending спринта теперь блокирует поля и закрытие общим механизмом Base.
+
+20 selected unit cases, TypeScript, scoped lint и UI contract прошли. Новый
+regression-case редактирования/закрытия при pending дал RED на прежнем модуле.
+Проекции трёх полных модулей вне frame и 16 compiled полей/кнопок совпали;
+отрицательные изменения DTO не принимаются проверкой.
+
+IAB:156 контекстов настоящих source-форм create/edit/error/pending, три темы,
+standard/large и viewport320/375/1920/2560, без overflow. Ключ проекта, диапазон
+дат, native очистка dates в null, RHF error focus, ошибка записи без потери
+ввода/автоповтора, timer close/reset и pending Escape проверены отдельно.
+Неудачные способы автоматизированного ввода native date сохранены отдельно,
+а не объявлены успешной проверкой. Три финальных снимка просмотрены; console
+чиста, source hashes неизменны. Это memory-only source UI, не backend/Auth/
+installed acceptance. SDK/skills pins и lockfile прежние.
+Evidence: private form-dialog-consolidation-20261026.

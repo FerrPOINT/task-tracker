@@ -1,13 +1,15 @@
 import { api } from './client'
+import { ApiError, InvalidResponseError } from '@pdlc/ui/lib'
 import type { components } from './generated'
 
 export type IssueLink = components['schemas']['IssueLinkResponse']
 
 export async function listIssueLinks(issueId: string): Promise<IssueLink[]> {
-  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/links', {
+  const { data, error, response } = await api.GET('/api/v1/issues/{issue_id}/links', {
     params: { path: { issue_id: issueId } },
   })
-  if (error || !data) throw new Error('Failed to load links')
+  if (error || !response.ok) throw new ApiError(response.status, 'Failed to load links')
+  if (!data || !Array.isArray(data.links)) throw new InvalidResponseError(response.status)
   return data.links
 }
 

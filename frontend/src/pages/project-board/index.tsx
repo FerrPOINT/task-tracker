@@ -1,6 +1,7 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
+  EmptyState,
   RadioGroup,
   TextLink,
   Card,
@@ -303,7 +304,11 @@ export function ProjectBoardPage() {
                   </div>
                   <div className="text-xs text-text-muted">
                     {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                    {overLimit && <span className="ml-1 text-danger">{t('board.wipWarning')}</span>}
+                    {overLimit && (
+                      <Badge appearance="inline" tone="danger" className="ml-1">
+                        {t('board.wipWarning')}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -328,11 +333,7 @@ export function ProjectBoardPage() {
                     isMoving={move.isPending}
                   />
                 ))}
-                {colIssues.length === 0 && (
-                  <p className="px-2 py-6 text-center text-sm text-text-muted">
-                    {t('board.emptyStatus')}
-                  </p>
-                )}
+                {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
               </CardContent>
 
               <CreateTaskAction

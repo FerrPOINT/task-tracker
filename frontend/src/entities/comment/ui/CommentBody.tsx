@@ -1,10 +1,16 @@
-import Markdown from 'react-markdown'
-import { Prose } from '@pdlc/ui/ui'
+import Markdown, { type Components } from 'react-markdown'
+import { CodeBlock, Prose } from '@pdlc/ui/ui'
+
+const markdownComponents: Components = {
+  pre: ({ children }) => <CodeBlock wrap={false}>{children}</CodeBlock>,
+}
 
 export function CommentBody({ body }: { body: string }) {
   return (
     <Prose preserveLineBreaks>
-      <Markdown skipHtml>{body}</Markdown>
+      <Markdown skipHtml components={markdownComponents}>
+        {body}
+      </Markdown>
     </Prose>
   )
 }

@@ -1,4 +1,5 @@
 import { applicationAccessFixture } from '@/test/application-access'
+import { chooseValue } from '@/test/choice'
 
 const accessActor = vi.hoisted(() => ({
   role: 'user' as 'user' | 'admin',
@@ -8,8 +9,8 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   ...(await original<object>()),
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
@@ -20,6 +21,7 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const createProject = vi.hoisted(() => vi.fn())
+const getProject = vi.hoisted(() => vi.fn())
 const POST = vi.hoisted(() => vi.fn())
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
@@ -93,6 +95,7 @@ vi.mock('@/api/issue-create', async (importOriginal) => ({
 }))
 vi.mock('@/api/project', () => ({
   listProjects,
+  getProject,
   createProject,
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
@@ -163,6 +166,10 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 }
 
 describe('IssueCreatePage', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
   beforeEach(() => {
     accessActor.role = 'user'
     window.sessionStorage.clear()
@@ -170,11 +177,39 @@ describe('IssueCreatePage', () => {
     createIssue.mockClear()
     createProject.mockReset()
     listProjects.mockClear()
+    getProject.mockReset().mockRejectedValue(new Error('Project unavailable'))
     listUsers.mockClear()
     listProjectMembers.mockClear()
     listIssueTypes.mockClear()
     listCustomFields.mockClear()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+  })
+
+  it('keeps an explicit project outside the loaded page and permits its required fields', async () => {
+    getProject.mockResolvedValue({
+      id: 'p150',
+      key: 'P150',
+      name: 'Beyond the first page',
+      description: '',
+      owner_id: 'u1',
+      owner_name: 'Fixture owner',
+      created_at: '2026-10-25T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    })
+    const user = userEvent.setup()
+    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=P150&source=deep-link'))
+    await screen.findByLabelText(/Required text/)
+    expect(getProject).toHaveBeenCalledWith('P150', expect.any(AbortSignal))
+    expect(
+      screen.queryByText('Выбранный проект недоступен. Выберите другой проект.'),
+    ).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Заголовок/), 'Retained explicit project')
+    await user.type(screen.getByLabelText(/Required text/), 'ready')
+    await user.click(screen.getByRole('button', { name: /^создать$/i }))
+    await waitFor(() => expect(createIssue).toHaveBeenCalled())
+    expect(createIssue.mock.calls[0]?.[0]).toMatchObject({ project_key: 'P150' })
   })
 
   it.each([400, 422])(
@@ -298,17 +333,188 @@ describe('IssueCreatePage', () => {
     expect(listCustomFields).not.toHaveBeenCalled()
 
     await user.click(screen.getByLabelText(/Проект/))
-    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker (TT)' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Task Tracker (TT)' }),
+    )
     await user.type(await screen.findByLabelText(/Required text/), 'ready')
     await user.click(screen.getByRole('button', { name: /^создать$/i }))
     await waitFor(() => expect(createIssue).toHaveBeenCalled())
     expect(createIssue.mock.calls[0]?.[0]).toMatchObject({ project_key: 'TT' })
   })
 
+  it('pages beyond one hundred projects without changing the selection or clearing the draft', async () => {
+    const project = (index: number) => ({
+      id: `p${index}`,
+      key: index === 0 ? 'TT' : `P${index}`,
+      name: index === 0 ? 'Task Tracker' : `Project ${index}`,
+      description: '',
+      owner_id: 'u1',
+      owner_name: 'Fixture owner',
+      created_at: '2026-10-25T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    })
+    for (let offset = 0; offset <= 100; offset += 20) {
+      listProjects.mockResolvedValueOnce(
+        Array.from({ length: 21 }, (_, index) => project(offset + index)),
+      )
+    }
+    let confirmSelected: (value: ReturnType<typeof project>) => void = () => {}
+    getProject.mockReturnValue(
+      new Promise((resolve) => {
+        confirmSelected = resolve
+      }),
+    )
+    const user = userEvent.setup()
+    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT&source=board'))
+    await user.type(screen.getByLabelText(/Заголовок/), 'Keep this draft')
+    await user.type(await screen.findByLabelText(/Required text/), 'Required value')
+    await chooseValue(screen.getByRole('combobox', { name: /Исполнитель/ }), 'u2')
+    await user.click(screen.getByLabelText(/Проект/))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.queryByRole('searchbox')).not.toBeInTheDocument()
+    for (let offset = 20; offset <= 100; offset += 20) {
+      await user.click(dialog.getByRole('button', { name: 'Далее' }))
+      await dialog.findByRole('button', { name: `Project ${offset} (P${offset})` })
+    }
+    expect(listProjects).toHaveBeenLastCalledWith(100, 21, expect.any(AbortSignal))
+    await user.click(dialog.getByRole('button', { name: 'Закрыть' }))
+    await act(async () => confirmSelected(project(0)))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Task Tracker (TT)'),
+    )
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Keep this draft')
+    expect(screen.getByLabelText(/Required text/)).toHaveValue('Required value')
+    expect(screen.getByRole('combobox', { name: /Исполнитель/ })).toHaveTextContent('Bob')
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?project_key=TT&source=board',
+    )
+    expect(createIssue).not.toHaveBeenCalled()
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Project 101 (P101)' }),
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?project_key=P101&source=board',
+    )
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Keep this draft')
+  })
+
+  it('clears an assignment only after the selected project confirms different membership', async () => {
+    listProjectMembers.mockResolvedValueOnce({
+      members: [{ project_id: 'p1', user_id: 'u2', role: 'member' }],
+    })
+    let confirmMembers: (value: { members: [] }) => void = () => {}
+    listProjectMembers.mockReturnValueOnce(
+      new Promise((resolve) => {
+        confirmMembers = resolve
+      }),
+    )
+    const user = userEvent.setup()
+    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT'))
+    await user.type(screen.getByLabelText(/Заголовок/), 'Keep summary')
+    await user.type(await screen.findByLabelText(/Required text/), 'First project field')
+    await chooseValue(screen.getByRole('combobox', { name: /Исполнитель/ }), 'u2')
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Operations (OPS)' }),
+    )
+    await waitFor(() => expect(listProjectMembers).toHaveBeenCalledWith('OPS'))
+    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+    await act(async () => confirmMembers({ members: [] }))
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /Исполнитель/ })).toHaveTextContent(
+        'Не назначен',
+      ),
+    )
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Keep summary')
+    expect(screen.getByLabelText(/Required text/)).toHaveValue('')
+    expect(createIssue).not.toHaveBeenCalled()
+  })
+
+  it.each(['active', 'archived', 'unavailable'])(
+    'keeps the Namespace binding authoritative when it is %s',
+    async (state) => {
+      vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+      const registry = '506a8476-3868-4581-af70-6d22c93ced2f'
+      const namespace = '0ee31fca-2533-44bf-b54e-a7759fe80b14'
+      const context = {
+        label: 'Bound project',
+        resource_key: 'BOUND',
+        binding: {
+          schema_version: 1,
+          operation_id: namespace,
+          generation: 1,
+          state: state === 'archived' ? 'archived' : 'active',
+          drained: true,
+          namespace: { registry_instance_id: registry, namespace_id: namespace },
+          resource: {
+            instance_id: registry,
+            resource_id: 'bound-project',
+            kind: 'tracker_project',
+          },
+        },
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async (path: string) =>
+            new Response(JSON.stringify(path.includes('?limit=') ? [context] : context), {
+              status: state === 'unavailable' ? 503 : 200,
+            }),
+        ),
+      )
+      getProject.mockResolvedValue({
+        id: 'bound-project',
+        key: 'BOUND',
+        name: 'Bound project',
+        description: '',
+        owner_id: 'u1',
+        owner_name: 'Owner',
+        created_at: '2026-10-25T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      })
+      const user = userEvent.setup()
+      render(
+        wrapper(
+          <IssueCreatePage />,
+          `/issues/create?registry_instance_id=${registry}&namespace_id=${namespace}&project_key=TT&source=wiki`,
+        ),
+      )
+      await user.type(screen.getByLabelText(/Заголовок/), 'Bound draft')
+      if (state === 'active') {
+        await screen.findByLabelText(/Required text/)
+        await user.type(screen.getByLabelText(/Required text/), 'Confirmed')
+        expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Bound project (BOUND)')
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
+      } else {
+        await screen.findByText(
+          state === 'archived'
+            ? 'Выбранный проект недоступен. Выберите другой проект.'
+            : 'Привязка проекта недоступна',
+        )
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+        expect(listCustomFields).not.toHaveBeenCalled()
+      }
+      expect(screen.getByLabelText(/Проект/)).toBeDisabled()
+      expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Bound draft')
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        `registry_instance_id=${registry}&namespace_id=${namespace}`,
+      )
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        `project_key=${state === 'unavailable' ? 'TT' : 'BOUND'}&source=wiki`,
+      )
+      expect(createIssue).not.toHaveBeenCalled()
+    },
+  )
+
   it('does not select a legacy default when a Namespace URL is malformed', async () => {
     render(wrapper(<IssueCreatePage />, '/issues/create?namespace_id=broken&source=wiki'))
-    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
-    expect(screen.getByLabelText(/Проект/)).toHaveValue('')
+    expect(screen.getByLabelText(/Проект/)).toBeDisabled()
+    expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Выберите проект')
     expect(screen.getByText('Некорректная ссылка на проект Namespace')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
     expect(listCustomFields).not.toHaveBeenCalled()
@@ -380,13 +586,15 @@ describe('IssueCreatePage', () => {
 
     await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
     await user.click(screen.getByLabelText(/Проект/))
-    await user.click(screen.getByRole('menuitemradio', { name: /\(OPS\)/ }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /\(OPS\)/ }))
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/issues/create?project_key=OPS&source=board',
     )
 
     await user.click(screen.getByRole('button', { name: 'Back in history' }))
-    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toHaveValue('TT'))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Task Tracker (TT)'),
+    )
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/issues/create?project_key=TT&source=board',
     )
@@ -395,7 +603,9 @@ describe('IssueCreatePage', () => {
   it('writes the fallback project to the URL without losing other parameters', async () => {
     render(wrapper(<IssueCreatePage />, '/issues/create?source=navigation'))
 
-    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toHaveValue('TT'))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Task Tracker (TT)'),
+    )
     await waitFor(() =>
       expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
         '/issues/create?source=navigation&project_key=TT',

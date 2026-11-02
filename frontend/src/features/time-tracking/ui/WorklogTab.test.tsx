@@ -57,6 +57,52 @@ describe('WorklogTab', () => {
     expect(screen.getAllByText('Fixed the bug').length).toBeGreaterThanOrEqual(1)
   })
 
+  it('exposes mobile worklog terms and values without inventing remaining time', () => {
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
+    expect(screen.getAllByRole('term').map((node) => node.textContent)).toEqual([
+      i18n.t('timeTracking.worklog.started'),
+      i18n.t('timeTracking.worklog.timeSpent'),
+      i18n.t('timeTracking.worklog.remaining'),
+      i18n.t('timeTracking.worklog.comment'),
+      i18n.t('timeTracking.worklog.started'),
+      i18n.t('timeTracking.worklog.timeSpent'),
+      i18n.t('timeTracking.worklog.remaining'),
+    ])
+    expect(screen.getAllByRole('definition').map((node) => node.textContent)).toEqual([
+      '2026-08-01',
+      '1h',
+      '-',
+      'Fixed the bug',
+      '2026-08-02',
+      '30m',
+      '-',
+    ])
+  })
+
+  it('preserves zero duration and absent comment for another author', () => {
+    const entry = { ...worklogs[1]!, timeSpentSeconds: 0, comment: null }
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    render(
+      wrapper(
+        <WorklogTab worklogs={[entry]} onEdit={onEdit} onDelete={onDelete} currentUserId="u1" />,
+      ),
+    )
+    expect(screen.getAllByRole('definition').map((node) => node.textContent)).toEqual([
+      '2026-08-02',
+      '0m',
+      '-',
+    ])
+    expect(screen.queryByLabelText(/edit worklog/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/delete worklog/i)).not.toBeInTheDocument()
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
   it('renders total logged time', () => {
     render(
       wrapper(

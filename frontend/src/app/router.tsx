@@ -50,12 +50,8 @@ const NotificationsPage = lazy(() =>
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })))
 const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminPage })))
 
-function PageLoader() {
-  return <LoadingState />
-}
-
 const withSuspense = (element: React.ReactElement) => (
-  <Suspense fallback={<PageLoader />}>
+  <Suspense fallback={<LoadingState />}>
     <PlatformRoute>{element}</PlatformRoute>
   </Suspense>
 )

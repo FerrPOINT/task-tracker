@@ -1,6 +1,17 @@
-import { MultiSelect, Input, Select, FormField, toast } from '@pdlc/ui/ui'
+import {
+  MultiSelect,
+  Input,
+  Select,
+  FormField,
+  Fieldset,
+  EmptyState,
+  ResourceStateView,
+  resourceErrorState,
+  type ResourceState,
+  toast,
+} from '@pdlc/ui/ui'
 
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   useIssueCustomFieldValues,
@@ -41,25 +52,32 @@ export function CustomFieldValueInput({
   value,
   onSave,
   commit = 'blur',
+  disabled = false,
 }: {
   id?: string
   field: CustomField
   value: unknown
   onSave: (value: unknown) => void
   commit?: 'blur' | 'change'
+  disabled?: boolean
 }) {
   const { t } = useTranslation()
   const current = customFieldInputValue(field, value)
   const [draft, setDraft] = useState(current)
+  const lastConfirmed = useRef(current)
 
   useEffect(() => {
-    setDraft(current)
+    const previous = lastConfirmed.current
+    lastConfirmed.current = current
+    // A successful read may update pristine inputs, but must not replace an unsaved edit.
+    setDraft((local) => (local === previous ? current : local))
   }, [current])
 
   if (field.field_type === 'select') {
     return (
       <Select
         id={id}
+        disabled={disabled}
         className="w-full"
         value={current}
         onValueChange={(nextValue) => onSave(nextValue)}
@@ -76,6 +94,7 @@ export function CustomFieldValueInput({
     return (
       <MultiSelect
         id={id}
+        disabled={disabled}
         className="w-full"
         value={selected}
         onValueChange={(nextValues) => onSave(nextValues)}
@@ -92,6 +111,7 @@ export function CustomFieldValueInput({
     return (
       <Input
         id={id}
+        disabled={disabled}
         type={type}
         value={current}
         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
@@ -101,6 +121,7 @@ export function CustomFieldValueInput({
   return (
     <Input
       id={id}
+      disabled={disabled}
       type={type}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -125,35 +146,75 @@ export function CustomFieldsPanel({
     () => new Map((values.data ?? []).map((v) => [v.field_id, v.value])),
     [values.data],
   )
-  if (!fields.data?.length)
-    return <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
+  const hasDefinitions = fields.data !== undefined
+  const hasValues = values.data !== undefined
+  const confirmedEmpty = hasDefinitions && fields.data.length === 0 && !fields.error
+  const hasData = hasDefinitions && (fields.data.length === 0 || hasValues)
+  const retryReads = () => {
+    void fields.refetch()
+    void values.refetch()
+  }
+  const failures = [fields.error, ...(confirmedEmpty ? [] : [values.error])]
+    .filter(Boolean)
+    .map((error) => resourceErrorState(error, retryReads, { hasData }))
+  let state: ResourceState =
+    failures.find((value) => value.kind === 'permission-denied') ??
+    failures.find((value) => value.kind === 'not-found') ??
+    failures.find((value) => value.kind === 'error') ??
+    failures[0] ??
+    (!hasDefinitions || (!confirmedEmpty && !hasValues)
+      ? { kind: 'loading', message: t('customFields.loading') }
+      : { kind: 'ready' })
+  if (state.kind === 'error' || state.kind === 'partial-error') {
+    state = {
+      ...state,
+      message: t(
+        state.kind === 'partial-error' ? 'customFields.readOnly' : 'customFields.loadError',
+      ),
+    }
+  }
+  const canSave = state.kind === 'ready'
   return (
-    <div className="space-y-3">
-      {fields.data.map((field) => (
-        <FormField
-          key={field.id}
-          id={`${fieldId}-${field.id}`}
-          label={field.name}
-          required={field.is_required}
+    <ResourceStateView state={state} scope="local">
+      {fields.data?.length === 0 ? (
+        <EmptyState message={t('customFields.noFields')} />
+      ) : (
+        <Fieldset
+          key={`${projectKey}:${issueId}`}
+          legend={t('customFields.title')}
+          legendVisuallyHidden
+          disabled={!canSave}
+          className="space-y-3"
         >
-          {({ id }) => (
-            <CustomFieldValueInput
-              id={id}
-              field={field}
-              value={byField.get(field.id)}
-              onSave={(value) =>
-                save.mutate(
-                  { fieldId: field.id, value },
-                  {
-                    onSuccess: () => toast.success(t('common.saved')),
-                    onError: (error) => toast.error(error.message),
-                  },
-                )
-              }
-            />
-          )}
-        </FormField>
-      ))}
-    </div>
+          {fields.data?.map((field) => (
+            <FormField
+              key={field.id}
+              id={`${fieldId}-${field.id}`}
+              label={field.name}
+              required={field.is_required}
+            >
+              {({ id }) => (
+                <CustomFieldValueInput
+                  id={id}
+                  field={field}
+                  disabled={!canSave}
+                  value={byField.get(field.id)}
+                  onSave={(value) => {
+                    if (!canSave) return
+                    save.mutate(
+                      { fieldId: field.id, value },
+                      {
+                        onSuccess: () => toast.success(t('common.saved')),
+                        onError: (error) => toast.error(error.message),
+                      },
+                    )
+                  }}
+                />
+              )}
+            </FormField>
+          ))}
+        </Fieldset>
+      )}
+    </ResourceStateView>
   )
 }

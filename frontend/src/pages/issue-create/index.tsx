@@ -1,21 +1,23 @@
-import { useActiveProjects as useProjects } from '@/widgets/active-projects'
+import { ContentSection } from '@pdlc/ui/ui'
+import { PROJECT_CHOICE_PAGE_SIZE, useProjectChoiceCatalog } from '@/widgets/project-choice-catalog'
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
 import {
+  ActionGroup,
+  FormField,
   Fieldset,
   PageHeader,
   SectionHeader,
   Select,
   Textarea,
-  ProjectPicker,
+  SearchableSelect,
   EmptyState,
   Button,
   ErrorState,
   Input,
   Notice,
+  LoadingState,
 } from '@pdlc/ui/ui'
-import { useQuery } from '@tanstack/react-query'
-import { getProject } from '@/api/project'
-import { useSessionCommand } from '@pdlc/ui/lib'
+import { useDebouncedValue, useSessionCommand } from '@pdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 import type { CreateIssueInput } from '@/api/issue-create'
 import { IssueCreationValidationError } from '@/api/issue-create'
@@ -45,7 +47,6 @@ export function IssueCreatePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
-  const projectsQuery = useProjects()
   const usersQuery = useUsers()
   const issueTypesQuery = useIssueTypes()
 
@@ -57,24 +58,31 @@ export function IssueCreatePage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const selected = useQuery({
-    queryKey: [
-      'namespace-project',
-      namespace.ref?.registry_instance_id,
-      namespace.ref?.namespace_id,
-      namespace.query.data?.resource_key,
-    ],
-    enabled: Boolean(namespace.query.data),
-    queryFn: ({ signal }) => getProject(namespace.query.data!.resource_key, signal),
-  })
+  const [projectQuery, setProjectQuery] = useState({ q: '', offset: 0 })
+  const projectSearch = useDebouncedValue(projectQuery.q, 200)
+  const queryProjectKey = searchParams.get('project_key') ?? ''
+  const requestedProjectKey = namespace.ref
+    ? !namespace.query.isError
+      ? (namespace.query.data?.resource_key ?? '')
+      : ''
+    : queryProjectKey
+  const projectsQuery = useProjectChoiceCatalog(
+    requestedProjectKey,
+    projectQuery.offset,
+    projectSearch,
+  )
   const projects = useMemo(
-    () => (selected.data ? [selected.data] : namespace.ref ? [] : (projectsQuery.data ?? [])),
-    [projectsQuery.data, selected.data, namespace.ref],
+    () =>
+      namespace.ref
+        ? projectsQuery.selected
+          ? [projectsQuery.selected]
+          : []
+        : (projectsQuery.data ?? []),
+    [projectsQuery.data, projectsQuery.selected, namespace.ref],
   )
   // A legacy blank URL retains its default. Invalid explicit context never falls back.
-  const queryProjectKey = searchParams.get('project_key') ?? ''
   const project_key = namespace.ref
-    ? (namespace.query.data?.resource_key ?? '')
+    ? requestedProjectKey
     : queryProjectKey || (!namespace.malformed ? (projects[0]?.key ?? '') : '')
   const pendingRef = useSessionCommand<CreateIssueInput>(
     `tracker:issue-create:${userId}:${namespace.ref?.registry_instance_id}:${namespace.ref?.namespace_id}:${project_key}`,
@@ -84,8 +92,10 @@ export function IssueCreatePage() {
     [issueTypesQuery.data],
   )
   const currentProject = useMemo(
-    () => projects.find((project) => project.key === project_key),
-    [projects, project_key],
+    () =>
+      projectsQuery.selected ??
+      (!requestedProjectKey && !namespace.ref && !namespace.malformed ? projects[0] : undefined),
+    [projectsQuery.selected, requestedProjectKey, namespace.ref, namespace.malformed, projects],
   )
   const selectedProjectKey = currentProject?.key ?? ''
   const projectMembersQuery = useProjectMembers(selectedProjectKey)
@@ -96,16 +106,24 @@ export function IssueCreatePage() {
     : (issueTypes[0]?.name ?? '')
   const setupLoading =
     projectsQuery.isLoading ||
+    projectsQuery.selectedPending ||
+    (Boolean(namespace.ref) && namespace.query.isPending) ||
     issueTypesQuery.isLoading ||
     (Boolean(currentProject) && customFieldsQuery.isLoading)
   const setupError =
     Boolean(projectsQuery.error) ||
+    (Boolean(namespace.ref) && namespace.query.isError) ||
     Boolean(issueTypesQuery.error) ||
     Boolean(customFieldsQuery.error)
   const canSubmit =
     !isPending &&
     !setupLoading &&
     !setupError &&
+    (!assignee_id ||
+      (!usersQuery.isLoading &&
+        !projectMembersQuery.isLoading &&
+        !usersQuery.error &&
+        !projectMembersQuery.error)) &&
     !namespace.malformed &&
     (!namespace.ref || namespace.query.data?.binding.state === 'active') &&
     Boolean(userId && currentProject && selectedType && summary.trim())
@@ -141,10 +159,18 @@ export function IssueCreatePage() {
   }, [selectedType, type])
 
   useEffect(() => {
+    // Paging can temporarily require an exact project read; that is not a membership change.
+    if (!currentProject || usersQuery.isLoading || projectMembersQuery.isLoading) return
     if (assignee_id && !assignableUsers.some((user) => user.id === assignee_id)) {
       setAssigneeId('')
     }
-  }, [assignableUsers, assignee_id])
+  }, [
+    currentProject,
+    usersQuery.isLoading,
+    projectMembersQuery.isLoading,
+    assignableUsers,
+    assignee_id,
+  ])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -205,236 +231,270 @@ export function IssueCreatePage() {
         <PageHeader title={t('issueCreate.title')} />
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
-        {namespace.malformed && <ErrorState message="Некорректная ссылка на проект Namespace" />}
-        {namespace.ref && namespace.query.isError && (
-          <ErrorState message="Привязка проекта недоступна" />
-        )}
-        {error && <ErrorState message={t('issueCreate.saveError')} />}
-        {pendingRef.current && (
-          <Notice role="status" tone="neutral" appearance="inline">
-            Повтор отправит исходную задачу с прежним ключом операции.
-          </Notice>
-        )}
-        {validationError && <ErrorState message={validationError} />}
-        {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
-        {setupLoading && <p className="text-sm text-text-muted">{t('issueCreate.loading')}</p>}
-        {projectsQuery.error && (
-          <ErrorState
-            message={t('issueCreate.projectsError')}
-            onRetry={() => void projectsQuery.refetch()}
-          />
-        )}
-        {!projectsQuery.isLoading && !projectsQuery.error && projects.length === 0 && (
-          <EmptyState
-            message={t('issueCreate.noProjects')}
-            action={
-              !namespace.ref && !namespace.malformed ? (
-                <CreateProjectAction
-                  onCreated={(project) => {
-                    updateProjectKey(project.key)
-                  }}
+      <ContentSection asChild dividers="start">
+        <form onSubmit={handleSubmit} className="max-w-4xl space-y-5">
+          {namespace.malformed && <ErrorState message="Некорректная ссылка на проект Namespace" />}
+          {namespace.ref && namespace.query.isError && (
+            <ErrorState message="Привязка проекта недоступна" />
+          )}
+          {error && <ErrorState message={t('issueCreate.saveError')} />}
+          {pendingRef.current && (
+            <Notice role="status" tone="neutral" appearance="inline">
+              Повтор отправит исходную задачу с прежним ключом операции.
+            </Notice>
+          )}
+          {validationError && <ErrorState message={validationError} />}
+          {!userId && (
+            <Notice tone="danger" appearance="inline">
+              {t('issueCreate.noReporter')}
+            </Notice>
+          )}
+          {setupLoading && <LoadingState scope="local" message={t('issueCreate.loading')} />}
+          {projectsQuery.error && (
+            <ErrorState
+              message={t('issueCreate.projectsError')}
+              onRetry={() => void projectsQuery.refetch()}
+            />
+          )}
+          {!namespace.ref &&
+            !namespace.malformed &&
+            !setupLoading &&
+            !setupError &&
+            projectQuery.offset === 0 &&
+            !projectQuery.q &&
+            !projectsQuery.hasMore &&
+            projects.length === 0 &&
+            !currentProject && (
+              <EmptyState
+                message={t('issueCreate.noProjects')}
+                action={
+                  !namespace.ref && !namespace.malformed ? (
+                    <CreateProjectAction
+                      onCreated={(project) => {
+                        updateProjectKey(project.key)
+                      }}
+                    />
+                  ) : undefined
+                }
+              />
+            )}
+          {!setupLoading && !projectsQuery.error && project_key && !currentProject && (
+            <ErrorState
+              message={t('issueCreate.projectUnavailable')}
+              onRetry={() => void projectsQuery.retrySelected()}
+            />
+          )}
+          {issueTypesQuery.error && (
+            <ErrorState
+              message={t('issueCreate.typesError')}
+              onRetry={() => void issueTypesQuery.refetch()}
+            />
+          )}
+          {!issueTypesQuery.isLoading && !issueTypesQuery.error && issueTypes.length === 0 && (
+            <ErrorState message={t('issueCreate.noTypes')} />
+          )}
+          {customFieldsQuery.error && (
+            <ErrorState
+              message={t('issueCreate.fieldsError')}
+              onRetry={() => void customFieldsQuery.refetch()}
+            />
+          )}
+          {(usersQuery.error || projectMembersQuery.error) && currentProject && (
+            <ErrorState
+              message={t('issueCreate.assigneesError')}
+              onRetry={() => {
+                if (usersQuery.error) void usersQuery.refetch()
+                if (projectMembersQuery.error) void projectMembersQuery.refetch()
+              }}
+            />
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField id="issue-project" label={t('issueCreate.project') + ' *'}>
+              {(baseFieldAttrs) => (
+                <SearchableSelect
+                  {...baseFieldAttrs}
+                  label={t('issueCreate.project')}
+                  value={project_key}
+                  selectedLabel={
+                    projectsQuery.selectedPending
+                      ? t('search.checkingProject')
+                      : currentProject
+                        ? `${currentProject.name} (${currentProject.key})`
+                        : undefined
+                  }
+                  options={projects.map((p) => ({
+                    value: p.key,
+                    label: `${p.name} (${p.key})`,
+                  }))}
+                  placeholder={t('issueCreate.selectProject')}
+                  allowEmpty={false}
+                  onChange={updateProjectKey}
+                  search={projectQuery.q}
+                  onSearch={
+                    projectsQuery.searchable
+                      ? (q) =>
+                          setProjectQuery({ q: Array.from(q).slice(0, 200).join(''), offset: 0 })
+                      : undefined
+                  }
+                  offset={projectQuery.offset}
+                  pageSize={PROJECT_CHOICE_PAGE_SIZE}
+                  total={projectsQuery.catalog?.total}
+                  hasNext={projectsQuery.hasMore}
+                  onPage={(offset) => setProjectQuery((previous) => ({ ...previous, offset }))}
+                  loading={projectsQuery.isLoading || projectQuery.q !== projectSearch}
+                  error={projectsQuery.isError ? t('issueCreate.projectsError') : undefined}
+                  onRetry={() => void projectsQuery.refetch()}
+                  disabled={isPending || Boolean(namespace.ref) || namespace.malformed}
                 />
-              ) : undefined
-            }
-          />
-        )}
-        {!projectsQuery.isLoading && !projectsQuery.error && project_key && !currentProject && (
-          <ErrorState message={t('issueCreate.projectUnavailable')} />
-        )}
-        {issueTypesQuery.error && (
-          <ErrorState
-            message={t('issueCreate.typesError')}
-            onRetry={() => void issueTypesQuery.refetch()}
-          />
-        )}
-        {!issueTypesQuery.isLoading && !issueTypesQuery.error && issueTypes.length === 0 && (
-          <ErrorState message={t('issueCreate.noTypes')} />
-        )}
-        {customFieldsQuery.error && (
-          <ErrorState
-            message={t('issueCreate.fieldsError')}
-            onRetry={() => void customFieldsQuery.refetch()}
-          />
-        )}
-        {(usersQuery.error || projectMembersQuery.error) && currentProject && (
-          <ErrorState
-            message={t('issueCreate.assigneesError')}
-            onRetry={() => {
-              if (usersQuery.error) void usersQuery.refetch()
-              if (projectMembersQuery.error) void projectMembersQuery.refetch()
-            }}
-          />
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label htmlFor="issue-project" className="text-sm font-medium">
-              {t('issueCreate.project')} *
-            </label>
-            <ProjectPicker
-              id="issue-project"
-              className="w-full"
-              value={selectedProjectKey}
-              options={projects.map((p) => ({
-                value: p.key,
-                label: `${p.name} (${p.key})`,
-                projectKey: p.key,
-              }))}
-              placeholder={t('issueCreate.selectProject')}
-              allowEmpty={false}
-              onChange={updateProjectKey}
-              disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
-            />
+              )}
+            </FormField>
+            <FormField id="issue-type" label={t('issueCreate.type') + ' *'}>
+              {(baseFieldAttrs) => (
+                <Select
+                  {...baseFieldAttrs}
+                  className="w-full"
+                  value={selectedType}
+                  onValueChange={(nextValue) => setType(nextValue)}
+                  disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
+                  required
+                  options={[
+                    ...(issueTypes.map((issueType) => ({
+                      value: String(issueType.name),
+                      label: String(
+                        t(`issueType.${issueType.name.toLowerCase()}`, {
+                          defaultValue: issueType.name,
+                        }),
+                      ),
+                    })) ?? []),
+                  ]}
+                />
+              )}
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="issue-type" className="text-sm font-medium">
-              {t('issueCreate.type')} *
-            </label>
-            <Select
-              id="issue-type"
-              className="w-full"
-              value={selectedType}
-              onValueChange={(nextValue) => setType(nextValue)}
-              disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
-              required
-              options={[
-                ...(issueTypes.map((issueType) => ({
-                  value: String(issueType.name),
-                  label: String(
-                    t(`issueType.${issueType.name.toLowerCase()}`, {
-                      defaultValue: issueType.name,
-                    }),
-                  ),
-                })) ?? []),
-              ]}
-            />
+
+          <FormField id="issue-summary" label={t('issueCreate.summary') + ' *'}>
+            {(baseFieldAttrs) => (
+              <Input
+                {...baseFieldAttrs}
+                type="text"
+                placeholder={t('issueCreate.summaryPlaceholder')}
+                value={summary}
+                onChange={(e) => {
+                  setSummary(e.target.value)
+                  setValidationError(null)
+                }}
+                required
+
+                disabled={isPending}
+              />
+            )}
+          </FormField>
+
+          <FormField id="issue-description" label={t('issueCreate.description')}>
+            {(baseFieldAttrs) => (
+              <Textarea
+                {...baseFieldAttrs}
+                className="w-full min-h-[120px]"
+                placeholder={t('issueCreate.descriptionPlaceholder')}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={isPending}
+              />
+            )}
+          </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField id="issue-priority" label={t('issueCreate.priority')}>
+              {(baseFieldAttrs) => (
+                <Select
+                  {...baseFieldAttrs}
+                  className="w-full"
+                  value={priority}
+                  onValueChange={(nextValue) => setPriority(nextValue)}
+                  disabled={isPending}
+                  options={[
+                    { value: 'Medium', label: String(t('priority.medium')) },
+                    { value: 'Highest', label: String(t('priority.highest')) },
+                    { value: 'High', label: String(t('priority.high')) },
+                    { value: 'Low', label: String(t('priority.low')) },
+                    { value: 'Lowest', label: String(t('priority.lowest')) },
+                  ]}
+                />
+              )}
+            </FormField>
+            <FormField id="issue-assignee" label={t('issueCreate.assignee')}>
+              {(baseFieldAttrs) => (
+                <Select
+                  {...baseFieldAttrs}
+                  className="w-full"
+                  value={assignee_id}
+                  onValueChange={(nextValue) => setAssigneeId(nextValue)}
+                  disabled={
+                    isPending ||
+                    usersQuery.isLoading ||
+                    projectMembersQuery.isLoading ||
+                    Boolean(usersQuery.error || projectMembersQuery.error)
+                  }
+                  options={[
+                    { value: '', label: String(t('issueCreate.unassigned')) },
+                    ...(assignableUsers.map((u) => ({
+                      value: String(u.id),
+                      label: String(u.display_name || u.username),
+                    })) ?? []),
+                  ]}
+                />
+              )}
+            </FormField>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <label htmlFor="issue-summary" className="text-sm font-medium">
-            {t('issueCreate.summary')} *
-          </label>
-          <Input
-            id="issue-summary"
-            type="text"
-            placeholder={t('issueCreate.summaryPlaceholder')}
-            value={summary}
-            onChange={(e) => {
-              setSummary(e.target.value)
-              setValidationError(null)
-            }}
-            required
+          {customFields.length > 0 && (
+            <Fieldset disabled={isPending} separated className="space-y-3">
+              <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
+              <div className="grid gap-4 sm:grid-cols-2">
+                {customFields.map((field) => (
+                  <FormField
+                    id={`issue-custom-field-${field.id}`}
+                    label={field.name + (field.is_required ? ' *' : '')}
+                    key={field.id}
+                  >
+                    {(attrs) => (
+                      <CustomFieldValueInput
+                        id={attrs.id}
+                        field={field}
+                        value={customFieldValues[field.id]}
+                        onSave={(value) => {
+                          setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
+                          setValidationError(null)
+                        }}
+                        commit="change"
+                      />
+                    )}
+                  </FormField>
+                ))}
+              </div>
+            </Fieldset>
+          )}
 
-            disabled={isPending}
-          />
-        </div>
+          <div className="pt-2">
+            <ActionGroup align="start">
+              <Button type="submit" disabled={!canSubmit} className="gap-1">
+                <Plus className="h-4 w-4" />
+                {isPending ? t('common.creating') : t('issueCreate.submit')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
 
-        <div className="space-y-2">
-          <label htmlFor="issue-description" className="text-sm font-medium">
-            {t('issueCreate.description')}
-          </label>
-          <Textarea
-            id="issue-description"
-            className="w-full min-h-[120px]"
-            placeholder={t('issueCreate.descriptionPlaceholder')}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={isPending}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label htmlFor="issue-priority" className="text-sm font-medium">
-              {t('issueCreate.priority')}
-            </label>
-            <Select
-              id="issue-priority"
-              className="w-full"
-              value={priority}
-              onValueChange={(nextValue) => setPriority(nextValue)}
-              disabled={isPending}
-              options={[
-                { value: 'Medium', label: String(t('priority.medium')) },
-                { value: 'Highest', label: String(t('priority.highest')) },
-                { value: 'High', label: String(t('priority.high')) },
-                { value: 'Low', label: String(t('priority.low')) },
-                { value: 'Lowest', label: String(t('priority.lowest')) },
-              ]}
-            />
+                disabled={isPending}
+                onClick={() => navigate(-1)}
+              >
+                {t('common.cancel')}
+              </Button>
+            </ActionGroup>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="issue-assignee" className="text-sm font-medium">
-              {t('issueCreate.assignee')}
-            </label>
-            <Select
-              id="issue-assignee"
-              className="w-full"
-              value={assignee_id}
-              onValueChange={(nextValue) => setAssigneeId(nextValue)}
-              disabled={
-                isPending ||
-                usersQuery.isLoading ||
-                projectMembersQuery.isLoading ||
-                Boolean(usersQuery.error || projectMembersQuery.error)
-              }
-              options={[
-                { value: '', label: String(t('issueCreate.unassigned')) },
-                ...(assignableUsers.map((u) => ({
-                  value: String(u.id),
-                  label: String(u.display_name || u.username),
-                })) ?? []),
-              ]}
-            />
-          </div>
-        </div>
-
-        {customFields.length > 0 && (
-          <Fieldset disabled={isPending} className="space-y-3 border-t border-border pt-4">
-            <SectionHeader level={2} title={<>{t('customFields.title')}</>} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              {customFields.map((field) => (
-                <label
-                  key={field.id}
-                  className="space-y-2 text-sm font-medium [&_input]:min-h-11 [&_select]:min-h-11 sm:[&_input]:min-h-10 sm:[&_select]:min-h-10"
-                >
-                  <span>
-                    {field.name}
-                    {field.is_required ? ' *' : ''}
-                  </span>
-                  <CustomFieldValueInput
-                    field={field}
-                    value={customFieldValues[field.id]}
-                    onSave={(value) => {
-                      setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
-                      setValidationError(null)
-                    }}
-                    commit="change"
-                  />
-                </label>
-              ))}
-            </div>
-          </Fieldset>
-        )}
-
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" disabled={!canSubmit} className="gap-1">
-            <Plus className="h-4 w-4" />
-            {isPending ? t('common.creating') : t('issueCreate.submit')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-
-            disabled={isPending}
-            onClick={() => navigate(-1)}
-          >
-            {t('common.cancel')}
-          </Button>
-        </div>
-      </form>
+        </form>
+      </ContentSection>
     </div>
   )
 }

@@ -5,6 +5,9 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
+  ActionGroup,
+  EmptyState,
+  LoadingState,
   ConfirmDialog,
   Button,
   ErrorState,
@@ -14,6 +17,8 @@ import {
   Card,
   CardContent,
   UserAvatar,
+  ResourceListTitle,
+  ResourceListDescription,
 } from '@pdlc/ui/ui'
 
 import {
@@ -80,7 +85,7 @@ export function CommentForm({
           {submitError}
         </Notice>
       )}
-      <div className="flex justify-end gap-2">
+      <ActionGroup align="end">
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
             {t('common.cancel')}
@@ -89,7 +94,7 @@ export function CommentForm({
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {submitLabel ?? t('common.save')}
         </Button>
-      </div>
+      </ActionGroup>
     </form>
   )
 }
@@ -118,21 +123,23 @@ export const CommentItem = memo(function CommentItem({
           <div className="flex min-w-0 items-center gap-2">
             <UserAvatar name={comment.authorName} userId={comment.authorId} size="md" />
             <div className="min-w-0 [overflow-wrap:anywhere]">
-              <p className="text-sm font-medium text-text-primary">
-                {comment.authorName ?? t('comments.unknown')}
-              </p>
-              <p className="text-xs text-text-muted">{date}</p>
+              <ResourceListTitle asChild>
+                <p>{comment.authorName ?? t('comments.unknown')}</p>
+              </ResourceListTitle>
+              <ResourceListDescription asChild>
+                <p>{date}</p>
+              </ResourceListDescription>
             </div>
           </div>
           {isAuthor && (
-            <div className="flex gap-2">
+            <ActionGroup align="start">
               <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
                 {t('common.edit')}
               </Button>
               <Button variant="destructive-outline" size="sm" onClick={() => onDelete(comment.id)}>
                 {t('common.delete')}
               </Button>
-            </div>
+            </ActionGroup>
           )}
         </div>
         <CommentBody body={comment.body} />
@@ -151,7 +158,7 @@ interface CommentListProps {
 export function CommentList({ comments, currentUserId, onEdit, onDelete }: CommentListProps) {
   const { t } = useTranslation()
   if (comments.length === 0) {
-    return <p className="text-sm text-text-muted">{t('comments.empty')}</p>
+    return <EmptyState message={t('comments.empty')} />
   }
   return (
     <div className="space-y-4">
@@ -186,7 +193,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const remove = useDeleteComment(issueId)
 
   if (isLoading) {
-    return <p className="text-sm text-text-muted">{t('common.loading')}</p>
+    return <LoadingState scope="local" message={t('common.loading')} />
   }
 
   if (commentsQuery.error && !comments) {

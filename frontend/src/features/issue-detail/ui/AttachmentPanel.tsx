@@ -4,6 +4,9 @@ import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
 import {
+  ActionGroup,
+  ResourceListTitle,
+  ResourceListDescription,
   Button,
   ConfirmDialog,
   ResourceList,
@@ -11,6 +14,9 @@ import {
   SectionHeader,
   Progress,
   Notice,
+  ResourceStateView,
+  resourceErrorState,
+  type ResourceState,
   toast,
 } from '@pdlc/ui/ui'
 
@@ -28,7 +34,21 @@ type UploadProgress = {
 
 export function AttachmentPanel({ issueId }: { issueId: string }) {
   const { t } = useTranslation()
-  const { data: attachments = [], isLoading } = useAttachments(issueId)
+  const { data, isLoading, error, refetch } = useAttachments(issueId)
+  const readState: ResourceState = isLoading
+    ? { kind: 'loading', message: t('common.loading') }
+    : error
+      ? resourceErrorState(error, () => void refetch(), {
+          hasData: Boolean(data?.length),
+          message: t('attachments.loadFailed'),
+        })
+      : data === undefined
+        ? { kind: 'loading', message: t('common.loading') }
+        : data.length
+          ? { kind: 'ready' }
+          : { kind: 'empty', message: t('attachments.empty') }
+  const attachments =
+    readState.kind === 'ready' || readState.kind === 'partial-error' ? (data ?? []) : []
   const upload = useUploadAttachment(issueId)
   const remove = useDeleteAttachment(issueId)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -134,11 +154,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
           </div>
         ))}
 
-      {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
-
-      {!isLoading && attachments.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t('attachments.empty')}</p>
-      )}
+      <ResourceStateView scope="local" state={readState} />
 
       {attachments.length > 0 && (
         <ResourceList asChild variant="bordered">
@@ -156,13 +172,15 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                       <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium" title={a.file_name}>
-                        {a.file_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
+                      <ResourceListTitle asChild className="truncate">
+                        <p title={a.file_name}>{a.file_name}</p>
+                      </ResourceListTitle>
+                      <ResourceListDescription asChild>
+                        <p>{formatSize(a.size_bytes)}</p>
+                      </ResourceListDescription>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <ActionGroup align="start" className="shrink-0">
                     <Button
                       type="button"
                       variant="ghost"
@@ -182,7 +200,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </Button>
-                  </div>
+                  </ActionGroup>
                 </li>
               </ResourceListRow>
             ))}
