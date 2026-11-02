@@ -60,4 +60,3 @@ SDK/UI pins продукта не менялись. Kubernetes rollout не пр
 
 Глобальный Docker groups audit имеет ранее существовавшие нарушения в соседних
 ресурсах; собственных board-stages QA-контейнеров после cleanup нет.
-
