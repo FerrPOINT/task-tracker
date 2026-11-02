@@ -111,7 +111,8 @@ for (const width of [375, 1920, 2560]) {
       id: '00000000-0000-4000-8000-000000000101',
       key: 'BOARD-1',
       summary: 'Проверить страницу состояния сервиса',
-      description: 'Fixture',
+      description: `${'Полное описание задачи. '.repeat(24)}КОНЕЦ ОПИСАНИЯ`,
+      time_spent_seconds: 0,
       issue_type: 'task',
       project_key: 'BOARD',
       project_name: 'Board fixture',
@@ -178,6 +179,18 @@ for (const width of [375, 1920, 2560]) {
           display_name: 'Fixture owner',
           is_system_admin: true,
         })
+      if (path === `/api/v1/issues/${issue.id}`) return reply(issue)
+      if (path === '/api/v1/users') return reply({ users: [] })
+      if (path === '/api/v1/statuses') return reply([{ id: issue.status_id, name: issue.status }])
+      if (path.endsWith('/labels')) return reply({ labels: [] })
+      if (path.endsWith('/links')) return reply({ links: [] })
+      if (path.endsWith('/worklogs')) return reply({ worklogs: [] })
+      if (path.endsWith('/comments')) return reply({ comments: [] })
+      if (path.endsWith('/attachments')) return reply({ attachments: [] })
+      if (path.endsWith('/votes')) return reply({ count: 0, votes: [] })
+      if (path.endsWith('/watchers')) return reply({ watchers: [] })
+      if (path.endsWith('/custom-fields'))
+        return reply(path.startsWith('/api/v1/projects/') ? { fields: [] } : { values: [] })
       if (path === '/api/v1/projects') return reply([project])
       if (path === '/api/v1/projects/BOARD') return reply(project)
       if (path === '/api/v1/projects/BOARD/board')
@@ -264,6 +277,24 @@ for (const width of [375, 1920, 2560]) {
     await page.goBack()
     await expect(page.getByRole('heading', { name: 'Стадии · BOARD' })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`board-${width}.png`), fullPage: true })
+    await page.goto(`/issues/${issue.id}?tab=worklog`)
+    await expect(page.getByRole('heading', { name: issue.summary })).toBeVisible()
+    await expect(page.getByText(/КОНЕЦ ОПИСАНИЯ/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Показать описание полностью' })).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'Журнал работ' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    for (const message of [
+      'Пока нет записей.',
+      'Меток нет',
+      'Нет настроенных полей.',
+      'Связей нет',
+    ])
+      await expect(page.getByText(message, { exact: true })).toBeVisible()
+    await expect(page.getByText(/Не удалось загрузить/)).toHaveCount(0)
+    await page.screenshot({ path: info.outputPath(`issue-${width}.png`), fullPage: true })
     expect(writes).toEqual([])
     expect(errors).toEqual([])
   })
