@@ -2233,3 +2233,24 @@ as other agent business commands. Historical delivery grants can read retained
 results; they cannot authorize a new proposal. Global `admin` scope does not
 turn a service account into an assigned producer. Standard scopes for other
 products remain compatible with the ordinary CLI credential.
+
+## SDLC stage board (2026-11-02)
+
+`GET /api/v1/projects/{project_key}/board` projects the standard board onto the
+nine lifecycle stages from `SDLC_LIFECYCLE_V1.md`. Each stage column has an additive
+`stage` field and an opaque `stage:<Stage>` ID, not a status UUID. `task_states`
+contains the actual `task_id`, `stage`, and independent optional operational
+`status`, read in one project-scoped repository query. Legacy Clarification is
+grouped under Draft. No task, status, assignment or lifecycle history is rewritten.
+
+Empty/all-nil column configurations and the unchanged historical four-column
+template use this projection. Explicit custom status boards remain unchanged.
+Ordinary issues without SDLC state retain separate real-status columns; a stage
+is never inferred from Ready/InProgress/Completed. Stage columns do not support
+ordinary board moves; guarded SDLC commands continue to own transitions.
+
+`GET /api/v1/projects/{project_key}/backlog` includes unscheduled SDLC tasks whose
+actual stage is Backlog, regardless of their operational status ID. Ordinary
+unscheduled issues continue to use the board's Todo status. The count and bounded
+page use the same predicate. Sprint issues belong only to the real active sprint;
+when no active sprint exists, `sprint_issues` is empty.

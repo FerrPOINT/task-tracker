@@ -1652,6 +1652,31 @@ impl IssueRepository for IssueRepo {
             .map_err(crate::db_error::map)
     }
 
+    async fn list_board_task_states(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<domain::BoardTaskState>, AppError> {
+        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,
+            "SELECT t.task_id,t.state->>'stage' AS stage,t.state->>'status' AS status FROM sdlc_tasks t JOIN issues i ON i.id=t.task_id AND i.project_id=t.project_id WHERE t.project_id=$1 AND i.deleted_at IS NULL ORDER BY t.task_id",
+            vec![project_id.as_uuid().into()])).await.map_err(crate::db_error::map)?;
+        rows.into_iter()
+            .map(|row| {
+                let stage: String = row.try_get("", "stage").map_err(crate::db_error::map)?;
+                let status: Option<String> =
+                    row.try_get("", "status").map_err(crate::db_error::map)?;
+                Ok(domain::BoardTaskState {
+                    task_id: row.try_get("", "task_id").map_err(crate::db_error::map)?,
+                    stage: serde_json::from_value(serde_json::Value::String(stage))
+                        .map_err(|_| AppError::internal("invalid persisted SDLC stage"))?,
+                    status: status
+                        .map(|status| serde_json::from_value(serde_json::Value::String(status)))
+                        .transpose()
+                        .map_err(|_| AppError::internal("invalid persisted SDLC status"))?,
+                })
+            })
+            .collect()
+    }
+
     async fn count_backlog(
         &self,
         project_id: ProjectId,
@@ -1659,7 +1684,11 @@ impl IssueRepository for IssueRepo {
     ) -> Result<u64, AppError> {
         issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(sea_orm::Condition::any()
+                .add(Expr::cust("EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND t.project_id=issues.project_id AND t.state->>'stage'='Backlog')"))
+                .add(sea_orm::Condition::all()
+                    .add(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+                    .add(Expr::cust("NOT EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND t.project_id=issues.project_id)"))))
             .filter(issue::Column::SprintId.is_null())
             .filter(issue::Column::DeletedAt.is_null())
             .count(&*self.db)
@@ -1676,7 +1705,11 @@ impl IssueRepository for IssueRepo {
     ) -> Result<Vec<Issue>, AppError> {
         let models = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(sea_orm::Condition::any()
+                .add(Expr::cust("EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND t.project_id=issues.project_id AND t.state->>'stage'='Backlog')"))
+                .add(sea_orm::Condition::all()
+                    .add(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+                    .add(Expr::cust("NOT EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=issues.id AND t.project_id=issues.project_id)"))))
             .filter(issue::Column::SprintId.is_null())
             .filter(issue::Column::DeletedAt.is_null())
             .order_by_desc(issue::Column::CreatedAt)

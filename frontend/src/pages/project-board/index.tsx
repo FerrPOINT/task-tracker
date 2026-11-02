@@ -34,6 +34,18 @@ import { statusLabel } from '@/shared/lib/status-label'
 
 export type Issue = components['schemas']['IssueResponse']
 
+const stageRoles: Record<string, string> = {
+  Draft: 'project_manager',
+  Clarification: 'project_manager',
+  Analysis: 'analyst',
+  Architecture: 'architect',
+  Development: 'developer',
+  Review: 'reviewer',
+  Testing: 'tester',
+  Rework: 'developer',
+  Deployment: 'devops',
+}
+
 type DragState = {
   issueId: string | null
   sourceColumnId: string | null
@@ -48,8 +60,10 @@ function IssueCard({
   destinations,
   onMove,
   isMoving,
+  taskState,
 }: {
   issue: Issue
+  taskState?: components['schemas']['BoardTaskState']
   columnId: string
   compact: boolean
   onDragStart: (issueId: string, columnId: string) => void
@@ -66,7 +80,7 @@ function IssueCard({
 
   return (
     <Card asChild surface="raised">
-      <article draggable onDragStart={handleDragStart}>
+      <article draggable={!taskState} onDragStart={taskState ? undefined : handleDragStart}>
         <CardContent density={compact ? 'compact' : 'default'}>
           <div className="flex items-start gap-2">
             <TextLink asChild className="min-w-0 flex-1">
@@ -79,32 +93,39 @@ function IssueCard({
                 </div>
               </Link>
             </TextLink>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0"
-                  aria-label={`Изменить статус ${issue.key}`}
-                  disabled={isMoving}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {destinations.length > 0 ? (
-                  destinations.map((status) => (
-                    <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
-                      {t('board.moveTo', { status: statusLabel(status.name, t) })}
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {!taskState && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    aria-label={`Изменить статус ${issue.key}`}
+                    disabled={isMoving}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  {destinations.length > 0 ? (
+                    destinations.map((status) => (
+                      <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
+                        {t('board.moveTo', { status: statusLabel(status.name, t) })}
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
+          {taskState?.status && (
+            <Badge tone={taskState.status === 'Completed' ? 'success' : 'muted'}>
+              {t(`board.executionStatus.${taskState.status}`)}
+            </Badge>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <PriorityBadge priority={issue.priority} />
@@ -143,11 +164,15 @@ export function ProjectBoardPage() {
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { columns, issues, sprint } = board
+  const stageBoard = columns.some((column) => column.stage)
+  const taskStates = new Map((board.task_states ?? []).map((state) => [state.task_id, state]))
+  const columnLabel = (column: (typeof columns)[number]) =>
+    column.stage ? t(`board.stages.${column.stage}`) : statusLabel(column.name, t)
   const density = searchParams.get('density') === 'compact' ? 'compact' : 'comfortable'
   const requestedColumn = searchParams.get('status')
   const activeColumnId = columns.some((column) => column.id === requestedColumn)
     ? requestedColumn!
-    : columns[0]?.id
+    : (columns.find((column) => column.issue_ids.length > 0)?.id ?? columns[0]?.id)
 
   function issuesByColumn(columnId: string) {
     return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
@@ -217,15 +242,23 @@ export function ProjectBoardPage() {
     <div className="min-w-0">
       <div className="mb-4">
         <PageHeader
-          title={t('board.title', {
-            projectName: key,
-            sprintName: sprint?.name ?? t('board.backlog'),
-          })}
+          title={
+            stageBoard
+              ? t('board.sdlcTitle', { projectName: key })
+              : t('board.title', {
+                  projectName: key,
+                  sprintName: sprint?.name ?? t('board.backlog'),
+                })
+          }
           leading={<ProjectAvatar projectKey={key ?? ''} />}
-          context={t('board.subtitle', {
-            backlog: board.backlog_total,
-            remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
-          })}
+          context={
+            stageBoard
+              ? t('board.sdlcDescription')
+              : t('board.subtitle', {
+                  backlog: board.backlog_total,
+                  remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
+                })
+          }
           actions={
             <>
               <div className="hidden md:block">
@@ -261,7 +294,7 @@ export function ProjectBoardPage() {
         <RadioGroup
           appearance="segmented"
           className="w-full"
-          label="Статус задач"
+          label={stageBoard ? t('board.stagesLabel') : 'Статус задач'}
           value={activeColumnId}
           onValueChange={(value) => {
             const next = new URLSearchParams(searchParams)
@@ -270,7 +303,7 @@ export function ProjectBoardPage() {
           }}
           options={columns.map((column) => ({
             value: column.id,
-            label: statusLabel(column.name, t),
+            label: columnLabel(column),
           }))}
         />
       </div>
@@ -292,18 +325,27 @@ export function ProjectBoardPage() {
             <Card
               key={column.id}
               highlighted={isDropTarget}
-              onDragOver={(e) => handleDragOver(e, column.id)}
-              onDrop={(e) => handleDrop(e, column.id)}
+              onDragOver={column.stage ? undefined : (e) => handleDragOver(e, column.id)}
+              onDrop={column.stage ? undefined : (e) => handleDrop(e, column.id)}
               onDragLeave={handleDragLeave}
               className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
             >
               <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">
-                    {statusLabel(column.name, t)}
-                  </div>
+                  <div className="truncate text-sm font-semibold">{columnLabel(column)}</div>
+                  {column.stage && stageRoles[column.stage] && (
+                    <div className="text-xs text-text-muted">
+                      {t(`sdlc.publication.roles.${stageRoles[column.stage]}`)}
+                    </div>
+                  )}
                   <div className="text-xs text-text-muted">
-                    {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
+                    {colIssues.length}
+                    {!column.stage && (
+                      <>
+                        {' '}
+                        · {t('board.wip')}: {wipLimit ?? '—'}
+                      </>
+                    )}
                     {overLimit && (
                       <Badge appearance="inline" tone="danger" className="ml-1">
                         {t('board.wipWarning')}
@@ -323,27 +365,35 @@ export function ProjectBoardPage() {
                   <IssueCard
                     key={issue.id}
                     issue={issue}
+                    taskState={taskStates.get(issue.id)}
                     columnId={column.id}
                     compact={density === 'compact'}
                     onDragStart={handleDragStart}
-                    destinations={columns.filter((candidate) =>
-                      transitionAllowed(issue.status_id, candidate.id),
+                    destinations={columns.filter(
+                      (candidate) =>
+                        !candidate.stage && transitionAllowed(issue.status_id, candidate.id),
                     )}
                     onMove={moveIssue}
                     isMoving={move.isPending}
                   />
                 ))}
-                {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
+                {colIssues.length === 0 && (
+                  <EmptyState
+                    message={t(column.stage ? 'board.emptyStage' : 'board.emptyStatus')}
+                  />
+                )}
               </CardContent>
 
-              <CreateTaskAction
-                projectKey={key}
-                aria-label={t('board.create')}
-                variant="dashed"
-                className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
-              >
-                {t('board.create')}
-              </CreateTaskAction>
+              {!column.stage && (
+                <CreateTaskAction
+                  projectKey={key}
+                  aria-label={t('board.create')}
+                  variant="dashed"
+                  className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
+                >
+                  {t('board.create')}
+                </CreateTaskAction>
+              )}
             </Card>
           )
         })}

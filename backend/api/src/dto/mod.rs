@@ -151,6 +151,8 @@ pub struct CreateIssueRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BoardColumnResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<domain::sdlc::Stage>,
     pub id: String,
     pub name: String,
     pub wip_limit: Option<u32>,
@@ -174,6 +176,8 @@ pub struct SprintResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BoardResponse {
+    #[serde(default)]
+    pub task_states: Vec<domain::BoardTaskState>,
     pub project_id: String,
     pub project_key: String,
     pub columns: Vec<BoardColumnResponse>,

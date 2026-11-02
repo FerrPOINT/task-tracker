@@ -47,6 +47,99 @@ impl BoardServiceImpl {
             .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
     }
 
+    fn uses_stage_columns(board: &Board) -> bool {
+        board.columns.is_empty()
+            || board
+                .columns
+                .iter()
+                .all(|column| column.id.as_uuid().is_nil())
+            || {
+                let legacy = super::helpers::legacy_board_columns();
+                board.columns.len() == legacy.len()
+                    && board.columns.iter().zip(&legacy).all(|(a, b)| {
+                        a.id == b.id
+                            && a.name == b.name
+                            && a.category == b.category
+                            && a.wip_limit == b.wip_limit
+                            && a.position == b.position
+                    })
+            }
+    }
+
+    fn stage_columns(
+        issues: &[domain::Issue],
+        states: &[domain::BoardTaskState],
+        statuses: &[domain::Status],
+    ) -> Vec<BoardColumnDto> {
+        use domain::sdlc::Stage;
+        let stages = [
+            Stage::Draft,
+            Stage::Backlog,
+            Stage::Analysis,
+            Stage::Architecture,
+            Stage::Development,
+            Stage::Review,
+            Stage::Testing,
+            Stage::Rework,
+            Stage::Deployment,
+        ];
+        let states = states
+            .iter()
+            .map(|state| (state.task_id, state))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut columns = stages
+            .into_iter()
+            .map(|stage| BoardColumnDto {
+                id: format!("stage:{stage:?}"),
+                name: format!("{stage:?}"),
+                stage: Some(stage),
+                wip_limit: None,
+                issue_ids: issues
+                    .iter()
+                    .filter(|issue| {
+                        states.get(&issue.id.as_uuid()).is_some_and(|state| {
+                            state.stage == stage
+                                || (stage == Stage::Draft && state.stage == Stage::Clarification)
+                        })
+                    })
+                    .map(|issue| issue.id.to_string())
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        // Ordinary tasks retain their real status; never invent an SDLC stage.
+        for status in statuses {
+            let issue_ids = issues
+                .iter()
+                .filter(|issue| {
+                    issue.status_id == status.id && !states.contains_key(&issue.id.as_uuid())
+                })
+                .map(|issue| issue.id.to_string())
+                .collect::<Vec<_>>();
+            if !issue_ids.is_empty() {
+                columns.push(BoardColumnDto {
+                    id: status.id.to_string(),
+                    name: status.name.to_string(),
+                    stage: None,
+                    wip_limit: None,
+                    issue_ids,
+                });
+            }
+        }
+        columns
+    }
+
+    fn resolve_status_names(issues: &mut [crate::dto::IssueDto], statuses: &[domain::Status]) {
+        let names = statuses
+            .iter()
+            .map(|status| (status.id.to_string(), status.name.to_string()))
+            .collect::<std::collections::HashMap<_, _>>();
+        for issue in issues {
+            if let Some(name) = names.get(&issue.status_id) {
+                issue.status = name.clone();
+            }
+        }
+    }
+
     /// Snapshot of the target column's WIP capacity for the atomic guard.
     /// Counting happens again inside the critical section; this snapshot
     /// only builds the guard (limits/names) that survives into it.
@@ -55,6 +148,22 @@ impl BoardServiceImpl {
         board: &Board,
         status_id: StatusId,
     ) -> Result<TransitionGuard, AppError> {
+        if Self::uses_stage_columns(board) {
+            let status = self.statuses.get_by_id(status_id).await?;
+            return Ok(TransitionGuard {
+                wip_limit: board
+                    .columns
+                    .iter()
+                    .find(|column| column.id == status_id)
+                    .and_then(|column| column.wip_limit)
+                    .map(|limit| limit as u32),
+                target_count: self
+                    .issues
+                    .count_by_project_status(board.project_id, status_id)
+                    .await?,
+                column_name: status.name.to_string(),
+            });
+        }
         let column = board
             .columns
             .iter()
@@ -110,26 +219,14 @@ impl BoardServiceImpl {
             .await?;
 
         let db_statuses = self.statuses.list_all().await?;
+        let task_states = self.issues.list_board_task_states(board.project_id).await?;
         let todo_status = Self::backlog_status(&board, &db_statuses);
         let backlog_total = self
             .issues
             .count_backlog(board.project_id, todo_status)
             .await? as usize;
-        let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
-        {
-            db_statuses
-                .iter()
-                .map(|s| BoardColumnDto {
-                    id: s.id.to_string(),
-                    name: s.name.as_ref().to_string(),
-                    wip_limit: None,
-                    issue_ids: issues
-                        .iter()
-                        .filter(|i| i.status_id == s.id)
-                        .map(|i| i.id.to_string())
-                        .collect(),
-                })
-                .collect()
+        let columns: Vec<BoardColumnDto> = if Self::uses_stage_columns(&board) {
+            Self::stage_columns(&issues, &task_states, &db_statuses)
         } else {
             board
                 .columns
@@ -142,6 +239,7 @@ impl BoardServiceImpl {
                         .map(|s| s.name.as_ref().to_string())
                         .unwrap_or_else(|| c.name.as_ref().to_string());
                     BoardColumnDto {
+                        stage: None,
                         id: c.id.to_string(),
                         name,
                         wip_limit: c.wip_limit,
@@ -177,7 +275,7 @@ impl BoardServiceImpl {
                 end_date: None,
             });
 
-        let issue_dtos = super::helpers::build_issue_dtos(
+        let mut issue_dtos = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             issues,
@@ -185,7 +283,9 @@ impl BoardServiceImpl {
         )
         .await?;
 
+        Self::resolve_status_names(&mut issue_dtos, &db_statuses);
         Ok(BoardDto {
+            task_states,
             project_id: board.project_id.to_string(),
             project_key: project_key.to_string(),
             columns,
@@ -238,7 +338,11 @@ impl crate::context::BoardService for BoardServiceImpl {
 
         let sprint_issues_raw: Vec<_> = all_non_backlog_candidates
             .into_iter()
-            .filter(|i| i.sprint_id.is_some() || i.status_id != todo_status)
+            .filter(|i| {
+                sprint
+                    .as_ref()
+                    .is_some_and(|active| i.sprint_id == Some(active.id))
+            })
             .collect();
 
         let sprint_dto = sprint
@@ -264,7 +368,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             });
 
         let project_label = project_key.to_string();
-        let sprint_issues = super::helpers::build_issue_dtos(
+        let mut sprint_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             sprint_issues_raw,
@@ -286,7 +390,7 @@ impl crate::context::BoardService for BoardServiceImpl {
                 offset as u64,
             )
             .await?;
-        let backlog_issues = super::helpers::build_issue_dtos(
+        let mut backlog_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
             Arc::clone(&self.labels),
             backlog_issues_raw,
@@ -294,6 +398,8 @@ impl crate::context::BoardService for BoardServiceImpl {
         )
         .await?;
 
+        Self::resolve_status_names(&mut sprint_issues, &db_statuses);
+        Self::resolve_status_names(&mut backlog_issues, &db_statuses);
         Ok(BacklogDto {
             project_id: board.project_id.to_string(),
             project_key: project_key.to_string(),
@@ -352,5 +458,127 @@ impl crate::context::BoardService for BoardServiceImpl {
             project_key: project.key.to_string(),
         });
         self.build_board_dto(project_key).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain::sdlc::Stage;
+    use domain::sdlc_lifecycle::LifecycleStatus;
+
+    fn issue() -> domain::Issue {
+        let owner = shared::UserId::new();
+        let project = domain::Project {
+            id: shared::ProjectId::new(),
+            key: ProjectKey::new("BOARD"),
+            name: "Board".into(),
+            description: None,
+            owner_id: owner,
+            default_board_id: shared::BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        domain::Issue::create(
+            &project,
+            1,
+            shared::IssueType::Task,
+            StatusId::new(),
+            "Stage projection",
+            None,
+            owner,
+            shared::Priority::Medium,
+        )
+    }
+
+    #[test]
+    fn documented_stages_are_default_even_on_an_empty_board() {
+        let columns = BoardServiceImpl::stage_columns(&[], &[], &[]);
+        assert_eq!(
+            columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Draft",
+                "Backlog",
+                "Analysis",
+                "Architecture",
+                "Development",
+                "Review",
+                "Testing",
+                "Rework",
+                "Deployment"
+            ]
+        );
+        assert!(BoardServiceImpl::uses_stage_columns(&Board::default()));
+        assert!(super::super::helpers::default_board_columns().is_empty());
+    }
+
+    #[test]
+    fn same_execution_status_does_not_merge_different_stages() {
+        let a = issue();
+        let mut b = issue();
+        b.status_id = a.status_id;
+        let states = [
+            domain::BoardTaskState {
+                task_id: a.id.as_uuid(),
+                stage: Stage::Backlog,
+                status: Some(LifecycleStatus::Ready),
+            },
+            domain::BoardTaskState {
+                task_id: b.id.as_uuid(),
+                stage: Stage::Analysis,
+                status: Some(LifecycleStatus::Ready),
+            },
+        ];
+        let columns = BoardServiceImpl::stage_columns(&[a.clone(), b.clone()], &states, &[]);
+        assert_eq!(columns[1].issue_ids, [a.id.to_string()]);
+        assert_eq!(columns[2].issue_ids, [b.id.to_string()]);
+        assert_eq!(
+            columns
+                .iter()
+                .map(|column| column.issue_ids.len())
+                .sum::<usize>(),
+            2
+        );
+    }
+
+    #[test]
+    fn clarification_is_draft_and_ordinary_issues_keep_their_real_status() {
+        let a = issue();
+        let b = issue();
+        let status = domain::Status {
+            id: b.status_id,
+            name: "Custom status".into(),
+            category: StatusCategory::Todo,
+            position: 0,
+            is_default: false,
+            is_closed: false,
+        };
+        let columns = BoardServiceImpl::stage_columns(
+            &[a.clone(), b.clone()],
+            &[domain::BoardTaskState {
+                task_id: a.id.as_uuid(),
+                stage: Stage::Clarification,
+                status: None,
+            }],
+            &[status],
+        );
+        assert_eq!(columns[0].issue_ids, [a.id.to_string()]);
+        assert_eq!(columns.len(), 10);
+        assert_eq!(columns[9].issue_ids, [b.id.to_string()]);
+        assert!(columns[9].stage.is_none());
+    }
+
+    #[test]
+    fn only_unchanged_legacy_template_is_adapted() {
+        let mut board = Board {
+            columns: super::super::helpers::legacy_board_columns(),
+            ..Board::default()
+        };
+        assert!(BoardServiceImpl::uses_stage_columns(&board));
+        board.columns[0].name = "Custom".into();
+        assert!(!BoardServiceImpl::uses_stage_columns(&board));
     }
 }
