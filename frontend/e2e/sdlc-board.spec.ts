@@ -219,7 +219,7 @@ for (const width of [375, 1920, 2560]) {
     await expect(page.getByRole('article')).toContainText('Готово')
     await expect(page.getByRole('article')).toHaveAttribute('draggable', 'false')
     if (width === 375) {
-      await expect(page.getByRole('radio', { name: 'Бэклог', exact: true })).toBeChecked()
+      await expect(page.getByRole('radio', { name: 'Бэклог (1)', exact: true })).toBeChecked()
       for (const label of [
         'Драфт',
         'Бэклог',
@@ -231,10 +231,15 @@ for (const width of [375, 1920, 2560]) {
         'Доработка',
         'Деплой',
       ])
-        await expect(page.getByRole('radio', { name: label, exact: true })).toBeVisible()
-      await page.getByRole('radio', { name: 'Анализ', exact: true }).click()
+        await expect(
+          page.getByRole('radio', {
+            name: `${label} (${label === 'Бэклог' ? 1 : 0})`,
+            exact: true,
+          }),
+        ).toBeVisible()
+      await page.getByRole('radio', { name: 'Анализ (0)', exact: true }).click()
       await expect(page).toHaveURL(/status=stage%3AAnalysis/)
-      await page.getByRole('radio', { name: 'Бэклог', exact: true }).click()
+      await page.getByRole('radio', { name: 'Бэклог (1)', exact: true }).click()
     } else {
       const region = page.getByRole('region', { name: 'Колонки доски' })
       for (const label of [
@@ -257,8 +262,8 @@ for (const width of [375, 1920, 2560]) {
     await expect(page.getByText('Бэклог · 1', { exact: true })).toBeVisible()
     await page.screenshot({ path: info.outputPath(`backlog-${width}.png`), fullPage: true })
     await page.goBack()
-    await expect(page.getByRole('heading', {name:'Стадии · BOARD'})).toBeVisible()
-    await page.screenshot({path:info.outputPath(`board-${width}.png`),fullPage:true})
+    await expect(page.getByRole('heading', { name: 'Стадии · BOARD' })).toBeVisible()
+    await page.screenshot({ path: info.outputPath(`board-${width}.png`), fullPage: true })
     expect(writes).toEqual([])
     expect(errors).toEqual([])
   })

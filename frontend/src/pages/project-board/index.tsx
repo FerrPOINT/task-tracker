@@ -303,7 +303,7 @@ export function ProjectBoardPage() {
           }}
           options={columns.map((column) => ({
             value: column.id,
-            label: columnLabel(column),
+            label: `${columnLabel(column)} (${issuesByColumn(column.id).length})`,
           }))}
         />
       </div>

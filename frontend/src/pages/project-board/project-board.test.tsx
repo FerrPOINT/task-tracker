@@ -266,9 +266,9 @@ describe('documented SDLC board', () => {
   it('selects the occupied stage by default and preserves explicit URL selection', async () => {
     boardHooks.stageMode = true
     render(wrapper(<ProjectBoardPage />))
-    expect(screen.getByRole('radio', { name: 'Бэклог' })).toBeChecked()
-    await userEvent.click(screen.getByRole('radio', { name: 'Анализ' }))
-    expect(screen.getByRole('radio', { name: 'Анализ' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Бэклог (1)' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Анализ (0)' }))
+    expect(screen.getByRole('radio', { name: 'Анализ (0)' })).toBeChecked()
     expect(boardHooks.move).not.toHaveBeenCalled()
   })
 })
