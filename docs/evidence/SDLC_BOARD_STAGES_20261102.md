@@ -69,3 +69,10 @@ SDK/UI pins продукта не менялись. Kubernetes rollout не пр
 375/1920/2560 px: 3 сценария — PASS, включая все девять подписей на телефоне,
 пустую/заполненную стадии, URL selection и отсутствие overflow.
 [Полноразмерные снимки](../assets/screens/sdlc-stage-counts-20261102/manifest.json).
+
+Полный frontend-прогон после правки: 88 файлов / 857 тестов — PASS.
+Normal web-only Build/Apply установлен в sdlc3 из `90891bd3`;
+[образ и preservation checks](../assets/screens/sdlc-stage-counts-20261102/installed-runtime.json).
+В живом браузере на 539 px видны «Бэклог (1)» и восемь пустых стадий с нулями.
+[Снимок](../assets/screens/sdlc-stage-counts-20261102/live-539.png).
+Tracker backend, Fleet images и контекст задачи сохранены.
