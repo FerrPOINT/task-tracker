@@ -995,6 +995,23 @@ impl ProjectRepository for ProjectRepo {
             .ok_or_else(|| AppError::not_found("project", id))
     }
 
+    async fn get_by_ids(&self, ids: &[ProjectId]) -> Result<Vec<Project>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = project::Entity::find()
+            .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+            .all(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
+        let projects: Vec<_> = rows.into_iter().map(map_project).collect();
+        let found: std::collections::HashSet<_> = projects.iter().map(|p| p.id).collect();
+        if let Some(missing) = ids.iter().find(|id| !found.contains(*id)) {
+            return Err(AppError::not_found("project", *missing));
+        }
+        Ok(projects)
+    }
+
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError> {
         let model = project::Entity::find()
             .filter(project::Column::Key.eq(key.as_str()))
@@ -2260,9 +2277,14 @@ impl AttachmentRepository for AttachmentRepo {
         Ok(models.into_iter().map(map_attachment).collect())
     }
 
-    async fn save(&self, attachment: &Attachment) -> Result<AttachmentId, AppError> {
+    async fn save(
+        &self,
+        attachment: &Attachment,
+    ) -> Result<AttachmentId, domain::AttachmentSaveError> {
         if domain::attachment_artifact::is_sealed(attachment.storage_key.as_ref()) {
-            return Err(AppError::Forbidden);
+            return Err(domain::AttachmentSaveError::NotCommitted(
+                AppError::Forbidden,
+            ));
         }
         let active = attachment::ActiveModel {
             id: Set(attachment.id.as_uuid()),
@@ -2274,10 +2296,92 @@ impl AttachmentRepository for AttachmentRepo {
             storage_key: Set(attachment.storage_key.as_ref().to_string()),
             created_at: Set(attachment.created_at),
         };
-        active
-            .insert(&*self.db)
+        use domain::AttachmentSaveError::{NotCommitted, Unknown};
+        let tx = self
+            .db
+            .begin()
             .await
-            .map_err(crate::db_error::map)?;
+            .map_err(|error| NotCommitted(crate::db_error::map(error)))?;
+        let write = async {
+            let parent = tx
+                .query_one(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "SELECT id FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+                    vec![attachment.issue_id.as_uuid().into()],
+                ))
+                .await
+                .map_err(crate::db_error::map)?;
+            if parent.is_none() {
+                return Err(AppError::not_found("issue", attachment.issue_id));
+            }
+            active.insert(&tx).await.map_err(crate::db_error::map)?;
+            Ok::<(), AppError>(())
+        }
+        .await;
+        if let Err(error) = write {
+            // No COMMIT was submitted: this transaction cannot publish metadata.
+            let _ = tx.rollback().await;
+            return Err(NotCommitted(error));
+        }
+        if let Err(commit_error) = tx.commit().await {
+            // A fresh physical connection cannot observe the failed writer's
+            // uncommitted transaction or reuse its unresolved protocol state.
+            let DatabaseConnection::SqlxPostgresPoolConnection(_) = self.db.raw() else {
+                return Err(Unknown(AppError::Unavailable(
+                    "fresh attachment readback unavailable".into(),
+                )));
+            };
+            let source = self.db.raw().get_postgres_connection_pool();
+            let fresh_pool = source
+                .options()
+                .clone()
+                .max_connections(1)
+                .min_connections(0)
+                .connect_with((*source.connect_options()).clone())
+                .await
+                .map_err(|error| Unknown(AppError::database(error)))?;
+            let fresh = crate::guarded_db::GuardedDb::new(
+                sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(fresh_pool.clone()),
+            );
+            let result = async {
+                // The same request proof is bound here; it is never renewed.
+                let readback = fresh
+                    .begin()
+                    .await
+                    .map_err(|error| Unknown(crate::db_error::map(error)))?;
+                readback
+                    .query_one(Statement::from_sql_and_values(
+                        DbBackend::Postgres,
+                        "SELECT id FROM issues WHERE id=$1 FOR UPDATE",
+                        vec![attachment.issue_id.as_uuid().into()],
+                    ))
+                    .await
+                    .map_err(|error| Unknown(crate::db_error::map(error)))?;
+                let saved = attachment::Entity::find_by_id(attachment.id.as_uuid())
+                    .one(&readback)
+                    .await
+                    .map_err(|error| Unknown(crate::db_error::map(error)))?;
+                readback
+                    .commit()
+                    .await
+                    .map_err(|error| Unknown(crate::db_error::map(error)))?;
+                Ok::<_, domain::AttachmentSaveError>(saved)
+            }
+            .await;
+            fresh_pool.close().await;
+            let saved = result?;
+            match saved {
+                Some(saved)
+                    if saved.issue_id == attachment.issue_id.as_uuid()
+                        && saved.author_id == attachment.author_id.as_uuid()
+                        && saved.storage_key == attachment.storage_key.as_ref()
+                        && saved.file_name == attachment.file_name.as_ref()
+                        && saved.content_type == attachment.content_type.as_ref()
+                        && saved.size_bytes == attachment.size_bytes => {}
+                Some(_) => return Err(Unknown(AppError::conflict("attachment readback differs"))),
+                None => return Err(NotCommitted(crate::db_error::map(commit_error))),
+            }
+        }
         Ok(attachment.id)
     }
 

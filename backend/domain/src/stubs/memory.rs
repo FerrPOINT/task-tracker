@@ -1081,7 +1081,10 @@ impl crate::AttachmentRepository for MemoryAttachmentRepository {
             .collect())
     }
 
-    async fn save(&self, attachment: &crate::Attachment) -> Result<shared::AttachmentId, AppError> {
+    async fn save(
+        &self,
+        attachment: &crate::Attachment,
+    ) -> Result<shared::AttachmentId, crate::AttachmentSaveError> {
         let mut items = self.attachments.lock().unwrap();
         if let Some(idx) = items.iter().position(|a| a.id == attachment.id) {
             items[idx] = attachment.clone();

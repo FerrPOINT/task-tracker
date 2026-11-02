@@ -413,6 +413,13 @@ pub trait ProjectRepository: Send + Sync {
         Ok(())
     }
     async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError>;
+    async fn get_by_ids(&self, ids: &[ProjectId]) -> Result<Vec<Project>, AppError> {
+        let mut projects = Vec::with_capacity(ids.len());
+        for id in ids {
+            projects.push(self.get_by_id(*id).await?);
+        }
+        Ok(projects)
+    }
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
     async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
     async fn save(&self, project: &Project) -> Result<ProjectId, AppError>;
@@ -749,6 +756,12 @@ pub trait WorklogRepository: Send + Sync {
     async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
 }
 
+#[derive(Debug)]
+pub enum AttachmentSaveError {
+    NotCommitted(AppError),
+    Unknown(AppError),
+}
+
 #[async_trait]
 pub trait AttachmentRepository: Send + Sync {
     async fn publish_artifact(
@@ -793,7 +806,10 @@ pub trait AttachmentRepository: Send + Sync {
     }
     async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
-    async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
+    async fn save(
+        &self,
+        attachment: &crate::Attachment,
+    ) -> Result<AttachmentId, AttachmentSaveError>;
     async fn delete(&self, id: AttachmentId) -> Result<(), AppError>;
 }
 
@@ -916,7 +932,10 @@ impl AttachmentRepository for StubAttachmentRepository {
     async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError> {
         Ok(vec![])
     }
-    async fn save(&self, _attachment: &crate::Attachment) -> Result<AttachmentId, AppError> {
+    async fn save(
+        &self,
+        _attachment: &crate::Attachment,
+    ) -> Result<AttachmentId, AttachmentSaveError> {
         Ok(AttachmentId::new())
     }
     async fn delete(&self, _id: AttachmentId) -> Result<(), AppError> {

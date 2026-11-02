@@ -121,7 +121,9 @@ impl domain::FileStorage for RecordingStorage {
     }
 }
 
-struct FailingAttachmentSaveRepository;
+struct FailingAttachmentSaveRepository {
+    unknown: bool,
+}
 
 #[async_trait::async_trait]
 impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
@@ -136,8 +138,13 @@ impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
     async fn save(
         &self,
         _attachment: &domain::Attachment,
-    ) -> Result<shared::AttachmentId, AppError> {
-        Err(AppError::Internal("metadata insert failed".into()))
+    ) -> Result<shared::AttachmentId, domain::AttachmentSaveError> {
+        let error = AppError::Internal("metadata insert failed".into());
+        Err(if self.unknown {
+            domain::AttachmentSaveError::Unknown(error)
+        } else {
+            domain::AttachmentSaveError::NotCommitted(error)
+        })
     }
 
     async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
@@ -262,7 +269,7 @@ impl domain::AttachmentRepository for FailingAttachmentDeleteRepository {
     async fn save(
         &self,
         _attachment: &domain::Attachment,
-    ) -> Result<shared::AttachmentId, AppError> {
+    ) -> Result<shared::AttachmentId, domain::AttachmentSaveError> {
         Ok(self.attachment.id)
     }
 
@@ -4446,32 +4453,44 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
         )
         .await
         .unwrap();
-    let storage = Arc::new(RecordingStorage::default());
-    let service = AttachmentServiceImpl::new(
-        Arc::new(FailingAttachmentSaveRepository),
-        ctx.repos.issues.clone(),
-        storage.clone(),
-        Arc::new(domain::StubWatcherRepository),
-        ctx.events.clone(),
-        Arc::new(domain::StubNotificationRepository),
-        Arc::new(domain::StubUserNotificationSettingsRepository),
-        ctx.authz.clone(),
-    );
+    for unknown in [false, true] {
+        let storage = Arc::new(RecordingStorage::default());
+        let service = AttachmentServiceImpl::new(
+            Arc::new(FailingAttachmentSaveRepository { unknown }),
+            ctx.repos.issues.clone(),
+            storage.clone(),
+            Arc::new(domain::StubWatcherRepository),
+            ctx.events.clone(),
+            Arc::new(domain::StubNotificationRepository),
+            Arc::new(domain::StubUserNotificationSettingsRepository),
+            ctx.authz.clone(),
+        );
 
-    let err = service
-        .upload(
-            issue.id.parse().unwrap(),
-            user.id,
-            "report.txt",
-            "text/plain",
-            b"payload".to_vec(),
-        )
-        .await
-        .unwrap_err();
+        let err = service
+            .upload(
+                issue.id.parse().unwrap(),
+                user.id,
+                "report.txt",
+                "text/plain",
+                b"payload".to_vec(),
+            )
+            .await
+            .unwrap_err();
 
-    assert!(matches!(err, AppError::Internal(_)));
-    assert_eq!(storage.file_count(), 0);
-    assert_eq!(storage.delete_count(), 1);
+        if unknown {
+            assert!(matches!(err, AppError::Unavailable(_)));
+            assert_eq!(
+                storage.file_count(),
+                1,
+                "unknown commit must retain the bytes"
+            );
+            assert_eq!(storage.delete_count(), 0);
+        } else {
+            assert!(matches!(err, AppError::Internal(_)));
+            assert_eq!(storage.file_count(), 0);
+            assert_eq!(storage.delete_count(), 1);
+        }
+    }
 }
 
 #[tokio::test]

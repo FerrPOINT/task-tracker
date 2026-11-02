@@ -292,12 +292,8 @@ async fn build_issue_dtos_prefetched(
     project_ids.sort();
     project_ids.dedup();
     let mut project_names: HashMap<ProjectId, String> = HashMap::with_capacity(project_ids.len());
-    for id in &project_ids {
-        let project = projects
-            .get_by_id(*id)
-            .await
-            .map_err(|_| AppError::not_found("project", *id))?;
-        project_names.insert(*id, project.name.to_string());
+    for project in projects.get_by_ids(&project_ids).await? {
+        project_names.insert(project.id, project.name.to_string());
     }
     let user_names = issue_user_name_lookup(users, &issues).await?;
     let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();

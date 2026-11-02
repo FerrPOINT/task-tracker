@@ -115,6 +115,14 @@ impl BoardServiceImpl {
             .issues
             .count_backlog(board.project_id, todo_status)
             .await? as usize;
+        let mut issue_ids_by_status: std::collections::HashMap<StatusId, Vec<String>> =
+            std::collections::HashMap::new();
+        for issue in &issues {
+            issue_ids_by_status
+                .entry(issue.status_id)
+                .or_default()
+                .push(issue.id.to_string());
+        }
         let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
         {
             db_statuses
@@ -123,11 +131,7 @@ impl BoardServiceImpl {
                     id: s.id.to_string(),
                     name: s.name.as_ref().to_string(),
                     wip_limit: None,
-                    issue_ids: issues
-                        .iter()
-                        .filter(|i| i.status_id == s.id)
-                        .map(|i| i.id.to_string())
-                        .collect(),
+                    issue_ids: issue_ids_by_status.get(&s.id).cloned().unwrap_or_default(),
                 })
                 .collect()
         } else {
@@ -145,11 +149,7 @@ impl BoardServiceImpl {
                         id: c.id.to_string(),
                         name,
                         wip_limit: c.wip_limit,
-                        issue_ids: issues
-                            .iter()
-                            .filter(|i| i.status_id == c.id)
-                            .map(|i| i.id.to_string())
-                            .collect(),
+                        issue_ids: issue_ids_by_status.get(&c.id).cloned().unwrap_or_default(),
                     }
                 })
                 .collect()
