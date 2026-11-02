@@ -24,6 +24,12 @@ class DockerfileBudgetTests(unittest.TestCase):
         )
         self.assertNotIn("CARGO_BUILD_JOBS", runtime)
 
+    def test_standalone_recipe_consumes_worker_budget_before_cargo(self):
+        builder, runtime = (ROOT / "backend/Dockerfile").read_text().split("FROM debian:bookworm-slim", 1)
+        self.assertIn("ARG CARGO_BUILD_JOBS=1", builder.splitlines())
+        self.assertLess(builder.index("ARG CARGO_BUILD_JOBS=1"), builder.index("cargo build"))
+        self.assertNotIn("CARGO_BUILD_JOBS", runtime)
+
     def test_locked_release_server_build_keeps_shared_cache_paths(self):
         self.assertIn(
             "--mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,"
