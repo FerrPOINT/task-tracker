@@ -251,7 +251,7 @@ export function IssueDetailPage() {
 
         <IssueDetailLayout
           description={
-            <ContentSection asChild dividers="start">
+            <ContentSection asChild dividers="start" density="compact">
               <section className="min-w-0 lg:col-start-1 lg:row-start-1">
                 <IssueDescriptionEditor
                   issue={issue}
@@ -266,10 +266,10 @@ export function IssueDetailPage() {
           }
           details={
             <Card>
-              <CardHeader>
+              <CardHeader density="compact">
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm">
+              <CardContent density="compact" className="text-sm">
                 <IssueMetaEditor
                   issue={issue}
                   columns={boardQuery.data?.columns ?? []}
@@ -283,7 +283,7 @@ export function IssueDetailPage() {
             </Card>
           }
           activity={
-            <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
+            <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
                 <TabsList className="grid! w-full grid-cols-6 gap-1 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-5">
                   <TabsTrigger
@@ -368,20 +368,20 @@ export function IssueDetailPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                  <CardContent>
+                  <CardContent density="compact">
                     <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader>
+                  <CardHeader density="compact">
                     <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent density="compact">
                     <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card className="md:col-span-2">
-                  <CardContent>
+                  <CardContent density="compact">
                     <LinkEditor issueId={issue.id} currentKey={issue.key} />
                     {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                       <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
@@ -397,10 +397,10 @@ export function IssueDetailPage() {
           supplemental={
             <>
               <Card>
-                <CardHeader>
+                <CardHeader density="compact">
                   <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent density="compact">
                   <TimeTrackingPanel
                     timeSpentSeconds={issue.time_spent_seconds}
                     originalEstimateSeconds={issue.original_estimate_seconds ?? null}
@@ -411,10 +411,10 @@ export function IssueDetailPage() {
               </Card>
 
               <Card>
-                <CardHeader>
+                <CardHeader density="compact">
                   <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent density="compact">
                   <IssueEngagementPanel
                     issueId={issue.id}
                     projectKey={issue.project_key}

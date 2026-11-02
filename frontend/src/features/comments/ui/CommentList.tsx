@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   ActionGroup,
-  EmptyState,
   LoadingState,
   ConfirmDialog,
   Button,
@@ -158,7 +157,7 @@ interface CommentListProps {
 export function CommentList({ comments, currentUserId, onEdit, onDelete }: CommentListProps) {
   const { t } = useTranslation()
   if (comments.length === 0) {
-    return <EmptyState message={t('comments.empty')} />
+    return <p className="text-sm text-text-muted">{t('comments.empty')}</p>
   }
   return (
     <div className="space-y-4">

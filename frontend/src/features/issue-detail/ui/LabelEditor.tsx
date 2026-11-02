@@ -17,7 +17,6 @@ import {
   Notice,
   ResourceStateView,
   resourceErrorState,
-  EmptyState,
   Fieldset,
   type ResourceState,
 } from '@pdlc/ui/ui'
@@ -135,7 +134,9 @@ function IssueLabelEditor({ issueId, projectKey }: { issueId: string; projectKey
               ))}
             </div>
           )}
-          {issueLabels.length === 0 && <EmptyState message={t('labels.none')} />}
+          {issueLabels.length === 0 && (
+            <p className="text-sm text-text-muted">{t('labels.none')}</p>
+          )}
 
           {creating ? (
             <div className="space-y-1">
