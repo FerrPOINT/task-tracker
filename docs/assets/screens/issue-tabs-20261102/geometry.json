@@ -1,0 +1,150 @@
+[
+  {
+    "width": 375,
+    "display": "grid",
+    "overflow": false,
+    "tabs": [
+      {
+        "cy": 947.4375,
+        "height": 44,
+        "label": "Активность",
+        "width": 158
+      },
+      {
+        "cy": 947.4375,
+        "height": 44,
+        "label": "Комментарии",
+        "width": 158
+      },
+      {
+        "cy": 1001.4375,
+        "height": 56,
+        "label": "Журнал работ",
+        "width": 104
+      },
+      {
+        "cy": 1001.4375,
+        "height": 44,
+        "label": "Вложения",
+        "width": 104
+      },
+      {
+        "cy": 1001.4375,
+        "height": 44,
+        "label": "SDLC",
+        "width": 104
+      }
+    ]
+  },
+  {
+    "width": 539,
+    "display": "grid",
+    "overflow": false,
+    "tabs": [
+      {
+        "cy": 840.625,
+        "height": 44,
+        "label": "Активность",
+        "width": 240
+      },
+      {
+        "cy": 840.625,
+        "height": 44,
+        "label": "Комментарии",
+        "width": 240
+      },
+      {
+        "cy": 888.625,
+        "height": 44,
+        "label": "Журнал работ",
+        "width": 158.65625
+      },
+      {
+        "cy": 888.625,
+        "height": 44,
+        "label": "Вложения",
+        "width": 158.671875
+      },
+      {
+        "cy": 888.625,
+        "height": 44,
+        "label": "SDLC",
+        "width": 158.671875
+      }
+    ]
+  },
+  {
+    "width": 1920,
+    "display": "grid",
+    "overflow": false,
+    "tabs": [
+      {
+        "cy": 324.21875,
+        "height": 40,
+        "label": "Активность",
+        "width": 244.796875
+      },
+      {
+        "cy": 324.21875,
+        "height": 40,
+        "label": "Комментарии",
+        "width": 244.796875
+      },
+      {
+        "cy": 324.21875,
+        "height": 40,
+        "label": "Журнал работ",
+        "width": 244.796875
+      },
+      {
+        "cy": 324.21875,
+        "height": 40,
+        "label": "Вложения",
+        "width": 244.796875
+      },
+      {
+        "cy": 324.21875,
+        "height": 40,
+        "label": "SDLC",
+        "width": 244.8125
+      }
+    ]
+  },
+  {
+    "width": 2560,
+    "display": "grid",
+    "overflow": false,
+    "tabs": [
+      {
+        "cy": 301.8125,
+        "height": 40,
+        "label": "Активность",
+        "width": 372.796875
+      },
+      {
+        "cy": 301.8125,
+        "height": 40,
+        "label": "Комментарии",
+        "width": 372.796875
+      },
+      {
+        "cy": 301.8125,
+        "height": 40,
+        "label": "Журнал работ",
+        "width": 372.796875
+      },
+      {
+        "cy": 301.8125,
+        "height": 40,
+        "label": "Вложения",
+        "width": 372.796875
+      },
+      {
+        "cy": 301.8125,
+        "height": 40,
+        "label": "SDLC",
+        "width": 372.796875
+      }
+    ]
+  }
+]
