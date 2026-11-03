@@ -470,6 +470,22 @@ pub(crate) async fn list(
     actor: &Principal,
     issue: IssueId,
 ) -> Result<Vec<domain::Attachment>, AppError> {
+    if app::sdlc_configured_cli::authorize_configured_identity(actor).is_ok() {
+        let row = db
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=$1
+             AND t.state->>'interaction_protocol'='configured-cli-v1' AND t.state->>'stage'='Draft'
+             AND t.state->'assignment'->>'machine_subject'=$2) AS pm",
+                vec![issue.as_uuid().into(), actor.subject.clone().into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        if row.try_get::<bool>("", "pm").map_err(map_db)? {
+            return super::critical_blockers::pm_evidence::list_inputs(db, config, actor, issue)
+                .await;
+        }
+    }
     let tx = db.begin().await.map_err(map_db)?;
     let auth = authority(&tx, config, issue.as_uuid(), actor, false).await?;
     let models = attachment::Entity::find()

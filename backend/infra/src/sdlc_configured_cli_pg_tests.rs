@@ -199,6 +199,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
+    configured_pm_reads_only_current_task_inputs(&f, task, &pm, local).await;
     assert_eq!(pm.scopes.len(), 2);
     for scope in ["task-tracker:read", "task-tracker:write"] {
         let mut partial = pm.clone();
@@ -935,4 +936,148 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             "completion and replay must preserve the single consent snapshot in {table}"
         );
     }
+}
+
+async fn configured_pm_reads_only_current_task_inputs(
+    f: &Fixture,
+    task: Uuid,
+    pm: &Principal,
+    local: Uuid,
+) {
+    use crate::sdlc::attachment_artifacts as artifacts;
+    let storage = domain::InMemoryStorage::default();
+    let input = Uuid::new_v4();
+    let key = "owner-pm-input.txt";
+    let bytes = b"Owner business input";
+    domain::FileStorage::put(&storage, &task.to_string(), key, bytes.to_vec())
+        .await
+        .unwrap();
+    exec(&f.db, "INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at)
+        SELECT $1,$2,id,'owner-input.txt','text/plain',$3,$4,now() FROM users WHERE central_sub='owner'",
+        vec![input.into(),task.into(),(bytes.len() as i64).into(),key.into()]).await.unwrap();
+    let id = shared::AttachmentId::from_uuid(input);
+    let issue = shared::IssueId::from_uuid(task);
+    assert_eq!(
+        artifacts::list(&f.db, &f.repo.config, pm, issue)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        artifacts::download(&f.db, &f.repo.config, pm, id, &storage)
+            .await
+            .unwrap()
+            .1,
+        bytes
+    );
+    let mut read_only = pm.clone();
+    read_only.scopes.remove("task-tracker:write");
+    assert!(
+        artifacts::list(&f.db, &f.repo.config, &read_only, issue)
+            .await
+            .is_err()
+    );
+    assert!(
+        artifacts::download(&f.db, &f.repo.config, &read_only, id, &storage)
+            .await
+            .is_err()
+    );
+    let other = Uuid::new_v4();
+    let subject = Uuid::new_v4().to_string();
+    exec(
+        &f.db,
+        "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+        VALUES($1,$2,$3,$3,'!',$3,true)",
+        vec![
+            other.into(),
+            format!("{other}@example.test").into(),
+            subject.clone().into(),
+        ],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        vec![f.project.into(), other.into()],
+    )
+    .await
+    .unwrap();
+    let unrelated = actor(
+        &subject,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    assert!(
+        artifacts::list(&f.db, &f.repo.config, &unrelated, issue)
+            .await
+            .is_err()
+    );
+    assert!(
+        artifacts::download(&f.db, &f.repo.config, &unrelated, id, &storage)
+            .await
+            .is_err()
+    );
+    exec(
+        &f.db,
+        "UPDATE attachments SET size_bytes=size_bytes+1 WHERE id=$1",
+        vec![input.into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        artifacts::download(&f.db, &f.repo.config, pm, id, &storage).await,
+        Err(AppError::Conflict(_))
+    ));
+    exec(
+        &f.db,
+        "UPDATE attachments SET size_bytes=size_bytes-1 WHERE id=$1",
+        vec![input.into()],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+        vec![f.project.into(), local.into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        artifacts::download(&f.db, &f.repo.config, pm, id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        vec![f.project.into(), local.into()],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "UPDATE users SET is_active=false WHERE central_sub='owner'",
+        vec![],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        artifacts::download(&f.db, &f.repo.config, pm, id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "UPDATE users SET is_active=true WHERE central_sub='owner'",
+        vec![],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        artifacts::download(&f.db, &f.repo.config, pm, id, &storage)
+            .await
+            .unwrap()
+            .1,
+        bytes
+    );
 }

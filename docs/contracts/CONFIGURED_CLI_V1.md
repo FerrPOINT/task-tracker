@@ -27,6 +27,15 @@ completion queues analysis of the new exact approved revision with all prior
 terminal/fence/source guards retained. The single-task Analyst result remains an
 existing sealed attachment receipt, not a separate requirements confirmation.
 
+
+Current configured PM in Draft can list and download unsealed owner inputs from
+its assigned task. The existing PM reader checks project membership, current
+assignment and active owner before and after blob I/O; it verifies file size.
+Legacy PM grants keep their narrower critical-evidence policy. Sealed outputs
+remain limited to the existing saved critical evidence and delivery custody.
+Current Analyst reads ordinary inputs under its delivery assignment; a previous
+producer, unrelated role or scheduler does not inherit that access.
+
 ## Recorded qualification before automatic handoff
 
 Recorded status (2026-10-27): Tracker backend `d5fca554` is installed as image
