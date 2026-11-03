@@ -25,6 +25,7 @@ COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
 ARG CARGO_BUILD_JOBS=1
+# Cached COPY restores old mtimes; refresh private first-party/SDK inputs before Cargo.
 RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
     --mount=type=cache,id=task-tracker-cargo-target-rust-1.88,target=/cargo-target,sharing=locked \
     find /app /services-base/base-modules/rust -name '*.rs' -exec touch {} + \
