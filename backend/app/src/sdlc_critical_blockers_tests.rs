@@ -236,6 +236,41 @@ impl Fixture {
         change.blocker
     }
 
+    fn retained_analyst_hold(&mut self) -> CriticalBlockerReceipt {
+        // Synthetic pre-policy persisted history. Current submit must not create it.
+        let assignment = self.current.assignment.as_ref().unwrap();
+        let binding = self.current.binding.as_ref().unwrap();
+        let routing = &self.current.task.routing;
+        assert_eq!(assignment.role, DeliveryRole::Analyst);
+        let saved = CriticalBlockerReceipt {
+            blocker_id: Uuid::new_v4(),
+            version: 1,
+            tracker_instance_id: routing.tracker_instance_id.clone(),
+            project_id: routing.project_id,
+            task_id: self.current.task.task_id,
+            root_task_id: self.current.task.task_id,
+            owner_subject: self.current.task.owner_subject.clone(),
+            producer_subject: self.producer.subject.clone(),
+            agent_id: assignment.agent_id,
+            role: assignment.role,
+            assignment_hash: assignment.assignment_hash.clone(),
+            chat_id: binding.chat_id,
+            run_id: binding.run_id,
+            routing_snapshot_id: routing.snapshot_id,
+            routing_generation: 1,
+            proposal: self.proposal.clone(),
+            blocker_sha256: crate::sdlc::canonical_hash(&self.proposal).unwrap(),
+            state: CriticalBlockerState::Held,
+            pm_review: None,
+            resolution: None,
+            technical_terminal: None,
+            created_at: self.now,
+        };
+        self.current.task.version += 1;
+        self.current.task.waiting_reason = Some(HOLD_REASON.into());
+        saved
+    }
+
     fn handoff(&self, blocker: &CriticalBlockerReceipt) -> ReturnCriticalToPm {
         ReturnCriticalToPm {
             review: self.guard(blocker),
@@ -251,9 +286,8 @@ impl Fixture {
 }
 
 #[test]
-fn every_technical_stage_can_hold_without_releasing_custody_or_completing_workflow() {
+fn roles_with_pm_review_can_hold_without_releasing_custody_or_completing_workflow() {
     for stage in [
-        LifecycleStage::Analysis,
         LifecycleStage::Architecture,
         LifecycleStage::Development,
         LifecycleStage::Review,
@@ -431,7 +465,7 @@ fn return_transport_actor_shapes_and_keys_fail_closed_without_rewriting_input() 
 #[test]
 fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
     for change in 0..7 {
-        let mut f = Fixture::new(LifecycleStage::Analysis);
+        let mut f = Fixture::new(LifecycleStage::Architecture);
         match change {
             0 => f.producer.human_session = true,
             1 => f.producer.subject = "owner".into(),
@@ -454,7 +488,7 @@ fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
 #[test]
 fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runtime() {
     for change in 0..11 {
-        let mut f = Fixture::new(LifecycleStage::Analysis);
+        let mut f = Fixture::new(LifecycleStage::Architecture);
         match change {
             0 => f.proposal.requirement_revision += 1,
             1 => f.proposal.content_hash = "f".repeat(64),
@@ -508,7 +542,7 @@ fn immutable_journal_replay_does_not_replace_proposal_with_current_detail() {
 #[test]
 fn prepare_and_hold_validation_failure_has_no_partial_change_or_accepted_proposal() {
     for change in 0..8 {
-        let mut f = Fixture::new(LifecycleStage::Analysis);
+        let mut f = Fixture::new(LifecycleStage::Architecture);
         match change {
             0 => f.proposal.requirement_revision += 1,
             1 => f.proposal.question.clear(),
@@ -679,15 +713,15 @@ fn return_denies_wrong_terminal_run_assignment_chat_hash_and_unheld_state() {
 
 #[test]
 fn atomic_post_losing_to_complete_fails_and_committed_hold_blocks_complete_and_reserve() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
-    let complete = DeliveryResult::Analyst {
-        analysis: artifact("synthetic-analysis"),
+    let mut f = Fixture::new(LifecycleStage::Architecture);
+    let complete = DeliveryResult::Architect {
+        design: artifact("synthetic-design"),
     };
     crate::sdlc_lifecycle::accept_result(&mut f.current.task, &complete).unwrap();
     let completed = f.current.clone();
     assert!(f.plan().is_err());
     assert_eq!(f.current, completed);
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let held = f.hold();
     let before = f.current.clone();
     let mut after = before.clone();
@@ -757,7 +791,7 @@ fn retired_native_grant_cannot_replace_a_current_permanent_producer() {
 #[test]
 fn analyst_keeps_its_task_even_with_a_held_business_question_and_actual_terminal() {
     let mut f = Fixture::new(LifecycleStage::Analysis);
-    let held = f.hold();
+    let held = f.retained_analyst_hold();
     let before = f.current.clone();
     let original = serde_json::to_vec(&held).unwrap();
     let error = return_to_pm(
@@ -777,4 +811,27 @@ fn analyst_keeps_its_task_even_with_a_held_business_question_and_actual_terminal
     assert_eq!(f.current.task.stage, LifecycleStage::Analysis);
     assert_eq!(replay_blocker(&held, &f.proposal).unwrap(), held);
     assert_eq!(serde_json::to_vec(&held).unwrap(), original);
+}
+
+#[test]
+fn analyst_cannot_create_a_pm_hold_for_either_business_question_kind() {
+    for kind in [
+        CriticalBlockerKind::RequirementsContradiction,
+        CriticalBlockerKind::MissingBusinessDecision,
+    ] {
+        let mut f = Fixture::new(LifecycleStage::Analysis);
+        f.proposal.kind = kind;
+        f.proposal.validate(DeliveryRole::Analyst).unwrap();
+        let before = f.current.clone();
+        let proposal = f.proposal.clone();
+        let error = f.plan().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Analyst cannot request PM business review")
+        );
+        assert_eq!(f.current, before);
+        assert_eq!(f.proposal, proposal);
+        assert!(ensure_technical_progress_allowed(&f.current, None).is_ok());
+    }
 }

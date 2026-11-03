@@ -260,6 +260,11 @@ fn prepare_blocker(
     if current.task.runtime != RuntimeState::Running {
         return Err(conflict());
     }
+    if assignment.role == DeliveryRole::Analyst {
+        return Err(AppError::conflict(
+            "Analyst cannot request PM business review",
+        ));
+    }
     ensure_technical_progress_allowed(current, None)?;
     crate::sdlc::validate_key(&proposal.idempotency_key)?;
     proposal.validate(assignment.role)?;

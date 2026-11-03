@@ -22,18 +22,22 @@ rows or applied migration SQL. Rollback uses the previous compatible application
 with automatic rollout disabled, preserving schema, receipts and queued work.
 An already issued assignment must be reconciled/stopped through its existing owner.
 
-Analyst never returns a task to PM; a new return for its assignment is rejected
-with409. Findings stay in Analysis, and missing mandatory facts block completion.
+Analyst cannot submit a new critical PM-review blocker or return a task to PM;
+both operations for its assignment are rejected with409. Denial does not create a
+hold or change task/assignment/lease state. Findings stay in Analysis, and missing
+mandatory facts block completion.
 Historical critical-return receipts remain readable without changing current state.
 A critical PM review from other roles resolves through its existing journal and routing generation;
 completion queues analysis of the new exact approved revision with all prior
 terminal/fence/source guards retained. The single-task Analyst result remains an
 existing sealed attachment receipt, not a separate requirements confirmation.
 
-Source status (2026-11-04): implementation `b47f600b` is pushed in
-[Tracker #202](https://github.com/FerrPOINT/task-tracker/pull/202). The 25 critical
-blocker application tests include the Analyst refusal and unchanged custody for
-other roles. The coordinated [Base delivery record](https://github.com/FerrPOINT/services-base/pull/443)
+Source status (2026-11-04): [Tracker #202](https://github.com/FerrPOINT/task-tracker/pull/202)
+contains both the return prohibition and the later new-blocker prohibition.
+The 26 critical blocker application tests include both Analyst denials, retained
+receipt replay and unchanged custody for other roles. The infra test targets were
+compiled without running PostgreSQL tests; app Clippy passed. The coordinated
+[Base delivery record](https://github.com/FerrPOINT/services-base/pull/443)
 tracks exact versions and qualification. This source status does not claim a
 deployment or completed real-Hermes Analyst-to-Architecture acceptance.
 

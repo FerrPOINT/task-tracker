@@ -49,7 +49,7 @@ async fn setup() -> ReviewFixture {
     .await
     .unwrap();
     let storage = domain::InMemoryStorage::default();
-    let r = Box::pin(start(&f, "critical-review-lifecycle", false, &storage)).await;
+    let r = Box::pin(start(&f, "critical-review-lifecycle", true, &storage)).await;
     let (held, _) = Box::pin(f.repo.submit_critical_blocker_with_storage(
         r.task,
         &r.producer,
