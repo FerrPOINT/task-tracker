@@ -6,6 +6,14 @@ its immutable receipt remains historical Backlog/Ready. Forward112 preserves
 existing rows and binds automatic queue authority to the completion transaction.
 No new public DTO, user confirmation or source-registry table is introduced.
 
+Workspace reference добавлен в существующие JSON receipts source policy,
+verification и task binding как optional `development_workspace_id`. Отсутствие
+поля сохраняет прежнюю сериализацию и hash. Migration 0112 добавляет INSERT guards
+совпадения policy/verification/binding и canonical nonnil UUID; старые данные
+и подтверждения не переписываются, новые таблицы не создаются. Текущий context
+назначенного configured Developer аддитивно включает frozen `source_binding`;
+эта metadata не заменяет проверку назначения или разрешения Forge.
+
 Terminal-idle checkpoint permits reuse the existing `sdlc_idempotency` ledger;
 no migration, canonical lease update, business-state save or outbox write is
 introduced. Replay preserves permit identity/expiry and refreshes only readback

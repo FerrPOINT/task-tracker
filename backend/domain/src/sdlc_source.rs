@@ -9,6 +9,8 @@ use uuid::Uuid;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourcePolicySpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub development_workspace_id: Option<Uuid>,
     pub forge_instance_id: Uuid,
     pub repository_id: Uuid,
     pub base_ref: String,
@@ -19,6 +21,8 @@ pub struct SourcePolicySpec {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VerifiedSource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub development_workspace_id: Option<Uuid>,
     pub namespace: NamespaceRef,
     pub forge_instance_id: Uuid,
     pub repository_id: Uuid,
@@ -62,6 +66,8 @@ pub struct ProjectSourcePolicy {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TaskSourceBinding {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub development_workspace_id: Option<Uuid>,
     pub contract_version: u8,
     pub tracker_instance_id: String,
     pub project_id: Uuid,

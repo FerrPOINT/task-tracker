@@ -59,12 +59,14 @@ fn fixture() -> (
             "author_subject":"central-owner","created_at":now}
     })).unwrap();
     let source = SourcePolicySpec {
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
         base_commit: "d".repeat(40),
     };
     let verification = VerifiedSource {
+        development_workspace_id: None,
         public_name: "fixture/repository".into(),
         namespace: NamespaceRef {
             registry_instance_id: Uuid::new_v4(),
@@ -110,6 +112,41 @@ fn current(binding: &TaskSourceBinding, routing: &TaskRoutingSnapshot) -> Lifecy
         "binding":{"chat_id":Uuid::new_v4(),"run_id":Uuid::new_v4(),"machine_subject":"central-machine",
             "dispatch_receipt":{"reference":"fixture://synthetic-dispatch","sha256":"e".repeat(64)}},"result":null
     }})).unwrap()
+}
+
+#[test]
+fn workspace_reference_is_frozen_only_after_matching_owner_source_verification() {
+    let (state, confirmation, routing, mut policy) = fixture();
+    let legacy = serde_json::to_value(&policy.source).unwrap();
+    assert!(legacy.get("development_workspace_id").is_none());
+    let decoded: SourcePolicySpec = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), legacy);
+    let old = freeze_binding(&state, &confirmation, &routing, &policy).unwrap();
+    assert!(
+        serde_json::to_value(&old)
+            .unwrap()
+            .get("development_workspace_id")
+            .is_none()
+    );
+    assert_eq!(old.source_hash, sealed_hash(&old).unwrap());
+    let workspace = Uuid::new_v4();
+    policy.source.development_workspace_id = Some(workspace);
+    assert!(
+        validate_verification(
+            &policy.source,
+            &policy.verification.namespace,
+            &policy.verification,
+            policy.verification.observed_at
+        )
+        .is_err()
+    );
+    policy.verification.development_workspace_id = Some(workspace);
+    policy.source_hash = sealed_hash(&policy).unwrap();
+    let bound = freeze_binding(&state, &confirmation, &routing, &policy).unwrap();
+    assert_eq!(bound.development_workspace_id, Some(workspace));
+    assert_ne!(bound.source_hash, old.source_hash);
+    policy.source.development_workspace_id = Some(Uuid::nil());
+    assert!(validate_spec(&policy.source).is_err());
 }
 
 #[test]

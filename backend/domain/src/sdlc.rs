@@ -510,6 +510,8 @@ pub struct Permissions {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_binding: Option<crate::sdlc_source::TaskSourceBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub critical_review: Option<crate::sdlc_critical_pm_reservation::CriticalPmReviewContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interaction_protocol: Option<InteractionProtocol>,
@@ -677,6 +679,7 @@ impl TaskState {
                 .iter()
                 .any(|q| q.state == QuestionState::Open);
         SdlcContext {
+            source_binding: None,
             critical_review: None,
             interaction_protocol: self.interaction_protocol().ok().flatten(),
             workflow_task_key: self

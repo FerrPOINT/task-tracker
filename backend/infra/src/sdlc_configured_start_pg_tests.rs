@@ -6,8 +6,8 @@ use super::*;
 async fn forward_start_migration_preserves_filled_110_history_without_auto_start() {
     Box::pin(async {
         let migrations = migration::Migrator::migrations();
-        assert_eq!(migrations[migrations.len()-2].name(), "m20261029_0000111_configured_analysis_start");
-        let f = Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-2) as u32))).await;
+        let checkpoint = migrations.iter().position(|migration| migration.name() == "m20261029_0000111_configured_analysis_start").unwrap();
+        let f = Box::pin(Fixture::new_with_migration_steps(Some(checkpoint as u32))).await;
         let historical = Box::pin(f.queued_analysis("historical", true)).await;
         f.repo.lifecycle_command(historical, &f.writer, LifecycleCommand::EnsureQueued {
             idempotency_key: "historical-queue".into(),
@@ -372,7 +372,8 @@ async fn automatic_start_requires_completion_and_respects_disabled_project() {
 async fn forward_auto_start_preserves_completed_backlog_and_manual_start_history() {
     Box::pin(async {
         let migrations=migration::Migrator::migrations();
-        let f=Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-1) as u32))).await;
+        let checkpoint=migrations.iter().position(|migration| migration.name() == "m20261103_0000112_configured_analysis_auto_start").unwrap();
+        let f=Box::pin(Fixture::new_with_migration_steps(Some(checkpoint as u32))).await;
         let retained=Box::pin(f.confirmed("pre-auto",true)).await;
         // Historical images can have LF function bodies while the new source uses CRLF.
         for function in ["sdlc_critical_pm_lifecycle_insert_gate()", "sdlc_critical_pm_lifecycle_commit_gate()", "sdlc_configured_cli_completion_transition()"] {

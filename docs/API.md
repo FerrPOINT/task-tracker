@@ -7,6 +7,32 @@ existing rows and binds automatic queue authority to the completion transaction.
 The read-only CLI `sdlc source --task UUID` uses the existing source-binding GET.
 No new HTTP DTO, user confirmation or source-registry table is introduced.
 
+Registered namespace reader `GET /api/v1/namespace-tasks/{id}` сохраняет прежний
+metadata response при отсутствии `include_execution`. Аддитивный opt-in
+`include_execution=true` добавляет текущие protocol, root task, stage/status,
+assignment, requirements revision и immutable source binding. Он использует
+существующий SDLC reader и его проверку текущего project access исполнителя;
+namespace membership само по себе не разрешает исполнение. Ответ `private,
+no-store`; reader не получает разрешения изменять задачу. Source metadata не
+требует исторического native lease: configured-cli-v1 проверяет актуальное
+назначение отдельно. Changed source context или повреждённый hash не принимаются.
+Этот readback используется Forge для собственной сессии постоянного Developer;
+человеческие ручные workspace-сессии по-прежнему требуют только task metadata.
+
+`SourcePolicySpec`, `VerifiedSource` и `TaskSourceBinding` аддитивно поддерживают
+optional `development_workspace_id`. Source reader передаёт выбранный UUID
+Forge и требует его точного readback для данного repository/namespace. Owner
+подтверждает эту ссылку вместе с прежним source policy; task binding замораживает
+её без подмены старых receipts. Отсутствующее поле не сериализуется, поэтому
+исторические hashes сохраняются. Аддитивная migration 0112 проверяет совпадение
+ссылки policy/verification/binding при INSERT в существующую историю. Для
+machine Developer Forge требует это поле; обычные human/legacy задачи без него
+сохраняют свой контракт. Автоматического выбора первого workspace нет.
+Существующий `task-tracker sdlc context --task TASK_UUID` аддитивно возвращает
+`source_binding` текущему назначенному Developer в Development/Rework. Поэтому
+его branch/base/репозиторий/workspace читаются обычным CLI; исторический native
+lifecycle read не становится условием запуска или заменой актуального назначения.
+
 Current fileless PM contract: [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
 The native PM lease, heartbeat, resume, unsubmitted recovery and bootstrap retry
 sections below describe retained historical contracts. Their eight routes are

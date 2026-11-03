@@ -33,6 +33,7 @@ fn fixture() -> (
         "runtime_state":"running","waiting_reason":"pm_brainstorming"
     })).unwrap();
     let source = SourcePolicySpec {
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
@@ -40,6 +41,7 @@ fn fixture() -> (
     };
     let now = Utc::now();
     let verification = VerifiedSource {
+        development_workspace_id: None,
         namespace: shared::resource_context::NamespaceRef {
             registry_instance_id: Uuid::new_v4(),
             namespace_id: Uuid::new_v4(),
