@@ -28,13 +28,18 @@ impl ForgeReader {
         if source.forge_instance_id != self.instance {
             return Err(AppError::invalid_input("unregistered_repository_ref"));
         }
-        let endpoint = self
+        let mut endpoint = self
             .endpoint
             .join(&format!(
                 "api/v1/namespace-repositories/{}/source",
                 source.repository_id
             ))
             .map_err(|_| AppError::invalid_input("invalid_repository_ref"))?;
+        if let Some(workspace) = source.development_workspace_id {
+            endpoint
+                .query_pairs_mut()
+                .append_pair("development_workspace_id", &workspace.to_string());
+        }
         let mut response = self
             .client
             .get(endpoint)
@@ -92,12 +97,13 @@ mod tests {
             namespace_id: Uuid::new_v4(),
         };
         let source = domain::sdlc_source::SourcePolicySpec {
+            development_workspace_id: Some(Uuid::new_v4()),
             forge_instance_id: Uuid::new_v4(),
             repository_id: Uuid::new_v4(),
             base_ref: "refs/heads/main".into(),
             base_commit: "a".repeat(40),
         };
-        let proof = json!({"namespace":namespace,"forge_instance_id":source.forge_instance_id,
+        let proof = json!({"namespace":namespace,"forge_instance_id":source.forge_instance_id,"development_workspace_id":source.development_workspace_id,
             "repository_id":source.repository_id,"public_name":"fixture/repository",
             "base_ref":source.base_ref,"base_commit":source.base_commit,
             "default_ref":"refs/heads/main","protected_refs":["refs/heads/main"],
@@ -158,7 +164,11 @@ mod tests {
         assert_eq!(target.path(), expected);
         assert_eq!(authorization, "Bearer fixture-reader-credential");
         let query: std::collections::HashMap<_, _> = target.query_pairs().into_owned().collect();
-        assert_eq!(query.len(), 4);
+        assert_eq!(query.len(), 5);
+        assert_eq!(
+            query["development_workspace_id"],
+            source.development_workspace_id.unwrap().to_string()
+        );
         assert_eq!(
             query["registry_instance_id"],
             namespace.registry_instance_id.to_string()
@@ -176,6 +186,7 @@ mod tests {
             namespace_id: Uuid::new_v4(),
         };
         let spec = domain::sdlc_source::SourcePolicySpec {
+            development_workspace_id: None,
             forge_instance_id: Uuid::new_v4(),
             repository_id: Uuid::new_v4(),
             base_ref: "refs/heads/main".into(),
@@ -196,6 +207,7 @@ mod tests {
             namespace_id: Uuid::new_v4(),
         };
         let spec = domain::sdlc_source::SourcePolicySpec {
+            development_workspace_id: None,
             forge_instance_id: Uuid::new_v4(),
             repository_id: Uuid::new_v4(),
             base_ref: "refs/heads/main".into(),

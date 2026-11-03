@@ -432,12 +432,14 @@ async fn ordinary_spaces_guard_sdlc_catalog_resources_roles_and_original_deadlin
     // Historical repository B remains owned by B even when its project is visible through A.
     let now = shared::now().to_utc();
     let source = domain::sdlc_source::SourcePolicySpec {
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
         base_commit: "a".repeat(40),
     };
     let verification = domain::sdlc_source::VerifiedSource {
+        development_workspace_id: None,
         namespace: shared::resource_context::NamespaceRef {
             registry_instance_id: a.registry,
             namespace_id: a.spaces[2],

@@ -3,6 +3,9 @@
 Кандидат контракта привязки исходников задачи. Наличие кода и сгенерированной
 схемы не подтверждает установку или совместную live-приёмку с Forge.
 
+Source gate и отдельные PostgreSQL-сценарии зафиксированы в
+[evidence от 2026-11-03](evidence/developer-workspace-source-20261103.json).
+
 ## Owner Policy
 
 The project owner configures GET/POST
@@ -20,6 +23,17 @@ original operation GET `/operations/{idempotency_key}`; historical GET is
 `/versions/{revision}`. Exact replay does not require another external observation.
 
 ## Normal Task Flow
+
+Managed Developer assignments additionally use optional
+`source.development_workspace_id`. The same registered Forge source reader
+confirms that exact workspace/repository/namespace and echoes the UUID in
+verification. Existing confirmation freezes it into the task source binding;
+there is no separate allocator, registry or confirmation process. Older receipts
+omit the field and preserve their original hashes and human contract. A configured
+Developer reads the frozen binding through the existing task context CLI; Forge
+requires its workspace UUID to match, even for two workspaces of the same project.
+Migration0112 guards policy/verification/binding agreement in the existing ledger.
+Source metadata alone still grants no Git or execution permission.
 
 For NEW `single-task-v1` Drafts only, Tracker pins the project policy revision/hash
 and the verified repository link in the existing Draft-creation transaction.

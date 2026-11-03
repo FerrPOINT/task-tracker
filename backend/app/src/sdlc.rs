@@ -229,7 +229,30 @@ impl SdlcService {
         self.repository.create_draft(project, actor, command).await
     }
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
-        self.repository.context(task, actor).await
+        let mut context = self.repository.context(task, actor).await?;
+        if context.interaction_protocol == Some(InteractionProtocol::ConfiguredCliV1)
+            && matches!(context.stage, Stage::Development | Stage::Rework)
+            && context
+                .assignment
+                .as_ref()
+                .is_some_and(|a| a.machine_subject == actor.subject)
+            && let Some(source_repository) = self.repository.source_repository()
+        {
+            // The existing context CLI gives the assigned Developer its frozen
+            // source target without making a retired native lease authoritative.
+            let source = source_repository.task_source(task, actor).await?;
+            context.source_binding = crate::sdlc_source::configured_source_binding(source)?;
+            if context.source_binding.as_ref().is_some_and(|source| {
+                source.task_id != task
+                    || source.root_task_id != context.root_task_id
+                    || source.project_id != context.project_id
+                    || source.tracker_instance_id != context.tracker_instance_id
+                    || Some(source.requirement_revision) != context.requirement_revision
+            }) {
+                return Err(AppError::conflict("configured source context changed"));
+            }
+        }
+        Ok(context)
     }
     pub async fn draft_creation_operation(
         &self,
