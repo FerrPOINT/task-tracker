@@ -1,5 +1,9 @@
 # UI/UX Specification — Task Tracker (Jira-like)
 
+Design candidate 2026-11-03: [вкладка «Декомпозиция»](plans/embedded-decomposition-design.md)
+перед SDLC, с редактируемыми при наличии прав разделами и историей редакций.
+Отдельный интерактивный preview ожидает утверждения и не меняет production routes.
+
 ## 1. Общие принципы дизайна
 
 - **Тема по умолчанию**: dark.

@@ -33,3 +33,5 @@ target/
 target-stage/
 target-stable/
 *.tsbuildinfo
+# Isolated, memory-only design preview output.
+/frontend/.preview-decomposition-dist/

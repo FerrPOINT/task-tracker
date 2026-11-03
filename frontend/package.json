@@ -5,6 +5,8 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "design:decomposition:build": "vite build --config vite.decomposition-preview.config.ts",
+    "design:decomposition": "vite preview --config vite.decomposition-preview.config.ts",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",

@@ -1,5 +1,10 @@
 # Архитектура Task Tracker
 
+[Встроенная декомпозиция — design candidate](plans/embedded-decomposition-design.md):
+один план и разделы в исходной Task, без children/отдельного scheduler. Предпросмотр
+имеет отдельный HTML/Vite entry и вымышленные типы, не импортирует live API/auth.
+Owner schema/API, Workflow и agent integration остаются будущей реализацией.
+
 The terminal-idle branch grants a single exact Workflow checkpoint operation
 after trusted Fleet readback and a task-locked custody recheck. It never restores
 general lease authority; ordinary resume follows only after a real checkpoint ACK.
