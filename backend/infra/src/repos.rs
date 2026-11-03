@@ -332,6 +332,30 @@ impl UserRepository for UserRepo {
         }
         Ok(map_user(model))
     }
+    async fn set_refresh_token_if_password_matches(
+        &self,
+        user_id: UserId,
+        expected_password_hash: &str,
+        new_hash: &str,
+    ) -> Result<User, AppError> {
+        use sea_orm::FromQueryResult;
+        let statement = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE users SET refresh_token_hash = $1, updated_at = NOW() WHERE id = $2 AND is_active AND password_hash = $3 RETURNING *",
+            [
+                new_hash.into(),
+                user_id.as_uuid().into(),
+                expected_password_hash.into(),
+            ],
+        );
+        let user = user::Model::find_by_statement(statement)
+            .one(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?
+            .ok_or(AppError::Unauthorized)?;
+        Ok(map_user(user))
+    }
+
     async fn rotate_refresh_token(
         &self,
         user_id: UserId,

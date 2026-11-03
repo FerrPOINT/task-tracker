@@ -176,6 +176,18 @@ pub trait UserRepository: Send + Sync {
     }
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
+    /// Issue a session only for the still-active credential that was verified.
+    /// Updates session fields only and returns the current profile.
+    async fn set_refresh_token_if_password_matches(
+        &self,
+        _user_id: UserId,
+        _expected_password_hash: &str,
+        _new_hash: &str,
+    ) -> Result<User, AppError> {
+        Err(AppError::Unavailable(
+            "session_issuance_not_supported".into(),
+        ))
+    }
     /// Atomic single-use rotation: replace the stored refresh-token hash
     /// with `new_hash` ONLY if the row still holds `expected_hash`.
     /// Returns Ok(()) on success and Unauthorized when the token was

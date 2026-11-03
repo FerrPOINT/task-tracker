@@ -40,6 +40,24 @@ impl UserRepository for MemoryUserRepository {
             .collect())
     }
 
+    async fn set_refresh_token_if_password_matches(
+        &self,
+        user_id: UserId,
+        expected_password_hash: &str,
+        new_hash: &str,
+    ) -> Result<User, AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .iter_mut()
+            .find(|u| {
+                u.id == user_id && u.is_active && u.password_hash.as_ref() == expected_password_hash
+            })
+            .ok_or(AppError::Unauthorized)?;
+        user.refresh_token_hash = Some(new_hash.to_string().into());
+        user.updated_at = shared::now();
+        Ok(user.clone())
+    }
+
     async fn rotate_refresh_token(
         &self,
         user_id: UserId,
