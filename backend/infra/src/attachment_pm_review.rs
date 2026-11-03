@@ -149,7 +149,7 @@ pub(crate) async fn download(
             before.item.storage_key.as_ref(),
         )
         .await?;
-    verify_bytes(&before, &bytes)?;
+    app::attachment_artifacts::verify_read_bytes(&before.item, &bytes)?;
     let after = snapshot(db, config, actor, id).await?;
     if before.blocker != after.blocker
         || before.seal != after.seal
@@ -160,16 +160,6 @@ pub(crate) async fn download(
             "critical evidence read scope changed during storage read",
         ));
     }
-    verify_bytes(&after, &bytes)?;
+    app::attachment_artifacts::verify_read_bytes(&after.item, &bytes)?;
     Ok((after.item, bytes))
-}
-
-fn verify_bytes(snapshot: &Snapshot, bytes: &[u8]) -> Result<(), AppError> {
-    if snapshot.seal.is_some() {
-        app::attachment_artifacts::verify_bytes(&snapshot.item, bytes)
-    } else if snapshot.item.size_bytes != bytes.len() as i64 {
-        Err(AppError::conflict("PM input size mismatch"))
-    } else {
-        Ok(())
-    }
 }

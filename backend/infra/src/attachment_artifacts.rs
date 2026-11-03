@@ -550,11 +550,7 @@ pub(crate) async fn download(
     let bytes = storage
         .get(&item.issue_id.to_string(), item.storage_key.as_ref())
         .await?;
-    if Seal::parse(item.storage_key.as_ref())?.is_some() {
-        app::attachment_artifacts::verify_bytes(&item, &bytes)?;
-    } else if item.size_bytes != bytes.len() as i64 {
-        return Err(AppError::conflict("research input size mismatch"));
-    }
+    app::attachment_artifacts::verify_read_bytes(&item, &bytes)?;
     tx.commit().await.map_err(map_db)?;
     Ok((item, bytes))
 }

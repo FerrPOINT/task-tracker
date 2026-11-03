@@ -1080,4 +1080,28 @@ async fn configured_pm_reads_only_current_task_inputs(
             .1,
         bytes
     );
+
+    // Exercise the application boundary too: ordinary inputs have no output seal.
+    let repos = crate::repos::SeaOrmRepositories::new(f.db.clone());
+    let service = app::services::AttachmentServiceImpl::new(
+        repos.attachments,
+        repos.issues,
+        std::sync::Arc::new(storage),
+        repos.watchers,
+        app::context::EventBus::default(),
+        repos.notifications,
+        repos.notification_settings,
+        app::authz::Authz::new(repos.members, repos.projects),
+    )
+    .with_artifact_config(f.repo.config.clone());
+    let (meta, actual) = app::context::AttachmentService::download_artifact(&service, id, pm)
+        .await
+        .unwrap();
+    assert!(meta.artifact.is_none());
+    assert_eq!(actual, bytes);
+    assert!(
+        app::context::AttachmentService::download_artifact(&service, id, &read_only)
+            .await
+            .is_err()
+    );
 }

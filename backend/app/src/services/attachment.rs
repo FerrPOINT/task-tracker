@@ -208,7 +208,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             .attachments
             .download_artifact(self.artifact_config()?, actor, id, self.storage.as_ref())
             .await?;
-        crate::attachment_artifacts::verify_bytes(&attachment, &bytes)?;
+        crate::attachment_artifacts::verify_read_bytes(&attachment, &bytes)?;
         Ok((Self::to_dto(&attachment)?, bytes))
     }
 
