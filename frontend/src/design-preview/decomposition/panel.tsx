@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useBlocker, useLocation, useNavigate } from 'react-router'
+import { Link, useBlocker, useLocation, useNavigate } from 'react-router'
 import {
   Card,
   CardHeader,
@@ -544,7 +544,8 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
 
 function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }) {
   const location = useLocation()
-  const navigate = useNavigate()
+  const sectionSearch = new URLSearchParams(location.search)
+  sectionSearch.set('tab', 'decomposition')
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     const id = location.hash.replace('#section-', '')
@@ -567,51 +568,48 @@ function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }
       </Disclosure>
       <div>
         {plan.sections.map((section, index) => (
-          <Disclosure
-            appearance="row"
-            key={section.id}
-            id={`${snapshot ? 'snapshot-' : ''}section-${section.id}`}
-            open={open.has(section.id)}
-            onToggle={(event) => {
-              const expanded = event.currentTarget.open
-              setOpen((value) => {
-                if (value.has(section.id) === expanded) return value
-                const next = new Set(value)
-                if (expanded) next.add(section.id)
-                else next.delete(section.id)
-                return next
-              })
-            }}
-            summary={
-              <span>
-                {index + 1}. {section.title}
-              </span>
-            }
-          >
-            <div className="space-y-4 py-2">
-              <SectionHeader title="Что сделать" level={4} />
-              <Prose>{section.description}</Prose>
-              <SectionHeader title="Как проверить" level={4} />
-              <Prose>{section.criteria}</Prose>
-              <SectionHeader title="Связь с требованиями" level={4} />
-              <Prose>{section.requirements}</Prose>
-              <ActionGroup align="start">
-                {!snapshot && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      const params = new URLSearchParams(location.search)
-                      params.set('tab', 'decomposition')
-                      navigate({ search: params.toString(), hash: `section-${section.id}` })
-                    }}
-                  >
-                    <LinkIcon />
-                    Ссылка на раздел
-                  </Button>
-                )}
-              </ActionGroup>
-            </div>
-          </Disclosure>
+          <div key={section.id} className="relative">
+            <Disclosure
+              appearance="row"
+              id={`${snapshot ? 'snapshot-' : ''}section-${section.id}`}
+              open={open.has(section.id)}
+              onToggle={(event) => {
+                const expanded = event.currentTarget.open
+                setOpen((value) => {
+                  if (value.has(section.id) === expanded) return value
+                  const next = new Set(value)
+                  if (expanded) next.add(section.id)
+                  else next.delete(section.id)
+                  return next
+                })
+              }}
+              summary={
+                <span className={snapshot ? undefined : 'block pr-12'}>
+                  {index + 1}. {section.title}
+                </span>
+              }
+            >
+              <div className="space-y-4 py-2">
+                <SectionHeader title="Что сделать" level={4} />
+                <Prose>{section.description}</Prose>
+                <SectionHeader title="Как проверить" level={4} />
+                <Prose>{section.criteria}</Prose>
+                <SectionHeader title="Связь с требованиями" level={4} />
+                <Prose>{section.requirements}</Prose>
+              </div>
+            </Disclosure>
+            {!snapshot && (
+              <Button asChild variant="ghost" size="icon" className="absolute right-0 top-0">
+                <Link
+                  to={{ search: sectionSearch.toString(), hash: `section-${section.id}` }}
+                  aria-label={`Ссылка на раздел «${section.title}»`}
+                  title="Ссылка на раздел"
+                >
+                  <LinkIcon className="h-4 w-4" aria-hidden />
+                </Link>
+              </Button>
+            )}
+          </div>
         ))}
       </div>
     </div>

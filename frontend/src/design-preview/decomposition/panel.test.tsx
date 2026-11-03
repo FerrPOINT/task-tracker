@@ -216,6 +216,27 @@ describe('memory-only decomposition preview', () => {
     )
   })
 
+  it('offers an icon permalink beside a collapsed section and keeps an open section open', async () => {
+    const { user, router } = setup()
+    const section = document.getElementById('section-storage')!
+    const link = screen.getByRole('link', { name: 'Ссылка на раздел «Хранение и API настроек»' })
+    expect(section).not.toHaveAttribute('open')
+    expect(link).toBeVisible()
+    expect(section.querySelector('summary')).not.toContainElement(link)
+    expect(link.textContent).toBe('')
+    expect(link).toHaveAttribute('href', expect.stringContaining('#section-storage'))
+    await user.click(link)
+    await waitFor(() => expect(section).toHaveAttribute('open'))
+    expect(router.state.location.hash).toBe('#section-storage')
+    expect(router.state.location.search).toContain('scenario=normal')
+    await user.click(link)
+    expect(section).toHaveAttribute('open')
+    link.focus()
+    await user.keyboard('{Enter}')
+    expect(section).toHaveAttribute('open')
+    expect(screen.queryByRole('button', { name: 'Ссылка на раздел' })).not.toBeInTheDocument()
+  })
+
   it('reads historical snapshots without write controls or duplicate section IDs', async () => {
     const { user } = setup()
     const revision = screen.getByRole('button', { name: 'Редакция 2 — история изменений плана' })
@@ -223,6 +244,7 @@ describe('memory-only decomposition preview', () => {
     await user.click(revision)
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('link', { name: /Ссылка на раздел/ })).not.toBeInTheDocument()
     expect(document.querySelectorAll('#section-storage')).toHaveLength(1)
     expect(document.getElementById('snapshot-section-storage')).not.toBeNull()
     document
