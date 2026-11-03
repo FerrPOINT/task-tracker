@@ -142,7 +142,10 @@ persistence still await their own qualification, not the earlier Return pass.
 The source also registers scheduler-only POST
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns` and original-operation GET
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}`.
-Both return the typed `{lifecycle, blocker}` plan and use no-store. The existing
+Both return the typed `{lifecycle, blocker}` plan and use no-store.
+Analyst assignment cannot create a return to PM: the return endpoint rejects
+that transition with409. Findings and missing facts remain in Analysis; existing
+historical receipts retain their original readback and replay semantics. The
 separate scheduler WRITE/READ credentials and authoritative fresh task/project
 checks remain unchanged. Return requires actual matching native terminal before
 the trusted caller sends it; the producer's Held acknowledgement is not terminal

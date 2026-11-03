@@ -474,7 +474,7 @@ fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runt
 
 #[test]
 fn immutable_journal_replay_does_not_replace_proposal_with_current_detail() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let saved = f.hold();
     let original = serde_json::to_value(&saved).unwrap();
     let change = return_to_pm(
@@ -531,7 +531,7 @@ fn prepare_and_hold_validation_failure_has_no_partial_change_or_accepted_proposa
 
 #[test]
 fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let blocker = f.hold();
     let stale = f.handoff(&blocker);
     let lease = f.current.lease.as_mut().unwrap();
@@ -553,7 +553,7 @@ fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
 
 #[test]
 fn current_producer_fence_survives_heartbeat_without_renewing_or_changing_lease_identity() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let lease = f.current.lease.as_mut().unwrap();
     lease.version += 2;
     lease.heartbeat_at += Duration::seconds(10);
@@ -577,10 +577,10 @@ fn current_producer_fence_survives_heartbeat_without_renewing_or_changing_lease_
         .is_ok()
     );
 
-    let mut future = Fixture::new(LifecycleStage::Analysis);
+    let mut future = Fixture::new(LifecycleStage::Architecture);
     future.proposal.fence.expected_lease_version += 1;
     assert!(future.plan().is_err());
-    let mut foreign = Fixture::new(LifecycleStage::Analysis);
+    let mut foreign = Fixture::new(LifecycleStage::Architecture);
     foreign.proposal.fence.lease_id = Uuid::new_v4();
     assert!(foreign.plan().is_err());
 }
@@ -611,7 +611,7 @@ fn empty_and_single_options_hold_with_permanent_identity_without_scheduler_imper
 
 #[test]
 fn matching_terminal_may_release_expired_custody_but_expiry_never_proves_terminal() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let blocker = f.hold();
     f.now += Duration::seconds(60);
     f.current.task.runtime = RuntimeState::Unknown;
@@ -627,7 +627,7 @@ fn matching_terminal_may_release_expired_custody_but_expiry_never_proves_termina
 
 #[test]
 fn held_receipt_and_actual_terminal_do_not_allow_agent_or_owner_to_return_to_pm() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     assert!(
         prepare_and_hold(
             &f.current,
@@ -704,12 +704,12 @@ fn atomic_post_losing_to_complete_fails_and_committed_hold_blocks_complete_and_r
 
 #[test]
 fn version_exhaustion_is_atomic_and_repeated_hold_requires_original_journal_readback() {
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     f.current.task.version = MAX_SAFE_VERSION;
     let before = f.current.clone();
     assert!(f.plan().is_err());
     assert_eq!(f.current, before);
-    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let mut f = Fixture::new(LifecycleStage::Architecture);
     let held = f.hold();
     let held_before = f.current.clone();
     assert!(f.plan().is_err());
@@ -752,4 +752,29 @@ fn retired_native_grant_cannot_replace_a_current_permanent_producer() {
     );
     f.current.assignment.as_mut().unwrap().machine_subject = None;
     assert!(crate::sdlc_lifecycle::assigned_producer(&f.producer, &f.current, true).is_err());
+}
+
+#[test]
+fn analyst_keeps_its_task_even_with_a_held_business_question_and_actual_terminal() {
+    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let held = f.hold();
+    let before = f.current.clone();
+    let original = serde_json::to_vec(&held).unwrap();
+    let error = return_to_pm(
+        &f.current,
+        &held,
+        &f.scheduler,
+        &f.config,
+        &f.handoff(&held),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("Analyst cannot return a task to PM")
+    );
+    assert_eq!(f.current, before);
+    assert_eq!(f.current.task.stage, LifecycleStage::Analysis);
+    assert_eq!(replay_blocker(&held, &f.proposal).unwrap(), held);
+    assert_eq!(serde_json::to_vec(&held).unwrap(), original);
 }

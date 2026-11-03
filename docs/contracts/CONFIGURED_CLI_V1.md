@@ -22,7 +22,10 @@ rows or applied migration SQL. Rollback uses the previous compatible application
 with automatic rollout disabled, preserving schema, receipts and queued work.
 An already issued assignment must be reconciled/stopped through its existing owner.
 
-A critical PM review resolves through its existing journal and routing generation;
+Analyst never returns a task to PM; a new return for its assignment is rejected
+with409. Findings stay in Analysis, and missing mandatory facts block completion.
+Historical critical-return receipts remain readable without changing current state.
+A critical PM review from other roles resolves through its existing journal and routing generation;
 completion queues analysis of the new exact approved revision with all prior
 terminal/fence/source guards retained. The single-task Analyst result remains an
 existing sealed attachment receipt, not a separate requirements confirmation.

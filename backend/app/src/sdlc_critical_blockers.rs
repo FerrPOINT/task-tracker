@@ -434,6 +434,9 @@ pub fn return_to_pm(
     configured(current, config)?;
     current_custody(current, &command.review.fence, &actor.subject, None)?;
     match_blocker(current, blocker, &command.review)?;
+    if blocker.role == DeliveryRole::Analyst {
+        return Err(AppError::conflict("Analyst cannot return a task to PM"));
+    }
     crate::sdlc_lifecycle::validate_artifact(&command.terminal.receipt)?;
     if blocker.state != CriticalBlockerState::Held
         || current.task.waiting_reason.as_deref() != Some(HOLD_REASON)
