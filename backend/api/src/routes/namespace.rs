@@ -116,6 +116,7 @@ pub async fn readback(
 pub struct TaskContextQuery {
     pub registry_instance_id: Uuid,
     pub namespace_id: Uuid,
+    pub include_execution: Option<bool>,
 }
 
 #[derive(serde::Deserialize, utoipa::IntoParams)]
@@ -335,9 +336,10 @@ pub async fn context(
 #[utoipa::path(get,operation_id="tracker_namespace_task_context",path="/api/v1/namespace-tasks/{id}",tag="namespaces",params(("id"=Uuid,Path),TaskContextQuery),responses((status=200,description="Verified immutable Task UUID/project/namespace metadata"),(status=403,description="Foreign namespace")))]
 pub async fn task_context(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(reader): Extension<pdlc_auth_core::AuthContext>,
     Path(id): Path<Uuid>,
     Query(query): Query<TaskContextQuery>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), AppError> {
     let task = ctx.repos.issues.get_by_id(IssueId::from_uuid(id)).await?;
     let binding = ctx
         .repos
@@ -350,14 +352,123 @@ pub async fn task_context(
     {
         return Err(AppError::Forbidden);
     }
-    Ok(Json(
-        serde_json::json!({"schema_version":1,"namespace":binding.namespace,"tracker_instance_id":binding.resource.instance_id,"project_id":task.project_id.as_uuid(),"task_id":id,"task_key":task.key.to_string(),"state":binding.state,"generation":binding.generation}),
-    ))
+    let mut result = serde_json::json!({"schema_version":1,"namespace":binding.namespace,"tracker_instance_id":binding.resource.instance_id,"project_id":task.project_id.as_uuid(),"task_id":id,"task_key":task.key.to_string(),"state":binding.state,"generation":binding.generation});
+    if query.include_execution == Some(true) {
+        // Use the existing SDLC reader, including its current-assignment and
+        // producer project-access checks. Namespace membership alone grants
+        // neither execution nor permission to change the task.
+        let actor = domain::sdlc::Principal {
+            subject: reader.user_id,
+            human_session: false,
+            trusted_human: false,
+            scopes: reader.scopes,
+        };
+        app::sdlc_reservation::reader(&actor)?;
+        let execution = super::sdlc::service(&ctx)?.context(id, &actor).await?;
+        if execution.task_id != id || execution.project_id != task.project_id.as_uuid() {
+            return Err(AppError::conflict("namespace_task_execution_changed"));
+        }
+        // Source metadata is separate from execution authority: configured CLI
+        // uses the current assignment, not a retained native lease.
+        let source = super::sdlc::service(&ctx)?
+            .source_repository()?
+            .task_source(id, &actor)
+            .await?;
+        let source_binding = app::sdlc_source::configured_source_binding(source)?;
+        result["execution"] = serde_json::json!({
+            "interaction_protocol": execution.interaction_protocol,
+            "root_task_id": execution.root_task_id,
+            "stage": execution.stage,
+            "status": execution.status,
+            "assignment": execution.assignment,
+            "requirement_revision": execution.requirement_revision,
+            "source_binding": source_binding,
+        });
+    }
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    Ok((headers, Json(result)))
 }
 
 #[cfg(test)]
 mod namespace_context_page_tests {
     use super::*;
+
+    #[test]
+    fn configured_source_metadata_needs_immutable_history_but_not_a_legacy_native_lease() {
+        use domain::sdlc_source::{SourceBlockReason, TaskSourceBinding, TaskSourceReadback};
+        let task = Uuid::new_v4();
+        let mut binding: TaskSourceBinding=serde_json::from_value(serde_json::json!({
+            "contract_version":1,"tracker_instance_id":Uuid::new_v4(),"project_id":Uuid::new_v4(),
+            "task_id":task,"root_task_id":task,"confirmation_id":Uuid::new_v4(),
+            "requirement_revision":1,"content_hash":"a".repeat(64),"routing_snapshot_id":Uuid::new_v4(),
+            "namespace":{"registry_instance_id":Uuid::new_v4(),"namespace_id":Uuid::new_v4()},
+            "forge_instance_id":Uuid::new_v4(),"repository_id":Uuid::new_v4(),
+            "base_ref":"refs/heads/main","base_commit":"b".repeat(40),
+            "candidate_ref":format!("refs/heads/sdlc/{task}"),"source_revision":1,
+            "policy_hash":"c".repeat(64),"source_hash":"d".repeat(64),
+            "owner_subject":Uuid::new_v4(),"created_at":chrono::Utc::now()
+        })).unwrap();
+        binding.source_hash = app::sdlc_source::sealed_hash(&binding).unwrap();
+        for reason in [
+            SourceBlockReason::MissingCurrentExecution,
+            SourceBlockReason::ExecutionNotRunning,
+            SourceBlockReason::LeaseExpired,
+        ] {
+            assert_eq!(
+                app::sdlc_source::configured_source_binding(TaskSourceReadback::Blocked {
+                    reason,
+                    binding: Some(binding.clone()),
+                    current: None
+                })
+                .unwrap(),
+                Some(binding.clone())
+            );
+        }
+        for reason in [
+            SourceBlockReason::MissingBinding,
+            SourceBlockReason::MissingProjectSourcePolicy,
+            SourceBlockReason::SourceContextChanged,
+        ] {
+            assert!(
+                app::sdlc_source::configured_source_binding(TaskSourceReadback::Blocked {
+                    reason,
+                    binding: Some(binding.clone()),
+                    current: None
+                })
+                .unwrap()
+                .is_none()
+            );
+        }
+        binding.base_commit = "e".repeat(40);
+        assert!(
+            app::sdlc_source::configured_source_binding(TaskSourceReadback::Blocked {
+                reason: SourceBlockReason::MissingCurrentExecution,
+                binding: Some(binding),
+                current: None
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn execution_read_is_opt_in_and_does_not_change_legacy_queries() {
+        let values = serde_json::json!({
+            "registry_instance_id": Uuid::new_v4(),
+            "namespace_id": Uuid::new_v4(),
+        });
+        let legacy: TaskContextQuery = serde_json::from_value(values.clone()).unwrap();
+        assert_eq!(legacy.include_execution, None);
+        let mut selected = values;
+        selected["include_execution"] = serde_json::json!(true);
+        let selected: TaskContextQuery = serde_json::from_value(selected).unwrap();
+        assert_eq!(selected.include_execution, Some(true));
+        assert_eq!(legacy.namespace_id, selected.namespace_id);
+        assert_eq!(legacy.registry_instance_id, selected.registry_instance_id);
+    }
 
     fn item() -> ResourceContextSummary {
         let id = Uuid::new_v4();

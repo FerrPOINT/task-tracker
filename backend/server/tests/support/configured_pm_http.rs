@@ -72,6 +72,7 @@ pub(super) async fn prepare(db: &DatabaseConnection, project: Uuid, url: &str) -
     .await
     .unwrap();
     let source = SourcePolicySpec {
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
@@ -87,6 +88,7 @@ pub(super) async fn prepare(db: &DatabaseConnection, project: Uuid, url: &str) -
             idempotency_key: "configured-http:source".into(),
         },
         VerifiedSource {
+            development_workspace_id: source.development_workspace_id,
             namespace,
             forge_instance_id: source.forge_instance_id,
             repository_id: source.repository_id,

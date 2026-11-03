@@ -69,12 +69,14 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
     .unwrap();
     let owner = actor("source-owner", true);
     let source = SourcePolicySpec {
+        development_workspace_id: Some(Uuid::new_v4()),
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
         base_commit: "a".repeat(40),
     };
     let proof = VerifiedSource {
+        development_workspace_id: source.development_workspace_id,
         public_name: "fixture/repository".into(),
         namespace,
         forge_instance_id: source.forge_instance_id,
@@ -107,6 +109,18 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         .unwrap();
     assert!(!replay);
     assert_eq!(first.source_revision, 1);
+    assert_eq!(
+        first.source.development_workspace_id,
+        input.source.development_workspace_id
+    );
+    let tx = db.begin().await.unwrap();
+    let invalid=tx.execute(statement("INSERT INTO sdlc_source_policy_revisions(project_id,source_revision,source_hash,payload) SELECT project_id,999,repeat('e',64),jsonb_set(jsonb_set(jsonb_set(payload,'{source_revision}','999'::jsonb),'{source_hash}',to_jsonb(repeat('e',64))),'{verification,development_workspace_id}',to_jsonb($2::text)) FROM sdlc_source_policy_revisions WHERE project_id=$1 AND source_revision=1",vec![project.into(),Uuid::new_v4().to_string().into()])).await.unwrap_err();
+    assert!(
+        invalid
+            .to_string()
+            .contains("SDLC workspace source reference differs")
+    );
+    tx.rollback().await.unwrap();
     let mut expired = proof.clone();
     expired.observed_at -= chrono::Duration::hours(1);
     let (same, replay) = repo
