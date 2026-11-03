@@ -763,3 +763,13 @@ completion alone stays Backlog/Ready with zero intents. Role transitions retain
 the existing result/lease/fencing path, not a second planner. Historical operation
 readback rechecks current access without reapplying stale transition CAS.
 See [API](API.md#explicit-configured-analysis-start-source-candidate).
+
+## Атомарные трудозатраты
+
+Worklog repository владеет транзакцией изменения записи и пересчёта времени
+задачи. Порядок — блокировка существующей незакрытой для записи задачи,
+изменение worklog, SQL SUM и обновление только производных полей времени,
+единый COMMIT. Обычное сохранение ранее прочитанной Issue не обновляет spent
+и remaining. Service сохраняет проверки прав и публикует событие после успеха;
+компенсирующего удаления/восстановления worklog после ошибки больше нет.
+Неизвестный исход COMMIT нельзя отменять новой противоположной командой.

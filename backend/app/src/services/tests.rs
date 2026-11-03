@@ -381,7 +381,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(domain::StubCommentRepository),
-        worklogs: Arc::new(domain::StubWorklogRepository),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(domain::MemoryProjectMemberRepository::default()),
         statuses: Arc::new(domain::MemoryStatusRepository::new(statuses_from_board(
             &board,
@@ -5593,87 +5593,72 @@ async fn worklog_list_propagates_author_directory_error() {
     assert_internal(ctx.services.worklog.list(issue_id, owner.id, None, 0).await);
 }
 
-struct SaveFailIssueRepository {
-    inner: Arc<dyn IssueRepository>,
+struct FailingWorklogRepository {
+    inner: MemoryWorklogRepository,
+    fail: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[async_trait::async_trait]
-impl IssueRepository for SaveFailIssueRepository {
-    async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
+impl domain::WorklogRepository for FailingWorklogRepository {
+    async fn get_by_id(&self, id: shared::WorklogId) -> Result<domain::Worklog, AppError> {
         self.inner.get_by_id(id).await
     }
-
-    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError> {
-        self.inner.get_by_id_include_deleted(id).await
+    async fn list_by_issue(&self, id: IssueId) -> Result<Vec<domain::Worklog>, AppError> {
+        self.inner.list_by_issue(id).await
     }
-
-    async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
-        self.inner.get_by_key(key).await
-    }
-
-    async fn change_status_atomic(
+    async fn list_by_issue_page(
         &self,
-        issue_id: IssueId,
-        project_id: ProjectId,
-        from_status_id: StatusId,
-        to_status_id: StatusId,
-        actor_id: UserId,
-        guard: &domain::TransitionGuard,
-    ) -> Result<(), AppError> {
-        self.inner
-            .change_status_atomic(
-                issue_id,
-                project_id,
-                from_status_id,
-                to_status_id,
-                actor_id,
-                guard,
-            )
-            .await
+        id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<domain::Worklog>, AppError> {
+        self.inner.list_by_issue_page(id, limit, offset).await
     }
-
-    async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
-        self.inner.list(query).await
+    async fn save(&self, item: &domain::Worklog) -> Result<shared::WorklogId, AppError> {
+        if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AppError::Internal(
+                "atomic worklog transaction failed".into(),
+            ));
+        }
+        self.inner.save(item).await
     }
-
-    async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
-        Err(AppError::Internal("issue save failed".into()))
-    }
-
-    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+    async fn delete(&self, id: shared::WorklogId) -> Result<(), AppError> {
+        if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AppError::Internal(
+                "atomic worklog transaction failed".into(),
+            ));
+        }
         self.inner.delete(id).await
-    }
-
-    async fn restore(&self, id: IssueId) -> Result<(), AppError> {
-        self.inner.restore(id).await
-    }
-
-    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
-        self.inner.purge(id).await
     }
 }
 
-async fn ctx_with_issue_save_failure_for_worklogs() -> (AppContext, User, IssueId) {
+async fn ctx_with_worklog_write_failure() -> (
+    AppContext,
+    User,
+    IssueId,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let issue_id = create_demo_issue(&base_ctx, &owner, "worklog rollback").await;
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let fail = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let repos = Arc::new(domain::Repositories {
-        issues: Arc::new(SaveFailIssueRepository {
-            inner: base_ctx.repos.issues.clone(),
+        worklogs: Arc::new(FailingWorklogRepository {
+            inner: MemoryWorklogRepository::default(),
+            fail: fail.clone(),
         }),
-        worklogs,
         ..(*base_ctx.repos).clone()
     });
     (
         AppContext::new(test_config(), repos, Arc::new(TestStorage::default())),
         owner,
         issue_id,
+        fail,
     )
 }
 
 #[tokio::test]
-async fn worklog_create_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_create_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, _fail) = ctx_with_worklog_write_failure().await;
 
     assert_internal(
         ctx.services
@@ -5702,8 +5687,8 @@ async fn worklog_create_rolls_back_when_issue_time_sync_fails() {
 }
 
 #[tokio::test]
-async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_update_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, fail) = ctx_with_worklog_write_failure().await;
     let worklog = domain::Worklog {
         id: shared::WorklogId::new(),
         issue_id,
@@ -5714,7 +5699,9 @@ async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
+    fail.store(false, std::sync::atomic::Ordering::SeqCst);
     ctx.repos.worklogs.save(&worklog).await.unwrap();
+    fail.store(true, std::sync::atomic::Ordering::SeqCst);
 
     assert_internal(
         ctx.services
@@ -5740,8 +5727,8 @@ async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
 }
 
 #[tokio::test]
-async fn worklog_delete_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_delete_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, fail) = ctx_with_worklog_write_failure().await;
     let worklog = domain::Worklog {
         id: shared::WorklogId::new(),
         issue_id,
@@ -5752,7 +5739,9 @@ async fn worklog_delete_rolls_back_when_issue_time_sync_fails() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
+    fail.store(false, std::sync::atomic::Ordering::SeqCst);
     ctx.repos.worklogs.save(&worklog).await.unwrap();
+    fail.store(true, std::sync::atomic::Ordering::SeqCst);
 
     assert_internal(ctx.services.worklog.delete(worklog.id, owner.id).await);
 

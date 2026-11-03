@@ -752,7 +752,10 @@ pub trait WorklogRepository: Send + Sync {
         offset: u64,
     ) -> Result<Vec<Worklog>, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError>;
+    /// Atomically change the worklog and its issue's derived time values.
+    /// Errors after COMMIT submission must not be compensated by another command.
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError>;
+    /// Delete and recompute the same issue aggregate in one transaction.
     async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
 }
 

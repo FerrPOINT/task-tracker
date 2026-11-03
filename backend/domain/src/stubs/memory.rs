@@ -197,6 +197,14 @@ pub struct MemoryIssueRepository {
 }
 
 impl MemoryIssueRepository {
+    /// Share the same issue owner with the in-memory worklog adapter.
+    pub fn worklog_repository(&self) -> MemoryWorklogRepository {
+        MemoryWorklogRepository {
+            worklogs: Arc::new(Mutex::new(Vec::new())),
+            issues: Some(self.issues.clone()),
+        }
+    }
+
     pub fn with_shared_stores(
         history: Arc<Mutex<Vec<IssueStatusHistory>>>,
         project_ids: Arc<Mutex<Vec<ProjectId>>>,
@@ -405,7 +413,11 @@ impl IssueRepository for MemoryIssueRepository {
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError> {
         let mut issues = self.issues.lock().unwrap();
         if let Some(idx) = issues.iter().position(|i| i.id == issue.id) {
+            let spent = issues[idx].time_spent_seconds;
+            let remaining = issues[idx].remaining_estimate_seconds;
             issues[idx] = issue.clone();
+            issues[idx].time_spent_seconds = spent;
+            issues[idx].remaining_estimate_seconds = remaining;
         } else {
             issues.push(issue.clone());
         }
@@ -911,13 +923,29 @@ impl CommentRepository for MemoryCommentRepository {
 
 pub struct MemoryWorklogRepository {
     worklogs: Arc<Mutex<Vec<Worklog>>>,
+    // None is a standalone raw worklog fixture. Service tests use the shared
+    // adapter returned by MemoryIssueRepository::worklog_repository.
+    issues: Option<Arc<Mutex<Vec<Issue>>>>,
 }
 
 impl MemoryWorklogRepository {
     pub fn new() -> Self {
         Self {
             worklogs: Arc::new(Mutex::new(Vec::new())),
+            issues: None,
         }
+    }
+    fn sync_time(issue: &mut Issue, worklogs: &[Worklog]) {
+        let spent = worklogs
+            .iter()
+            .filter(|w| w.issue_id == issue.id)
+            .map(|w| w.duration_seconds)
+            .sum();
+        issue.time_spent_seconds = spent;
+        if let Some(original) = issue.original_estimate_seconds {
+            issue.remaining_estimate_seconds = Some((original - spent).max(0));
+        }
+        issue.updated_at = shared::now();
     }
 }
 
@@ -963,18 +991,50 @@ impl WorklogRepository for MemoryWorklogRepository {
     }
 
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError> {
+        let mut issues = self.issues.as_ref().map(|store| store.lock().unwrap());
+        let owner = match issues.as_mut() {
+            Some(items) => Some(
+                items
+                    .iter_mut()
+                    .find(|i| i.id == worklog.issue_id && i.deleted_at.is_none())
+                    .ok_or_else(|| AppError::not_found("issue", worklog.issue_id))?,
+            ),
+            None => None,
+        };
         let mut worklogs = self.worklogs.lock().unwrap();
         if let Some(idx) = worklogs.iter().position(|w| w.id == worklog.id) {
+            if worklogs[idx].issue_id != worklog.issue_id
+                || worklogs[idx].author_id != worklog.author_id
+            {
+                return Err(AppError::conflict("worklog owner changed"));
+            }
             worklogs[idx] = worklog.clone();
         } else {
             worklogs.push(worklog.clone());
+        }
+        if let Some(owner) = owner {
+            Self::sync_time(owner, &worklogs);
         }
         Ok(worklog.id)
     }
 
     async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
+        let mut issues = self.issues.as_ref().map(|store| store.lock().unwrap());
         let mut worklogs = self.worklogs.lock().unwrap();
+        let issue_id = worklogs.iter().find(|w| w.id == id).map(|w| w.issue_id);
+        let owner = match (issues.as_mut(), issue_id) {
+            (Some(items), Some(issue_id)) => Some(
+                items
+                    .iter_mut()
+                    .find(|i| i.id == issue_id && i.deleted_at.is_none())
+                    .ok_or_else(|| AppError::not_found("issue", issue_id))?,
+            ),
+            _ => None,
+        };
         worklogs.retain(|w| w.id != id);
+        if let Some(owner) = owner {
+            Self::sync_time(owner, &worklogs);
+        }
         Ok(())
     }
 }

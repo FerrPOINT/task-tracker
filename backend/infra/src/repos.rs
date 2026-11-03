@@ -1712,8 +1712,12 @@ impl IssueRepository for IssueRepo {
             .await
             .map_err(crate::db_error::map)?
             .is_some();
-        let active = issue_active_model(issue);
+        let mut active = issue_active_model(issue);
         if exists {
+            // Worklog transactions own these derived values. A previously read
+            // Issue must not reset a concurrently committed time aggregate.
+            active.time_spent_seconds = sea_orm::ActiveValue::NotSet;
+            active.remaining_estimate_seconds = sea_orm::ActiveValue::NotSet;
             active
                 .update(&*self.db)
                 .await
@@ -2346,7 +2350,7 @@ impl AttachmentRepository for AttachmentRepo {
             let result = async {
                 // The same request proof is bound here; it is never renewed.
                 let readback = fresh
-                    .begin()
+                    .begin_with_config(Some(sea_orm::IsolationLevel::ReadCommitted), None)
                     .await
                     .map_err(|error| Unknown(crate::db_error::map(error)))?;
                 readback
@@ -2909,6 +2913,38 @@ struct WorklogRepo {
     db: Arc<crate::guarded_db::GuardedDb>,
 }
 
+impl WorklogRepo {
+    async fn lock_issue(
+        tx: &sea_orm::DatabaseTransaction,
+        issue_id: IssueId,
+    ) -> Result<(), AppError> {
+        let row = tx
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT id FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+                [issue_id.as_uuid().into()],
+            ))
+            .await
+            .map_err(crate::db_error::map)?;
+        row.ok_or_else(|| AppError::not_found("issue", issue_id))?;
+        Ok(())
+    }
+
+    async fn sync_time(
+        tx: &sea_orm::DatabaseTransaction,
+        issue_id: IssueId,
+    ) -> Result<(), AppError> {
+        // The parent lock serializes all worklog writers; SUM and publication
+        // use one snapshot and COMMIT with the mutation, never a compensating write.
+        tx.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE issues SET time_spent_seconds=w.spent, remaining_estimate_seconds=CASE WHEN original_estimate_seconds IS NULL THEN remaining_estimate_seconds ELSE GREATEST(original_estimate_seconds-w.spent,0) END, updated_at=now() FROM (SELECT COALESCE(SUM(duration_seconds),0)::bigint AS spent FROM worklogs WHERE issue_id=$1) w WHERE issues.id=$1",
+            [issue_id.as_uuid().into()],
+        )).await.map_err(crate::db_error::map)?;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl WorklogRepository for WorklogRepo {
     async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError> {
@@ -2945,11 +2981,19 @@ impl WorklogRepository for WorklogRepo {
     }
 
     async fn save(&self, worklog_item: &Worklog) -> Result<WorklogId, AppError> {
-        let exists = worklog::Entity::find_by_id(worklog_item.id.as_uuid())
-            .one(&*self.db)
+        let tx = self.db.begin().await.map_err(crate::db_error::map)?;
+        Self::lock_issue(&tx, worklog_item.issue_id).await?;
+        let existing = worklog::Entity::find_by_id(worklog_item.id.as_uuid())
+            .one(&tx)
             .await
-            .map_err(crate::db_error::map)?
-            .is_some();
+            .map_err(crate::db_error::map)?;
+        if existing.as_ref().is_some_and(|row| {
+            row.issue_id != worklog_item.issue_id.as_uuid()
+                || row.author_id != worklog_item.author_id.as_uuid()
+        }) {
+            return Err(AppError::conflict("worklog owner changed"));
+        }
+        let exists = existing.is_some();
         let active = worklog::ActiveModel {
             id: Set(worklog_item.id.as_uuid()),
             issue_id: Set(worklog_item.issue_id.as_uuid()),
@@ -2964,24 +3008,27 @@ impl WorklogRepository for WorklogRepo {
             updated_at: Set(shared::now()),
         };
         if exists {
-            active
-                .update(&*self.db)
-                .await
-                .map_err(crate::db_error::map)?;
+            active.update(&tx).await.map_err(crate::db_error::map)?;
         } else {
-            active
-                .insert(&*self.db)
-                .await
-                .map_err(crate::db_error::map)?;
+            active.insert(&tx).await.map_err(crate::db_error::map)?;
         }
+        Self::sync_time(&tx, worklog_item.issue_id).await?;
+        tx.commit().await.map_err(crate::db_error::map)?;
         Ok(worklog_item.id)
     }
 
     async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
-        worklog::Entity::delete_by_id(id.as_uuid())
-            .exec(&*self.db)
+        let original = self.get_by_id(id).await?;
+        let tx = self.db.begin().await.map_err(crate::db_error::map)?;
+        Self::lock_issue(&tx, original.issue_id).await?;
+        worklog::Entity::delete_many()
+            .filter(worklog::Column::Id.eq(id.as_uuid()))
+            .filter(worklog::Column::IssueId.eq(original.issue_id.as_uuid()))
+            .exec(&tx)
             .await
             .map_err(crate::db_error::map)?;
+        Self::sync_time(&tx, original.issue_id).await?;
+        tx.commit().await.map_err(crate::db_error::map)?;
         Ok(())
     }
 }
