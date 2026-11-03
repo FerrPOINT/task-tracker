@@ -63,12 +63,12 @@ pub async fn login(
     let probe = ctx
         .services
         .auth
-        .login(LoginCommand {
-            email: body.email.clone(),
-            password: body.password.clone(),
+        .authenticate_password(LoginCommand {
+            email: body.email,
+            password: body.password,
         })
         .await?;
-    let totp_user_id: shared::UserId = probe.user.id.parse().map_err(|_| AppError::Unauthorized)?;
+    let totp_user_id: shared::UserId = probe.id.parse().map_err(|_| AppError::Unauthorized)?;
     if ctx.services.totp.is_enabled(totp_user_id).await? {
         let code = body.totp_code.as_deref().unwrap_or("");
         if code.is_empty() || !ctx.services.totp.login_verify(totp_user_id, code).await? {
@@ -77,21 +77,18 @@ pub async fn login(
                 Json(AuthResponse {
                     access_token: String::new(),
                     token_type: "Bearer".to_string(),
-                    user_id: probe.user.id.to_string(),
-                    email: probe.user.email.clone(),
-                    username: probe.user.username.clone(),
-                    display_name: probe.user.display_name.clone(),
+                    user_id: probe.id.to_string(),
+                    email: probe.email.clone(),
+                    username: probe.username.clone(),
+                    display_name: probe.display_name.clone(),
                     expires_in: 0,
                     totp_required: true,
                 }),
             ));
         }
     }
-    let cmd = LoginCommand {
-        email: body.email,
-        password: body.password,
-    };
-    let dto = ctx.services.auth.login(cmd).await?;
+    // Recheck the current identity, then issue exactly one session after MFA.
+    let dto = ctx.services.auth.issue_session(totp_user_id).await?;
     let jar = set_refresh_cookie(jar, &ctx.config.auth, &dto.refresh_token);
     Ok((jar, Json(map_auth(dto))))
 }

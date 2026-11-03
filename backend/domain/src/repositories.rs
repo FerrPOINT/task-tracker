@@ -48,24 +48,38 @@ pub trait SystemSettingRepository: Send + Sync {
 
 #[async_trait]
 pub trait TotpRepository: Send + Sync {
-    /// Existing row or a disabled default (enrollment not started).
     async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError>;
-    /// Insert/overwrite the encrypted secret as unconfirmed.
+    /// Never replace an enabled enrollment, including concurrent setup requests.
     async fn upsert_unconfirmed(
         &self,
         user_id: UserId,
         secret_cipher: &str,
     ) -> Result<(), AppError>;
-    /// Flip enabled with recovery codes and replay cursor.
     async fn confirm_enable(
         &self,
         user_id: UserId,
+        expected_secret_cipher: &str,
         recovery_codes_json: &str,
         step: i64,
     ) -> Result<(), AppError>;
-    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError>;
-    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError>;
-    async fn disable(&self, user_id: UserId) -> Result<(), AppError>;
+    /// Consume only the verified enrollment and matched step, once.
+    async fn mark_used_step(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        step: i64,
+    ) -> Result<bool, AppError>;
+    async fn consume_recovery_code(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        code_hash: &str,
+    ) -> Result<bool, AppError>;
+    async fn disable(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+    ) -> Result<bool, AppError>;
 }
 
 #[async_trait]
@@ -145,6 +159,21 @@ pub trait UserRepository: Send + Sync {
         Err(AppError::Unauthorized)
     }
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
+    /// Sparse lookup: absent profiles are omitted, storage failures are propagated.
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        let mut ids = ids.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut users = Vec::with_capacity(ids.len());
+        for id in ids {
+            match self.get_by_id(id).await {
+                Ok(user) => users.push(user),
+                Err(AppError::NotFound(_)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(users)
+    }
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
     /// Atomic single-use rotation: replace the stored refresh-token hash
@@ -1063,9 +1092,9 @@ impl UserRepository for StubUserRepository {
 pub struct StubTotpRepository;
 #[async_trait]
 impl TotpRepository for StubTotpRepository {
-    async fn get(&self, _user_id: UserId) -> Result<TotpConfig, AppError> {
+    async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError> {
         Ok(TotpConfig {
-            user_id: _user_id,
+            user_id,
             secret_cipher: "".into(),
             enabled: false,
             confirmed_at: None,
@@ -1073,29 +1102,30 @@ impl TotpRepository for StubTotpRepository {
             recovery_codes: "[]".into(),
         })
     }
-    async fn upsert_unconfirmed(
-        &self,
-        _user_id: UserId,
-        _secret_cipher: &str,
-    ) -> Result<(), AppError> {
-        Ok(())
+    async fn upsert_unconfirmed(&self, _: UserId, _: &str) -> Result<(), AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn confirm_enable(
-        &self,
-        _user_id: UserId,
-        _recovery_codes_json: &str,
-        _step: i64,
-    ) -> Result<(), AppError> {
-        Ok(())
+    async fn confirm_enable(&self, _: UserId, _: &str, _: &str, _: i64) -> Result<(), AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn mark_used_step(&self, _user_id: UserId, _step: i64) -> Result<(), AppError> {
-        Ok(())
+    async fn mark_used_step(&self, _: UserId, _: &str, _: i64) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn update_recovery_codes(&self, _user_id: UserId, _json: &str) -> Result<(), AppError> {
-        Ok(())
+    async fn consume_recovery_code(&self, _: UserId, _: &str, _: &str) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn disable(&self, _user_id: UserId) -> Result<(), AppError> {
-        Ok(())
+    async fn disable(&self, _: UserId, _: &str) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
 }
 

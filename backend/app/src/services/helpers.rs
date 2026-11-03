@@ -10,23 +10,13 @@ pub async fn resolve_names(
     users: Arc<dyn domain::UserRepository>,
     issue: &Issue,
 ) -> Result<(Option<String>, Option<String>), AppError> {
-    let assignee_name = if let Some(id) = issue.assignee_id {
-        Some(
-            users
-                .get_by_id(id)
-                .await
-                .map(|u| u.display_name.as_ref().to_string())?,
-        )
-    } else {
-        None
-    };
-    let reporter_name = Some(
-        users
-            .get_by_id(issue.reporter_id)
-            .await
-            .map(|u| u.display_name.as_ref().to_string())?,
-    );
-    Ok((assignee_name, reporter_name))
+    let mut ids = vec![issue.reporter_id];
+    ids.extend(issue.assignee_id);
+    let names = user_name_lookup(users, &ids).await?;
+    Ok((
+        issue.assignee_id.and_then(|id| names.get(&id).cloned()),
+        names.get(&issue.reporter_id).cloned(),
+    ))
 }
 
 pub fn issue_status_column(status_id: StatusId) -> String {
@@ -61,7 +51,7 @@ pub async fn issue_notification_recipients(
     recipients
 }
 
-async fn create_notification_if_allowed(
+pub(super) async fn create_notification_if_allowed(
     notifications: &Arc<dyn domain::NotificationRepository>,
     notification_settings: &Arc<dyn domain::UserNotificationSettingsRepository>,
     events: &crate::context::EventBus,
@@ -80,12 +70,18 @@ async fn create_notification_if_allowed(
         }
         // Missing settings preserve the existing default delivery behavior.
         Err(AppError::NotFound(_)) => !actor_is_recipient,
-        Err(_) => return,
+        Err(_) => {
+            tracing::warn!("notification settings lookup failed; delivery skipped");
+            return;
+        }
     };
-    if allowed && notifications.save(&notification).await.is_ok() {
-        events.publish(shared::TrackerEvent::NotificationCreated {
-            recipient_id: recipient_id.to_string(),
-        });
+    if allowed {
+        match notifications.save(&notification).await {
+            Ok(_) => events.publish(shared::TrackerEvent::NotificationCreated {
+                recipient_id: recipient_id.to_string(),
+            }),
+            Err(_) => tracing::warn!("notification storage failed; delivery skipped"),
+        }
     }
 }
 
@@ -228,17 +224,25 @@ async fn issue_user_name_lookup(
             wanted.push(assignee);
         }
     }
-    wanted.sort();
+    user_name_lookup(users, &wanted).await
+}
+
+pub(super) async fn user_name_lookup(
+    users: Arc<dyn domain::UserRepository>,
+    ids: &[UserId],
+) -> Result<HashMap<UserId, String>, AppError> {
+    let mut wanted = ids.to_vec();
+    wanted.sort_unstable();
     wanted.dedup();
-    let mut lookup = HashMap::with_capacity(wanted.len());
-    for id in wanted {
-        // A referenced user may have been hard-deleted meanwhile; keep the
-        // mapping sparse rather than failing the whole DTO build.
-        if let Ok(user) = users.get_by_id(id).await {
-            lookup.insert(id, user.display_name.to_string());
-        }
+    if wanted.is_empty() {
+        return Ok(HashMap::new());
     }
-    Ok(lookup)
+    Ok(users
+        .get_by_ids(&wanted)
+        .await?
+        .into_iter()
+        .map(|user| (user.id, user.display_name.to_string()))
+        .collect())
 }
 
 async fn issue_label_name_lookup(

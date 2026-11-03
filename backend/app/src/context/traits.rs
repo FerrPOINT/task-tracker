@@ -20,6 +20,12 @@ use crate::context::filters::SearchFilters;
 pub trait AuthService: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError>;
+    /// Standalone password verification only: no token issuance or session writes.
+    /// The caller must complete the second factor before calling issue_session.
+    async fn authenticate_password(
+        &self,
+        cmd: LoginCommand,
+    ) -> Result<crate::dto::UserDto, AppError>;
     /// Issue a fresh session for an already-authenticated external identity
     /// (OIDC callback; SYSTEM_ADMIN 4.2). Requires the user to be active and
     /// not TOTP-gated (TOTP applies to password logins only).

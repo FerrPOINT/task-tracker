@@ -28,6 +28,18 @@ pub struct MemoryUserRepository {
 
 #[async_trait]
 impl UserRepository for MemoryUserRepository {
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        let ids: std::collections::HashSet<_> = ids.iter().copied().collect();
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|user| ids.contains(&user.id))
+            .cloned()
+            .collect())
+    }
+
     async fn rotate_refresh_token(
         &self,
         user_id: UserId,
@@ -2050,6 +2062,9 @@ impl TotpRepository for MemoryTotpRepository {
         secret_cipher: &str,
     ) -> Result<(), AppError> {
         let mut rows = self.rows.lock().unwrap();
+        if rows.iter().any(|r| r.user_id == user_id && r.enabled) {
+            return Err(AppError::conflict("totp already enabled"));
+        }
         rows.retain(|r| r.user_id != user_id);
         rows.push(TotpConfig {
             user_id,
@@ -2061,45 +2076,84 @@ impl TotpRepository for MemoryTotpRepository {
         });
         Ok(())
     }
-
     async fn confirm_enable(
         &self,
         user_id: UserId,
+        expected_secret_cipher: &str,
         recovery_codes_json: &str,
         step: i64,
     ) -> Result<(), AppError> {
         let mut rows = self.rows.lock().unwrap();
         let row = rows
             .iter_mut()
-            .find(|r| r.user_id == user_id)
-            .ok_or_else(|| AppError::not_found("totp", user_id))?;
+            .find(|r| {
+                r.user_id == user_id
+                    && !r.enabled
+                    && r.secret_cipher.as_ref() == expected_secret_cipher
+                    && r.last_used_step < step
+            })
+            .ok_or_else(|| AppError::conflict("totp enrollment changed"))?;
         row.enabled = true;
         row.confirmed_at = Some(shared::now());
         row.recovery_codes = recovery_codes_json.into();
         row.last_used_step = step;
         Ok(())
     }
-
-    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError> {
+    async fn mark_used_step(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        step: i64,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
-            row.last_used_step = step;
-        }
-        Ok(())
+        let Some(row) = rows.iter_mut().find(|r| {
+            r.user_id == user_id
+                && r.enabled
+                && r.secret_cipher.as_ref() == expected_secret_cipher
+                && r.last_used_step < step
+        }) else {
+            return Ok(false);
+        };
+        row.last_used_step = step;
+        Ok(true)
     }
-
-    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError> {
+    async fn consume_recovery_code(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        code_hash: &str,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
-            row.recovery_codes = json.into();
+        let Some(row) = rows.iter_mut().find(|r| {
+            r.user_id == user_id && r.enabled && r.secret_cipher.as_ref() == expected_secret_cipher
+        }) else {
+            return Ok(false);
+        };
+        let mut codes: Vec<String> =
+            serde_json::from_str(&row.recovery_codes).map_err(AppError::internal)?;
+        let before = codes.len();
+        codes.retain(|c| c != code_hash);
+        if codes.len() == before {
+            return Ok(false);
         }
-        Ok(())
+        row.recovery_codes = serde_json::to_string(&codes)
+            .map_err(AppError::internal)?
+            .into();
+        Ok(true)
     }
-
-    async fn disable(&self, user_id: UserId) -> Result<(), AppError> {
+    async fn disable(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        rows.retain(|r| r.user_id != user_id);
-        Ok(())
+        let before = rows.len();
+        rows.retain(|r| {
+            !(r.user_id == user_id
+                && r.enabled
+                && r.secret_cipher.as_ref() == expected_secret_cipher)
+        });
+        Ok(rows.len() != before)
     }
 }
 

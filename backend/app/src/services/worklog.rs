@@ -112,10 +112,8 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             .worklogs
             .list_by_issue_page(issue_id, effective_limit as u64, offset)
             .await?;
-        let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
-        for u in self.users.list().await? {
-            names.insert(u.id, u.display_name.as_ref().to_string());
-        }
+        let author_ids: Vec<_> = worklogs.iter().map(|item| item.author_id).collect();
+        let names = super::helpers::user_name_lookup(self.users.clone(), &author_ids).await?;
         let result = worklogs
             .into_iter()
             .map(|w| {

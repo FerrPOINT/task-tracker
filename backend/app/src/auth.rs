@@ -73,6 +73,17 @@ impl JwtAuthService {
         }
     }
 
+    async fn local_password_user(&self, cmd: &LoginCommand) -> Result<User, AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            return Err(AppError::Unauthorized);
+        }
+        let user = self.users.get_by_email(&cmd.email).await?;
+        if !user.is_active || !verify_password(&cmd.password, &user.password_hash)? {
+            return Err(AppError::Unauthorized);
+        }
+        Ok(user)
+    }
+
     async fn registration_allowed(&self) -> Result<bool, AppError> {
         match self.system_settings.get(REGISTRATION_SETTING_KEY).await {
             Ok(setting) => Ok(!matches!(setting.value, serde_json::Value::Bool(false))),
@@ -85,6 +96,10 @@ impl JwtAuthService {
 
 #[async_trait]
 impl crate::context::AuthService for JwtAuthService {
+    async fn authenticate_password(&self, cmd: LoginCommand) -> Result<UserDto, AppError> {
+        self.local_password_user(&cmd).await.map(UserDto::from)
+    }
+
     async fn issue_session(&self, user_id: UserId) -> Result<AuthDto, AppError> {
         let user = self.users.get_by_id(user_id).await?;
         if !user.is_active {
@@ -136,19 +151,7 @@ impl crate::context::AuthService for JwtAuthService {
             });
         }
 
-        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
-            return Err(AppError::Unauthorized);
-        }
-
-        let user = self.users.get_by_email(&cmd.email).await?;
-        if !verify_password(&cmd.password, &user.password_hash)? {
-            return Err(AppError::Unauthorized);
-        }
-        // Deactivated accounts must not receive new tokens.
-        if !user.is_active {
-            return Err(AppError::Unauthorized);
-        }
-
+        let user = self.local_password_user(&cmd).await?;
         self.issue_tokens(user).await
     }
 

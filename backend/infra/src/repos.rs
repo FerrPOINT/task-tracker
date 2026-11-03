@@ -19,8 +19,8 @@ use domain::{
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
-    sea_query::Expr,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set, Statement,
+    TransactionTrait, sea_query::Expr,
 };
 use shared::{
     AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
@@ -210,6 +210,19 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: std::collections::HashSet<_> = ids.iter().map(|id| id.as_uuid()).collect();
+        let rows = user::Entity::find()
+            .filter(user::Column::Id.is_in(ids))
+            .all(&*self.db)
+            .await
+            .map_err(crate::db_error::map)?;
+        Ok(rows.into_iter().map(map_user).collect())
+    }
+
     async fn identity_deletion_check(
         &self,
         request: &shared::identity_deletion::DeletionRequest,
@@ -3534,20 +3547,13 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
         &self,
         project_id: ProjectId,
     ) -> Result<Vec<IssueStatusHistory>, AppError> {
-        // Fetch issue IDs belonging to the project, then filter history by those IDs.
-        let issue_ids: Vec<Uuid> = issue::Entity::find()
+        let project_issues = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
             .select_only()
             .column(issue::Column::Id)
-            .into_tuple()
-            .all(&*self.db)
-            .await
-            .map_err(crate::db_error::map)?;
-        if issue_ids.is_empty() {
-            return Ok(vec![]);
-        }
+            .into_query();
         let models = issue_status_history::Entity::find()
-            .filter(issue_status_history::Column::IssueId.is_in(issue_ids))
+            .filter(Expr::col(issue_status_history::Column::IssueId).in_subquery(project_issues))
             .order_by_asc(issue_status_history::Column::CreatedAt)
             .all(&*self.db)
             .await
@@ -4056,120 +4062,71 @@ impl TotpRepository for TotpRepo {
 
     async fn upsert_unconfirmed(
         &self,
-        user_id: domain::UserId,
+        user_id: UserId,
         secret_cipher: &str,
     ) -> Result<(), AppError> {
-        use crate::entities::totp::{ActiveModel, Entity};
-        use sea_orm::*;
-        let uid = user_id.as_uuid();
-        let existing = Entity::find_by_id(uid)
-            .one(&*self.db)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        let now = chrono::Utc::now().fixed_offset();
-        match existing {
-            Some(_) => {
-                let am = ActiveModel {
-                    user_id: Set(uid),
-                    secret_cipher: Set(secret_cipher.to_string()),
-                    enabled: Set(false),
-                    confirmed_at: Set(None),
-                    last_used_step: Set(0),
-                    recovery_codes: Set("[]".to_string()),
-                    updated_at: Set(now),
-                    ..Default::default()
-                };
-                am.update(&*self.db)
-                    .await
-                    .map_err(|e| AppError::internal(e.to_string()))?;
-            }
-            None => {
-                let am = ActiveModel {
-                    user_id: Set(uid),
-                    secret_cipher: Set(secret_cipher.to_string()),
-                    enabled: Set(false),
-                    confirmed_at: Set(None),
-                    last_used_step: Set(0),
-                    recovery_codes: Set("[]".to_string()),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                };
-                am.insert(&*self.db)
-                    .await
-                    .map_err(|e| AppError::internal(e.to_string()))?;
-            }
+        let result=self.db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "INSERT INTO totp(user_id,secret_cipher,enabled,confirmed_at,last_used_step,recovery_codes,created_at,updated_at) VALUES($1,$2,false,NULL,0,'[]',now(),now()) ON CONFLICT(user_id) DO UPDATE SET secret_cipher=EXCLUDED.secret_cipher,enabled=false,confirmed_at=NULL,last_used_step=0,recovery_codes='[]',updated_at=now() WHERE NOT totp.enabled",
+            [user_id.as_uuid().into(),secret_cipher.into()])).await.map_err(crate::db_error::map)?;
+        if result.rows_affected() != 1 {
+            return Err(AppError::conflict("totp already enabled"));
         }
         Ok(())
     }
-
     async fn confirm_enable(
         &self,
-        user_id: domain::UserId,
+        user_id: UserId,
+        expected_secret_cipher: &str,
         recovery_codes_json: &str,
         step: i64,
     ) -> Result<(), AppError> {
-        use crate::entities::totp::{Column, Entity};
-        use sea_orm::*;
-        let uid = user_id.as_uuid();
-        let res = Entity::update_many()
-            .col_expr(Column::Enabled, Expr::value(true))
-            .col_expr(Column::RecoveryCodes, Expr::value(recovery_codes_json))
-            .col_expr(Column::LastUsedStep, Expr::value(step))
-            .col_expr(
-                Column::ConfirmedAt,
-                Expr::value(chrono::Utc::now().fixed_offset()),
-            )
-            .col_expr(
-                Column::UpdatedAt,
-                Expr::value(chrono::Utc::now().fixed_offset()),
-            )
-            .filter(Column::UserId.eq(uid))
-            .exec(&*self.db)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        if res.rows_affected == 0 {
-            return Err(AppError::not_found("totp", "no enrollment"));
+        let result=self.db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "UPDATE totp SET enabled=true,recovery_codes=$3,last_used_step=$4,confirmed_at=now(),updated_at=now() WHERE user_id=$1 AND NOT enabled AND secret_cipher=$2 AND last_used_step<$4",
+            [user_id.as_uuid().into(),expected_secret_cipher.into(),recovery_codes_json.into(),step.into()])).await.map_err(crate::db_error::map)?;
+        if result.rows_affected() != 1 {
+            return Err(AppError::conflict("totp enrollment changed"));
         }
         Ok(())
     }
-
-    async fn mark_used_step(&self, user_id: domain::UserId, step: i64) -> Result<(), AppError> {
-        use crate::entities::totp::{Column, Entity};
-        use sea_orm::*;
-        Entity::update_many()
-            .col_expr(Column::LastUsedStep, Expr::value(step))
-            .filter(Column::UserId.eq(user_id.as_uuid()))
-            .exec(&*self.db)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        Ok(())
-    }
-
-    async fn update_recovery_codes(
+    async fn mark_used_step(
         &self,
-        user_id: domain::UserId,
-        json: &str,
-    ) -> Result<(), AppError> {
-        use crate::entities::totp::{Column, Entity};
-        use sea_orm::*;
-        Entity::update_many()
-            .col_expr(Column::RecoveryCodes, Expr::value(json))
-            .filter(Column::UserId.eq(user_id.as_uuid()))
-            .exec(&*self.db)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        Ok(())
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        step: i64,
+    ) -> Result<bool, AppError> {
+        let result=self.db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "UPDATE totp SET last_used_step=$3,updated_at=now() WHERE user_id=$1 AND enabled AND secret_cipher=$2 AND last_used_step<$3",
+            [user_id.as_uuid().into(),expected_secret_cipher.into(),step.into()])).await.map_err(crate::db_error::map)?;
+        Ok(result.rows_affected() == 1)
     }
-
-    async fn disable(&self, user_id: domain::UserId) -> Result<(), AppError> {
-        use crate::entities::totp::{Column, Entity};
-        use sea_orm::*;
-        Entity::delete_many()
-            .filter(Column::UserId.eq(user_id.as_uuid()))
-            .exec(&*self.db)
+    async fn consume_recovery_code(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        code_hash: &str,
+    ) -> Result<bool, AppError> {
+        // Remove the matching hash from the current array in SQL. Updating a
+        // previously read array could resurrect a different concurrently used code.
+        let result=self.db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+            "UPDATE totp SET recovery_codes=(recovery_codes::jsonb - $3)::text,updated_at=now() WHERE user_id=$1 AND enabled AND secret_cipher=$2 AND recovery_codes::jsonb ? $3",
+            [user_id.as_uuid().into(),expected_secret_cipher.into(),code_hash.into()])).await.map_err(crate::db_error::map)?;
+        Ok(result.rows_affected() == 1)
+    }
+    async fn disable(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+    ) -> Result<bool, AppError> {
+        let result = self
+            .db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM totp WHERE user_id=$1 AND enabled AND secret_cipher=$2",
+                [user_id.as_uuid().into(), expected_secret_cipher.into()],
+            ))
             .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        Ok(())
+            .map_err(crate::db_error::map)?;
+        Ok(result.rows_affected() == 1)
     }
 }
 
