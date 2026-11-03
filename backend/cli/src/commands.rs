@@ -213,6 +213,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Read the task's approved immutable repository/commit binding
+    Source {
+        #[arg(long)]
+        task: Uuid,
+    },
     /// Explicit owner start after PM completion; never a PM completion side effect
     Start {
         #[command(subcommand)]
@@ -572,6 +577,7 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Source { task } => api.get(&sdlc_path(task, "/source-binding")).await,
         SdlcCommand::Start { command } => match command {
             StartCommand::Analysis { task, pm_completion_id, key } => api.post(
                 &sdlc_path(task, "/lifecycle"),

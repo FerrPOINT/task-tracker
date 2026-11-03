@@ -2503,3 +2503,39 @@ fn help_hides_token_environment_value() {
     assert!(!stdout.contains("help-only-fixture-token"));
     assert!(!String::from_utf8_lossy(&output.stderr).contains("help-only-fixture-token"));
 }
+
+#[tokio::test]
+async fn analyst_source_reads_the_existing_binding_without_issue_lookup_or_mutation() {
+    const TASK: &str = "11111111-1111-4111-8111-111111111111";
+    let unavailable =
+        json!({"state":"blocked","reason":"missing_binding","binding":null,"current":null});
+    let server = Server::start(vec![
+        (200, unavailable.clone()),
+        (
+            503,
+            json!({"error":{"code":"UNAVAILABLE","message":"source reader unavailable"}}),
+        ),
+    ])
+    .await;
+    assert_eq!(
+        success(&server.run(&["sdlc", "source", "--task", TASK], None).await),
+        unavailable
+    );
+    assert!(
+        !server
+            .run(&["sdlc", "source", "--task", TASK], None)
+            .await
+            .status
+            .success()
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    for request in requests {
+        assert_eq!(request.method, "GET");
+        assert_eq!(
+            request.path,
+            format!("/api/v1/issues/{TASK}/sdlc/source-binding")
+        );
+        assert!(request.key.is_none());
+    }
+}

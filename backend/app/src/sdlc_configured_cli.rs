@@ -260,8 +260,8 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         command: CompleteConfiguredPm,
     ) -> Result<(ConfiguredPmCompletionReceipt, bool), AppError> {
-        let state = self.repository.read(task, actor).await?;
-        authorize_configured_pm(&state, actor)?;
+        let state = self.repository.pm_completion_state(task, actor).await?;
+        authorize_configured_identity(actor)?;
         crate::sdlc::validate_key(&command.idempotency_key)?;
         let hash = crate::sdlc::canonical_hash(&command)?;
         if let Some(saved) = self
@@ -272,7 +272,13 @@ impl crate::sdlc::SdlcService {
             if saved.request_sha256 != hash {
                 return Err(AppError::conflict("PM completion key payload conflict"));
             }
-            return Ok((saved.result, true));
+            // The repository verifies the immutable operation's actual producer,
+            // including replay after a later PM assignment. No Workflow IO is repeated.
+            let receipt = saved.result.workflow_receipt;
+            return self
+                .repository
+                .complete_configured_pm(task, actor, command, receipt)
+                .await;
         }
         validate_completion(&state, actor, &command)?;
         if state.stage != Stage::Draft {

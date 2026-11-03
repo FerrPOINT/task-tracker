@@ -313,14 +313,25 @@ async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation)
     assert_eq!(saved.content_hash, hash);
     assert_eq!(saved.confirmation_id, confirmation.id);
     let state = r.f.repo.read(r.task, &r.f.owner).await.unwrap();
-    assert_eq!(state.stage, Stage::Backlog);
+    assert_eq!(state.stage, Stage::Analysis);
+    let next_intent = r.f.repo.analysis_intent(r.task, &r.f.owner).await.unwrap();
+    assert_eq!(next_intent.requirement_revision, 2);
+    assert_eq!(next_intent.confirmation_id, confirmation.id);
     assert_eq!(state.status, Some(LifecycleStatus::Ready));
+    let candidates =
+        r.f.repo
+            .read_delivery_candidates(&r.f.reader, r.f.query(None, 100))
+            .await
+            .unwrap();
+    assert_eq!(candidates.items.len(), 1);
+    assert_eq!(candidates.items[0].task_id, r.task);
+    assert_eq!(candidates.items[0].requirement_revision, 2);
     let row = r.f.db.query_one(statement(
         "SELECT g.generation,g.previous_snapshot_id,g.confirmation_id,g.configured_completion_id,
             s.snapshot_id AS initial,s.payload->'policy'=g.payload->'policy' AS frozen,
             (SELECT count(*) FROM sdlc_routing_snapshot_inventory WHERE task_id=$1) AS inventory_count,
             sdlc_critical_pm_detail(g.blocker_id)->>'state' AS resolved,
-            NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=2) AS no_automatic_intent
+            EXISTS(SELECT 1 FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=2) AS automatic_intent
          FROM sdlc_task_routing_generations g JOIN sdlc_task_routing_snapshots s USING(task_id)
          WHERE g.task_id=$1", vec![r.task.into()]
     )).await.unwrap().unwrap();
@@ -338,7 +349,7 @@ async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation)
         saved.completion_id
     );
     assert!(row.try_get::<bool>("", "frozen").unwrap());
-    assert!(row.try_get::<bool>("", "no_automatic_intent").unwrap());
+    assert!(row.try_get::<bool>("", "automatic_intent").unwrap());
     assert_eq!(row.try_get::<i64>("", "inventory_count").unwrap(), 2);
     assert_eq!(row.try_get::<String>("", "resolved").unwrap(), "resolved");
     assert_eq!(r.original, frozen_history(&r.f, r.task).await);

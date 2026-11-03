@@ -2,6 +2,34 @@ use super::*;
 use domain::sdlc_configured_cli::*;
 
 impl PostgresSdlcRepository {
+    pub(super) async fn authorize_completion_reader(
+        &self,
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        actor: &Principal,
+        completion: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        if app::sdlc_configured_cli::authorize_completion_read(state, actor).is_err() {
+            app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+            Self::require_completion_actor(tx, state.task_id, actor, completion).await?;
+        }
+        // An immutable result is readable without borrowing the next role's grant.
+        spaces::bind_retained_task(tx, &self.config, state, actor).await
+    }
+
+    async fn require_completion_actor(
+        tx: &DatabaseTransaction,
+        task: Uuid,
+        actor: &Principal,
+        completion: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        tx.query_one(statement("SELECT completion_id FROM sdlc_configured_pm_completions
+            WHERE task_id=$1 AND actor_subject=$2 AND ($3::uuid IS NULL OR completion_id=$3) LIMIT 1",
+            vec![task.into(),actor.subject.clone().into(),completion.into()])).await.map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        Ok(())
+    }
+
     pub(super) async fn configured_saved(
         tx: &DatabaseTransaction,
         state: &TaskState,
@@ -64,14 +92,20 @@ impl PostgresSdlcRepository {
             app::sdlc::validate_key(key)?;
         }
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load_read(&tx, task, actor).await?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
         if !state.configured_cli() {
             return Err(AppError::conflict(
                 "configured completion cannot read legacy task",
             ));
         }
-        app::sdlc_configured_cli::authorize_completion_read(&state, actor)?;
         let saved = Self::configured_saved(&tx, &state, key).await?;
+        self.authorize_completion_reader(
+            &tx,
+            &state,
+            actor,
+            saved.as_ref().map(|s| s.result.completion_id),
+        )
+        .await?;
         tx.commit().await.map_err(map_db)?;
         Ok(saved)
     }
@@ -84,8 +118,8 @@ impl PostgresSdlcRepository {
         receipt: ConfiguredWorkflowReceipt,
     ) -> Result<(ConfiguredPmCompletionReceipt, bool), AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
-        app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
         app::sdlc::validate_key(&command.idempotency_key)?;
         let hash = app::sdlc::canonical_hash(&command)?;
         if let Some(saved) =
@@ -94,9 +128,13 @@ impl PostgresSdlcRepository {
             if saved.request_sha256 != hash {
                 return Err(AppError::conflict("PM completion key payload conflict"));
             }
+            Self::require_completion_actor(&tx, task, actor, Some(saved.result.completion_id))
+                .await?;
+            spaces::bind_retained_task(&tx, &self.config, &state, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((saved.result, true));
         }
+        Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         app::sdlc_configured_cli::validate_completion(&state, actor, &command)?;
         app::sdlc_configured_cli::validate_receipt(&state, &command, &receipt)?;
         let confirmation = state
@@ -187,6 +225,8 @@ impl PostgresSdlcRepository {
             )
             .await?;
             lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
+            self.auto_start_configured_analysis(&tx, task, actor, &result)
+                .await?;
         }
         exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'pm.completed',$3)",
             vec![result.completion_id.into(),task.into(),json!({"contract_version":1,"interaction_protocol":"configured-cli-v1",

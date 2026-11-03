@@ -301,7 +301,7 @@ impl PostgresSdlcRepository {
 
     /// Parent has verified the saved Workflow result and prepared this receipt in this transaction.
     /// The common configured completion row is already inserted by the caller.
-    /// Its lifecycle effects share that transaction and never enqueue Analyst.
+    /// Its lifecycle effects and the newly confirmed Analyst queue share that transaction.
     pub(super) async fn finalize_configured_critical_pm_review(
         &self,
         tx: &DatabaseTransaction,
@@ -319,6 +319,7 @@ impl PostgresSdlcRepository {
             &self.config,
             command,
             result,
+            Uuid::now_v7(),
             Uuid::now_v7(),
         )?;
         let operation_id = write_operation(
@@ -353,7 +354,23 @@ impl PostgresSdlcRepository {
             .ok_or_else(inconsistent)?;
         self.freeze_source(tx, &plan.after.state, confirmation, &generation.snapshot)
             .await?;
+        let intent = &plan.intent;
+        exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_generation,review_routing_snapshot_id)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", vec![intent.intent_id.into(),state.task_id.into(),intent.requirement_revision.into(),
+                intent.content_hash.clone().into(),intent.confirmation_id.into(),intent.operation_key.clone().into(),json_value(intent)?,
+                generation.generation.into(),generation.snapshot.snapshot_id.into()]).await?;
         save_projection(tx, actor, &plan.after, true).await?;
+        write_outbox(
+            tx,
+            intent.intent_id,
+            "analysis.intent_created",
+            actor,
+            &plan.after.state,
+            &serde_json::to_value(intent).map_err(AppError::internal)?,
+            Stage::Analysis,
+        )
+        .await?;
+
         Ok(true)
     }
 }

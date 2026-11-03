@@ -756,6 +756,8 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             .await
             .unwrap();
     }
+    // Retained PM-only behavior when rollout is disabled after valid Draft preparation.
+    f.repo.config.single_task_project_ids.remove(&f.project);
     let (left, right) = tokio::join!(
         f.repo
             .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
@@ -764,6 +766,8 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     );
     let left = left.unwrap();
     let right = right.unwrap();
+    // Enabling discovery later must not backfill a historical completed Backlog.
+    f.repo.config.single_task_project_ids.insert(f.project);
     assert_eq!(left.0, right.0);
     assert_ne!(left.1, right.1);
     let saved = f

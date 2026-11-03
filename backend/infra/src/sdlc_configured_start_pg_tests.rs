@@ -6,8 +6,8 @@ use super::*;
 async fn forward_start_migration_preserves_filled_110_history_without_auto_start() {
     Box::pin(async {
         let migrations = migration::Migrator::migrations();
-        assert_eq!(migrations.last().unwrap().name(), "m20261029_0000111_configured_analysis_start");
-        let f = Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-1) as u32))).await;
+        assert_eq!(migrations[migrations.len()-2].name(), "m20261029_0000111_configured_analysis_start");
+        let f = Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-2) as u32))).await;
         let historical = Box::pin(f.queued_analysis("historical", true)).await;
         f.repo.lifecycle_command(historical, &f.writer, LifecycleCommand::EnsureQueued {
             idempotency_key: "historical-queue".into(),
@@ -305,5 +305,87 @@ async fn start_sql_rejects_detached_command_and_direct_permit_bypass() {
         assert!(tx.commit().await.is_err());
         assert_eq!(f.snapshot().await, before);
         assert_eq!(state.stage, Stage::Backlog);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn pm_completion_automatically_queues_once_without_impersonating_owner() {
+    Box::pin(async {
+        let f = Box::pin(Fixture::new()).await;
+        let task = Box::pin(f.confirmed_with_rollout("automatic", true, true)).await;
+        let state = f.repo.read(task, &f.owner).await.unwrap();
+        assert_eq!(state.stage, Stage::Analysis);
+        assert_eq!(state.status, Some(LifecycleStatus::Ready));
+        let receipt = f.repo.lifecycle_read(task, &f.reader).await.unwrap().receipt;
+        assert_eq!(receipt.task.runtime, RuntimeState::Queued);
+        assert!(receipt.assignment.is_none());
+        let completion = f.repo.configured_pm_completion(task, &f.owner, None).await.unwrap().unwrap();
+        assert_eq!(completion.result.stage, Stage::Backlog); // Immutable PM fact, not the current cursor.
+        let intent = f.repo.analysis_intent(task, &f.owner).await.unwrap();
+        assert_eq!(intent.content_hash, completion.result.content_hash);
+        assert_eq!(intent.confirmation_id, completion.result.confirmation_id);
+        let row = f.db.query_one(statement("SELECT actor_subject,transaction_id=(SELECT transaction_id FROM sdlc_configured_pm_completions WHERE completion_id=$2) AS same_transaction FROM sdlc_delivery_operations WHERE task_id=$1 AND command IS NOT NULL", vec![task.into(),completion.result.completion_id.into()])).await.unwrap().unwrap();
+        assert_ne!(row.try_get::<String>("", "actor_subject").unwrap(), f.owner.subject);
+        let pm_subject = state.assignment.unwrap().machine_subject;
+        assert_eq!(row.try_get::<String>("", "actor_subject").unwrap(), pm_subject);
+        let pm = actor(&pm_subject, false, &["task-tracker:read", "task-tracker:write"]);
+        assert!(f.repo.read(task, &pm).await.is_err());
+        let saved = f.repo.configured_pm_completion(task, &pm, None).await.unwrap().unwrap();
+        assert_eq!(saved.result.completion_id, completion.result.completion_id);
+        assert!(f.repo.pm_completion_state(task, &pm).await.is_ok());
+        let foreign = actor(&Uuid::new_v4().to_string(), false, &["task-tracker:read", "task-tracker:write"]);
+        assert!(f.repo.configured_pm_completion(task, &foreign, None).await.is_err());
+        assert!(row.try_get::<bool>("", "same_transaction").unwrap());
+        let before = f.snapshot().await;
+        for _ in 0..2 {
+            let current = f.repo.read_delivery_candidates(&f.reader, f.query(None,100)).await.unwrap();
+            assert_eq!(current.items.len(),1);
+            assert_eq!(current.items[0].task_id,task);
+        }
+        assert_eq!(before,f.snapshot().await);
+        assert!(matches!(f.repo.lifecycle_command(task,&f.owner,command(&f,task,"manual-after-auto").await).await,Err(AppError::Conflict(_))));
+        assert_eq!(before,f.snapshot().await);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn automatic_start_requires_completion_and_respects_disabled_project() {
+    Box::pin(async {
+        let f = Box::pin(Fixture::new()).await;
+        let pending = Box::pin(f.confirmed_with_rollout("consent-only",false,true)).await;
+        assert_eq!(f.repo.read(pending,&f.owner).await.unwrap().stage,Stage::Draft);
+        assert!(f.repo.analysis_intent(pending,&f.owner).await.is_err());
+        let retained = Box::pin(f.confirmed("disabled",true)).await;
+        f.assert_backlog_without_analysis(retained).await;
+        let before=f.snapshot().await;
+        let tx=f.db.begin().await.unwrap();
+        assert!(tx.execute(statement("UPDATE sdlc_tasks SET state=state||'{\"stage\":\"Analysis\",\"status\":\"Ready\"}'::jsonb WHERE task_id=$1",vec![pending.into()])).await.is_err());
+        tx.rollback().await.unwrap();
+        assert_eq!(before,f.snapshot().await);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn forward_auto_start_preserves_completed_backlog_and_manual_start_history() {
+    Box::pin(async {
+        let migrations=migration::Migrator::migrations();
+        let f=Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-1) as u32))).await;
+        let retained=Box::pin(f.confirmed("pre-auto",true)).await;
+        // Historical images can have LF function bodies while the new source uses CRLF.
+        for function in ["sdlc_critical_pm_lifecycle_insert_gate()", "sdlc_critical_pm_lifecycle_commit_gate()", "sdlc_configured_cli_completion_transition()"] {
+            let row=f.db.query_one(statement("SELECT replace(pg_get_functiondef($1::regprocedure),chr(13)||chr(10),chr(10)) AS definition",vec![function.into()])).await.unwrap().unwrap();
+            f.db.execute_unprepared(&row.try_get::<String>("","definition").unwrap()).await.unwrap();
+        }
+        let before=f.snapshot().await;
+        let rows:Json=f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(c) ORDER BY completion_id) AS rows FROM sdlc_configured_pm_completions c",vec![])).await.unwrap().unwrap().try_get("","rows").unwrap();
+        migration::Migrator::up(&f.db,None).await.unwrap();
+        assert_eq!(before,f.snapshot().await);
+        let after:Json=f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(c)-'transaction_id' ORDER BY completion_id) AS rows FROM sdlc_configured_pm_completions c",vec![])).await.unwrap().unwrap().try_get("","rows").unwrap();
+        assert_eq!(rows,after);
+        f.assert_backlog_without_analysis(retained).await;
+        assert!(f.repo.read_delivery_candidates(&f.reader,f.query(None,100)).await.unwrap().items.is_empty());
     }).await;
 }

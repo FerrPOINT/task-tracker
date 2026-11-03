@@ -162,21 +162,55 @@ impl Fixture {
     }
 
     async fn confirmed(&self, key: &str, completed: bool) -> Uuid {
+        self.confirmed_with_rollout(key, completed, false).await
+    }
+
+    async fn confirmed_with_rollout(&self, key: &str, completed: bool, automatic: bool) -> Uuid {
         let task = self.draft(key, Some(DraftFlow::SingleTaskV1)).await;
         let document: RequirementsDocument = parse(json!({
             "goal":"Candidate fixture","scope":["scope"],"exclusions":[],
             "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],
             "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]}));
-        crate::sdlc::configured_test_support::confirmed_pm(
+        // Draft intake and confirmation require rollout. Disable only the completion
+        // producer in retained PM-only/manual-start fixtures, never their preparation.
+        let (reservation, _) = crate::sdlc::configured_test_support::confirmed_pm(
             &self.repo,
             task,
             &self.owner,
             self.roles.project_manager.agent_id,
             document,
-            completed,
+            false,
         )
         .await;
         if completed {
+            let mut config = self.repo.config.clone();
+            if !automatic {
+                config.single_task_project_ids.remove(&self.project);
+            }
+            let repo = PostgresSdlcRepository {
+                db: crate::guarded_db::GuardedDb::new(
+                    Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
+                        .await
+                        .unwrap(),
+                ),
+                config,
+                file_storage: None,
+            };
+            let pm = actor(
+                &reservation.assignment.machine_subject,
+                false,
+                &["task-tracker:read", "task-tracker:write"],
+            );
+            crate::sdlc::configured_test_support::complete_pm(
+                &repo,
+                task,
+                &self.owner,
+                &pm,
+                &reservation,
+            )
+            .await;
+        }
+        if completed && !automatic {
             self.assert_backlog_without_analysis(task).await;
         }
         task

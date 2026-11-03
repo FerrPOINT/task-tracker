@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Accepted PM completion atomically queues Analysis in enabled single-task projects;
+its immutable receipt remains historical Backlog/Ready. Forward112 preserves
+existing rows and binds automatic queue authority to the completion transaction.
+The read-only CLI `sdlc source --task UUID` uses the existing source-binding GET.
+No new HTTP DTO, user confirmation or source-registry table is introduced.
+
 Current fileless PM contract: [Configured CLI V1](contracts/CONFIGURED_CLI_V1.md).
 The native PM lease, heartbeat, resume, unsubmitted recovery and bootstrap retry
 sections below describe retained historical contracts. Their eight routes are
@@ -42,10 +49,10 @@ receipt with the existing no-store GET
 CLI: `task-tracker sdlc start analysis --task UUID --pm-completion-id UUID --key KEY`;
 readback: `task-tracker sdlc start operation --task UUID --key KEY`.
 On unknown POST outcome read that original key before retrying the same command.
-PM completion and its replay still create zero Analysis intents. Explicit start
-atomically creates one intent, initial queued lifecycle and existing outbox events;
-it does not assign or dispatch an agent. Discovery includes only explicitly started
-configured tasks. Accepted role results use the existing next-stage queue on the
+New PM completion in an enabled project atomically creates one Analysis intent,
+initial queued lifecycle and existing outbox events. Replay creates no extra effects.
+The manual command remains available for retained completed Backlog tasks; it does
+not assign or dispatch an agent. Discovery includes only admitted configured tasks. Accepted role results use the existing next-stage queue on the
 same root task, without manual per-role advance or child tasks. This source package
 does not establish seven-role live acceptance or enable a deployed project.
 
