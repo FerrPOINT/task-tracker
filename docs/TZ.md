@@ -1,8 +1,9 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
 Проектируемая возможность 2026-11-03: [декомпозиция разделами внутри задачи](plans/embedded-decomposition-design.md).
-Сейчас это отдельный memory-only предпросмотр для утверждения; стандартная карточка,
-API и схема данных не изменены. План согласован, визуальный дизайн ещё не утверждён.
+Дизайн встроен в настоящую карточку через локальный dev-контроллер. Данные задачи
+реальные; только план демонстрационный и хранится в памяти. API и схема данных
+не изменены. План этапа согласован, визуальный дизайн ещё не утверждён.
 
 An accepted terminal PM run before its first checkpoint may obtain a bounded
 checkpoint-only permit using real saved technical Feedback. This does not answer

@@ -257,6 +257,35 @@ describe('IssueDetailPage', () => {
     expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1?tab=sdlc')
   })
 
+  it('places decomposition before SDLC in the existing issue and retains its draft across tabs', async () => {
+    render(
+      wrapper(
+        <IssueDetailPage decompositionPanel={<input aria-label="Plan draft" defaultValue="" />} />,
+        '/issues/i1?tab=decomposition&view=compact',
+      ),
+    )
+    const user = userEvent.setup()
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs.indexOf('Декомпозиция')).toBe(tabs.indexOf('SDLC') - 1)
+    expect(screen.getByText('Test issue summary')).toBeVisible()
+    await user.type(screen.getByLabelText('Plan draft'), 'Architecture draft')
+    await user.click(screen.getByRole('tab', { name: 'SDLC' }))
+    expect(screen.getByLabelText('Plan draft')).not.toBeVisible()
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    await user.click(screen.getByRole('tab', { name: 'Декомпозиция' }))
+    expect(screen.getByLabelText('Plan draft')).toHaveValue('Architecture draft')
+    expect(screen.getByLabelText('current location')).toHaveTextContent(
+      'tab=decomposition&view=compact',
+    )
+  })
+
+  it('does not expose the design tab when no decomposition controller is supplied', () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=decomposition'))
+    expect(screen.queryByRole('tab', { name: 'Декомпозиция' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1')
+    expect(screen.getByLabelText('current location')).not.toHaveTextContent('tab=decomposition')
+  })
+
   it('keeps issue details available while worklogs load', () => {
     mockWorklogs.mockReturnValue({
       data: undefined,

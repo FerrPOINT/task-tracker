@@ -2,13 +2,49 @@ import { act, cleanup, render, screen, within, waitFor } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DecompositionPreview } from './preview'
+import { DecompositionDesignPanel } from './panel'
+import { useLocation, useNavigate } from 'react-router'
 
 afterEach(cleanup)
 
+// Unit harness supplies navigation; the browser uses Tracker's actual router and IssueDetailPage.
+function PanelHarness() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const params = new URLSearchParams(location.search)
+  const scenario = params.get('scenario') ?? 'normal'
+  const board = location.pathname === '/board'
+  if (board)
+    return (
+      <button onClick={() => navigate('/issues/DEMO-24?tab=decomposition')}>Открыть DEMO-24</button>
+    )
+  return (
+    <>
+      <button onClick={() => navigate('/board')}>← К доске проекта</button>
+      {['decomposition', 'comments', 'sdlc'].map((tab) => (
+        <button
+          key={tab}
+          role="tab"
+          aria-selected={(params.get('tab') ?? 'decomposition') === tab}
+          onClick={() => {
+            const next = new URLSearchParams(location.search)
+            next.set('tab', tab)
+            navigate({ search: next.toString(), hash: '' })
+          }}
+        >
+          {tab === 'decomposition' ? 'Декомпозиция' : tab === 'sdlc' ? 'SDLC' : 'Комментарии'}
+        </button>
+      ))}
+      <div hidden={(params.get('tab') ?? 'decomposition') !== 'decomposition'}>
+        <DecompositionDesignPanel scenario={scenario as import('./model').Scenario} />
+      </div>
+    </>
+  )
+}
+
 function setup(scenario = 'normal', hash = '') {
-  const router = createMemoryRouter([{ path: '*', element: <DecompositionPreview /> }], {
-    initialEntries: [`/decomposition-preview.html?tab=decomposition&scenario=${scenario}${hash}`],
+  const router = createMemoryRouter([{ path: '*', element: <PanelHarness /> }], {
+    initialEntries: [`/issues/DEMO-24?tab=decomposition&scenario=${scenario}${hash}`],
   })
   render(<RouterProvider router={router} />)
   return { router, user: userEvent.setup() }

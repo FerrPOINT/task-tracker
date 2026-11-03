@@ -1,8 +1,9 @@
 # Архитектура Task Tracker
 
 [Встроенная декомпозиция — design candidate](plans/embedded-decomposition-design.md):
-один план и разделы в исходной Task, без children/отдельного scheduler. Предпросмотр
-имеет отдельный HTML/Vite entry и вымышленные типы, не импортирует live API/auth.
+один план и разделы в исходной Task, без children/отдельного scheduler. Дизайн
+использует настоящие AppShell, router и IssueDetailPage. Только контроллер плана
+локальный, в памяти; он подключается по явному dev-флагу и исключён из production build.
 Owner schema/API, Workflow и agent integration остаются будущей реализацией.
 
 The terminal-idle branch grants a single exact Workflow checkpoint operation

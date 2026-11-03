@@ -55,19 +55,29 @@ import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPane
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
-const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
+const issueTabs = [
+  'activity',
+  'comments',
+  'worklog',
+  'attachments',
+  'decomposition',
+  'sdlc',
+] as const
 type IssueTab = (typeof issueTabs)[number]
 
-function parseIssueTab(value: string | null): IssueTab {
-  return issueTabs.find((tab) => tab === value) ?? 'activity'
+function parseIssueTab(value: string | null, hasDecomposition = false): IssueTab {
+  return (
+    issueTabs.find((tab) => tab === value && (tab !== 'decomposition' || hasDecomposition)) ??
+    'activity'
+  )
 }
 
-export function IssueDetailPage() {
+export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: ReactNode } = {}) {
   const { id = '' } = useParams()
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const activeTab = parseIssueTab(tabParam)
+  const activeTab = parseIssueTab(tabParam, Boolean(decompositionPanel))
   const latestTab = useRef(activeTab)
   const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -165,7 +175,7 @@ export function IssueDetailPage() {
   const handleDelete = (worklogId: string) => remove.mutateAsync(worklogId)
 
   const updateActiveTab = (value: string) => {
-    const nextTab = parseIssueTab(value)
+    const nextTab = parseIssueTab(value, Boolean(decompositionPanel))
     if (nextTab === latestTab.current) return
     latestTab.current = nextTab
     const next = new URLSearchParams(searchParams)
@@ -285,13 +295,22 @@ export function IssueDetailPage() {
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
+                <TabsList
+                  className={
+                    decompositionPanel
+                      ? 'grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6'
+                      : 'grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5'
+                  }
+                >
                   <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
                   <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
                   <TabsTrigger ref={worklogTabRef} value="worklog">
                     {t('timeTracking.worklog.title')}
                   </TabsTrigger>
                   <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
+                  {decompositionPanel && (
+                    <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
+                  )}
                   <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
@@ -337,6 +356,16 @@ export function IssueDetailPage() {
                 <TabsContent value="attachments">
                   <AttachmentPanel issueId={issue.id} />
                 </TabsContent>
+                {decompositionPanel && (
+                  <TabsContent
+                    key={issue.id}
+                    value="decomposition"
+                    forceMount
+                    hidden={activeTab !== 'decomposition'}
+                  >
+                    {decompositionPanel}
+                  </TabsContent>
+                )}
                 <TabsContent value="sdlc">
                   <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>

@@ -37,9 +37,14 @@ const SearchPage = lazy(() => import('@/pages/search'))
 const IssueCreatePage = lazy(() =>
   import('@/pages/issue-create').then((m) => ({ default: m.IssueCreatePage })),
 )
-const IssueDetailPage = lazy(() =>
-  import('@/pages/issue-detail').then((m) => ({ default: m.IssueDetailPage })),
-)
+const IssueDetailPage = lazy(async () => {
+  const { IssueDetailPage } = await import('@/pages/issue-detail')
+  if (import.meta.env.DEV && import.meta.env.VITE_DECOMPOSITION_DESIGN === 'true') {
+    const { DecompositionDesignPanel } = await import('@/design-preview/decomposition/panel')
+    return { default: () => <IssueDetailPage decompositionPanel={<DecompositionDesignPanel />} /> }
+  }
+  return { default: IssueDetailPage }
+})
 const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })))
 const SsoCallbackPage = lazy(() =>
   import('@/pages/sso-callback').then((m) => ({ default: m.SsoCallbackPage })),
