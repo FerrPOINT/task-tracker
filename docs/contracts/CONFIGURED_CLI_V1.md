@@ -30,6 +30,12 @@ completion queues analysis of the new exact approved revision with all prior
 terminal/fence/source guards retained. The single-task Analyst result remains an
 existing sealed attachment receipt, not a separate requirements confirmation.
 
+Source status (2026-11-04): implementation `b47f600b` is pushed in
+[Tracker #202](https://github.com/FerrPOINT/task-tracker/pull/202). The 25 critical
+blocker application tests include the Analyst refusal and unchanged custody for
+other roles. The coordinated [Base delivery record](https://github.com/FerrPOINT/services-base/pull/443)
+tracks exact versions and qualification. This source status does not claim a
+deployment or completed real-Hermes Analyst-to-Architecture acceptance.
 
 Current configured PM in Draft can list and download unsealed owner inputs from
 its assigned task. The existing PM reader checks project membership, current
