@@ -1082,7 +1082,9 @@ async fn configured_pm_reads_only_current_task_inputs(
     );
 
     // Exercise the application boundary too: ordinary inputs have no output seal.
-    let repos = crate::repos::SeaOrmRepositories::new(f.db.clone());
+    let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").expect("owned candidates DB required");
+    let connection = sea_orm::Database::connect(&url).await.unwrap();
+    let repos = crate::repos::SeaOrmRepositories::new(connection);
     let service = app::services::AttachmentServiceImpl::new(
         repos.attachments,
         repos.issues,
