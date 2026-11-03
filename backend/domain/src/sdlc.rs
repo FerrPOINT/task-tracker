@@ -803,6 +803,11 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    fn decomposition_repository(
+        &self,
+    ) -> Option<&dyn crate::decomposition::DecompositionRepository> {
+        None
+    }
     fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
         None
     }

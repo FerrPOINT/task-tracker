@@ -2,6 +2,8 @@
 //! Real repository transactions, synthetic role artifacts and trusted terminal receipts.
 //! No live Fleet/Workflow execution or attachment-byte verification is claimed.
 use super::*;
+#[path = "decomposition_architect_pg_tests.rs"]
+mod decomposition_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,

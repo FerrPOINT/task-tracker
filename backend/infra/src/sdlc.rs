@@ -24,6 +24,8 @@ mod critical_blockers;
 mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
+#[path = "decomposition.rs"]
+mod decomposition;
 #[path = "sdlc_discussion.rs"]
 mod discussion;
 #[path = "sdlc_execution_lease.rs"]
@@ -955,6 +957,11 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn decomposition_repository(
+        &self,
+    ) -> Option<&dyn domain::decomposition::DecompositionRepository> {
+        Some(self)
+    }
     fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
         Some(self)
     }

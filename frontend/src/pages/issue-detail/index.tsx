@@ -59,6 +59,7 @@ import {
 } from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
+import { DecompositionPanel } from '@/features/decomposition/panel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
 const issueTabs = [
@@ -71,7 +72,7 @@ const issueTabs = [
 ] as const
 type IssueTab = (typeof issueTabs)[number]
 
-function parseIssueTab(value: string | null, hasDecomposition = false): IssueTab {
+function parseIssueTab(value: string | null, hasDecomposition = true): IssueTab {
   return (
     issueTabs.find((tab) => tab === value && (tab !== 'decomposition' || hasDecomposition)) ??
     'activity'
@@ -83,7 +84,11 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const activeTab = parseIssueTab(tabParam, Boolean(decompositionPanel))
+  const activeTab = parseIssueTab(tabParam)
+  const [decompositionVisited, setDecompositionVisited] = useState(activeTab === 'decomposition')
+  useEffect(() => {
+    if (activeTab === 'decomposition') setDecompositionVisited(true)
+  }, [activeTab])
   const latestTab = useRef(activeTab)
   const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -201,7 +206,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
   const handleDelete = (worklogId: string) => remove.mutateAsync(worklogId)
 
   const updateActiveTab = (value: string) => {
-    const nextTab = parseIssueTab(value, Boolean(decompositionPanel))
+    const nextTab = parseIssueTab(value)
     if (nextTab === latestTab.current) return
     latestTab.current = nextTab
     const next = new URLSearchParams(searchParams)
@@ -334,9 +339,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                       {t('timeTracking.worklog.title')}
                     </TabsTrigger>
                     <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
-                    {decompositionPanel && (
-                      <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
-                    )}
+                    <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
                     <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
                   </TabsList>
                 </div>
@@ -383,16 +386,15 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                 <TabsContent value="attachments">
                   <AttachmentPanel issueId={issue.id} />
                 </TabsContent>
-                {decompositionPanel && (
-                  <TabsContent
-                    key={issue.id}
-                    value="decomposition"
-                    forceMount
-                    hidden={activeTab !== 'decomposition'}
-                  >
-                    {decompositionPanel}
-                  </TabsContent>
-                )}
+                <TabsContent
+                  key={issue.id}
+                  value="decomposition"
+                  forceMount
+                  hidden={activeTab !== 'decomposition'}
+                >
+                  {(activeTab === 'decomposition' || decompositionVisited) &&
+                    (decompositionPanel ?? <DecompositionPanel issueId={issue.id} />)}
+                </TabsContent>
                 <TabsContent value="sdlc">
                   <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>

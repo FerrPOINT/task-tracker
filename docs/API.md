@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+Управление планом: `GET/POST /api/v1/issues/{id}/decomposition`,
+`GET .../revisions`, `GET .../revisions/{revision}` и
+`GET .../operations/{key}`. Все ответы плана запрещают кэширование.
+DTO и OpenAPI генерируются из Rust; [CAS, права и CLI](contracts/task-decomposition.md).
+Сохранение плана не выполняет переход задачи и не создаёт подзадачи.
+
+
 Registered namespace reader `GET /api/v1/namespace-tasks/{id}` сохраняет прежний
 metadata response при отсутствии `include_execution`. Аддитивный opt-in
 `include_execution=true` добавляет текущие protocol, root task, stage/status,

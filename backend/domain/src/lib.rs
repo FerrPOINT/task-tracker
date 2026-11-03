@@ -128,6 +128,7 @@ pub struct StatusDto {
     pub is_default: bool,
 }
 
+pub mod decomposition;
 pub mod sdlc_pm_bootstrap_retry;
 pub mod task_documents;
 pub mod task_repositories;

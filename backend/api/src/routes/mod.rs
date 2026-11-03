@@ -46,4 +46,5 @@ pub mod space_catalog;
 
 pub mod project_access;
 
+pub mod decomposition;
 pub mod identity_deletion;

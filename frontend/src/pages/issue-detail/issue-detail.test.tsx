@@ -22,6 +22,11 @@ vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
   ...(await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()),
 }))
+vi.mock('@/features/decomposition/panel', () => ({
+  DecompositionPanel: ({ issueId }: { issueId: string }) => (
+    <section aria-label="Decomposition mount">{issueId}</section>
+  ),
+}))
 vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
   SdlcPanel: ({ issueId }: { issueId: string }) => (
     <section aria-label="SDLC mount">{issueId}</section>
@@ -281,11 +286,14 @@ describe('IssueDetailPage', () => {
     )
   })
 
-  it('does not expose the design tab when no decomposition controller is supplied', () => {
+  it('mounts the persistent decomposition controller on a normal issue route', () => {
     render(wrapper(<IssueDetailPage />, '/issues/i1?tab=decomposition'))
-    expect(screen.queryByRole('tab', { name: 'Декомпозиция' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1')
-    expect(screen.getByLabelText('current location')).not.toHaveTextContent('tab=decomposition')
+    expect(screen.getByRole('tab', { name: 'Декомпозиция' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByLabelText('Decomposition mount')).toHaveTextContent('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('tab=decomposition')
   })
 
   it('keeps issue details available while worklogs load', () => {

@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useBlocker, useLocation, useNavigate } from 'react-router'
+import { useBlocker, useLocation, useNavigate } from 'react-router'
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  SectionHeader,
   Button,
   ActionGroup,
   Prose,
   Notice,
   Disclosure,
   FormField,
-  Fieldset,
-  Input,
-  Textarea,
   Select,
   Dialog,
   DialogContent,
@@ -26,43 +18,9 @@ import {
   ErrorState,
   LoadingState,
 } from '@pdlc/ui/ui'
-import { ArrowUp, ArrowDown, Link as LinkIcon, Plus, Trash2 } from 'lucide-react'
-import { fixture, remoteRevision, revise, type Plan, type Section, type Scenario } from './model'
-
-function Field({
-  id,
-  label,
-  value,
-  onChange,
-  multiline = false,
-  required = false,
-  hint,
-}: {
-  id: string
-  label: string
-  value: string
-  onChange: (value: string) => void
-  multiline?: boolean
-  required?: boolean
-  hint?: string
-}) {
-  return (
-    <FormField id={id} label={label} required={required} hint={hint}>
-      {(attrs) =>
-        multiline ? (
-          <Textarea
-            {...attrs}
-            rows={3}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          />
-        ) : (
-          <Input {...attrs} value={value} onChange={(event) => onChange(event.target.value)} />
-        )
-      }
-    </FormField>
-  )
-}
+import { PlanForm } from '@/features/decomposition/form'
+import { PlanRead } from '@/features/decomposition/plan'
+import { fixture, remoteRevision, revise, type Plan, type Scenario } from './model'
 
 /** Local design controller, mounted inside the real IssueDetailPage in development only. */
 export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?: Scenario }) {
@@ -98,7 +56,6 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyRevision, setHistoryRevision] = useState('1')
   const editRef = useRef<HTMLButtonElement>(null)
-  const addSectionRef = useRef<HTMLButtonElement>(null)
   const counter = useRef(0)
   const dirty = Boolean(draft)
   const blockedReason =
@@ -193,26 +150,6 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
     setConflictAcknowledged(false)
     setNotice(`Сохранена редакция ${next.revision}.`)
     queueMicrotask(() => editRef.current?.focus())
-  }
-  function updateSection(id: string, patch: Partial<Section>) {
-    setDraft(
-      (value) =>
-        value && {
-          ...value,
-          sections: value.sections.map((s) => (s.id === id ? { ...s, ...patch } : s)),
-        },
-    )
-  }
-  function move(id: string, direction: number) {
-    setDraft((value) => {
-      if (!value) return value
-      const items = [...value.sections]
-      const index = items.findIndex((s) => s.id === id)
-      const target = index + direction
-      if (index < 0 || target < 0 || target >= items.length) return value
-      ;[items[index], items[target]] = [items[target]!, items[index]!]
-      return { ...value, sections: items }
-    })
   }
   return (
     <>
@@ -324,161 +261,19 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
               </Notice>
             )}
             {draft ? (
-              <form
-                aria-label="Редактирование декомпозиции"
-                onSubmit={savePlan}
-                className="grid max-w-4xl gap-4"
-                aria-busy={pending}
-              >
-                <Fieldset disabled={pending} className="space-y-4">
-                  <Field
-                    id="plan-overview"
-                    label="Архитектурное решение"
-                    multiline
-                    required
-                    value={draft.overview}
-                    onChange={(overview) => setDraft({ ...draft, overview })}
-                  />
-                  <div className="space-y-3">
-                    {draft.sections.map((section, index) => (
-                      <Card key={section.id} data-testid={`editor-${section.id}`}>
-                        <CardHeader>
-                          <CardTitle>Раздел {index + 1}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <ActionGroup align="start">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Переместить ${section.title || 'раздел'} вверх`}
-                              disabled={index === 0}
-                              onClick={() => move(section.id, -1)}
-                            >
-                              <ArrowUp />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Переместить ${section.title || 'раздел'} вниз`}
-                              disabled={index === draft.sections.length - 1}
-                              onClick={() => move(section.id, 1)}
-                            >
-                              <ArrowDown />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => {
-                                setDraft({
-                                  ...draft,
-                                  sections: draft.sections.filter((s) => s.id !== section.id),
-                                })
-                                const neighbor =
-                                  draft.sections[index + 1] ?? draft.sections[index - 1]
-                                queueMicrotask(() => {
-                                  if (neighbor)
-                                    document.getElementById(`${neighbor.id}-title`)?.focus()
-                                  else addSectionRef.current?.focus()
-                                })
-                              }}
-                            >
-                              <Trash2 />
-                              Убрать раздел
-                            </Button>
-                          </ActionGroup>
-                          <Field
-                            id={`${section.id}-title`}
-                            label="Название раздела"
-                            required
-                            value={section.title}
-                            onChange={(title) => updateSection(section.id, { title })}
-                          />
-                          <Field
-                            id={`${section.id}-description`}
-                            label="Что сделать"
-                            hint="Опишите изменение и ожидаемый результат."
-                            multiline
-                            required
-                            value={section.description}
-                            onChange={(description) => updateSection(section.id, { description })}
-                          />
-                          <Field
-                            id={`${section.id}-criteria`}
-                            label="Как проверить"
-                            multiline
-                            required
-                            value={section.criteria}
-                            onChange={(criteria) => updateSection(section.id, { criteria })}
-                          />
-                          <Field
-                            id={`${section.id}-requirements`}
-                            label="Связь с требованиями"
-                            required
-                            value={section.requirements}
-                            onChange={(requirements) => updateSection(section.id, { requirements })}
-                          />
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                  <Button
-                    ref={addSectionRef}
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      counter.current++
-                      setDraft({
-                        ...draft,
-                        sections: [
-                          ...draft.sections,
-                          {
-                            id: `new-${counter.current}`,
-                            title: '',
-                            description: '',
-                            criteria: '',
-                            requirements: '',
-                          },
-                        ],
-                      })
-                      const newId = `new-${counter.current}`
-                      queueMicrotask(() => document.getElementById(`${newId}-title`)?.focus())
-                    }}
-                  >
-                    <Plus />
-                    Добавить раздел
-                  </Button>
-                  <Field
-                    id="plan-reason"
-                    label="Причина изменения"
-                    required={Boolean(plan)}
-                    value={reason}
-                    onChange={setReason}
-                    hint="Сохранится вместе с новой редакцией плана."
-                  />
-                  <Notice appearance="inline">
-                    Содержательно изменённые разделы потребуют повторной проверки. Переименование и
-                    порядок сохраняют ссылки.
-                  </Notice>
-                  {error && (
-                    <Notice role="alert" tone="danger">
-                      {error}
-                    </Notice>
-                  )}
-                  <ActionGroup separated>
-                    <Button
-                      type="submit"
-                      disabled={pending || Boolean(conflict && !conflictAcknowledged)}
-                    >
-                      {pending ? 'Сохраняем…' : 'Сохранить план'}
-                    </Button>
-                    <Button type="button" variant="outline" disabled={pending} onClick={cancelEdit}>
-                      Отмена
-                    </Button>
-                  </ActionGroup>
-                </Fieldset>
-              </form>
+              <PlanForm
+                draft={draft}
+                setDraft={setDraft}
+                reason={reason}
+                setReason={setReason}
+                pending={pending}
+                error={error}
+                reasonRequired={Boolean(plan)}
+                blocked={Boolean(conflict && !conflictAcknowledged)}
+                savePlan={savePlan}
+                cancelEdit={cancelEdit}
+                createId={() => `new-${++counter.current}`}
+              />
             ) : plan ? (
               <PlanRead plan={plan} />
             ) : (
@@ -539,79 +334,5 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }) {
-  const location = useLocation()
-  const sectionSearch = new URLSearchParams(location.search)
-  sectionSearch.set('tab', 'decomposition')
-  const [open, setOpen] = useState<Set<string>>(() => new Set())
-  useEffect(() => {
-    const id = location.hash.replace('#section-', '')
-    if (snapshot || !id || !plan.sections.some((s) => s.id === id)) return
-    setOpen((value) => new Set([...value, id]))
-    requestAnimationFrame(() => {
-      const element = document.getElementById(`section-${id}`)
-      element?.scrollIntoView({ block: 'nearest' })
-      element?.querySelector('summary')?.focus()
-    })
-  }, [location.hash, plan.sections, snapshot])
-  return (
-    <div className="min-w-0 space-y-2 break-words">
-      <Disclosure
-        appearance="row"
-        summary="Архитектурное решение"
-        data-testid="architecture-overview"
-      >
-        <Prose preserveLineBreaks>{plan.overview}</Prose>
-      </Disclosure>
-      <div>
-        {plan.sections.map((section, index) => (
-          <div key={section.id} className="relative">
-            <Disclosure
-              appearance="row"
-              id={`${snapshot ? 'snapshot-' : ''}section-${section.id}`}
-              open={open.has(section.id)}
-              onToggle={(event) => {
-                const expanded = event.currentTarget.open
-                setOpen((value) => {
-                  if (value.has(section.id) === expanded) return value
-                  const next = new Set(value)
-                  if (expanded) next.add(section.id)
-                  else next.delete(section.id)
-                  return next
-                })
-              }}
-              summary={
-                <span className={snapshot ? undefined : 'block pr-12'}>
-                  {index + 1}. {section.title}
-                </span>
-              }
-            >
-              <div className="space-y-4 py-2">
-                <SectionHeader title="Что сделать" level={4} />
-                <Prose>{section.description}</Prose>
-                <SectionHeader title="Как проверить" level={4} />
-                <Prose>{section.criteria}</Prose>
-                <SectionHeader title="Связь с требованиями" level={4} />
-                <Prose>{section.requirements}</Prose>
-              </div>
-            </Disclosure>
-            {!snapshot && (
-              <Button asChild variant="ghost" size="icon" className="absolute right-0 top-0">
-                <Link
-                  to={{ search: sectionSearch.toString(), hash: `section-${section.id}` }}
-                  aria-label={`Ссылка на раздел «${section.title}»`}
-                  title="Ссылка на раздел"
-                >
-                  <LinkIcon className="h-4 w-4" aria-hidden />
-                </Link>
-              </Button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }
