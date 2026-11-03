@@ -5,8 +5,6 @@ export interface Section {
   description: string
   criteria: string
   requirements: string
-  result: { summary: string; checks: string } | null
-  resetReason?: string
 }
 
 export interface Plan {
@@ -19,7 +17,7 @@ export interface Plan {
 }
 
 export const scenarios = [
-  ['normal', 'План · частично выполнен'],
+  ['normal', 'План реализации'],
   ['empty', 'План отсутствует'],
   ['single', 'Один раздел'],
   ['long', 'Длинный план'],
@@ -56,11 +54,6 @@ export function fixture(scenario: Scenario): Plan | null {
         criteria:
           'Настройки сохраняются и читаются повторно. Чужой профиль недоступен. Обновление совместимо с существующими данными.',
         requirements: 'К1 — сохранение настроек; К3 — доступ только владельцу',
-        result: {
-          summary: 'Реализовано сохранение профиля и проверка владельца.',
-          checks: `Изменения: commit example-a1b2c3
-Проверки: unit 12/12; PostgreSQL 5/5 (вымышленный пример)`,
-        },
       },
       {
         id: 'form',
@@ -70,7 +63,6 @@ export function fixture(scenario: Scenario): Plan | null {
         criteria:
           'Форма показывает сохранённые значения. Повтор после ошибки не теряет выбор. Все поля доступны с клавиатуры.',
         requirements: 'К1 — сохранение настроек; К2 — понятная ошибка',
-        result: null,
       },
       {
         id: 'acceptance',
@@ -80,12 +72,10 @@ export function fixture(scenario: Scenario): Plan | null {
         criteria:
           'Сценарий работает после нового входа. Проверены отказ доступа, повтор сохранения и мобильная ширина. Есть условия отката.',
         requirements: 'К1–К3 — итоговый сценарий и права',
-        result: null,
       },
     ],
   }
-  if (scenario === 'single')
-    plan.sections = plan.sections.slice(0, 1).map((s) => ({ ...s, result: null }))
+  if (scenario === 'single') plan.sections = plan.sections.slice(0, 1)
   if (scenario === 'long') {
     plan.overview +=
       ' Данные остаются в существующем профиле. Изменение контракта должно сохранять прежние значения и не затрагивать чужие настройки.'.repeat(
@@ -102,25 +92,11 @@ export function fixture(scenario: Scenario): Plan | null {
 }
 
 export function revise(current: Plan | null, draft: Plan, reason: string): Plan {
-  const sameInputs =
-    current?.overview === draft.overview &&
-    current?.requirementsRevision === draft.requirementsRevision
-  const sections = draft.sections.map((section) => {
-    const before = current?.sections.find((item) => item.id === section.id)
-    const unchanged =
-      sameInputs &&
-      before &&
-      before.description === section.description &&
-      before.criteria === section.criteria &&
-      before.requirements === section.requirements
-    return { ...section, result: unchanged ? before.result : null }
-  })
   return {
     ...draft,
     revision: (current?.revision ?? 0) + 1,
     author: 'Участник проекта',
     reason,
-    sections,
   }
 }
 

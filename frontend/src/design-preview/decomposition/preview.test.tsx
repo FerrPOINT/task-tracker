@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DecompositionPreview } from './preview'
-import { fixture, revise } from './model'
 
 afterEach(cleanup)
 
@@ -21,6 +20,16 @@ async function edit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('memory-only decomposition preview', () => {
+  it('shows an implementation plan without a second completion workflow', () => {
+    setup()
+    expect(screen.getByText('1. Хранение и API настроек')).toBeVisible()
+    const section = within(document.getElementById('section-storage')!)
+    expect(section.getByRole('heading', { name: 'Что сделать' })).toBeVisible()
+    expect(section.getByRole('heading', { name: 'Как проверить' })).toBeVisible()
+    expect(screen.queryByText(/Выполнено.*из|^Выполнен$|^Не выполнен$/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /отмет|результат/i })).not.toBeInTheDocument()
+  })
+
   it('reorders and renames stable sections, adds/removes a draft and saves a revision', async () => {
     const { user } = setup()
     const form = await edit(user)
@@ -40,7 +49,7 @@ describe('memory-only decomposition preview', () => {
     await user.type(screen.getByLabelText(/Причина изменения/), 'Уточнение названия и порядка')
     await user.click(screen.getByRole('button', { name: 'Сохранить план' }))
     expect(await screen.findByText('Сохранена редакция 3.')).toBeVisible()
-    expect(screen.getByText('Выполнено 1 из 3')).toBeVisible()
+    expect(screen.getByText('1. Форма настроек уведомлений')).toBeVisible()
     expect(document.getElementById('section-storage')).not.toBeNull()
     expect(screen.getByText('2. Хранение профиля')).toBeVisible()
   })
@@ -102,32 +111,6 @@ describe('memory-only decomposition preview', () => {
     expect(await screen.findByText('Сохранена редакция 4.')).toBeVisible()
   })
 
-  it('retains the failed result input and changes progress only after a successful retry', async () => {
-    const { user } = setup('save-error')
-    await user.click(screen.getByText('2. Форма настроек уведомлений'))
-    const section = document.getElementById('section-form')!
-    await user.click(within(section).getByRole('button', { name: 'Отметить выполненным' }))
-    const dialog = screen.getByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/Что выполнено/), 'Форма сохраняет выбор')
-    await user.type(
-      within(dialog).getByLabelText(/Изменения и проверки/),
-      'example-commit; UI tests 8/8',
-    )
-    await user.click(within(dialog).getByRole('button', { name: 'Сохранить результат' }))
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Не удалось сохранить')
-    expect(within(dialog).getByLabelText(/Что выполнено/)).toHaveValue('Форма сохраняет выбор')
-    expect(screen.getByText('Выполнено 1 из 3')).toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: 'Сохранить результат' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByText('Выполнено 2 из 3')).toBeVisible()
-    expect(screen.getByText('Редакция 2 · Архитектор')).toBeVisible()
-    await user.click(within(section).getByRole('button', { name: 'Снять отметку выполнения' }))
-    await user.type(screen.getByLabelText(/Причина снятия отметки/), 'Найден дефект повтора')
-    await user.click(screen.getByRole('button', { name: 'Снять отметку' }))
-    expect(await screen.findByText('Отметка снята: Найден дефект повтора')).toBeVisible()
-    expect(screen.getByText('Выполнено 1 из 3')).toBeVisible()
-  })
-
   it('retains the plan draft after a save error', async () => {
     const { user } = setup('save-error')
     await edit(user)
@@ -144,14 +127,13 @@ describe('memory-only decomposition preview', () => {
     (scenario) => {
       setup(scenario)
       expect(screen.getByRole('button', { name: 'Редактировать' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Снять отметку выполнения' })).toBeDisabled()
-      expect(screen.getByText('Выполнено 1 из 3')).toBeVisible()
+      expect(screen.getByText('1. Хранение и API настроек')).toBeVisible()
     },
   )
 
-  it('hides plan content and progress after access revocation', () => {
+  it('hides plan content after access revocation', () => {
     setup('revoked')
-    expect(screen.getByText('Доступ к задаче отозван. План и прогресс недоступны.')).toBeVisible()
+    expect(screen.getByText('Доступ к задаче отозван. План недоступен.')).toBeVisible()
     expect(screen.queryByText(/Выполнено.*из/)).not.toBeInTheDocument()
     expect(screen.queryByText('1. Хранение и API настроек')).not.toBeInTheDocument()
   })
@@ -178,9 +160,7 @@ describe('memory-only decomposition preview', () => {
     const { user } = setup()
     await user.click(screen.getByRole('button', { name: 'История редакций' }))
     const dialog = screen.getByRole('dialog')
-    expect(
-      within(dialog).queryByRole('button', { name: 'Снять отметку выполнения' }),
-    ).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument()
     expect(document.querySelectorAll('#section-storage')).toHaveLength(1)
     expect(document.getElementById('snapshot-section-storage')).not.toBeNull()
     await user.keyboard('{Escape}')
@@ -194,12 +174,12 @@ describe('memory-only decomposition preview', () => {
     await user.type(screen.getByLabelText(/Архитектурное решение/), 'Изменить существующую форму')
     await user.click(screen.getByRole('button', { name: 'Добавить раздел' }))
     await user.type(screen.getByLabelText(/Название раздела/), 'Форма')
-    await user.type(screen.getByLabelText(/Описание и результат/), 'Добавить поле')
-    await user.type(screen.getByLabelText(/Критерии готовности/), 'Поле сохраняется; unit tests')
+    await user.type(screen.getByLabelText(/Что сделать/), 'Добавить поле')
+    await user.type(screen.getByLabelText(/Как проверить/), 'Поле сохраняется; unit tests')
     await user.type(screen.getByLabelText(/Связь с требованиями/), 'К1')
     await user.click(screen.getByRole('button', { name: 'Сохранить план' }))
     expect(await screen.findByText('Сохранена редакция 1.')).toBeVisible()
-    expect(screen.getByText('Выполнено 0 из 1')).toBeVisible()
+    expect(screen.getByText('1. Форма')).toBeVisible()
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
   })
@@ -214,19 +194,7 @@ describe('memory-only decomposition preview', () => {
           name: scenario === 'error' ? 'Повторить' : 'Завершить демонстрационную загрузку',
         }),
       )
-      expect(screen.getByText('Выполнено 1 из 3')).toBeVisible()
+      expect(screen.getByText('1. Хранение и API настроек')).toBeVisible()
     },
   )
-})
-
-it('invalidates changed work while preserving renamed unchanged work', () => {
-  const before = fixture('normal')!
-  const renamed = structuredClone(before)
-  renamed.sections[0]!.title = 'Новое название'
-  expect(revise(before, renamed, 'Название').sections[0]!.result).not.toBeNull()
-  renamed.sections[0]!.criteria = 'Другое поведение'
-  expect(revise(before, renamed, 'Критерий').sections[0]!.result).toBeNull()
-  const architectureChanged = structuredClone(before)
-  architectureChanged.overview = 'Изменён общий способ хранения'
-  expect(revise(before, architectureChanged, 'Архитектура').sections[0]!.result).toBeNull()
 })

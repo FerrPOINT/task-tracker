@@ -199,7 +199,7 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
             revision: 1,
             reason: 'Первая редакция плана',
             overview: 'Используем существующий профиль пользователя и форму настроек.',
-            sections: initial.sections.map((s) => ({ ...s, result: null })),
+            sections: structuredClone(initial.sections),
           },
         ]
       : []
@@ -216,20 +216,17 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyRevision, setHistoryRevision] = useState('1')
   const [requirementsOpen, setRequirementsOpen] = useState(false)
-  const [resultSection, setResultSection] = useState<Section | null>(null)
-  const [resultSummary, setResultSummary] = useState('')
-  const [resultChecks, setResultChecks] = useState('')
   const editRef = useRef<HTMLButtonElement>(null)
   const addSectionRef = useRef<HTMLButtonElement>(null)
   const counter = useRef(0)
-  const dirty = Boolean(draft || resultSection)
+  const dirty = Boolean(draft)
   const blockedReason =
     scenario === 'readonly'
-      ? 'У вас есть доступ к просмотру. Изменение плана и результатов недоступно.'
+      ? 'У вас есть доступ к просмотру. Изменение плана недоступно.'
       : scenario === 'busy'
         ? 'Агент изменяет задачу. План доступен для чтения; редактирование станет доступно после завершения назначения.'
         : scenario === 'stale'
-          ? 'Требования обновлены до редакции 4. План относится к редакции 3 и требует пересмотра. Прежний прогресс не подтверждает готовность нового решения.'
+          ? 'Требования обновлены до редакции 4. План относится к редакции 3 и требует пересмотра.'
           : ''
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -349,39 +346,6 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
       return { ...value, sections: items }
     })
   }
-  function beginResult(section: Section) {
-    setResultSection(section)
-    setResultSummary('')
-    setResultChecks('')
-    setError(null)
-  }
-  async function saveResult(event: FormEvent) {
-    event.preventDefault()
-    if (!plan || !resultSection || pending) return
-    if (!resultSummary.trim() || (!resultSection.result && !resultChecks.trim())) {
-      setError('Укажите результат и проверки; для снятия отметки — причину.')
-      return
-    }
-    if (!(await canSave())) return
-    if (conflict) return
-    setPlan({
-      ...plan,
-      sections: plan.sections.map((s) =>
-        s.id === resultSection.id
-          ? {
-              ...s,
-              result: s.result
-                ? null
-                : { summary: resultSummary.trim(), checks: resultChecks.trim() },
-              resetReason: s.result ? resultSummary.trim() : undefined,
-            }
-          : s,
-      ),
-    })
-    setResultSection(null)
-    setNotice('Прогресс реализации сохранён. Стадия задачи не изменилась.')
-  }
-
   if (params.get('page') === 'board')
     return (
       <ContentSection className="space-y-4">
@@ -436,10 +400,7 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
             </TabsList>
             <TabsContent value="decomposition" className="space-y-5">
               {scenario === 'revoked' ? (
-                <ErrorState
-                  scope="local"
-                  message="Доступ к задаче отозван. План и прогресс недоступны."
-                />
+                <ErrorState scope="local" message="Доступ к задаче отозван. План недоступен." />
               ) : scenario === 'loading' && !resolvedRead ? (
                 <>
                   <LoadingState scope="local" message="Загружаем декомпозицию…" />
@@ -467,16 +428,14 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                         <Button
                           ref={editRef}
                           variant="outline"
-                          disabled={
-                            Boolean(blockedReason) || Boolean(draft) || Boolean(resultSection)
-                          }
+                          disabled={Boolean(blockedReason) || Boolean(draft)}
                           onClick={beginEdit}
                         >
                           {plan ? 'Редактировать' : 'Создать план'}
                         </Button>
                         <Button
                           variant="ghost"
-                          disabled={!plan || Boolean(draft) || Boolean(resultSection)}
+                          disabled={!plan || Boolean(draft)}
                           onClick={() => {
                             setHistoryRevision(String(plan?.revision))
                             setHistoryOpen(true)
@@ -498,10 +457,6 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                       <Button variant="link" onClick={() => setRequirementsOpen(true)}>
                         Требования №{plan.requirementsRevision}
                       </Button>
-                      <Badge tone="muted">
-                        Выполнено {plan.sections.filter((s) => s.result).length} из{' '}
-                        {plan.sections.length}
-                      </Badge>
                     </ActionGroup>
                   )}
                   {conflict && (
@@ -615,7 +570,8 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                                 />
                                 <Field
                                   id={`${section.id}-description`}
-                                  label="Описание и результат"
+                                  label="Что сделать"
+                                  hint="Опишите изменение и ожидаемый результат."
                                   multiline
                                   required
                                   value={section.description}
@@ -625,7 +581,7 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                                 />
                                 <Field
                                   id={`${section.id}-criteria`}
-                                  label="Критерии готовности"
+                                  label="Как проверить"
                                   multiline
                                   required
                                   value={section.criteria}
@@ -660,7 +616,6 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                                   description: '',
                                   criteria: '',
                                   requirements: '',
-                                  result: null,
                                 },
                               ],
                             })
@@ -707,18 +662,12 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                       </Fieldset>
                     </form>
                   ) : plan ? (
-                    <PlanRead plan={plan} canWrite={!blockedReason} onResult={beginResult} />
+                    <PlanRead plan={plan} />
                   ) : (
                     <EmptyState
                       message="Декомпозиции пока нет"
                       description="Архитектор подготовит план в этой задаче. Для небольшой работы достаточно одного раздела."
                     />
-                  )}
-                  {plan && !draft && (
-                    <Notice appearance="inline">
-                      Это прогресс реализации. Ревью и тестирование проверяют всю задачу и стыки
-                      разделов.
-                    </Notice>
                   )}
                 </>
               )}
@@ -736,8 +685,8 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
               <ContentSection>
                 <SectionHeader title="Комментарии" />
                 <Prose>
-                  Команда: проверим сохранение настроек после повторного входа. План и результаты
-                  доступны во вкладке «Декомпозиция».
+                  Команда: проверим сохранение настроек после повторного входа. План доступен во
+                  вкладке «Декомпозиция».
                 </Prose>
               </ContentSection>
             </TabsContent>
@@ -794,7 +743,6 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
         cancelLabel="Остаться"
         onConfirm={() => {
           setDraft(null)
-          setResultSection(null)
           if (blocker.state === 'blocked') blocker.proceed()
         }}
       />
@@ -842,94 +790,16 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
               const selected = [...history, ...(plan ? [plan] : [])].find(
                 (item) => String(item.revision) === historyRevision,
               )
-              return selected ? (
-                <PlanRead key={selected.revision} plan={selected} canWrite={false} snapshot />
-              ) : null
+              return selected ? <PlanRead key={selected.revision} plan={selected} snapshot /> : null
             })()}
           </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(resultSection)}
-        onOpenChange={(open) => {
-          if (!open && !pending) {
-            setResultSection(null)
-            setError(null)
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {resultSection?.result ? 'Снять отметку выполнения' : 'Результат раздела'}
-            </DialogTitle>
-            <DialogDescription>
-              {resultSection?.title}. Отметка относится к реализации, а не к принятию
-              Reviewer/Tester.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={saveResult} className="space-y-4" aria-busy={pending}>
-            <Fieldset disabled={pending} className="space-y-4">
-              <Field
-                id="result-summary"
-                label={resultSection?.result ? 'Причина снятия отметки' : 'Что выполнено'}
-                multiline
-                required
-                value={resultSummary}
-                onChange={setResultSummary}
-              />
-              {!resultSection?.result && (
-                <Field
-                  id="result-checks"
-                  label="Изменения и проверки"
-                  hint="Ссылки или идентификаторы изменений и результаты проверок. В этом предпросмотре — вымышленные."
-                  multiline
-                  required
-                  value={resultChecks}
-                  onChange={setResultChecks}
-                />
-              )}
-              {error && (
-                <Notice tone="danger" role="alert">
-                  {error}
-                </Notice>
-              )}
-              <ActionGroup>
-                <Button type="submit" disabled={pending}>
-                  {pending
-                    ? 'Сохраняем…'
-                    : resultSection?.result
-                      ? 'Снять отметку'
-                      : 'Сохранить результат'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => setResultSection(null)}
-                >
-                  Отмена
-                </Button>
-              </ActionGroup>
-            </Fieldset>
-          </form>
         </DialogContent>
       </Dialog>
     </>
   )
 }
 
-function PlanRead({
-  plan,
-  canWrite,
-  onResult,
-  snapshot = false,
-}: {
-  plan: Plan
-  canWrite: boolean
-  onResult?: (section: Section) => void
-  snapshot?: boolean
-}) {
+function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }) {
   const location = useLocation()
   const navigate = useNavigate()
   const [open, setOpen] = useState<Set<string>>(() => new Set([plan.sections[0]?.id ?? '']))
@@ -967,37 +837,20 @@ function PlanRead({
               })
             }}
             summary={
-              <span className="section-summary">
-                <span>
-                  {index + 1}. {section.title}
-                </span>
-                <Badge tone="muted">{section.result ? 'Выполнен' : 'Не выполнен'}</Badge>
+              <span>
+                {index + 1}. {section.title}
               </span>
             }
           >
             <div className="section-body">
+              <SectionHeader title="Что сделать" level={4} />
               <Prose>{section.description}</Prose>
-              <SectionHeader title="Критерии готовности" level={4} />
+              <SectionHeader title="Как проверить" level={4} />
               <Prose>{section.criteria}</Prose>
               <SectionHeader title="Связь с требованиями" level={4} />
               <Prose>{section.requirements}</Prose>
-              {section.result && (
-                <>
-                  <SectionHeader title="Результат реализации" level={4} />
-                  <Prose preserveLineBreaks>{section.result.summary}</Prose>
-                  <Prose preserveLineBreaks>{section.result.checks}</Prose>
-                </>
-              )}
-              {section.resetReason && (
-                <Notice appearance="inline">Отметка снята: {section.resetReason}</Notice>
-              )}
               <ActionGroup align="start">
-                {onResult && (
-                  <Button variant="outline" disabled={!canWrite} onClick={() => onResult(section)}>
-                    {section.result ? 'Снять отметку выполнения' : 'Отметить выполненным'}
-                  </Button>
-                )}
-                {onResult && (
+                {!snapshot && (
                   <Button
                     variant="ghost"
                     onClick={() => {
