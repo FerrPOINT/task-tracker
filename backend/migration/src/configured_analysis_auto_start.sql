@@ -130,4 +130,3 @@ LANGUAGE sql STABLE AS $$
         AND $2-ARRAY['stage','status','waiting_reason','runtime_state','lifecycle']
             =$3-ARRAY['stage','status','waiting_reason','runtime_state','lifecycle'])
 $$;
-

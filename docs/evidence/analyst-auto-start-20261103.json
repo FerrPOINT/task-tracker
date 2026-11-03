@@ -1,0 +1,46 @@
+{
+  "schema": "pdlc-source-qualification/v1",
+  "scope": "PM completion to Analyst queue, configured-cli-v1 and single-task-v1",
+  "base_revision": "e6c0aa6ef60c9453def5c95b58991295ba9a2ffa",
+  "migration": "m20261103_0000112_configured_analysis_auto_start",
+  "evidence": [
+    {
+      "surface": "workspace units and Clippy before replay/discovery corrections",
+      "passed": 852,
+      "ignored": 92,
+      "limitation": "Broad baseline; subsequent corrections qualified separately"
+    },
+    {
+      "surface": "configured application units and app/infra all-target Clippy after replay correction",
+      "passed": 17,
+      "limitation": "Precedes the final SQL discovery predicate correction"
+    },
+    {
+      "surface": "real PostgreSQL 17.6, fresh owned database for each compiled ignored case",
+      "passed": 13,
+      "failed": 0,
+      "coverage": [
+        "automatic queue uses the real PM actor and the same transaction",
+        "read-only discovery sees exactly one queued candidate",
+        "PM receipt replay remains readable without borrowing the next role's assignment",
+        "owner manual start remains compatible and idempotent",
+        "unconfirmed input and direct status writes cannot start analysis",
+        "disabled projects and historical completed tasks are not backfilled",
+        "populated migration 110/111 history is preserved",
+        "concurrent starts, conflicting payloads and detached SQL permits are fenced",
+        "sealed role artifacts retain hash, assignment and predecessor guards",
+        "critical blocker and new PM revision reuse the existing review journal"
+      ]
+    },
+    {
+      "surface": "EXPLAIN ANALYZE on a synthetic automatic queue candidate",
+      "returned_rows": 1,
+      "execution_ms": 4.779,
+      "limitation": "Small synthetic data; not a production-scale benchmark"
+    }
+  ],
+  "integrated_source_gate": "pending",
+  "packaged_runtime_and_real_hermes": "pending",
+  "iab_acceptance": "pending",
+  "production_deployed": false
+}
