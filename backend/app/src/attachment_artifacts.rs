@@ -158,6 +158,10 @@ mod tests {
         verify_read_bytes(&item, bytes).unwrap();
         assert!(verify_bytes(&item, b"{\"analysis\":true}").is_err());
         assert!(verify_read_bytes(&item, b"{\"analysis\":true}").is_err());
+        let mut tampered = bytes.to_vec();
+        tampered[1] = b'\t';
+        assert!(verify_bytes(&item, &tampered).is_err());
+        assert!(verify_read_bytes(&item, &tampered).is_err());
         item.size_bytes += 1;
         assert!(verify_bytes(&item, bytes).is_err());
         assert!(verify_read_bytes(&item, bytes).is_err());
