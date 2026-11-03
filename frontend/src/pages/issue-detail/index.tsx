@@ -275,11 +275,8 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
             </ContentSection>
           }
           details={
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
+            <ContentSection asChild dividers="end">
+              <section className="min-w-0" aria-label={t('issue.details')}>
                 <IssueMetaEditor
                   issue={issue}
                   columns={boardQuery.data?.columns ?? []}
@@ -289,8 +286,8 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                     updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
                   }
                 />
-              </CardContent>
-            </Card>
+              </section>
+            </ContentSection>
           }
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">

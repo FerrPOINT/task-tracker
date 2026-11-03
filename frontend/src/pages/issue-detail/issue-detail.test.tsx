@@ -365,7 +365,7 @@ describe('IssueDetailPage', () => {
   it('places editable details between the heading and activity in document order', () => {
     render(wrapper(<IssueDetailPage />))
     const heading = screen.getByText('Test issue summary')
-    const details = screen.getByText(/^(детали|details)$/i)
+    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
     const activity = screen.getByRole('tab', { name: /активность|activity/i })
     expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(
@@ -478,7 +478,7 @@ describe('IssueDetailPage', () => {
 
     const sidebar = screen.getByRole('complementary')
     expect(sidebar).toHaveClass('sticky')
-    expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByRole('region', { name: /^(детали|details)$/i })).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
     expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()

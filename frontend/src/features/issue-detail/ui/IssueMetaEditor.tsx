@@ -1,6 +1,16 @@
 import { useTranslation } from 'react-i18next'
-import { useMemo } from 'react'
-import { Label, Select, Button, Notice } from '@pdlc/ui/ui'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Button,
+  Notice,
+  ResourceListDescription,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@pdlc/ui/ui'
+import { ChevronDown } from 'lucide-react'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -20,6 +30,89 @@ interface IssueMetaEditorProps {
     sprint_id?: string | null
   }) => void
   disabled?: boolean
+}
+
+type MetaOption = { value: string; label: string; disabled?: boolean }
+
+function MetaChoice({
+  label,
+  value,
+  fallback,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  fallback?: string
+  options: MetaOption[]
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const returnFocus = useRef(false)
+  const selected = options.find((option) => option.value === value)?.label ?? fallback ?? value
+  useEffect(() => {
+    if (disabled) setOpen(false)
+    else if (returnFocus.current) {
+      returnFocus.current = false
+      if (document.activeElement === document.body) trigger.current?.focus()
+    }
+  }, [disabled])
+  return (
+    <>
+      <dt className="min-w-0">
+        <ResourceListDescription>{label}</ResourceListDescription>
+      </dt>
+      <dd className="min-w-0">
+        <DropdownMenu open={open} onOpenChange={(next) => setOpen(next && !disabled)}>
+          <DropdownMenuTrigger asChild disabled={disabled}>
+            <Button
+              ref={trigger}
+              type="button"
+              variant="ghost"
+              disabled={disabled}
+              className="max-w-full justify-start"
+              aria-label={`${label}: ${selected}`}
+              title={selected}
+            >
+              <span className="min-w-0 truncate">{selected}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            aria-label={label}
+            onCloseAutoFocus={(event) => {
+              if (disabled) {
+                event.preventDefault()
+                returnFocus.current = true
+              }
+            }}
+          >
+            <DropdownMenuRadioGroup
+              value={value}
+              onValueChange={(next) => {
+                const option = options.find((item) => item.value === next)
+                if (!disabled && option && !option.disabled && next !== value) onChange(next)
+              }}
+            >
+              {options.map((option) => (
+                <DropdownMenuRadioItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={disabled || option.disabled}
+                >
+                  {option.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </dd>
+    </>
+  )
 }
 
 export function IssueMetaEditor({
@@ -74,64 +167,40 @@ export function IssueMetaEditor({
   }, [issue.assignee_id, issue.assignee_name, t, usersQuery.data])
 
   return (
-    <div className="space-y-4 text-sm">
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-status" className="block">
-          {t('issue.status')}
-        </Label>
-        <Select
-          id="issue-status"
-          value={issue.status_id}
-          onValueChange={(nextValue) => onChange({ status_id: nextValue })}
-          disabled={disabled}
-          className="w-full"
-          options={[
-            ...(statusOptions.map((s) => ({
-              value: String(s.id),
-              label: String(statusLabel(s.name, t)),
-            })) ?? []),
-          ]}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-priority" className="block">
-          {t('issue.priority')}
-        </Label>
-        <Select
-          id="issue-priority"
-          value={issue.priority}
-          onValueChange={(nextValue) => onChange({ priority: nextValue })}
-          disabled={disabled}
-          className="w-full"
-          options={[
-            ...(priorities.map((p) => ({
-              value: String(p),
-              label: String(t(`priority.${p.toLowerCase()}`, { defaultValue: p })),
-            })) ?? []),
-          ]}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-assignee" className="block">
-          {t('issue.assignee')}
-        </Label>
-        <Select
-          id="issue-assignee"
-          value={issue.assignee_id ?? ''}
-          onValueChange={(nextValue) => onChange({ assignee_id: nextValue || null })}
-          disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
-          className="w-full"
-          options={[
-            ...(assigneeOptions.map((opt) => ({
-              value: String(opt.value),
-              label: String(opt.label),
-              disabled: opt.disabled,
-            })) ?? []),
-          ]}
-        />
-        {usersQuery.isError && (
+    <dl
+      className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-x-3 gap-y-1 text-sm"
+      aria-label={t('issue.details')}
+    >
+      <MetaChoice
+        label={t('issue.status')}
+        value={issue.status_id}
+        fallback={statusLabel(issue.status, t)}
+        disabled={disabled}
+        onChange={(status_id) => onChange({ status_id })}
+        options={statusOptions.map((status) => ({
+          value: status.id,
+          label: statusLabel(status.name, t),
+        }))}
+      />
+      <MetaChoice
+        label={t('issue.priority')}
+        value={issue.priority}
+        disabled={disabled}
+        onChange={(priority) => onChange({ priority })}
+        options={priorities.map((priority) => ({
+          value: priority,
+          label: t(`priority.${priority.toLowerCase()}`, { defaultValue: priority }),
+        }))}
+      />
+      <MetaChoice
+        label={t('issue.assignee')}
+        value={issue.assignee_id ?? ''}
+        disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
+        onChange={(assignee_id) => onChange({ assignee_id: assignee_id || null })}
+        options={assigneeOptions}
+      />
+      {usersQuery.isError && (
+        <dd className="col-span-2">
           <Notice
             role="alert"
             tone="danger"
@@ -154,27 +223,20 @@ export function IssueMetaEditor({
                 : 'issue.assigneeDirectoryError',
             )}
           </Notice>
-        )}
-      </div>
-
-      {sprints && (
-        <div className="space-y-1.5">
-          <Label htmlFor="issue-sprint" className="block">
-            {t('issue.sprint')}
-          </Label>
-          <Select
-            id="issue-sprint"
-            value={issue.sprint_id ?? ''}
-            onValueChange={(nextValue) => onChange({ sprint_id: nextValue || null })}
-            disabled={disabled}
-            className="w-full"
-            options={[
-              { value: '', label: String(t('issue.noSprint')) },
-              ...(sprints.map((s) => ({ value: String(s.id), label: String(s.name) })) ?? []),
-            ]}
-          />
-        </div>
+        </dd>
       )}
-    </div>
+      {sprints && (
+        <MetaChoice
+          label={t('issue.sprint')}
+          value={issue.sprint_id ?? ''}
+          disabled={disabled}
+          onChange={(sprint_id) => onChange({ sprint_id: sprint_id || null })}
+          options={[
+            { value: '', label: t('issue.noSprint') },
+            ...sprints.map((sprint) => ({ value: sprint.id, label: sprint.name })),
+          ]}
+        />
+      )}
+    </dl>
   )
 }
