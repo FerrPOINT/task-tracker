@@ -28,7 +28,8 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             .ends_with("_source_test")
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
-    migration::Migrator::up(&db, None).await.unwrap();
+    let previous = migration::Migrator::migrations().len() as u32 - 1;
+    migration::Migrator::up(&db, Some(previous)).await.unwrap();
     let owner_id = Uuid::new_v4();
     let member_id = Uuid::new_v4();
     let project = Uuid::new_v4();
@@ -69,7 +70,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
     .unwrap();
     let owner = actor("source-owner", true);
     let source = SourcePolicySpec {
-        development_workspace_id: Some(Uuid::new_v4()),
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
@@ -113,6 +114,19 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         first.source.development_workspace_id,
         input.source.development_workspace_id
     );
+    let history = db.query_one(statement(
+        "SELECT to_jsonb(p) AS original FROM sdlc_source_policy_revisions p WHERE project_id=$1 AND source_revision=1",
+        vec![project.into()],
+    )).await.unwrap().unwrap().try_get::<Json>("", "original").unwrap();
+    migration::Migrator::up(&db, None).await.unwrap();
+    let migrated = db.query_one(statement(
+        "SELECT to_jsonb(p) AS original FROM sdlc_source_policy_revisions p WHERE project_id=$1 AND source_revision=1",
+        vec![project.into()],
+    )).await.unwrap().unwrap().try_get::<Json>("", "original").unwrap();
+    assert_eq!(
+        history, migrated,
+        "forward migration rewrote source history"
+    );
     let tx = db.begin().await.unwrap();
     let invalid=tx.execute(statement("INSERT INTO sdlc_source_policy_revisions(project_id,source_revision,source_hash,payload) SELECT project_id,999,repeat('e',64),jsonb_set(jsonb_set(jsonb_set(payload,'{source_revision}','999'::jsonb),'{source_hash}',to_jsonb(repeat('e',64))),'{verification,development_workspace_id}',to_jsonb($2::text)) FROM sdlc_source_policy_revisions WHERE project_id=$1 AND source_revision=1",vec![project.into(),Uuid::new_v4().to_string().into()])).await.unwrap_err();
     assert!(
@@ -139,11 +153,15 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
     let mut next = input.clone();
     next.expected_source_revision = Some(1);
     next.idempotency_key = "source-policy:2a".into();
+    let workspace = Uuid::new_v4();
+    next.source.development_workspace_id = Some(workspace);
+    let mut workspace_proof = proof.clone();
+    workspace_proof.development_workspace_id = Some(workspace);
     let mut other = next.clone();
     other.idempotency_key = "source-policy:2b".into();
     let (left, right) = tokio::join!(
-        repo.set_source_policy(project, &owner, next, proof.clone()),
-        repo.set_source_policy(project, &owner, other, proof.clone())
+        repo.set_source_policy(project, &owner, next, workspace_proof.clone()),
+        repo.set_source_policy(project, &owner, other, workspace_proof)
     );
     assert_ne!(left.is_ok(), right.is_ok());
     assert_eq!(
@@ -349,6 +367,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         panic!("source must be frozen without invented runtime")
     };
     assert_eq!(binding.source_revision, 2);
+    assert_eq!(binding.development_workspace_id, Some(workspace));
     assert_eq!(binding.candidate_ref, format!("refs/heads/sdlc/{task}"));
     assert_eq!(
         binding.source_hash,
