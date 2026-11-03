@@ -221,6 +221,7 @@ mod tests {
     #[test]
     fn replay_preserves_nullable_cas_and_exact_source() {
         let source = SourcePolicySpec {
+            development_workspace_id: None,
             forge_instance_id: Uuid::new_v4(),
             repository_id: Uuid::new_v4(),
             base_ref: "refs/heads/main".into(),
@@ -235,6 +236,7 @@ mod tests {
             source_hash: "b".repeat(64),
             source: source.clone(),
             verification: VerifiedSource {
+                development_workspace_id: source.development_workspace_id,
                 namespace: shared::resource_context::NamespaceRef {
                     registry_instance_id: Uuid::new_v4(),
                     namespace_id: Uuid::new_v4(),

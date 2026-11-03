@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-03",
+  "scope": "isolated local Docker/PostgreSQL source qualification",
+  "source": "87d736a392d0d006267647ce09895863e2d42f20",
+  "sdk": "ed61ec63b58fe9b60d8669c85de5ac6b5bec872b",
+  "commands": [
+    "cargo fmt --all -- --check",
+    "cargo clippy --locked --workspace --all-targets -- -D warnings",
+    "cargo test --locked --workspace -- --test-threads=1"
+  ],
+  "fmt": "passed",
+  "clippy": "passed",
+  "tests": {
+    "passed": 854,
+    "ignored": 89,
+    "failed": 0,
+    "requiredFocusedCases": "Seven source service/domain, five namespace API, three registered source-reader tests and two real PostgreSQL cases passed separately. Required PostgreSQL scenarios had no skips.",
+    "postgres": "Upgrade an existing pre112 history without rewriting immutable rows, bind the exact workspace on a new source policy, CAS/replay/concurrency, current configured assignment and producer-access revocation."
+  },
+  "openapi": "generated schema and client check/compatibility against main passed",
+  "runtimeChanged": false,
+  "installedAcceptance": false,
+  "remainingGates": [
+    "release artifacts and compatible source cohort delivery",
+    "R1 registration and complete human workspace acceptance",
+    "permanent default Developer configuration, actual CLI/checkout/rights preflight and real initial/rework"
+  ]
+}

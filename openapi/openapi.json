@@ -6166,6 +6166,17 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "include_execution",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -20518,6 +20529,16 @@
             "type": "string",
             "format": "uuid"
           },
+          "source_binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskSourceBinding"
+              }
+            ]
+          },
           "stage": {
             "$ref": "#/components/schemas/Stage"
           },
@@ -20638,6 +20659,13 @@
           },
           "base_ref": {
             "type": "string"
+          },
+          "development_workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "forge_instance_id": {
             "type": "string",
@@ -21568,6 +21596,13 @@
             "type": "string",
             "format": "date-time"
           },
+          "development_workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "forge_instance_id": {
             "type": "string",
             "format": "uuid"
@@ -22143,6 +22178,13 @@
           },
           "default_ref": {
             "type": "string"
+          },
+          "development_workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "forge_instance_id": {
             "type": "string",
