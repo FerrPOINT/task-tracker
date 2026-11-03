@@ -52,6 +52,7 @@ pub fn lower_hex(value: &str, length: usize) -> bool {
 
 pub fn validate_spec(spec: &SourcePolicySpec) -> Result<(), AppError> {
     if spec.forge_instance_id.is_nil()
+        || spec.development_workspace_id.is_some_and(|id| id.is_nil())
         || spec.repository_id.is_nil()
         || !branch_ref(&spec.base_ref)
         || !lower_hex(&spec.base_commit, 40)
@@ -75,6 +76,7 @@ pub fn validate_verification(
         || namespace.namespace_id.is_nil()
         || observed.forge_instance_id != spec.forge_instance_id
         || observed.repository_id != spec.repository_id
+        || observed.development_workspace_id != spec.development_workspace_id
         || observed.public_name.is_empty()
         || observed.public_name.len() > 512
         || observed.public_name.chars().any(char::is_control)
@@ -154,6 +156,7 @@ pub fn freeze_binding(
         ));
     }
     let mut binding = TaskSourceBinding {
+        development_workspace_id: policy.source.development_workspace_id,
         contract_version: 1,
         tracker_instance_id: state.tracker_instance_id.clone(),
         project_id: state.project_id,
@@ -181,6 +184,31 @@ pub fn freeze_binding(
 
 pub fn candidate_ref(task: uuid::Uuid) -> String {
     format!("refs/heads/sdlc/{task}")
+}
+
+/// Frozen metadata only. Current configured assignment remains the authority;
+/// an absent/retired native lease must not replace it or grant a new permission.
+pub fn configured_source_binding(
+    source: TaskSourceReadback,
+) -> Result<Option<TaskSourceBinding>, AppError> {
+    let source = match source {
+        TaskSourceReadback::Bound { binding, .. } => Some(binding),
+        TaskSourceReadback::Blocked {
+            reason:
+                SourceBlockReason::MissingCurrentExecution
+                | SourceBlockReason::ExecutionNotRunning
+                | SourceBlockReason::LeaseExpired,
+            binding,
+            ..
+        } => binding,
+        TaskSourceReadback::Blocked { .. } => None,
+    };
+    if let Some(binding) = &source {
+        if binding.source_hash != sealed_hash(binding)? {
+            return Err(AppError::conflict("task source history inconsistent"));
+        }
+    }
+    Ok(source)
 }
 
 pub fn readback(

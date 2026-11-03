@@ -17,12 +17,14 @@ pub(super) async fn configure_test_source(
     exec(&repo.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command)
         VALUES($1,$2,$3,1,'active',$4)",vec![project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()]).await.unwrap();
     let source = SourcePolicySpec {
+        development_workspace_id: None,
         forge_instance_id: Uuid::new_v4(),
         repository_id: Uuid::new_v4(),
         base_ref: "refs/heads/main".into(),
         base_commit: "a".repeat(40),
     };
     let verified = VerifiedSource {
+        development_workspace_id: None,
         namespace,
         forge_instance_id: source.forge_instance_id,
         repository_id: source.repository_id,
