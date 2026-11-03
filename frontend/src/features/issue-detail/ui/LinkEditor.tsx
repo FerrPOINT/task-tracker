@@ -11,7 +11,6 @@ import {
   Notice,
   ResourceStateView,
   resourceErrorState,
-  EmptyState,
   Fieldset,
 } from '@pdlc/ui/ui'
 import { useState } from 'react'
@@ -61,15 +60,29 @@ function IssueLinkEditor({ issueId, currentKey }: { issueId: string; currentKey:
 
   return (
     <div className="space-y-2" data-testid="link-editor">
-      <SectionHeader
-        level={3}
-        title={
-          <>
-            <Link2 className="h-4 w-4" aria-hidden />
-            {t('links.title')}
-          </>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionHeader
+          level={3}
+          title={
+            <>
+              <Link2 className="h-4 w-4" aria-hidden />
+              {t('links.title')}
+            </>
+          }
+        />
+        {!adding && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!canEdit}
+            onClick={() => setAdding(true)}
+          >
+            <Plus className="mr-1 h-3 w-3" aria-hidden />
+            {t('links.add')}
+          </Button>
+        )}
+      </div>
 
       <ResourceStateView state={state} scope="local">
         <Fieldset legend={t('links.title')} legendVisuallyHidden disabled={!canEdit}>
@@ -119,9 +132,11 @@ function IssueLinkEditor({ issueId, currentKey }: { issueId: string; currentKey:
               </ul>
             </ResourceList>
           )}
-          {links.length === 0 && <EmptyState message={t('links.none')} />}
+          {links.length === 0 && (
+            <ResourceListDescription>{t('links.none')}</ResourceListDescription>
+          )}
 
-          {adding ? (
+          {adding && (
             <div className="flex flex-wrap gap-1">
               <Input
                 value={targetKey}
@@ -166,11 +181,6 @@ function IssueLinkEditor({ issueId, currentKey }: { issueId: string; currentKey:
                 </Notice>
               )}
             </div>
-          ) : (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setAdding(true)}>
-              <Plus className="mr-1 h-3 w-3" aria-hidden />
-              {t('links.add')}
-            </Button>
           )}
         </Fieldset>
       </ResourceStateView>

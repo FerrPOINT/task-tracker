@@ -371,7 +371,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                 </TabsContent>
               </Tabs>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid items-start gap-4 md:grid-cols-2">
                 <Card>
                   <CardContent>
                     <LabelEditor issueId={issue.id} projectKey={issue.project_key} />

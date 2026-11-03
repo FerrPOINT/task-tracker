@@ -66,7 +66,7 @@ function Field({
 }
 
 /** Local design controller, mounted inside the real IssueDetailPage in development only. */
-export function DecompositionDesignPanel({ scenario = 'single' }: { scenario?: Scenario }) {
+export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?: Scenario }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [plan, setPlan] = useState(() => fixture(scenario))
@@ -219,7 +219,8 @@ export function DecompositionDesignPanel({ scenario = 'single' }: { scenario?: S
     <>
       <div className="min-w-0 space-y-5">
         <Notice appearance="inline">
-          Дизайн вкладки: данные плана демонстрационные, изменения сохраняются только в памяти.
+          Пример: настройки уведомлений. Данные плана демонстрационные, изменения сохраняются только
+          в памяти.
         </Notice>
         {scenario === 'revoked' ? (
           <ErrorState scope="local" message="Доступ к задаче отозван. План недоступен." />

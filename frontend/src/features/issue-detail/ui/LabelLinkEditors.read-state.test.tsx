@@ -134,6 +134,23 @@ it.each([401, 403, 404, 503])(
 )
 
 it.each(['labels', 'links'] as const)(
+  'disables the %s header action after a read failure without opening a write form',
+  (kind) => {
+    const view = render(panel(kind))
+    const action = screen.getByRole('button', {
+      name: kind === 'labels' ? /new label/i : /add link/i,
+    })
+    expect(action).toBeEnabled()
+    fail(kind, 503, kind === 'labels' ? [label] : [link])
+    view.rerender(panel(kind))
+    expect(action).toBeDisabled()
+    fireEvent.click(action)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    noWrites()
+  },
+)
+
+it.each(['labels', 'links'] as const)(
   'keeps a %s draft and confirmed rows read-only after a temporary failure',
   (kind) => {
     const view = render(panel(kind))

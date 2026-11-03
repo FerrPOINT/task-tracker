@@ -56,7 +56,15 @@ async function edit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('memory-only decomposition preview', () => {
-  it.each(['normal', 'single', 'long'])(
+  it('shows a detailed example with distinct implementation boundaries and checks', async () => {
+    const { user } = setup('detailed')
+    expect(document.querySelectorAll('details[id^="section-"]')).toHaveLength(6)
+    await user.click(screen.getByText('4. Применение настроек при отправке'))
+    expect(screen.getByText(/повтор обработки не отправляет уведомление дважды/i)).toBeVisible()
+    expect(screen.getByText('6. Проверка общего сценария')).toBeVisible()
+  })
+
+  it.each(['normal', 'single', 'long', 'detailed'])(
     'starts with every section collapsed for %s',
     (scenario) => {
       setup(scenario)
