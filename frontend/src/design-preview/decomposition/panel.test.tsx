@@ -71,6 +71,7 @@ describe('memory-only decomposition preview', () => {
       const sections = document.querySelectorAll('details[id^="section-"]')
       expect(sections.length).toBeGreaterThan(0)
       sections.forEach((section) => expect(section).not.toHaveAttribute('open'))
+      expect(screen.getByTestId('architecture-overview')).not.toHaveAttribute('open')
     },
   )
 
@@ -229,6 +230,7 @@ describe('memory-only decomposition preview', () => {
       .forEach((section) => expect(section).not.toHaveAttribute('open'))
     await user.click(within(dialog).getByRole('combobox', { name: 'Редакция' }))
     await user.click(screen.getByRole('option', { name: /Редакция 1/ }))
+    await user.click(within(dialog).getByText('Архитектурное решение', { exact: true }))
     expect(
       within(dialog).getByText('Используем существующий профиль пользователя и форму настроек.'),
     ).toBeVisible()

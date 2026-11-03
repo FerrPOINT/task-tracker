@@ -16,6 +16,7 @@ const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
 const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
+const mockUseStatuses = vi.hoisted(() => vi.fn())
 
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
@@ -109,7 +110,7 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
   }),
   useUsers: () => ({ data: [], isLoading: false }),
-  useStatuses: () => ({ data: [], isLoading: false }),
+  useStatuses: () => mockUseStatuses(),
   useTransitions: () => ({ data: [], isLoading: false }),
   useProjectLabels: () => ({ data: [], isLoading: false }),
   useIssueLabels: () => ({ data: [], isLoading: false }),
@@ -211,6 +212,7 @@ describe('IssueDetailPage', () => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
+    mockUseStatuses.mockReturnValue({ data: [], isLoading: false })
     mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseDeleteIssue.mockReturnValue({
       mutate: vi.fn(),
@@ -371,6 +373,28 @@ describe('IssueDetailPage', () => {
     expect(
       details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('collapses mobile properties without losing their choices or changing the issue', async () => {
+    render(wrapper(<IssueDetailPage />))
+    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
+    const disclosure = details.closest('details')!
+    expect(disclosure.open).toBe(false)
+    const summary = disclosure.querySelector('summary')!
+    await userEvent.click(summary)
+    expect(disclosure.open).toBe(true)
+    expect(within(details).getAllByRole('combobox')).toHaveLength(4)
+    await userEvent.click(summary)
+    expect(disclosure.open).toBe(false)
+    expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
+  })
+
+  it('uses the status catalog for the mobile summary when the legacy label is unknown', () => {
+    mockUseIssue.mockReturnValue({ data: { ...issueData, status: 'Unknown' }, isLoading: false })
+    mockUseStatuses.mockReturnValue({ data: [{ id: 'in-progress', name: 'SDLC Ready' }] })
+    render(wrapper(<IssueDetailPage />))
+    expect(document.querySelector('details > summary')).toHaveTextContent('SDLC Ready')
+    expect(document.querySelector('details > summary')).not.toHaveTextContent('Unknown')
   })
 
   it('links the issue back to its project board', () => {

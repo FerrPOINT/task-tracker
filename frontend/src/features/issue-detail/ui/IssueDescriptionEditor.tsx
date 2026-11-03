@@ -36,7 +36,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
   const [saveError, setSaveError] = useState<string | null>(null)
   const descriptionId = useId()
   const descriptionLines = issue.description?.split('\n') ?? []
-  const compactDescription = descriptionLines.slice(0, 4).join('\n').slice(0, 240).trimEnd()
+  const compactDescription = descriptionLines.slice(0, 3).join('\n').slice(0, 160).trimEnd()
   const hasLongDescription =
     issue.description != null &&
     (issue.description.length > 280 || descriptionLines.length > 5) &&
@@ -81,24 +81,24 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
   if (!editing) {
     return (
       <div className="group min-w-0 cursor-pointer" onClick={startEdit}>
-        <PageHeader
-          title={issue.summary}
-          actions={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation()
-                startEdit()
-              }}
-              disabled={disabled}
-              aria-label={t('common.edit')}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          }
-        />
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <PageHeader title={issue.summary} />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation()
+              startEdit()
+            }}
+            disabled={disabled}
+            aria-label={t('common.edit')}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        </div>
         {issue.description ? (
           hasLongDescription ? (
             <>

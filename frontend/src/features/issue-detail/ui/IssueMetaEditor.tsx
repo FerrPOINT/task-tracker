@@ -1,16 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Button,
-  Notice,
-  ResourceListDescription,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from '@pdlc/ui/ui'
-import { ChevronDown } from 'lucide-react'
+import { useMemo } from 'react'
+import { Button, Notice, ResourceListDescription, Select } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -49,69 +39,26 @@ function MetaChoice({
   onChange: (value: string) => void
   disabled?: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const returnFocus = useRef(false)
-  const selected = options.find((option) => option.value === value)?.label ?? fallback ?? value
-  useEffect(() => {
-    if (disabled) setOpen(false)
-    else if (returnFocus.current) {
-      returnFocus.current = false
-      if (document.activeElement === document.body) trigger.current?.focus()
-    }
-  }, [disabled])
+  const choices = options.some((option) => option.value === value)
+    ? options
+    : [{ value, label: fallback ?? value, disabled: true }, ...options]
+  const selected = choices.find((option) => option.value === value)?.label ?? value
   return (
-    <>
-      <dt className="min-w-0">
+    <div className="min-w-0">
+      <dt>
         <ResourceListDescription>{label}</ResourceListDescription>
       </dt>
       <dd className="min-w-0">
-        <DropdownMenu open={open} onOpenChange={(next) => setOpen(next && !disabled)}>
-          <DropdownMenuTrigger asChild disabled={disabled}>
-            <Button
-              ref={trigger}
-              type="button"
-              variant="ghost"
-              disabled={disabled}
-              className="max-w-full justify-start"
-              aria-label={`${label}: ${selected}`}
-              title={selected}
-            >
-              <span className="min-w-0 truncate">{selected}</span>
-              <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            aria-label={label}
-            onCloseAutoFocus={(event) => {
-              if (disabled) {
-                event.preventDefault()
-                returnFocus.current = true
-              }
-            }}
-          >
-            <DropdownMenuRadioGroup
-              value={value}
-              onValueChange={(next) => {
-                const option = options.find((item) => item.value === next)
-                if (!disabled && option && !option.disabled && next !== value) onChange(next)
-              }}
-            >
-              {options.map((option) => (
-                <DropdownMenuRadioItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={disabled || option.disabled}
-                >
-                  {option.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Select
+          value={value}
+          options={choices}
+          disabled={disabled}
+          onValueChange={onChange}
+          aria-label={`${label}: ${selected}`}
+          className="w-full"
+        />
       </dd>
-    </>
+    </div>
   )
 }
 
@@ -168,7 +115,7 @@ export function IssueMetaEditor({
 
   return (
     <dl
-      className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-x-3 gap-y-1 text-sm"
+      className="grid grid-cols-2 items-start gap-x-3 gap-y-1 text-sm"
       aria-label={t('issue.details')}
     >
       <MetaChoice

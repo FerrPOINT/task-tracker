@@ -6,7 +6,6 @@ import {
   CardTitle,
   CardContent,
   SectionHeader,
-  ContentSection,
   Button,
   ActionGroup,
   Prose,
@@ -217,7 +216,7 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
   }
   return (
     <>
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-2">
         <Notice appearance="inline">
           Пример: настройки уведомлений. Данные плана демонстрационные, изменения сохраняются только
           в памяти.
@@ -239,10 +238,9 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
           />
         ) : (
           <>
-            <SectionHeader
-              title="Декомпозиция"
-              context={
-                plan ? (
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-1 text-sm">
+                {plan ? (
                   <>
                     <Button
                       variant="link"
@@ -261,9 +259,21 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
                   </>
                 ) : (
                   'План реализации ещё не подготовлен'
-                )
-              }
-              actions={
+                )}
+              </div>
+              <ActionGroup align="start">
+                {plan && (
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      const params = new URLSearchParams(location.search)
+                      params.set('tab', 'sdlc')
+                      navigate({ search: params.toString(), hash: '' })
+                    }}
+                  >
+                    Требования задачи
+                  </Button>
+                )}
                 <Button
                   ref={editRef}
                   variant="outline"
@@ -272,27 +282,13 @@ export function DecompositionDesignPanel({ scenario = 'detailed' }: { scenario?:
                 >
                   {plan ? 'Редактировать' : 'Создать план'}
                 </Button>
-              }
-            />
+              </ActionGroup>
+            </div>
             {blockedReason && <Notice tone="warning">{blockedReason}</Notice>}
             {notice && (
               <Notice role="status" tone="success" appearance="inline">
                 {notice}
               </Notice>
-            )}
-            {plan && (
-              <ActionGroup align="start">
-                <Button
-                  variant="link"
-                  onClick={() => {
-                    const params = new URLSearchParams(location.search)
-                    params.set('tab', 'sdlc')
-                    navigate({ search: params.toString(), hash: '' })
-                  }}
-                >
-                  Требования задачи
-                </Button>
-              </ActionGroup>
             )}
             {conflict && (
               <Notice tone="warning" title="План изменился, пока вы редактировали" role="alert">
@@ -561,12 +557,15 @@ function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }
     })
   }, [location.hash, plan.sections, snapshot])
   return (
-    <div className="min-w-0 space-y-5 break-words">
-      <ContentSection className="space-y-3">
-        <SectionHeader title="Архитектурное решение" level={3} />
+    <div className="min-w-0 space-y-2 break-words">
+      <Disclosure
+        appearance="row"
+        summary="Архитектурное решение"
+        data-testid="architecture-overview"
+      >
         <Prose preserveLineBreaks>{plan.overview}</Prose>
-      </ContentSection>
-      <div className="space-y-3">
+      </Disclosure>
+      <div>
         {plan.sections.map((section, index) => (
           <Disclosure
             appearance="row"
