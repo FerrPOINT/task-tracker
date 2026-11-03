@@ -3,6 +3,9 @@
 Кандидат контракта привязки исходников задачи. Наличие кода и сгенерированной
 схемы не подтверждает установку или совместную live-приёмку с Forge.
 
+Source gate и отдельные PostgreSQL-сценарии зафиксированы в
+[evidence от 2026-11-03](evidence/developer-workspace-source-20261103.json).
+
 ## Owner Policy
 
 The project owner configures GET/POST
