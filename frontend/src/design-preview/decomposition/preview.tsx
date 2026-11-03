@@ -419,31 +419,36 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
                   <SectionHeader
                     title="Декомпозиция"
                     context={
-                      plan
-                        ? `Редакция ${plan.revision} · ${plan.author}`
-                        : 'План реализации ещё не подготовлен'
+                      plan ? (
+                        <>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            disabled={Boolean(draft)}
+                            aria-label={`Редакция ${plan.revision} — история изменений плана`}
+                            title="Предыдущие редакции, авторы и причины изменений"
+                            onClick={() => {
+                              setHistoryRevision(String(plan.revision))
+                              setHistoryOpen(true)
+                            }}
+                          >
+                            Редакция {plan.revision}
+                          </Button>
+                          <span> · {plan.author}</span>
+                        </>
+                      ) : (
+                        'План реализации ещё не подготовлен'
+                      )
                     }
                     actions={
-                      <>
-                        <Button
-                          ref={editRef}
-                          variant="outline"
-                          disabled={Boolean(blockedReason) || Boolean(draft)}
-                          onClick={beginEdit}
-                        >
-                          {plan ? 'Редактировать' : 'Создать план'}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          disabled={!plan || Boolean(draft)}
-                          onClick={() => {
-                            setHistoryRevision(String(plan?.revision))
-                            setHistoryOpen(true)
-                          }}
-                        >
-                          История редакций
-                        </Button>
-                      </>
+                      <Button
+                        ref={editRef}
+                        variant="outline"
+                        disabled={Boolean(blockedReason) || Boolean(draft)}
+                        onClick={beginEdit}
+                      >
+                        {plan ? 'Редактировать' : 'Создать план'}
+                      </Button>
                     }
                   />
                   {blockedReason && <Notice tone="warning">{blockedReason}</Notice>}
@@ -764,9 +769,9 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>История редакций плана</DialogTitle>
+            <DialogTitle>Редакции плана</DialogTitle>
             <DialogDescription>
-              Снимки только для чтения. Восстановление старой редакции не предусмотрено.
+              Предыдущие версии плана, их авторы и причины изменений. Только чтение.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[65vh] space-y-4 overflow-y-auto">
@@ -802,7 +807,7 @@ function TaskPreview({ scenario }: { scenario: Scenario }) {
 function PlanRead({ plan, snapshot = false }: { plan: Plan; snapshot?: boolean }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const [open, setOpen] = useState<Set<string>>(() => new Set([plan.sections[0]?.id ?? '']))
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     const id = location.hash.replace('#section-', '')
     if (snapshot || !id || !plan.sections.some((s) => s.id === id)) return

@@ -20,9 +20,20 @@ async function edit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('memory-only decomposition preview', () => {
-  it('shows an implementation plan without a second completion workflow', () => {
-    setup()
+  it.each(['normal', 'single', 'long'])(
+    'starts with every section collapsed for %s',
+    (scenario) => {
+      setup(scenario)
+      const sections = document.querySelectorAll('details[id^="section-"]')
+      expect(sections.length).toBeGreaterThan(0)
+      sections.forEach((section) => expect(section).not.toHaveAttribute('open'))
+    },
+  )
+
+  it('shows an implementation plan without a second completion workflow', async () => {
+    const { user } = setup()
     expect(screen.getByText('1. Хранение и API настроек')).toBeVisible()
+    await user.click(screen.getByText('1. Хранение и API настроек'))
     const section = within(document.getElementById('section-storage')!)
     expect(section.getByRole('heading', { name: 'Что сделать' })).toBeVisible()
     expect(section.getByRole('heading', { name: 'Как проверить' })).toBeVisible()
@@ -61,7 +72,9 @@ describe('memory-only decomposition preview', () => {
     await user.type(screen.getByLabelText(/Архитектурное решение/), 'Несохранённая идея')
     await user.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(screen.queryByText('Несохранённая идея')).not.toBeInTheDocument()
-    expect(screen.getByText('Редакция 2 · Архитектор')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Редакция 2 — история изменений плана' }),
+    ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Редактировать' })).toHaveFocus()
   })
 
@@ -141,6 +154,8 @@ describe('memory-only decomposition preview', () => {
   it('opens the direct section link and keeps view state through Back/Forward', async () => {
     const { user, router } = setup('normal', '#section-form')
     await waitFor(() => expect(document.getElementById('section-form')).toHaveAttribute('open'))
+    expect(document.getElementById('section-storage')).not.toHaveAttribute('open')
+    expect(document.getElementById('section-acceptance')).not.toHaveAttribute('open')
     await user.click(screen.getByRole('tab', { name: 'SDLC' }))
     await act(() => router.navigate(-1))
     await waitFor(() =>
@@ -158,13 +173,23 @@ describe('memory-only decomposition preview', () => {
 
   it('reads historical snapshots without write controls or duplicate section IDs', async () => {
     const { user } = setup()
-    await user.click(screen.getByRole('button', { name: 'История редакций' }))
+    const revision = screen.getByRole('button', { name: 'Редакция 2 — история изменений плана' })
+    expect(screen.queryByRole('button', { name: 'История редакций' })).not.toBeInTheDocument()
+    await user.click(revision)
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument()
     expect(document.querySelectorAll('#section-storage')).toHaveLength(1)
     expect(document.getElementById('snapshot-section-storage')).not.toBeNull()
+    document
+      .querySelectorAll('details[id^="snapshot-section-"]')
+      .forEach((section) => expect(section).not.toHaveAttribute('open'))
+    await user.click(within(dialog).getByRole('combobox', { name: 'Редакция' }))
+    await user.click(screen.getByRole('option', { name: /Редакция 1/ }))
+    expect(
+      within(dialog).getByText('Используем существующий профиль пользователя и форму настроек.'),
+    ).toBeVisible()
     await user.keyboard('{Escape}')
-    expect(screen.getByRole('button', { name: 'История редакций' })).toHaveFocus()
+    expect(revision).toHaveFocus()
   })
 
   it('creates a meaningful single-section plan in memory without network requests', async () => {
