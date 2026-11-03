@@ -124,6 +124,83 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     let storage = domain::InMemoryStorage::default();
     let issue = shared::IssueId::from_uuid(task);
     let config = &f.repo.config;
+    let input_id = Uuid::new_v4();
+    let input_key = "ordinary-research-input.txt";
+    let input_bytes = b"Owner-provided business source";
+    domain::FileStorage::put(&storage, &task.to_string(), input_key, input_bytes.to_vec())
+        .await
+        .unwrap();
+    exec(&f.db,
+        "INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at)
+         SELECT $1,$2,id,'business-input.txt','text/plain',$3,$4,now() FROM users WHERE central_sub='owner'",
+        vec![input_id.into(),task.into(),(input_bytes.len() as i64).into(),input_key.into()],
+    ).await.unwrap();
+    let input_id = shared::AttachmentId::from_uuid(input_id);
+    assert_eq!(
+        artifacts::download(&f.db, config, &producer, input_id, &storage)
+            .await
+            .unwrap()
+            .1,
+        input_bytes
+    );
+    assert_eq!(
+        artifacts::list(&f.db, config, &producer, issue)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        artifacts::download(&f.db, config, &f.reader, input_id, &storage)
+            .await
+            .is_err()
+    );
+    let unrelated = actor(
+        CONSUMER,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    assert!(matches!(
+        artifacts::download(&f.db, config, &unrelated, input_id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "UPDATE attachments SET size_bytes=size_bytes+1 WHERE id=$1",
+        vec![input_id.as_uuid().into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        artifacts::download(&f.db, config, &producer, input_id, &storage).await,
+        Err(AppError::Conflict(_))
+    ));
+    exec(
+        &f.db,
+        "UPDATE attachments SET size_bytes=size_bytes-1 WHERE id=$1",
+        vec![input_id.as_uuid().into()],
+    )
+    .await
+    .unwrap();
+    // Losing native project membership immediately removes ordinary input access.
+    exec(
+        &f.db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+        vec![f.project.into(), service_users[PRODUCER].into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        artifacts::download(&f.db, config, &producer, input_id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        vec![f.project.into(), service_users[PRODUCER].into()],
+    )
+    .await
+    .unwrap();
     let bytes = b"{ \"actual\": \"analysis\" }";
     let (one, two) = tokio::join!(
         artifacts::publish(
@@ -320,6 +397,14 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         false,
         &["task-tracker:read", "task-tracker:write"],
     );
+    assert!(matches!(
+        artifacts::download(&f.db, config, &consumer, input_id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        artifacts::download(&f.db, config, &producer, input_id, &storage).await,
+        Err(AppError::Forbidden)
+    ));
     assert_eq!(
         artifacts::download(&f.db, config, &consumer, one.id, &storage)
             .await

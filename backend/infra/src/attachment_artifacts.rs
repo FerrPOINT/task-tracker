@@ -295,7 +295,15 @@ async fn allowed(
     attachment: &domain::Attachment,
 ) -> Result<bool, AppError> {
     let Some(seal) = Seal::parse(attachment.storage_key.as_ref())? else {
-        return Ok(false);
+        // Research inputs belong to the task, not to a delivery receipt. Only
+        // its current Analyst may read ordinary attachments after the same
+        // assignment, project membership and live custody checks above.
+        return Ok(!auth.scheduler
+            && auth
+                .head
+                .assignment
+                .as_ref()
+                .is_some_and(|assignment| assignment.role == DeliveryRole::Analyst));
     };
     provenance(tx, attachment, &seal).await?;
     let current = auth.head.assignment.as_ref().ok_or(AppError::Forbidden)?;
@@ -526,7 +534,11 @@ pub(crate) async fn download(
     let bytes = storage
         .get(&item.issue_id.to_string(), item.storage_key.as_ref())
         .await?;
-    app::attachment_artifacts::verify_bytes(&item, &bytes)?;
+    if Seal::parse(item.storage_key.as_ref())?.is_some() {
+        app::attachment_artifacts::verify_bytes(&item, &bytes)?;
+    } else if item.size_bytes != bytes.len() as i64 {
+        return Err(AppError::conflict("research input size mismatch"));
+    }
     tx.commit().await.map_err(map_db)?;
     Ok((item, bytes))
 }
