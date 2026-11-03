@@ -122,8 +122,11 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
       if (!viewport || !selected) return
       const bounds = viewport.getBoundingClientRect()
       const tab = selected.getBoundingClientRect()
-      if (tab.left < bounds.left) viewport.scrollLeft -= bounds.left - tab.left
-      else if (tab.right > bounds.right) viewport.scrollLeft += tab.right - bounds.right
+      const spacing = getComputedStyle(viewport)
+      const left = bounds.left + Number.parseFloat(spacing.paddingLeft)
+      const right = bounds.right - Number.parseFloat(spacing.paddingRight)
+      if (tab.left < left) viewport.scrollLeft -= left - tab.left
+      else if (tab.right > right) viewport.scrollLeft += tab.right - right
     }
     revealSelected()
     window.addEventListener('resize', revealSelected)
@@ -316,7 +319,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
           activity={
             <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <div ref={tabsViewportRef} className="min-w-0 overflow-x-auto">
+                <div ref={tabsViewportRef} className="-m-1 min-w-0 overflow-x-auto p-1">
                   <TabsList
                     appearance="underline"
                     style={{
