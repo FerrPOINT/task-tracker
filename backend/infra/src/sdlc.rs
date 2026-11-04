@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use domain::sdlc::*;
 use domain::sdlc_metadata::{MetadataCandidate, MetadataErrorCode};
 use domain::sdlc_pm_draft::*;
+#[cfg(test)]
+use sea_orm::DatabaseConnection;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    QueryResult, Statement, TransactionTrait, Value,
+    ConnectionTrait, Database, DatabaseBackend, DatabaseTransaction, QueryResult, Statement,
+    TransactionTrait, Value,
 };
 use serde_json::{Value as Json, json};
 use shared::AppError;
