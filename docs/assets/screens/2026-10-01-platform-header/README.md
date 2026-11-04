@@ -7,7 +7,7 @@ Central Auth и API из изолированного Compose-проекта; з
 - Шапка: 3 страницы × 3 темы × 11 ширин = 99 сочетаний, 320–2560 px.
 - Высота 60 px, четыре слота, один переключатель, цели 44/40 px;
   нет перекрытий, page overflow и serious/critical axe в шапке.
-- Runtime: шесть UI в продуктовом порядке, healthy; нет Auth/Java/Pulse,
+- Runtime: шесть UI в продуктовом порядке, healthy; нет Auth/Java,
   Task Tracker отмечен текущим. Меню непрозрачно, Escape возвращает фокус,
   outside touch закрывает меню и снимает native inert.
 - Desktop project picker и создание, мобильное создание с `project_key`,
