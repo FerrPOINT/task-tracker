@@ -544,6 +544,191 @@ fn delivery_fence(receipt: &LifecycleReceipt) -> DeliveryFence {
     }
 }
 
+#[tokio::test]
+#[ignore = "requires disposable TT_CANDIDATES_TEST_DATABASE_URL; synthetic Workflow receipt, no Complete"]
+async fn analyst_tool_proposal_is_replayed_bound_and_comment_checked_without_complete() {
+    use domain::sdlc_discussion::{DiscussionRepository, PublishStageComment};
+    let f = Fixture::new().await;
+    let user = Uuid::new_v4();
+    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'proposal-tools@example.test','proposal-tools','Proposal tools','!',$2,true)",vec![user.into(),PRODUCER.into()]).await.unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![f.project.into(), user.into()],
+    )
+    .await
+    .unwrap();
+    let task = f.queued_analysis("proposal-tools", true).await;
+    let bound = bind(&f, task, "proposal-tools").await;
+    let producer = actor(
+        PRODUCER,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    let storage = domain::InMemoryStorage::default();
+    let issue = shared::IssueId::from_uuid(task);
+    let bytes = b"# Analysis\nSynthetic source and specification for proposal transport.";
+    let attachment = artifacts::publish(
+        &f.db,
+        &f.repo.config,
+        &producer,
+        issue,
+        ArtifactUpload {
+            file_name: "analysis.md".into(),
+            content_type: "text/markdown".into(),
+            bytes: bytes.to_vec(),
+        },
+        &storage,
+    )
+    .await
+    .unwrap();
+    let duplicate = artifacts::publish(
+        &f.db,
+        &f.repo.config,
+        &producer,
+        issue,
+        ArtifactUpload {
+            file_name: "analysis.md".into(),
+            content_type: "text/markdown".into(),
+            bytes: bytes.to_vec(),
+        },
+        &storage,
+    )
+    .await
+    .unwrap();
+    assert_eq!(attachment.id, duplicate.id);
+    assert_eq!(
+        artifacts::download(&f.db, &f.repo.config, &producer, attachment.id, &storage)
+            .await
+            .unwrap()
+            .1,
+        bytes
+    );
+    let seal = Seal::parse(attachment.storage_key.as_ref())
+        .unwrap()
+        .unwrap();
+    let command = SubmitDeliveryProposal {
+        fence: delivery_fence(&bound),
+        workflow_receipt: ArtifactReceipt {
+            reference: "fixture://synthetic-workflow-terminal".into(),
+            sha256: "d".repeat(64),
+        },
+        result: DeliveryResult::Analyst {
+            analysis: seal.artifact().receipt,
+        },
+        idempotency_key: "tools:proposal".into(),
+    };
+    assert!(
+        f.repo
+            .submit_delivery_proposal(task, &producer, command.clone())
+            .await
+            .is_err(),
+        "final ordinary comment is required"
+    );
+    let assignment = bound.assignment.as_ref().unwrap();
+    let comment = PublishStageComment {
+        fence: MachineFence {
+            assignment_id: assignment.assignment_id,
+            execution_id: assignment.execution_id,
+            agent_id: assignment.agent_id,
+            assignment_version: assignment.fencing_token,
+        },
+        body: format!(
+            "QA analysis: attachment {}. Synthetic Workflow receipt only; no stage handoff.",
+            attachment.id
+        ),
+        idempotency_key: "tools:comment".into(),
+    };
+    let (saved, replay) = f
+        .repo
+        .publish_stage_comment(task, &producer, comment.clone())
+        .await
+        .unwrap();
+    assert!(!replay);
+    assert!(
+        f.repo
+            .publish_stage_comment(task, &producer, comment)
+            .await
+            .unwrap()
+            .1
+    );
+    let mut wrong_binding = command.clone();
+    wrong_binding.fence.execution_id = Uuid::new_v4();
+    wrong_binding.idempotency_key = "tools:wrong-binding".into();
+    assert!(
+        f.repo
+            .submit_delivery_proposal(task, &producer, wrong_binding)
+            .await
+            .is_err()
+    );
+    exec(&f.db,"UPDATE comments SET body='Edited ordinary report',updated_at=clock_timestamp() WHERE id=$1",vec![saved.comment_id.into()]).await.unwrap();
+    assert!(
+        f.repo
+            .stage_comment_operation(task, &producer, "tools:comment")
+            .await
+            .is_err()
+    );
+    assert!(
+        f.repo
+            .submit_delivery_proposal(task, &producer, command.clone())
+            .await
+            .is_err(),
+        "edited comment cannot authorize a proposal"
+    );
+    crate::sdlc::configured_test_support::delivery_comment(
+        &f.repo,
+        task,
+        &producer,
+        assignment,
+        "tools:replacement-comment",
+    )
+    .await;
+    let (proposal, replay) = f
+        .repo
+        .submit_delivery_proposal(task, &producer, command.clone())
+        .await
+        .unwrap();
+    assert!(!replay);
+    let (same, replay) = f
+        .repo
+        .submit_delivery_proposal(task, &producer, command.clone())
+        .await
+        .unwrap();
+    assert!(replay);
+    assert_eq!(
+        serde_json::to_value(same).unwrap(),
+        serde_json::to_value(&proposal).unwrap()
+    );
+    let mut changed = command;
+    let DeliveryResult::Analyst { analysis } = &mut changed.result else {
+        unreachable!()
+    };
+    analysis.sha256 = "e".repeat(64);
+    assert!(
+        f.repo
+            .submit_delivery_proposal(task, &producer, changed)
+            .await
+            .is_err(),
+        "replay cannot replace the artifact hash"
+    );
+    let current = f
+        .repo
+        .lifecycle_read(task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(current.task.stage, LifecycleStage::Analysis);
+    assert_eq!(current.task.status, LifecycleStatus::InProgress);
+    assert_eq!(
+        current.assignment.as_ref().unwrap().assignment_id,
+        assignment.assignment_id
+    );
+    assert_eq!(
+        serde_json::to_value(current.result).unwrap(),
+        serde_json::to_value(bound.result).unwrap()
+    );
+}
+
 async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
     let receipt = f
         .repo

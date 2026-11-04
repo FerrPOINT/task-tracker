@@ -94,3 +94,11 @@ proposal проверяются в тестовом контексте, вклю
 повтор и неправильную привязку. Proposal не завершает стадию; `Complete`
 в этой квалификации не вызывается. Фактические результаты CLI, Hermes и
 содержательной проверки документа фиксируются раздельно в отчёте Base.
+
+Отдельная PG-регрессия без `Complete`:
+`sdlc::candidates::tests::artifact_tests::analyst_tool_proposal_is_replayed_bound_and_comment_checked_without_complete`.
+Она публикует и читает реальные sealed bytes через repository, проверяет
+дедупликацию, комментарий и его повтор, отказ при неверном execution binding,
+изменённом комментарии и замене hash при повторе proposal. Успешный proposal
+сохраняет `Analysis / InProgress` и то же назначение. Workflow receipt в этом
+тесте явно синтетический: тест не доказывает живую оценку Workflow или Fleet.
