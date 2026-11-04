@@ -2,6 +2,50 @@ use super::{Api, Result, Value, enc, json_input};
 use clap::Subcommand;
 use uuid::Uuid;
 
+const SAVE_HELP: &str = r#"Pass a complete JSON object through --from-file FILE or --from-file - (stdin).
+Read context and decomposition first. Replace placeholders with current server
+values; assignment_version is context.assignment.version. Generate a new UUID
+for a new section; preserve existing UUIDs when renaming or reordering.
+
+{
+  "expected_revision": 0,
+  "idempotency_key": "<original-operation-key>",
+  "reason": "<required when changing a saved plan>",
+  "fence": {
+    "assignment_id": "<context.assignment.assignment_id>",
+    "execution_id": "<context.assignment.execution_id>",
+    "agent_id": "<context.assignment.agent_id>",
+    "assignment_version": 1
+  },
+  "content": {
+    "overview": "<architecture and verified source provenance>",
+    "source": {
+      "requirements_revision": 1,
+      "requirements_hash": "<exact current requirements hash>",
+      "analysis_result_id": "<context.previous_result_id>"
+    },
+    "sections": [{
+      "id": "<new or existing section UUID>",
+      "title": "<section title>",
+      "description": "<expected work and relevant paths>",
+      "criteria": "<validation criteria as text>",
+      "requirements": "<covered requirements as text>"
+    }]
+  }
+}
+
+Section fields are exactly id, title, description, criteria and requirements.
+All five are strings; id must be a UUID. Extra fields and arrays are rejected.
+For terminal-only use, a single-quoted heredoc supplies literal JSON to stdin:
+  task-tracker decomposition save --task TASK_UUID --from-file - <<'JSON'
+  <complete JSON object>
+  JSON
+The heredoc delimiter must be on its own line without indentation. Do not use
+an unescaped apostrophe inside single-quoted printf data. Do not execute JSON
+as a script. After an unknown response retain the original key/body and read
+decomposition operation, then the exact revision; never silently overwrite CAS.
+"#;
+
 #[derive(Subcommand)]
 pub enum DecompositionCommand {
     /// Read the current plan and editing restrictions
@@ -10,9 +54,11 @@ pub enum DecompositionCommand {
         task: Uuid,
     },
     /// Save an entire plan with expected_revision and a stable idempotency_key
+    #[command(after_long_help = SAVE_HELP)]
     Save {
         #[arg(long)]
         task: Uuid,
+        /// Complete JSON command; '-' reads stdin without creating a file
         #[arg(long)]
         from_file: String,
     },
