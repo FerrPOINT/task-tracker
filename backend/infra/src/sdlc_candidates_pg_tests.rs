@@ -64,6 +64,10 @@ impl Fixture {
     }
 
     async fn new_with_migration_steps(steps: Option<u32>) -> Self {
+        Self::new_with_owner(steps, "owner").await
+    }
+
+    async fn new_with_owner(steps: Option<u32>, owner_subject: &str) -> Self {
         let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
             .expect("fresh disposable candidates DB required");
         let db = Database::connect(&url).await.unwrap();
@@ -82,7 +86,7 @@ impl Fixture {
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
-            ("owner", owner_id),
+            (owner_subject, owner_id),
             ("pm", Uuid::new_v4()),
             ("verifier", Uuid::new_v4()),
             ("scheduler", Uuid::new_v4()),
@@ -110,7 +114,7 @@ impl Fixture {
         .await
         .unwrap();
         let roles = routes();
-        let owner = actor("owner", true, &[]);
+        let owner = actor(owner_subject, true, &[]);
         super::super::source::configure_test_source(&repo, project, &owner).await;
         repo.set_routing_policy(
             project,

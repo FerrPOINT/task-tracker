@@ -3,9 +3,250 @@
 use super::*;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
+use domain::sdlc_source::TaskSourceRepository;
 
 const PRODUCER: &str = "88888888-8888-4888-8888-888888888888";
 const CONSUMER: &str = "99999999-9999-4999-8999-999999999999";
+
+/// Operator-only export for standalone CLI/Hermes QA. Never called by the server.
+/// The input/output paths and fresh disposable database are explicit opt-ins.
+#[tokio::test]
+#[ignore = "operator fixture export requires TT_ANALYST_TOOLS_INPUT and a fresh candidates test DB"]
+async fn prepare_standalone_analyst_tool_fixture() {
+    let input_path = std::env::var("TT_ANALYST_TOOLS_INPUT").expect("explicit fixture input");
+    let output_path = std::env::var("TT_ANALYST_TOOLS_OUTPUT").expect("explicit fixture output");
+    let input: Json = serde_json::from_slice(&std::fs::read(input_path).unwrap()).unwrap();
+    let owner_subject = input["owner_subject"].as_str().unwrap();
+    Uuid::parse_str(owner_subject).unwrap();
+    let mut f = Fixture::new_with_owner(None, owner_subject).await;
+    let subject = input["producer_subject"].as_str().unwrap();
+    Uuid::parse_str(subject).unwrap();
+    let scheduler = input["scheduler_subject"].as_str().unwrap();
+    Uuid::parse_str(scheduler).unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+         VALUES($1,$2,$3,'Standalone QA scheduler','!',$3,true)",
+        vec![
+            Uuid::new_v4().into(),
+            format!("{scheduler}@example.test").into(),
+            scheduler.into(),
+        ],
+    )
+    .await
+    .unwrap();
+    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+        vec![f.project.into(),scheduler.into()]).await.unwrap();
+    f.writer.subject = scheduler.into();
+    f.reader.subject = scheduler.into();
+    f.repo.config.reservation_scheduler_subject = scheduler.into();
+    f.roles = parse(input["routes"].clone());
+    f.repo
+        .set_routing_policy(
+            f.project,
+            &f.owner,
+            SetRoutingPolicy {
+                expected_version: Some(1),
+                routes: f.roles.clone(),
+                idempotency_key: "standalone:routes".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let namespace: shared::resource_context::NamespaceRef = parse(input["namespace"].clone());
+    exec(
+        &f.db,
+        "UPDATE tracker_namespace_bindings SET registry_instance_id=$2,namespace_id=$3,
+         command=jsonb_set(command,'{namespace}',$4) WHERE resource_id=$1",
+        vec![
+            f.project.into(),
+            namespace.registry_instance_id.into(),
+            namespace.namespace_id.into(),
+            json!(namespace).into(),
+        ],
+    )
+    .await
+    .unwrap();
+    let source: domain::sdlc_source::SourcePolicySpec = parse(input["source"].clone());
+    let verified: domain::sdlc_source::VerifiedSource = parse(json!({
+        "namespace":namespace,"forge_instance_id":source.forge_instance_id,
+        "repository_id":source.repository_id,"public_name":input["repository"],
+        "base_ref":source.base_ref,"base_commit":source.base_commit,
+        "default_ref":"refs/heads/main","protected_refs":[],"observed_at":chrono::Utc::now()
+    }));
+    f.repo
+        .set_source_policy(
+            f.project,
+            &f.owner,
+            domain::sdlc_source::SetSourcePolicy {
+                expected_source_revision: Some(1),
+                source,
+                idempotency_key: "standalone:source".into(),
+            },
+            verified,
+        )
+        .await
+        .unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+         VALUES($1,$2,$3,'Standalone Analyst QA','!',$3,true)",
+        vec![
+            Uuid::new_v4().into(),
+            format!("{subject}@example.test").into(),
+            subject.into(),
+        ],
+    )
+    .await
+    .unwrap();
+    exec(&f.db,
+        "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+        vec![f.project.into(),subject.into()],
+    ).await.unwrap();
+    let mut cases = json!({});
+    let ordinal_base = input["ordinal_base"].as_i64().unwrap();
+    assert!((1..=1_000_000_000).contains(&ordinal_base));
+    f.db.query_one(statement(
+        "SELECT setval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'),$1,false)",
+        vec![ordinal_base.into()],
+    ))
+    .await
+    .unwrap();
+    let name = input["scenario"].as_str().unwrap();
+    assert!(["complete", "partial", "missing"].contains(&name));
+    let task = f
+        .draft(&format!("standalone-{name}"), Some(DraftFlow::SingleTaskV1))
+        .await;
+    let document: RequirementsDocument = parse(input["requirements_by_case"][name].clone());
+    let (pm, _) = crate::sdlc::configured_test_support::confirmed_pm(
+        &f.repo,
+        task,
+        &f.owner,
+        f.roles.project_manager.agent_id,
+        document,
+        false,
+    )
+    .await;
+    // The historical PM receipt is explicitly synthetic, as in existing PG fixtures.
+    let mut no_automatic = f.repo.config.clone();
+    no_automatic.single_task_project_ids.remove(&f.project);
+    let repo = PostgresSdlcRepository {
+        db: crate::guarded_db::GuardedDb::new(
+            Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
+                .await
+                .unwrap(),
+        ),
+        config: no_automatic,
+        file_storage: None,
+    };
+    let pm_actor = actor(
+        &pm.assignment.machine_subject,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    crate::sdlc::configured_test_support::complete_pm(&repo, task, &f.owner, &pm_actor, &pm).await;
+    seed_analysis_fixture(&f.db, task, &f.owner).await;
+    let receipt = f
+        .repo
+        .lifecycle_read(task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    let (reserved, _) = f
+        .repo
+        .lifecycle_command(
+            task,
+            &f.writer,
+            LifecycleCommand::Reserve {
+                expected_task_version: receipt.task.version,
+                machine_subject: Some(subject.into()),
+                idempotency_key: format!("standalone:reserve:{name}"),
+            },
+        )
+        .await
+        .unwrap();
+    let (bound, _) = f
+        .repo
+        .lifecycle_command(
+            task,
+            &f.writer,
+            LifecycleCommand::BindRun {
+                fence: delivery_fence(&reserved),
+                binding: RunBinding {
+                    chat_id: Uuid::new_v4(),
+                    run_id: Uuid::new_v4(),
+                    machine_subject: subject.into(),
+                    dispatch_receipt: ArtifactReceipt {
+                        reference: "fixture://standalone-no-fleet".into(),
+                        sha256: "c".repeat(64),
+                    },
+                },
+                idempotency_key: format!("standalone:bind:{name}"),
+            },
+        )
+        .await
+        .unwrap();
+    let state = f.repo.read(task, &f.owner).await.unwrap();
+    cases[name] = json!({"task_id":task,"receipt":bound,"state":state,
+            "workflow_task_key":state.retained_fields["workflow_task_key"]});
+    let foreign_project = Uuid::new_v4();
+    let foreign_board = Uuid::new_v4();
+    exec(
+        &f.db,
+        "INSERT INTO projects(id,key,name,owner_id,default_board_id)
+        SELECT $1,'OTHER','Foreign standalone QA',owner_id,$2 FROM projects WHERE id=$3",
+        vec![
+            foreign_project.into(),
+            foreign_board.into(),
+            f.project.into(),
+        ],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Foreign QA','[]')",
+        vec![foreign_board.into(), foreign_project.into()],
+    )
+    .await
+    .unwrap();
+    f.repo
+        .config
+        .single_task_project_ids
+        .insert(foreign_project);
+    crate::sdlc::source::configure_test_source(&f.repo, foreign_project, &f.owner).await;
+    f.repo
+        .set_routing_policy(
+            foreign_project,
+            &f.owner,
+            SetRoutingPolicy {
+                expected_version: None,
+                routes: f.roles.clone(),
+                idempotency_key: "standalone:foreign-routing".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let (foreign, _) = f
+        .repo
+        .create_draft(
+            foreign_project,
+            &f.owner,
+            CreateDraftCommand {
+                interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
+                flow: Some(DraftFlow::SingleTaskV1),
+                title: "Foreign standalone fixture".into(),
+                description: "No Analyst project membership".into(),
+                idempotency_key: "standalone:foreign".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let foreign = foreign.task_id;
+    let output = json!({"scope":"synthetic operator preparation; no Fleet/native/PM acceptance",
+        "project_id":f.project,"owner_subject":owner_subject,"instance_id":f.repo.config.instance_id,"cases":cases,"foreign_task_id":foreign});
+    std::fs::write(output_path, serde_json::to_vec_pretty(&output).unwrap()).unwrap();
+}
 
 fn upload(bytes: &[u8], name: &str) -> ArtifactUpload {
     ArtifactUpload {
