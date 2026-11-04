@@ -43,11 +43,20 @@ async fn related_discussion_keeps_assignment_project_and_pagination_boundaries()
     .unwrap();
     exec(&f.db,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds,created_at,updated_at) SELECT $1,$2,'OTHER-1',issue_type,status_id,'Foreign source','Foreign text',reporter_id,priority,labels,position,time_spent_seconds,created_at,updated_at FROM issues WHERE id=$3",vec![foreign.into(),foreign_project.into(),related.into()]).await.unwrap();
     // Both link directions are sources; a real foreign link must stay invisible.
-    for (left, right) in [(related, source), (source, foreign)] {
+    for (left, right, kind) in [
+        (related, source, "relates"),
+        (source, related, "blocks"),
+        (source, foreign, "relates"),
+    ] {
         exec(
             &f.db,
-            "INSERT INTO issue_links(id,source_id,target_id,link_type) VALUES($1,$2,$3,'relates')",
-            vec![Uuid::new_v4().into(), left.into(), right.into()],
+            "INSERT INTO issue_links(id,source_id,target_id,link_type) VALUES($1,$2,$3,$4)",
+            vec![
+                Uuid::new_v4().into(),
+                left.into(),
+                right.into(),
+                kind.into(),
+            ],
         )
         .await
         .unwrap();

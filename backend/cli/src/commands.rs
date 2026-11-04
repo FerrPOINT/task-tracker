@@ -297,7 +297,7 @@ pub enum SdlcCommand {
         #[arg(long)]
         task: Uuid,
     },
-    /// Use Tracker-authoritative Analysis producer/readback endpoints
+    /// Scheduler-owned Analysis queue/reservations; assigned Analyst uses context and result propose
     Analysis {
         #[command(subcommand)]
         command: SdlcAnalysisCommand,
@@ -385,7 +385,10 @@ pub enum SdlcAnalysisReservationCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcAnalysisResultCommand {
-    /// Submit an Analysis terminal result JSON payload from a file or stdin
+    /// Scheduler-only terminal acceptance; this does not upload an Analyst document
+    #[command(
+        after_long_help = "Assigned Analyst saves analysis.md with `task-tracker attachment upload`.\nAfter accepted Workflow completion and the final comment, use\n`task-tracker sdlc result propose --task TASK_UUID --from-file -`.\nThis scheduler operation requires independent scheduler authority; never borrow it."
+    )]
     Submit {
         #[arg(long)]
         task: Uuid,

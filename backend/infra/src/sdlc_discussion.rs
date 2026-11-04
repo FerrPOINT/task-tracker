@@ -147,19 +147,30 @@ impl DiscussionRepository for PostgresSdlcRepository {
         self.discussion_author(&tx, &state, actor, None).await?;
         let source_task_id = task;
         let mut related_tasks = Vec::new();
+        let mut seen_related = std::collections::HashSet::new();
+        // Keep source visibility and project bindings stable until the read commits.
         for row in tx
             .query_all(statement(
-                "SELECT DISTINCT i.id,i.key,i.summary FROM issue_links l
+                "SELECT i.id,i.key,i.summary FROM issue_links l
              JOIN issues i ON i.id=CASE WHEN l.source_id=$1 THEN l.target_id ELSE l.source_id END
              WHERE (l.source_id=$1 OR l.target_id=$1) AND i.project_id=$2 AND i.deleted_at IS NULL
-             ORDER BY i.id",
-                vec![task.into(), state.project_id.into()],
+               AND ($3::uuid IS NULL OR i.id=$3)
+             ORDER BY i.id,l.id FOR SHARE OF i,l",
+                vec![
+                    task.into(),
+                    state.project_id.into(),
+                    query.related_task.into(),
+                ],
             ))
             .await
             .map_err(map_db)?
         {
+            let related_id = row.try_get("", "id").map_err(map_db)?;
+            if !seen_related.insert(related_id) {
+                continue;
+            }
             related_tasks.push(RelatedTask {
-                task_id: row.try_get("", "id").map_err(map_db)?,
+                task_id: related_id,
                 key: row.try_get("", "key").map_err(map_db)?,
                 title: row.try_get("", "summary").map_err(map_db)?,
             });
