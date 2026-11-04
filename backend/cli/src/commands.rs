@@ -235,7 +235,7 @@ pub enum SdlcCommand {
     },
     /// Read the current authoritative single-task assignment and lifecycle
     #[command(
-        after_long_help = "Read the current technical-role assignment, run binding and lease for a DeliveryFence.\nBefore proposing an Analyst or other technical result, read this receipt with your\nassigned credential. Take assignment_id, execution_id, fencing_token and lease_id\nfrom receipt.assignment, and expected_lease_version from receipt.lease.version.\nThis is not a configured-cli-v1 PM startup prerequisite: PM starts with\n`task-tracker sdlc context --task TASK_UUID` and its workflow_task_key.\nDo not acquire a lease, rebind or borrow another token to make a denied read succeed."
+        after_long_help = "Read the current technical-role assignment, run binding and lease for a DeliveryFence.\nBefore proposing an Analyst or other technical result, read this receipt with your\nassigned credential. Take assignment_id, execution_id, fencing_token and lease_id\nfrom receipt.assignment, and expected_lease_version from receipt.lease.version.\nThis is not a configured-cli-v1 PM startup prerequisite: PM starts with\n`task-tracker sdlc context --task TASK_UUID` and its workflow_task_key, then reads\n`project-workflow --json step --task WORKFLOW_TASK_KEY`.\nDo not acquire a lease, rebind or borrow another token to make a denied read succeed;\nauthorization failures on required commands remain blockers."
     )]
     Lifecycle {
         #[arg(long)]

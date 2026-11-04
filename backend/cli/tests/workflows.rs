@@ -558,9 +558,10 @@ async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_ne
                 "not a configured-cli-v1 PM startup prerequisite",
                 "task-tracker sdlc context --task TASK_UUID",
                 "project-workflow --json step --task WORKFLOW_TASK_KEY",
-                "Do not acquire a native lease, rebind or borrow another token",
+                "Do not acquire a lease, rebind or borrow another token",
                 "authorization failures on required commands remain blockers",
-                "Legacy delivery callers retain this command",
+                "current technical-role assignment, run binding and lease for a DeliveryFence",
+                "expected_lease_version from receipt.lease.version",
             ],
         ),
         (
