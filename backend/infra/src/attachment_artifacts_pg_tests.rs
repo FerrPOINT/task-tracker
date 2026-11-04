@@ -34,11 +34,23 @@ async fn related_discussion_keeps_assignment_project_and_pagination_boundaries()
     let foreign_board = Uuid::new_v4();
     let foreign = Uuid::new_v4();
     exec(&f.db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) SELECT $1,'OTHER','Other',owner_id,$3 FROM projects WHERE id=$2",vec![foreign_project.into(),f.project.into(),foreign_board.into()]).await.unwrap();
-    exec(&f.db,"INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Other','[]')",vec![foreign_board.into(),foreign_project.into()]).await.unwrap();
-    exec(&f.db,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position) SELECT $1,$2,'OTHER-1',issue_type,status_id,'Foreign source','Foreign text',reporter_id,priority,labels,position FROM issues WHERE id=$3",vec![foreign.into(),foreign_project.into(),related.into()]).await.unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Other','[]')",
+        vec![foreign_board.into(), foreign_project.into()],
+    )
+    .await
+    .unwrap();
+    exec(&f.db,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds,created_at,updated_at) SELECT $1,$2,'OTHER-1',issue_type,status_id,'Foreign source','Foreign text',reporter_id,priority,labels,position,time_spent_seconds,created_at,updated_at FROM issues WHERE id=$3",vec![foreign.into(),foreign_project.into(),related.into()]).await.unwrap();
     // Both link directions are sources; a real foreign link must stay invisible.
     for (left, right) in [(related, source), (source, foreign)] {
-        exec(&f.db,"INSERT INTO issue_links(id,source_id,target_id,link_type) VALUES($1,$2,$3,'relates_to')",vec![Uuid::new_v4().into(),left.into(),right.into()]).await.unwrap();
+        exec(
+            &f.db,
+            "INSERT INTO issue_links(id,source_id,target_id,link_type) VALUES($1,$2,$3,'relates')",
+            vec![Uuid::new_v4().into(), left.into(), right.into()],
+        )
+        .await
+        .unwrap();
     }
     for body in ["Related source first page", "Related source second page"] {
         exec(&f.db,"INSERT INTO comments(id,issue_id,author_id,body,created_at,updated_at) VALUES($1,$2,$3,$4,clock_timestamp(),clock_timestamp())",vec![Uuid::now_v7().into(),related.into(),user.into(),body.into()]).await.unwrap();

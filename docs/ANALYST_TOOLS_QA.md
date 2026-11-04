@@ -66,8 +66,6 @@ UPDATE/DELETE не получают машинных полномочий. Та 
 Регрессия: ignored PG test
 `sdlc::candidates::tests::artifact_tests::native_artifact_content_port_is_exact_and_rechecked_at_commit`.
 
-## Результат
-
 ## Связанные материалы
 
 `sdlc discussion read --task <назначенная-task>` возвращает `related_tasks`:
