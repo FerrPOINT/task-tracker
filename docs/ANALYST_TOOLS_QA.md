@@ -68,6 +68,11 @@ UPDATE/DELETE не получают машинных полномочий. Та 
 
 ## Результат
 
+Назначенная техническая роль читает `sdlc lifecycle --task <uuid>` собственным
+credential для DeliveryFence. Это текущий readback назначения/lease, а не
+дополнительный протокол или обязательный шаг старта PM. Поля assignment берутся
+из `receipt.assignment`, expected_lease_version — из `receipt.lease.version`.
+
 Через обычный `attachment upload` сохранить один `analysis.md`, скачать
 через `attachment download` и сравнить SHA256. Итоговый комментарий и typed
 proposal проверяются в тестовом контексте, включая original-key readback,

@@ -235,7 +235,7 @@ pub enum SdlcCommand {
     },
     /// Read the current authoritative single-task assignment and lifecycle
     #[command(
-        after_long_help = "This is the legacy delivery lifecycle readback, not a configured-cli-v1 PM startup prerequisite.\nFor configured PM work, read `task-tracker sdlc context --task TASK_UUID` and use its\nworkflow_task_key with `project-workflow --json step --task WORKFLOW_TASK_KEY`.\nDo not acquire a native lease, rebind or borrow another token to make this optional\nlegacy read succeed. A 403 here alone does not invalidate successful configured\ncontext/Workflow reads; authorization failures on required commands remain blockers.\nLegacy delivery callers retain this command and its existing authorization contract."
+        after_long_help = "Read the current technical-role assignment, run binding and lease for a DeliveryFence.\nBefore proposing an Analyst or other technical result, read this receipt with your\nassigned credential. Take assignment_id, execution_id, fencing_token and lease_id\nfrom receipt.assignment, and expected_lease_version from receipt.lease.version.\nThis is not a configured-cli-v1 PM startup prerequisite: PM starts with\n`task-tracker sdlc context --task TASK_UUID` and its workflow_task_key.\nDo not acquire a lease, rebind or borrow another token to make a denied read succeed."
     )]
     Lifecycle {
         #[arg(long)]
