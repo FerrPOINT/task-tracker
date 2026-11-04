@@ -25,7 +25,7 @@ fn input_scope(
 }
 
 pub(crate) async fn list_inputs(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     issue: shared::IssueId,
@@ -58,7 +58,7 @@ pub(crate) async fn list_inputs(
 }
 
 async fn snapshot(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     id: AttachmentId,
@@ -135,7 +135,7 @@ async fn snapshot(
 }
 
 pub(crate) async fn download(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     id: AttachmentId,

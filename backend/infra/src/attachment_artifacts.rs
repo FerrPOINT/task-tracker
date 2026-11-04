@@ -12,7 +12,7 @@ fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult, field: &str) -> Res
 }
 
 pub(crate) async fn human_access(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     issue: IssueId,
     user: UserId,
 ) -> Result<(), AppError> {
@@ -380,7 +380,7 @@ async fn allowed(
 }
 
 pub(crate) async fn publish(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     issue: IssueId,
@@ -465,7 +465,7 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn list(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     issue: IssueId,
@@ -506,7 +506,7 @@ pub(crate) async fn list(
 }
 
 pub(crate) async fn download(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     id: AttachmentId,

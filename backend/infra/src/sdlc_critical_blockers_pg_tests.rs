@@ -80,7 +80,7 @@ fn critical_pg_future_size_probe() {
             "artifact_publish",
             future_size(|| {
                 artifacts::publish(
-                    type_only(),
+                    type_only::<&crate::guarded_db::GuardedDb>(),
                     type_only(),
                     type_only(),
                     type_only(),
