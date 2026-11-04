@@ -11,7 +11,7 @@ Ignored тест `sdlc::candidates::tests::artifact_tests::prepare_standalone_an
 
 - `TT_CANDIDATES_TEST_DATABASE_URL`: свежая БД с суффиксом `_candidates_test`;
 - `TT_ANALYST_TOOLS_INPUT`: JSON с реальными QA `owner_subject`,
-  `producer_subject`, `scheduler_subject`, `routes`, `namespace`, `source`,
+  `producer_subject`, `scheduler_subject`, `tracker_instance_id`, `routes`, `namespace`, `source`,
   `repository`, `requirements_by_case`, `scenario`, `ordinal_base`;
 - `TT_ANALYST_TOOLS_OUTPUT`: новый путь для результата.
 
@@ -52,6 +52,19 @@ AttachmentRepo передаёт то же `GuardedDb` в чтение и пуб�
 включая PM inputs. Переход к raw connection теряет проверенный native caller
 и commit clock; при включённом каталоге это приводит к отказу SQL-защиты.
 Guarded-соединение сохраняется до транзакции без изменения HTTP-контракта.
+Загрузка проверяет постоянную identity по текущему назначению в repository,
+без дополнительного краткоживущего producer grant в service.
+Это позволяет сохранять незавершённый анализ до финальной оценки Workflow;
+требования к проекту, роли, run binding и живой lease сохраняются.
+
+Миграция `m20261104_0000113_native_task_artifacts` добавляет узкий SQL port:
+репозиторий после проверки назначения и содержимого связывает точную sealed
+metadata с транзакцией. INSERT проверяет исходную задачу, автора и metadata;
+COMMIT повторяет native clock/ACL/catalog проверки. Обычные вложения и
+UPDATE/DELETE не получают машинных полномочий. Та же проверка COMMIT применяется
+к разрешённому native комментарию; исторические миграции не переписываются.
+Регрессия: ignored PG test
+`sdlc::candidates::tests::artifact_tests::native_artifact_content_port_is_exact_and_rechecked_at_commit`.
 
 ## Результат
 

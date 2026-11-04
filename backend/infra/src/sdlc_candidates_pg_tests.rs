@@ -68,6 +68,10 @@ impl Fixture {
     }
 
     async fn new_with_owner(steps: Option<u32>, owner_subject: &str) -> Self {
+        Self::new_with_identity(steps, owner_subject, "candidates-test").await
+    }
+
+    async fn new_with_identity(steps: Option<u32>, owner_subject: &str, instance_id: &str) -> Self {
         let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
             .expect("fresh disposable candidates DB required");
         let db = Database::connect(&url).await.unwrap();
@@ -104,7 +108,7 @@ impl Fixture {
         let repo = PostgresSdlcRepository::connect(
             &url,
             SdlcConfig {
-                instance_id: "candidates-test".into(),
+                instance_id: instance_id.into(),
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
                 reservation_scheduler_subject: "scheduler".into(),

@@ -8,6 +8,126 @@ use domain::sdlc_source::TaskSourceRepository;
 const PRODUCER: &str = "88888888-8888-4888-8888-888888888888";
 const CONSUMER: &str = "99999999-9999-4999-8999-999999999999";
 
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn native_artifact_content_port_is_exact_and_rechecked_at_commit() {
+    let f = Fixture::new().await;
+    let author = Uuid::new_v4();
+    exec(&f.db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'native-artifact@example.test','native-artifact','Native artifact','!',$2,true)",vec![author.into(),PRODUCER.into()]).await.unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        vec![f.project.into(), author.into()],
+    )
+    .await
+    .unwrap();
+    let task = f.queued_analysis("native-artifact", true).await;
+    let head = bind(&f, task, "native-artifact").await;
+    let assignment = head.assignment.as_ref().unwrap();
+    let seal = Seal::new(
+        task,
+        domain::attachment_artifact::ArtifactBinding {
+            assignment_id: assignment.assignment_id,
+            execution_id: assignment.execution_id,
+            role: assignment.role,
+        },
+        head.binding.as_ref().unwrap().run_id,
+        "analysis.md",
+        "text/markdown",
+        "a".repeat(64),
+    )
+    .unwrap();
+    exec(&f.db,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,operation_id,metadata) SELECT registry_instance_id,namespace_id,1,'active',$2,'{}'::jsonb FROM tracker_namespace_bindings WHERE resource_id=$1",vec![f.project.into(),Uuid::new_v4().into()]).await.unwrap();
+    exec(&f.db,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) SELECT resource_id,registry_instance_id,namespace_id FROM tracker_namespace_bindings",vec![]).await.unwrap();
+    exec(
+        &f.db,
+        "UPDATE tracker_space_admission_state SET active=true WHERE singleton",
+        vec![],
+    )
+    .await
+    .unwrap();
+    let metadata = json!({"id":seal.artifact_id,"issue_id":task,"author_id":author,"file_name":"analysis.md","content_type":"text/markdown","size_bytes":10,"storage_key":seal.key()});
+    for variation in [
+        "missing-port",
+        "foreign-task",
+        "foreign-author",
+        "changed-file",
+        "ordinary-key",
+        "read-only",
+        "expired-commit",
+        "valid",
+    ] {
+        let tx = f.db.begin().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let caller = json!({"schema_version":1,"identity":{"issuer":"http://auth.example.test","subject":PRODUCER},"validity":{"observed_at":now,"valid_until":now+60},"scopes":["task-tracker:read","task-tracker:write"],"writable":variation!="read-only"});
+        tx.execute(statement(
+            "SELECT set_config('pdlc.tracker.native_caller',$1,true)",
+            vec![caller.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        let scope = json!({"schema_version":1,"task_id":task,"project_id":f.project,"identity":caller["identity"],"validity":caller["validity"],"writable":caller["writable"]});
+        tx.execute(statement(
+            "SELECT tracker_bind_native_task($1)",
+            vec![scope.into()],
+        ))
+        .await
+        .unwrap();
+        let mut desired = metadata.clone();
+        match variation {
+            "foreign-task" => desired["issue_id"] = json!(Uuid::new_v4()),
+            "foreign-author" => desired["author_id"] = json!(Uuid::new_v4()),
+            "changed-file" => desired["file_name"] = json!("changed.md"),
+            "ordinary-key" => desired["storage_key"] = json!("ordinary.md"),
+            _ => (),
+        }
+        if variation != "missing-port" {
+            let capability = if variation == "ordinary-key" {
+                &desired
+            } else {
+                &metadata
+            };
+            tx.execute(statement(
+                "SELECT set_config('pdlc.tracker.native_artifact',$1,true)",
+                vec![capability.to_string().into()],
+            ))
+            .await
+            .unwrap();
+        }
+        let inserted = tx.execute(statement("INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at) SELECT id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,now() FROM jsonb_populate_record(NULL::attachments,$1)",vec![desired.into()])).await;
+        if variation == "valid" || variation == "expired-commit" {
+            inserted.unwrap();
+            if variation == "expired-commit" {
+                let mut expired = caller.clone();
+                expired["validity"]["valid_until"] = json!(now - 1);
+                tx.execute(statement(
+                    "SELECT set_config('pdlc.tracker.native_caller',$1,true)",
+                    vec![expired.to_string().into()],
+                ))
+                .await
+                .unwrap();
+                assert!(
+                    tx.commit()
+                        .await
+                        .unwrap_err()
+                        .to_string()
+                        .contains("native_request_authority_expired")
+                );
+            } else {
+                tx.commit().await.unwrap();
+            }
+        } else {
+            let error = inserted.unwrap_err().to_string();
+            assert!(
+                error.contains("native_content_")
+                    || error.contains("native_sealed_artifact_required"),
+                "{variation}: {error}"
+            );
+            tx.rollback().await.unwrap();
+        }
+    }
+}
+
 /// Operator-only export for standalone CLI/Hermes QA. Never called by the server.
 /// The input/output paths and fresh disposable database are explicit opt-ins.
 #[tokio::test]
@@ -18,7 +138,12 @@ async fn prepare_standalone_analyst_tool_fixture() {
     let input: Json = serde_json::from_slice(&std::fs::read(input_path).unwrap()).unwrap();
     let owner_subject = input["owner_subject"].as_str().unwrap();
     Uuid::parse_str(owner_subject).unwrap();
-    let mut f = Fixture::new_with_owner(None, owner_subject).await;
+    let tracker_instance = input["tracker_instance_id"].as_str().unwrap();
+    assert_eq!(
+        Uuid::parse_str(tracker_instance).unwrap().to_string(),
+        tracker_instance
+    );
+    let mut f = Fixture::new_with_identity(None, owner_subject, tracker_instance).await;
     let subject = input["producer_subject"].as_str().unwrap();
     Uuid::parse_str(subject).unwrap();
     let scheduler = input["scheduler_subject"].as_str().unwrap();

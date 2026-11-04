@@ -446,6 +446,17 @@ pub(crate) async fn publish(
     app::attachment_artifacts::verify_bytes(&item, &retained)?;
     // Locks retain assignment/ACL throughout I/O; check the actual clock again before metadata commit.
     ensure_live(&tx, &auth.head).await?;
+    let metadata = serde_json::json!({
+        "id": item.id.as_uuid(), "issue_id": issue.as_uuid(), "author_id": auth.user,
+        "file_name": item.file_name, "content_type": item.content_type,
+        "size_bytes": item.size_bytes, "storage_key": item.storage_key,
+    });
+    tx.execute(statement(
+        "SELECT set_config('pdlc.tracker.native_artifact',$1,true)",
+        vec![metadata.to_string().into()],
+    ))
+    .await
+    .map_err(map_db)?;
     let saved = attachment::ActiveModel {
         id: Set(item.id.as_uuid()),
         issue_id: Set(issue.as_uuid()),
