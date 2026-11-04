@@ -260,7 +260,11 @@ async fn bind_task_scope(
     if !state.configured_cli() {
         app::sdlc::authorize_pm_read(state, actor)?;
     }
-    if matches!(scope, TaskScope::Current) {
+    // Scheduler commands have their own exact identity/scope check. They do not
+    // borrow the current producer's identity when binding the aggregate below.
+    if matches!(scope, TaskScope::Current)
+        && app::sdlc_reservation::scheduler(actor, config).is_err()
+    {
         super::lifecycle::authorize_read(tx, state, actor).await?;
     }
     if application_policy {
