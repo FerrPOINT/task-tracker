@@ -16,7 +16,7 @@ async fn native_artifact_content_port_is_exact_and_rechecked_at_commit() {
     exec(&f.db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'native-artifact@example.test','native-artifact','Native artifact','!',$2,true)",vec![author.into(),PRODUCER.into()]).await.unwrap();
     exec(
         &f.db,
-        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
         vec![f.project.into(), author.into()],
     )
     .await
@@ -160,7 +160,7 @@ async fn prepare_standalone_analyst_tool_fixture() {
     )
     .await
     .unwrap();
-    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub=$2",
         vec![f.project.into(),scheduler.into()]).await.unwrap();
     f.writer.subject = scheduler.into();
     f.reader.subject = scheduler.into();
@@ -225,7 +225,7 @@ async fn prepare_standalone_analyst_tool_fixture() {
     .await
     .unwrap();
     exec(&f.db,
-        "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2",
+        "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub=$2",
         vec![f.project.into(),subject.into()],
     ).await.unwrap();
     let mut cases = json!({});
@@ -462,7 +462,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         .unwrap();
         exec(
             &f.db,
-            "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+            "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
             vec![f.project.into(), user_id.into()],
         )
         .await
@@ -562,7 +562,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
     ));
     exec(
         &f.db,
-        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'developer')",
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
         vec![f.project.into(), service_users[PRODUCER].into()],
     )
     .await

@@ -103,7 +103,7 @@ impl Fixture {
             vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
         exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Candidates','[]' FROM projects WHERE id=$1",
             vec![project.into()]).await.unwrap();
-        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub IN ('pm','verifier','scheduler')",
+        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub IN ('pm','verifier','scheduler')",
             vec![project.into()]).await.unwrap();
         let repo = PostgresSdlcRepository::connect(
             &url,
@@ -457,7 +457,7 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
             .await,
         Err(AppError::Forbidden)
     ));
-    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='scheduler'",
+    exec(&f.db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub='scheduler'",
         vec![f.project.into()]).await.unwrap();
     exec(
         &f.db,
