@@ -6,6 +6,12 @@ its immutable receipt remains historical Backlog/Ready. Forward112 preserves
 existing rows and binds automatic queue authority to the completion transaction.
 No new public DTO, user confirmation or source-registry table is introduced.
 
+Forward113 (`native_task_artifacts`) сохраняет guarded native context при
+публикации артефактов. Транзакционный port связывает INSERT с точной sealed
+metadata текущей роли; задача, автор, ACL, admission и исходный clock проверяются
+повторно на COMMIT. Сохранение native комментария использует ту же границу
+задачи/автора. Новых таблиц источников и изменений исторических миграций нет.
+
 Workspace reference добавлен в существующие JSON receipts source policy,
 verification и task binding как optional `development_workspace_id`. Отсутствие
 поля сохраняет прежнюю сериализацию и hash. Migration 0112 добавляет INSERT guards
