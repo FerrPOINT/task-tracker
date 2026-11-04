@@ -75,7 +75,7 @@ impl ReworkFixture {
     }
 
     async fn with_architect_inputs(
-        commit: Option<&str>,
+        source: Option<domain::sdlc_source::VerifiedSource>,
         document: Option<RequirementsDocument>,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
@@ -122,28 +122,7 @@ impl ReworkFixture {
         .await
         .unwrap();
         let owner = actor("owner", true, vec![]);
-        crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
-        if let Some(commit) = commit {
-            use domain::sdlc_source::TaskSourceRepository;
-            assert_eq!(commit.len(), 40);
-            assert!(commit.bytes().all(|c| c.is_ascii_hexdigit()));
-            let mut policy = repo.source_policy(project, &owner, None).await.unwrap();
-            policy.source.base_commit = commit.into();
-            policy.verification.base_commit = commit.into();
-            policy.verification.observed_at = chrono::Utc::now();
-            repo.set_source_policy(
-                project,
-                &owner,
-                domain::sdlc_source::SetSourcePolicy {
-                    expected_source_revision: Some(policy.source_revision),
-                    source: policy.source,
-                    idempotency_key: "architect-system:source".into(),
-                },
-                policy.verification,
-            )
-            .await
-            .unwrap();
-        }
+        crate::sdlc::source::configure_test_source_verified(&repo, project, &owner, source).await;
         let scheduler = actor("scheduler", false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();

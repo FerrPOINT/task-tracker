@@ -12,7 +12,7 @@ async fn seed_architect_system_fixture() {
     let input = std::fs::read(std::env::var("ARCHITECT_QA_FIXTURE_SPEC").unwrap()).unwrap();
     let spec: Json = serde_json::from_slice(&input).unwrap();
     let (f, queued) = ReworkFixture::with_architect_inputs(
-        Some(spec["commit"].as_str().unwrap()),
+        Some(serde_json::from_value(spec["verification"].clone()).unwrap()),
         Some(serde_json::from_value(spec["requirements"].clone()).unwrap()),
     )
     .await;

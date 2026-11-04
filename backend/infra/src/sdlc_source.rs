@@ -7,33 +7,43 @@ pub(super) async fn configure_test_source(
     project: Uuid,
     owner: &Principal,
 ) {
-    let namespace = NamespaceRef {
-        registry_instance_id: Uuid::new_v4(),
-        namespace_id: Uuid::new_v4(),
-    };
+    configure_test_source_verified(repo, project, owner, None).await;
+}
+
+#[cfg(test)]
+pub(super) async fn configure_test_source_verified(
+    repo: &PostgresSdlcRepository,
+    project: Uuid,
+    owner: &Principal,
+    verified: Option<VerifiedSource>,
+) {
+    let verified = verified.unwrap_or_else(|| VerifiedSource {
+        development_workspace_id: None,
+        namespace: NamespaceRef {
+            registry_instance_id: Uuid::new_v4(),
+            namespace_id: Uuid::new_v4(),
+        },
+        forge_instance_id: Uuid::new_v4(),
+        repository_id: Uuid::new_v4(),
+        public_name: "fixture/source".into(),
+        base_ref: "refs/heads/main".into(),
+        base_commit: "a".repeat(40),
+        default_ref: "refs/heads/main".into(),
+        protected_refs: vec!["refs/heads/release".into()],
+        observed_at: chrono::Utc::now(),
+    });
+    let namespace = verified.namespace.clone();
     let binding = json!({"schema_version":1,"namespace":namespace,
         "resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
         "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
     exec(&repo.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command)
         VALUES($1,$2,$3,1,'active',$4)",vec![project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()]).await.unwrap();
     let source = SourcePolicySpec {
-        development_workspace_id: None,
-        forge_instance_id: Uuid::new_v4(),
-        repository_id: Uuid::new_v4(),
-        base_ref: "refs/heads/main".into(),
-        base_commit: "a".repeat(40),
-    };
-    let verified = VerifiedSource {
-        development_workspace_id: None,
-        namespace,
-        forge_instance_id: source.forge_instance_id,
-        repository_id: source.repository_id,
-        public_name: "fixture/source".into(),
-        base_ref: source.base_ref.clone(),
-        base_commit: source.base_commit.clone(),
-        default_ref: "refs/heads/main".into(),
-        protected_refs: vec!["refs/heads/release".into()],
-        observed_at: chrono::Utc::now(),
+        development_workspace_id: verified.development_workspace_id,
+        forge_instance_id: verified.forge_instance_id,
+        repository_id: verified.repository_id,
+        base_ref: verified.base_ref.clone(),
+        base_commit: verified.base_commit.clone(),
     };
     repo.set_source_policy(
         project,
