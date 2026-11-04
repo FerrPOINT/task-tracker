@@ -18,6 +18,7 @@ pub fn validate_query(query: &DiscussionQuery) -> Result<u16, AppError> {
         || (query.after.is_some() && query.snapshot.is_none())
         || query.after.is_some_and(|id| id.is_nil())
         || query.snapshot.is_some_and(|id| id.is_nil())
+        || query.related_task.is_some_and(|id| id.is_nil())
     {
         return Err(AppError::validation("invalid discussion page or cursor"));
     }
@@ -144,7 +145,8 @@ mod tests {
             validate_query(&DiscussionQuery {
                 limit: Some(1),
                 after: Some(id),
-                snapshot: Some(id)
+                snapshot: Some(id),
+                ..Default::default()
             })
             .unwrap(),
             1

@@ -10,6 +10,138 @@ const CONSUMER: &str = "99999999-9999-4999-8999-999999999999";
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn related_discussion_keeps_assignment_project_and_pagination_boundaries() {
+    use domain::sdlc_discussion::{DiscussionQuery, DiscussionRepository};
+    let f = Fixture::new().await;
+    let user = Uuid::new_v4();
+    exec(&f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,'research@example.test','research','Research','!',$2,true)",vec![user.into(),PRODUCER.into()]).await.unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![f.project.into(), user.into()],
+    )
+    .await
+    .unwrap();
+    let source = f.queued_analysis("research-source", true).await;
+    bind(&f, source, "research-source").await;
+    let related = f
+        .draft("related-source", Some(DraftFlow::SingleTaskV1))
+        .await;
+    let unrelated = f
+        .draft("unrelated-source", Some(DraftFlow::SingleTaskV1))
+        .await;
+    let foreign_project = Uuid::new_v4();
+    let foreign_board = Uuid::new_v4();
+    let foreign = Uuid::new_v4();
+    exec(&f.db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) SELECT $1,'OTHER','Other',owner_id,$3 FROM projects WHERE id=$2",vec![foreign_project.into(),f.project.into(),foreign_board.into()]).await.unwrap();
+    exec(&f.db,"INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Other','[]')",vec![foreign_board.into(),foreign_project.into()]).await.unwrap();
+    exec(&f.db,"INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position) SELECT $1,$2,'OTHER-1',issue_type,status_id,'Foreign source','Foreign text',reporter_id,priority,labels,position FROM issues WHERE id=$3",vec![foreign.into(),foreign_project.into(),related.into()]).await.unwrap();
+    // Both link directions are sources; a real foreign link must stay invisible.
+    for (left, right) in [(related, source), (source, foreign)] {
+        exec(&f.db,"INSERT INTO issue_links(id,source_id,target_id,link_type) VALUES($1,$2,$3,'relates_to')",vec![Uuid::new_v4().into(),left.into(),right.into()]).await.unwrap();
+    }
+    for body in ["Related source first page", "Related source second page"] {
+        exec(&f.db,"INSERT INTO comments(id,issue_id,author_id,body,created_at,updated_at) VALUES($1,$2,$3,$4,clock_timestamp(),clock_timestamp())",vec![Uuid::now_v7().into(),related.into(),user.into(),body.into()]).await.unwrap();
+    }
+    let producer = actor(
+        PRODUCER,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    let own = f
+        .repo
+        .discussion(source, &producer, DiscussionQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(own.source_task_id, source);
+    assert_eq!(own.task_id, source);
+    assert_eq!(own.related_tasks.len(), 1);
+    assert_eq!(own.related_tasks[0].task_id, related);
+    let query = DiscussionQuery {
+        related_task: Some(related),
+        limit: Some(1),
+        ..Default::default()
+    };
+    let first = f.repo.discussion(source, &producer, query).await.unwrap();
+    assert_eq!(first.source_task_id, source);
+    assert_eq!(first.task_id, related);
+    assert_eq!(first.title, "related-source");
+    assert_eq!(first.comments.len(), 1);
+    let second = f
+        .repo
+        .discussion(
+            source,
+            &producer,
+            DiscussionQuery {
+                related_task: Some(related),
+                limit: Some(1),
+                snapshot: first.snapshot,
+                after: first.next_after,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.comments.len(), 1);
+    assert_ne!(first.comments[0].id, second.comments[0].id);
+    assert!(second.next_after.is_none());
+    for target in [unrelated, foreign] {
+        assert!(matches!(
+            f.repo
+                .discussion(
+                    source,
+                    &producer,
+                    DiscussionQuery {
+                        related_task: Some(target),
+                        ..Default::default()
+                    }
+                )
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(
+        f.repo
+            .discussion(related, &producer, DiscussionQuery::default())
+            .await
+            .is_err()
+    );
+    exec(
+        &f.db,
+        "UPDATE issues SET deleted_at=clock_timestamp() WHERE id=$1",
+        vec![related.into()],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        f.repo
+            .discussion(
+                source,
+                &producer,
+                DiscussionQuery {
+                    related_task: Some(related),
+                    ..Default::default()
+                }
+            )
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &f.db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+        vec![f.project.into(), user.into()],
+    )
+    .await
+    .unwrap();
+    assert!(
+        f.repo
+            .discussion(source, &producer, DiscussionQuery::default())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn native_artifact_content_port_is_exact_and_rechecked_at_commit() {
     let f = Fixture::new().await;
     let author = Uuid::new_v4();

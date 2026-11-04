@@ -2540,3 +2540,39 @@ async fn analyst_source_reads_the_existing_binding_without_issue_lookup_or_mutat
         assert!(request.key.is_none());
     }
 }
+
+#[tokio::test]
+async fn related_discussion_retains_the_assigned_task_as_authority() {
+    const TASK: &str = "11111111-1111-4111-8111-111111111111";
+    const RELATED: &str = "22222222-2222-4222-8222-222222222222";
+    let result = json!({"source_task_id":TASK,"task_id":RELATED,"comments":[],"related_tasks":[]});
+    let server = Server::start(vec![(200, result.clone())]).await;
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "discussion",
+                        "read",
+                        "--task",
+                        TASK,
+                        "--related-task",
+                        RELATED,
+                        "--limit",
+                        "1"
+                    ],
+                    None
+                )
+                .await
+        ),
+        result
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/discussion?related_task={RELATED}&limit=1")
+    );
+}
