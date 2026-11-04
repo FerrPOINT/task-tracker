@@ -51,12 +51,13 @@ async fn complete_initial_pm(
     owner: &Principal,
     _scheduler: &Principal,
     agent: Uuid,
+    document: Option<RequirementsDocument>,
 ) {
-    let document: RequirementsDocument = parse(json!({
+    let document: RequirementsDocument = document.unwrap_or_else(|| parse(json!({
         "goal":"One task with actual persisted rework","scope":["One root task"],"exclusions":["No children"],
         "scenarios":["Review and testing reject work"],
         "acceptance_criteria":["Rework repeats review and testing before deployment"],
-        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}));
+        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]})));
     let (reserved, completed) = crate::sdlc::configured_test_support::confirmed_pm(
         repo, task, owner, agent, document, true,
     )
@@ -70,6 +71,13 @@ async fn complete_initial_pm(
 
 impl ReworkFixture {
     async fn new() -> (Self, LifecycleReceipt) {
+        Self::with_architect_inputs(None, None).await
+    }
+
+    async fn with_architect_inputs(
+        commit: Option<&str>,
+        document: Option<RequirementsDocument>,
+    ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
@@ -115,6 +123,27 @@ impl ReworkFixture {
         .unwrap();
         let owner = actor("owner", true, vec![]);
         crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
+        if let Some(commit) = commit {
+            use domain::sdlc_source::TaskSourceRepository;
+            assert_eq!(commit.len(), 40);
+            assert!(commit.bytes().all(|c| c.is_ascii_hexdigit()));
+            let mut policy = repo.source_policy(project, &owner, None).await.unwrap();
+            policy.source.base_commit = commit.into();
+            policy.verification.base_commit = commit.into();
+            policy.verification.observed_at = chrono::Utc::now();
+            repo.set_source_policy(
+                project,
+                &owner,
+                domain::sdlc_source::SetSourcePolicy {
+                    expected_source_revision: Some(policy.source_revision),
+                    source: policy.source,
+                    idempotency_key: "architect-system:source".into(),
+                },
+                policy.verification,
+            )
+            .await
+            .unwrap();
+        }
         let scheduler = actor("scheduler", false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
@@ -152,6 +181,7 @@ impl ReworkFixture {
             &owner,
             &scheduler,
             routes.project_manager.agent_id,
+            document,
         )
         .await;
         let (queued, replayed) = repo

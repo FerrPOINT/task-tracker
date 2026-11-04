@@ -63,6 +63,33 @@ fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult) -> Result<T, AppErr
 }
 
 impl PostgresSdlcRepository {
+    pub(super) async fn selected_source_policy(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+    ) -> Result<Option<ProjectSourcePolicy>, AppError> {
+        let Some(selection) = tx.query_one(statement(
+            "SELECT source_revision,policy_hash FROM sdlc_effective_task_source_selections WHERE task_id=$1 AND project_id=$2",
+            vec![state.task_id.into(),state.project_id.into()],
+        )).await.map_err(map_db)? else { return Ok(None) };
+        let Some(revision) = selection
+            .try_get::<Option<i64>>("", "source_revision")
+            .map_err(map_db)?
+        else {
+            return Ok(None);
+        };
+        let policy = Self::retained_source_policy(tx, state.project_id, Some(revision)).await?;
+        if selection
+            .try_get::<Option<String>>("", "policy_hash")
+            .map_err(map_db)?
+            .as_deref()
+            != Some(policy.source_hash.as_str())
+            || Self::source_namespace(tx, state.project_id).await? != policy.verification.namespace
+        {
+            return Err(AppError::conflict("task source selection differs"));
+        }
+        Ok(Some(policy))
+    }
+
     pub(super) async fn select_task_source(
         &self,
         tx: &DatabaseTransaction,

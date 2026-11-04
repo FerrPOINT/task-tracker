@@ -21101,6 +21101,13 @@
           "permissions": {
             "$ref": "#/components/schemas/Permissions"
           },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "project_id": {
             "type": "string",
             "format": "uuid"
@@ -21115,6 +21122,16 @@
           "root_task_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "selected_source_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectSourcePolicy"
+              }
+            ]
           },
           "source_binding": {
             "oneOf": [

@@ -57,6 +57,13 @@ Configured Architect передаёт точный текущий `fence`; ос�
 в рамках своего назначения. Human PAT остаётся человеческим доступом, machine
 credential не становится human session. CLI не обходит штатные ограничения.
 
+Перед планированием прочитать `sdlc context --task <uuid>`. Его optional
+`previous_result_id` читается через `sdlc result read --task <uuid> --result <id>`;
+`selected_source_policy` фиксирует источник этой задачи, а не текущий project head.
+Источник и base_commit использовать в существующем Forge repository tree/blob.
+Design ArtifactReceipt содержит reference `/api/v1/issues/<uuid>/decomposition/revisions/<n>`
+и серверный content_sha256; новый current plan не подменяет эту редакцию.
+
 ## Проекты
 
 ```bash

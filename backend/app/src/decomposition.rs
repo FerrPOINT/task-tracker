@@ -6,6 +6,19 @@ use domain::{
 use shared::AppError;
 use uuid::Uuid;
 
+pub fn design_revision(task: Uuid, reference: &str) -> Result<i64, AppError> {
+    let prefix = format!("/api/v1/issues/{task}/decomposition/revisions/");
+    let suffix = reference.strip_prefix(&prefix).ok_or_else(|| {
+        AppError::conflict("Architect result must reference this task's plan revision")
+    })?;
+    let revision = suffix
+        .parse::<i64>()
+        .ok()
+        .filter(|r| (1..=MAX_SAFE_VERSION).contains(r) && r.to_string() == suffix)
+        .ok_or_else(|| AppError::conflict("invalid Architect plan revision reference"))?;
+    Ok(revision)
+}
+
 pub fn authorize(actor: &Principal, task: Uuid) -> Result<(), AppError> {
     if task.is_nil() || actor.subject.is_empty() {
         return Err(AppError::Forbidden);
@@ -93,6 +106,17 @@ impl SdlcService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn design_reference_is_an_exact_revision_of_the_same_task() {
+        let task = Uuid::new_v4();
+        let prefix = format!("/api/v1/issues/{task}/decomposition/revisions/");
+        assert_eq!(design_revision(task, &(prefix.clone() + "3")).unwrap(), 3);
+        for suffix in ["0", "-1", "01", "3?latest=true", "3/", "9007199254740992"] {
+            assert!(design_revision(task, &(prefix.clone() + suffix)).is_err());
+        }
+        assert!(design_revision(Uuid::new_v4(), &(prefix + "3")).is_err());
+        assert!(design_revision(task, "legacy-design").is_err());
+    }
     fn command() -> SavePlan {
         SavePlan {
             expected_revision: 0,

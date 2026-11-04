@@ -10,6 +10,57 @@ struct Access {
 }
 
 impl PostgresSdlcRepository {
+    pub(super) async fn validate_plan_artifact(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        result: &domain::sdlc_lifecycle::DeliveryResult,
+    ) -> Result<(), AppError> {
+        let domain::sdlc_lifecycle::DeliveryResult::Architect { design } = result else {
+            return Ok(());
+        };
+        let has_plan = tx
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM issue_plan_revisions WHERE issue_id=$1) AS present",
+                vec![state.task_id.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::internal("plan presence unavailable"))?
+            .try_get::<bool>("", "present")
+            .map_err(map_db)?;
+        if !has_plan && !design.reference.contains("/decomposition/revisions/") {
+            return Ok(()); // Existing text artifacts remain readable and usable for legacy tasks.
+        }
+        let revision = app::decomposition::design_revision(state.task_id, &design.reference)?;
+        let row = tx
+            .query_one(statement(
+                "SELECT payload FROM issue_plan_revisions WHERE issue_id=$1 AND revision=$2",
+                vec![state.task_id.into(), revision.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::conflict("Architect plan revision is absent"))?;
+        let plan: PlanRevision = decode(row, "payload")?;
+        let requirements = state
+            .revisions
+            .last()
+            .ok_or_else(|| AppError::conflict("Architect requirements absent"))?;
+        if plan.task_id != state.task_id
+            || plan.revision != revision
+            || plan.content_sha256 != design.sha256
+            || app::sdlc::canonical_hash(&plan.content)? != design.sha256
+            || plan.content.source.as_ref().is_none_or(|s| {
+                s.requirements_revision != requirements.revision
+                    || s.requirements_hash != requirements.content_hash
+            })
+        {
+            return Err(AppError::conflict(
+                "Architect plan hash or requirements differ",
+            ));
+        }
+        Ok(())
+    }
+
     async fn plan_access(
         &self,
         tx: &DatabaseTransaction,
