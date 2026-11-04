@@ -32,15 +32,6 @@ images не восстановлены этой поставкой. Baseline о�
 baseline; сохранность файлов дополнительно подтверждена fixture upload/Git/
 artifact/download сценариями, а не восстановлением потерянных старых файлов.
 
-На копии запуск кандидатов, затем точных прежних images не изменил исходные
-данные и схему. Старые images проходят 114 проверок и сохраняют четыре известные
-ограничения: Task read/restore по ключу, Wiki legacy multipart replay и старое
-CI/CD ограничение generic deployment только для Pulse. Поэтому откат возвращает
-прежнее поведение, а не гарантирует исправленные CLI-сценарии. Неожиданных
-отказов финальной репетиции нет. Первый rollout откатился из-за преждевременной
-проверки Docker health `starting`; после исправления локального readiness wait
-второй rollout принят. Рабочие данные не восстанавливались и ledger не правился.
-
 Под workspace lock атомарно заменены только три image pins, затем последовательно
 Task → Wiki → CI/CD через Compose `up --no-deps --no-build --pull never`.
 Readiness: HTTP и Docker healthy, deadline 180 секунд на сервис. Откат: под тем же
@@ -54,17 +45,6 @@ runtime-before и rollout manifest сохранены локально; секр
 admin-api/admin-web/ai-runtime sdlc2; их images сверены с её build/apply receipt,
 mounts сохранены. Это отражено отдельно, глобальная неизменность sdlc2 за весь
 интервал не заявляется. Наши keys/runtime fingerprints остались неизменными.
-
-QA-кандидаты: 123 основных + 10 дополнительных проверок — PASS. Live: 123
-успешные проверки и 6 focused checks — PASS. Отдельная ранняя попытка template
-`type=page` получила корректный validation 400: ошибка fixture, исправлена на
-поддерживаемый `release_note`; успешный повтор записан отдельно, исходный отказ
-не скрыт. JSON/204, confirmations, stdin, access/validation/conflict, redaction,
-transport timeout, no-clobber и cleanup проверены регрессиями и CLI-приёмкой.
-Execution states задавались собственными fixtures/API; production runner и
-внешний deploy не сертифицируются. Pulse — обычный тестовый repository/PR/pipeline
-в CI/CD, отдельного постоянного стенда нет. Собственные PAT отозваны, QA Compose
-ресурсы и временные keys удалены; принятые и прежние backend images сохранены.
 
 ## Исторические проверки
 

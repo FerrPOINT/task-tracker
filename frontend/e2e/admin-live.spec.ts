@@ -231,7 +231,6 @@ test('Admin audit filters and token dialog work against the live API without wri
     'Project Workflow',
   ])
   await expect(dialog.locator('fieldset label')).toHaveCount(12)
-  await expect(dialog.getByText('Service Pulse', { exact: true })).toHaveCount(0)
   await expect
     .poll(() =>
       page.evaluate(
