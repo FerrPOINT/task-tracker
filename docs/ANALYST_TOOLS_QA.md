@@ -6,6 +6,14 @@
 Workflow дорабатывается отдельно: текущая квалификация не вызывает его API/CLI,
 оценщика, финальный proposal или завершение текущей задачи.
 
+На 2026-11-05 чтение источников и сохранение `analysis.md` проверены реальными
+CLI/API и оригинальным Hermes. Подтверждены task/author/assignment/receipt,
+обычный комментарий, upload replay, совпадение скачанных байтов, отказ чужой
+привязке и отзыв/восстановление доступа теми же credentials. Версии и полная
+[сводка приёмки Base](https://github.com/FerrPOINT/services-base/blob/e147727ae53b8752ea09edf70233e5d9f8f07a0a/docs/plans/analyst-tools-standalone-20261104.md)
+закреплены отдельно от текущих source heads. Автозапуск, очередь, чат и передача
+стадии этим прогоном не подтверждаются.
+
 ## Подготовка назначения
 
 Ignored тест `sdlc::candidates::tests::artifact_tests::prepare_standalone_analyst_tool_fixture`
