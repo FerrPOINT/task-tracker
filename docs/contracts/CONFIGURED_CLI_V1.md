@@ -1,5 +1,13 @@
 # Configured CLI V1
 
+## Workflow Phase Inventory
+
+Workflow owns the number and structure of phases. A binding carries a nonempty
+list of canonical, unique phase IDs per mode; consumers do not prescribe three
+phases. The coordinated Analyst baseline has twelve phases. Existing enrolled
+three-phase snapshots remain valid; role, namespace, scope, manifest/hash and
+revision guards remain mandatory. This source change does not activate a runtime.
+
 ## Automatic Analyst Handoff: coordinated source change
 
 For newly accepted configured PM completions in enabled single-task projects,
