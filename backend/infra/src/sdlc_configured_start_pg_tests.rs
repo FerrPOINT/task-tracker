@@ -43,6 +43,206 @@ async fn command(f: &Fixture, task: Uuid, key: &str) -> LifecycleCommand {
 }
 
 #[tokio::test]
+#[serial_test::serial]
+#[ignore = "requires isolated process and fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guards() {
+    use app::native_space_access::{NativeRequest, with_request};
+    use axum::{Json as HttpJson, Router, extract::State, http::HeaderMap, routing::{get, post}};
+    use std::sync::RwLock;
+
+    // Seed through the existing business fixture before enabling the serving policies.
+    // Run this selector alone: the real central bridge keeps its configuration per process.
+    assert!(std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_none());
+    assert!(std::env::var_os("TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED").is_none());
+    let mut f = Box::pin(Fixture::new()).await;
+    // Create fresh identities and membership; existing identity aliases are immutable.
+    let owner_identity = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let scheduler_identity = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let owner = Uuid::parse_str(&owner_identity.subject).unwrap();
+    let scheduler = Uuid::parse_str(&scheduler_identity.subject).unwrap();
+    f.owner = actor(&owner_identity.subject, true, &[]);
+    f.writer = actor(&scheduler_identity.subject, false, &["task-tracker:write"]);
+    f.reader = actor(&scheduler_identity.subject, false, &["task-tracker:read"]);
+    f.repo.config.reservation_scheduler_subject = scheduler.to_string();
+    let foreign = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let producer = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let task = Box::pin(f.confirmed("native-scheduler", true)).await;
+    let start = command(&f, task, "native-scheduler-start").await;
+    let initial = f.repo.lifecycle_command(task, &f.owner, start).await.unwrap().0;
+    // Activation validates every project, including those seeded by migrations.
+    // Preserve existing bindings and add the missing synthetic owner receipts.
+    let unbound = f.db.query_all(statement("SELECT id FROM projects p WHERE NOT EXISTS
+        (SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id)", vec![])).await.unwrap();
+    for row in unbound {
+        let project: Uuid = row.try_get("", "id").unwrap();
+        let registry = Uuid::new_v4();
+        let namespace = Uuid::new_v4();
+        let binding = json!({"schema_version":1,
+            "namespace":{"registry_instance_id":registry,"namespace_id":namespace},
+            "resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
+            "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
+        exec(&f.db, "INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command)
+            VALUES($1,$2,$3,1,'active',$4)",
+            vec![project.into(),registry.into(),namespace.into(),binding.into()]).await.unwrap();
+    }
+    exec(&f.db, "INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state)
+        SELECT registry_instance_id,namespace_id,1,state FROM tracker_namespace_bindings
+        ON CONFLICT(registry_instance_id,space_id) DO NOTHING", vec![]).await.unwrap();
+    exec(&f.db, "UPDATE tracker_space_catalog SET admin_revision=1 WHERE admin_revision IS NULL", vec![]).await.unwrap();
+    exec(&f.db, "INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id)
+        SELECT resource_id,registry_instance_id,namespace_id FROM tracker_namespace_bindings
+        ON CONFLICT(project_id,registry_instance_id,space_id) DO NOTHING", vec![]).await.unwrap();
+    exec(&f.db, "UPDATE tracker_space_admission_state SET active=true", vec![]).await.unwrap();
+
+    #[derive(Clone)]
+    struct Authority {
+        issuer: String,
+        owner: Uuid,
+        scheduler: Uuid,
+        foreign: String,
+        owner_permitted: bool,
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let authority = Arc::new(RwLock::new(Authority {
+        issuer: issuer.clone(), owner, scheduler, foreign: foreign.subject.clone(), owner_permitted: true,
+    }));
+    let router = Router::new()
+        .route("/oidc/jwks", get(|| async { HttpJson(json!({"keys":[]})) }))
+        .route("/auth/tokens/introspect", get(
+            |State(state): State<Arc<RwLock<Authority>>>, headers: HeaderMap| async move {
+                let state = state.read().unwrap().clone();
+                let (subject, scopes) = match headers["authorization"].to_str().unwrap() {
+                    "Bearer sdlc_pat_scheduler_scope_write" => (state.scheduler.to_string(), vec!["task-tracker:write"]),
+                    "Bearer sdlc_pat_scheduler_scope_read" => (state.scheduler.to_string(), vec!["task-tracker:read"]),
+                    "Bearer sdlc_pat_scheduler_scope_mixed" => (state.scheduler.to_string(), vec!["task-tracker:read", "task-tracker:write"]),
+                    "Bearer sdlc_pat_scheduler_scope_foreign" => (state.foreign, vec!["task-tracker:write"]),
+                    _ => panic!("unexpected synthetic credential"),
+                };
+                let now = chrono::Utc::now();
+                HttpJson(json!({"sub":subject,"email":"scheduler-scope@example.test","subject_role":"service_account",
+                    "scopes":scopes,"observed_at":now,"expires_at":now+chrono::Duration::seconds(300)}))
+            }))
+        .route("/auth/access/decisions", post(
+            |State(state): State<Arc<RwLock<Authority>>>, headers: HeaderMap, HttpJson(request): HttpJson<Json>| async move {
+                assert_eq!(headers["authorization"], "Bearer scheduler-scope-owner-reader");
+                let state = state.read().unwrap().clone();
+                assert_eq!(request, json!({"schema_version":1,"subjects":[state.owner]}));
+                let applications = if state.owner_permitted { vec!["task-tracker", "fleet-control"] } else { vec!["task-tracker"] };
+                let now = chrono::Utc::now();
+                HttpJson(json!({"schema_version":1,"decisions":[{"schema_version":1,"issuer":state.issuer,
+                    "subject":state.owner,"role":"user","applications":applications,"revision":1,"enforced":true,
+                    "observed_at":now,"expires_at":now+chrono::Duration::seconds(30)}]}))
+            }))
+        .with_state(authority.clone());
+    unsafe {
+        std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/oidc/jwks"));
+        std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
+        std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED", "true");
+        std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN", "scheduler-scope-owner-reader");
+    }
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let bridge = &app::space_access::CENTRAL_BRIDGE;
+    let write = bridge.try_verified_token("sdlc_pat_scheduler_scope_write").await.unwrap();
+    let read = bridge.try_verified_token("sdlc_pat_scheduler_scope_read").await.unwrap();
+    let mixed = bridge.try_verified_token("sdlc_pat_scheduler_scope_mixed").await.unwrap();
+    let other = bridge.try_verified_token("sdlc_pat_scheduler_scope_foreign").await.unwrap();
+    assert!(app::native_space_access::application_policy_required().await.unwrap());
+    assert!(matches!(NativeRequest::verified(&write, true, false), Err(AppError::Forbidden)),
+        "the separate write-only credential cannot enter a GET request");
+    let scope = |proof| NativeRequest::verified(proof, true, true).unwrap();
+
+    async fn denied(label: &str, f: &Fixture, task: Uuid, actor: &Principal, native: NativeRequest, command: LifecycleCommand) {
+        let before = f.snapshot().await;
+        let outcome = Box::pin(with_request(native, f.repo.lifecycle_command(task, actor, command))).await;
+        assert!(matches!(&outcome, Err(AppError::Forbidden)),
+            "{label}: expected Forbidden, got {outcome:?}");
+        assert_eq!(f.snapshot().await, before, "{label}: denial must not leave a command, hold or assignment");
+    }
+    async fn scheduler_membership(f: &Fixture, present: bool) {
+        // Synthetic owner admission for fixture administration, as in the
+        // unified-space SQL tests; the normal owner/space/clock guards still run.
+        let tx = f.db.begin().await.unwrap();
+        let row = tx.query_one(statement("SELECT jsonb_build_object(
+            'schema_version',1,'kind','human','user_id',u.id,
+            'identity',jsonb_build_object('issuer','https://auth.example.test','subject',u.central_sub),
+            'active_spaces',s.spaces,'readable_spaces',s.spaces,'policy_revision',1,'writable',true,
+            'valid_until',floor(extract(epoch FROM clock_timestamp()))::bigint+30) AS actor
+            FROM projects p JOIN users u ON u.id=p.owner_id AND u.is_active
+            CROSS JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object(
+                'registry_instance_id',c.registry_instance_id,'space_id',c.space_id)) AS spaces
+                FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id)
+                WHERE l.project_id=p.id AND c.state='active' AND c.admin_revision IS NOT NULL) s
+            WHERE p.id=$1", vec![f.project.into()])).await.unwrap().unwrap();
+        let owner: Json = row.try_get("", "actor").unwrap();
+        crate::guarded_db::bind_commit_clock(&tx, owner["valid_until"].as_i64().unwrap()).await.unwrap();
+        exec(&tx, "SELECT set_config('pdlc.tracker.write_actor',$1,true)", vec![owner.to_string().into()]).await.unwrap();
+        let sql = if present {
+            "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2"
+        } else {
+            "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub=$2)"
+        };
+        exec(&tx, sql, vec![f.project.into(),f.writer.subject.clone().into()]).await.unwrap();
+        tx.commit().await.unwrap();
+    }
+    let mut next = LifecycleCommand::Reserve {
+        expected_task_version: initial.task.version,
+        machine_subject: Some(producer.subject.clone()),
+        idempotency_key: "native-scheduler-reserve".into(),
+    };
+    for phase in ["reserve", "bind"] {
+        // The same subject's legitimate GET frame cannot borrow its separate write credential.
+        denied(&format!("{phase}/read_frame"), &f, task, &f.writer, NativeRequest::verified(&read, true, false).unwrap(), next.clone()).await;
+        let mut unregistered = foreign.clone();
+        unregistered.scopes = ["task-tracker:write".into()].into();
+        denied(&format!("{phase}/unregistered_scheduler"), &f, task, &unregistered, scope(&other), next.clone()).await;
+        let mut combined = f.writer.clone();
+        combined.scopes.insert("task-tracker:read".into());
+        denied(&format!("{phase}/mixed_scopes"), &f, task, &combined, scope(&mixed), next.clone()).await;
+
+        scheduler_membership(&f, false).await;
+        denied(&format!("{phase}/revoked_membership"), &f, task, &f.writer, scope(&write), next.clone()).await;
+        scheduler_membership(&f, true).await;
+
+        exec(&f.db, "UPDATE tracker_space_catalog SET state='restoring'", vec![]).await.unwrap();
+        denied(&format!("{phase}/restoring_space"), &f, task, &f.writer, scope(&write), next.clone()).await;
+        exec(&f.db, "UPDATE tracker_space_catalog SET state='active'", vec![]).await.unwrap();
+        authority.write().unwrap().owner_permitted = false;
+        denied(&format!("{phase}/revoked_owner_application"), &f, task, &f.writer, scope(&write), next.clone()).await;
+        authority.write().unwrap().owner_permitted = true;
+
+        let native = scope(&write);
+        let original_deadline = native.deadline();
+        let retained_clock = native.clone();
+        let (saved, replay) = Box::pin(with_request(native, f.repo.lifecycle_command(task, &f.writer, next))).await.unwrap();
+        assert!(!replay);
+        assert!(retained_clock.deadline() <= original_deadline, "owner proof cannot renew the native clock");
+        if phase == "reserve" {
+            assert_eq!(saved.task.runtime, RuntimeState::Reserved);
+            assert_eq!(saved.assignment.as_ref().unwrap().machine_subject.as_deref(), Some(producer.subject.as_str()));
+            next = LifecycleCommand::BindRun {
+                fence: fence(&saved),
+                binding: RunBinding {
+                    chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(), machine_subject: producer.subject.clone(),
+                    dispatch_receipt: ArtifactReceipt { reference: "fixture://scheduler-native-acceptance".into(), sha256: "a".repeat(64) },
+                },
+                idempotency_key: "native-scheduler-bind".into(),
+            };
+        } else {
+            assert_eq!(saved.task.runtime, RuntimeState::Running);
+            assert_eq!(saved.binding.unwrap().machine_subject, producer.subject);
+            break;
+        }
+    }
+    let before_read = f.snapshot().await;
+    let context = Box::pin(with_request(NativeRequest::verified(&read, true, false).unwrap(),
+        f.repo.context(task, &f.reader))).await.unwrap();
+    assert_eq!(context.task_id, task);
+    assert_eq!(f.snapshot().await, before_read, "the separate reader keeps current context read-only");
+    server.abort();
+}
+
+#[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn explicit_start_is_atomic_discovered_once_and_replays_original_after_advancement() {
     Box::pin(async {

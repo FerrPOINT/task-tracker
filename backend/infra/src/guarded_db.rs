@@ -59,17 +59,13 @@ impl BoundRequest {
     }
     async fn bind(&self, tx: &DatabaseTransaction) -> Result<(), DbErr> {
         self.current()?;
-        let valid_until = match (&self.frame, &self.native) {
-            (Some(frame), _) => frame.valid_until(),
+        match (&self.frame, &self.native) {
+            (Some(frame), _) => bind_commit_clock(tx, frame.valid_until()).await?,
             (_, Some(native)) => {
-                native
-                    .validity()
-                    .map_err(|_| DbErr::Custom(EXPIRED.into()))?
-                    .valid_until
+                bind_native_context(tx, native).await?;
             }
             _ => return Err(DbErr::Custom(EXPIRED.into())),
-        };
-        bind_commit_clock(tx, valid_until).await?;
+        }
         if tx
             .query_one(Statement::from_string(
                 DbBackend::Postgres,
@@ -88,21 +84,28 @@ impl BoundRequest {
             ))
             .await?;
         }
-        if let Some(native) = self.native.as_ref() {
-            let validity = native
-                .validity()
-                .map_err(|_| DbErr::Custom(EXPIRED.into()))?;
-            let document = serde_json::json!({"schema_version":1,"identity":native.identity(),
-                "scopes":native.scopes(),"writable":native.may_write(),"validity":validity});
-            tx.execute(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT set_config('pdlc.tracker.native_caller',$1,true)",
-                [document.to_string().into()],
-            ))
-            .await?;
-        }
         self.current()
     }
+}
+/// Bind one snapshot of the existing native clock, including any shorter owner
+/// proof. Task scopes must use this exact snapshot rather than export it again.
+pub(crate) async fn bind_native_context(
+    tx: &DatabaseTransaction,
+    native: &app::native_space_access::NativeRequest,
+) -> Result<shared::space_access::AdmissionValidity, DbErr> {
+    let validity = native
+        .validity()
+        .map_err(|_| DbErr::Custom(EXPIRED.into()))?;
+    bind_commit_clock(tx, validity.valid_until).await?;
+    let document = serde_json::json!({"schema_version":1,"identity":native.identity(),
+        "scopes":native.scopes(),"writable":native.may_write(),"validity":validity});
+    tx.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT set_config('pdlc.tracker.native_caller',$1,true)",
+        [document.to_string().into()],
+    ))
+    .await?;
+    Ok(validity)
 }
 /// The DB checks after row waits, including time spent inside COMMIT itself.
 pub(crate) async fn bind_commit_clock(
