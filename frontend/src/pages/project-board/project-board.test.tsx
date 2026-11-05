@@ -19,11 +19,13 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 const navigateToFleet = vi.hoisted(() => vi.fn())
 const boardHooks = vi.hoisted(() => ({
   stageMode: false,
+  emptyStage: false,
   move: vi.fn(),
   transitions: [] as Array<{ from_status_id: string; to_status_id: string }>,
 }))
 beforeEach(() => {
   boardHooks.stageMode = false
+  boardHooks.emptyStage = false
   boardHooks.move.mockReset()
   boardHooks.transitions = []
 })
@@ -48,7 +50,9 @@ vi.mock('@/shared/api/hooks', () => ({
       ? {
           project_key: 'TT',
           sprint: { id: 'none', name: 'Backlog', remaining_days: null },
-          task_states: [{ task_id: 'i1', stage: 'Backlog', status: 'Ready' }],
+          task_states: boardHooks.emptyStage
+            ? []
+            : [{ task_id: 'i1', stage: 'Backlog', status: 'Ready' }],
           columns: [
             'Draft',
             'Backlog',
@@ -64,19 +68,21 @@ vi.mock('@/shared/api/hooks', () => ({
             name: stage,
             stage,
             wip_limit: null,
-            issue_ids: stage === 'Backlog' ? ['i1'] : [],
+            issue_ids: !boardHooks.emptyStage && stage === 'Backlog' ? ['i1'] : [],
           })),
-          issues: [
-            {
-              id: 'i1',
-              key: 'TT-1',
-              summary: 'Stage-based task',
-              priority: 'Medium',
-              issue_type: 'task',
-              status_id: 'ready-status',
-              assignee_name: null,
-            },
-          ],
+          issues: boardHooks.emptyStage
+            ? []
+            : [
+                {
+                  id: 'i1',
+                  key: 'TT-1',
+                  summary: 'Stage-based task',
+                  priority: 'Medium',
+                  issue_type: 'task',
+                  status_id: 'ready-status',
+                  assignee_name: null,
+                },
+              ],
         }
       : {
           project_key: 'TT',
@@ -235,6 +241,17 @@ describe('ProjectBoardPage', () => {
 })
 
 describe('documented SDLC board', () => {
+  it('keeps one create action on an empty stage board without assigning a stage', async () => {
+    boardHooks.stageMode = true
+    boardHooks.emptyStage = true
+    render(wrapper(<ProjectBoardPage />))
+    const create = screen.getByRole('button', { name: 'Создать' })
+    expect(create).toBeVisible()
+    await userEvent.click(create)
+    await waitFor(() => expect(navigateToFleet).toHaveBeenCalled())
+    expect(boardHooks.move).not.toHaveBeenCalled()
+  })
+
   it('shows all nine stages and the operational status independently', () => {
     boardHooks.stageMode = true
     render(wrapper(<ProjectBoardPage />))
@@ -256,7 +273,7 @@ describe('documented SDLC board', () => {
     expect(within(columns).getByText('Эксплуатация')).toBeInTheDocument()
     expect(columns).not.toHaveTextContent('sdlc.publication.roles.')
     const card = screen.getByRole('article')
-    expect(within(card).getByText('Готово')).toBeVisible()
+    expect(within(card).getByText('Готова к работе')).toBeVisible()
     expect(card).toHaveAttribute('draggable', 'false')
     expect(screen.queryByRole('button', { name: 'Изменить статус TT-1' })).not.toBeInTheDocument()
     expect(within(columns).queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()

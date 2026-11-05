@@ -261,6 +261,11 @@ export function ProjectBoardPage() {
           }
           actions={
             <>
+              {stageBoard && (
+                <CreateTaskAction projectKey={key} aria-label={t('board.create')} size="sm">
+                  {t('board.create')}
+                </CreateTaskAction>
+              )}
               <div className="hidden md:block">
                 <RadioGroup
                   appearance="segmented"

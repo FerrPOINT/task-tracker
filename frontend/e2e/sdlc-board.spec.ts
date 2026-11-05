@@ -229,8 +229,11 @@ for (const width of [375, 1920, 2560]) {
       timeout: 20000,
     })
     await expect(page.getByRole('article')).toContainText('BOARD-1')
-    await expect(page.getByRole('article')).toContainText('Готово')
+    await expect(page.getByRole('article')).toContainText('Готова к работе')
     await expect(page.getByRole('article')).toHaveAttribute('draggable', 'false')
+    await expect(
+      page.getByRole('main').getByRole('button', { name: 'Создать', exact: true }),
+    ).toBeVisible()
     if (width === 375) {
       await expect(page.getByRole('radio', { name: 'Бэклог (1)', exact: true })).toBeChecked()
       for (const label of [

@@ -290,7 +290,7 @@
       "Deployment": "Деплой"
     },
     "executionStatus": {
-      "Ready": "Готово",
+      "Ready": "Готова к работе",
       "InProgress": "В работе",
       "Completed": "Завершено"
     },
