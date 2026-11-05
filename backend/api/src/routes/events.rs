@@ -28,7 +28,7 @@ pub struct TrackerEventPayload {
 #[utoipa::path(
     get,
     path = "/api/v1/events",
-    description = "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload. Clients send Authorization: Bearer and refetch affected queries.",
+    description = "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Changes use `tracker` events with TrackerEventPayload. A `resync_required` event with empty JSON means the subscriber missed changes and must refetch its active queries. Clients send Authorization: Bearer and refetch affected queries.",
     responses(
         (status = 200, description = "SSE stream (text/event-stream) of `tracker` events", body = TrackerEventPayload, content_type = "text/event-stream"),
         (status = 401, description = "Unauthorized"),
@@ -49,8 +49,12 @@ pub async fn events(
             async move {
                 let event = match msg {
                     Ok(event) => event,
-                    // Lagged subscribers just refetch; skip the gap notification.
-                    Err(_) => return None,
+                    // No resource identifiers: the client refetches only its active queries.
+                    Err(_) => {
+                        return Some(Ok::<Event, Infallible>(
+                            Event::default().event("resync_required").data("{}"),
+                        ));
+                    }
                 };
                 let visible = if let Some(frame) = request_context {
                     app::space_access::with_request_context(

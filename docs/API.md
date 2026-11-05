@@ -2259,3 +2259,12 @@ as other agent business commands. Historical delivery grants can read retained
 results; they cannot authorize a new proposal. Global `admin` scope does not
 turn a service account into an assigned producer. Standard scopes for other
 products remain compatible with the ordinary CLI credential.
+
+## SSE: разрыв последовательности invalidation
+
+`GET /api/v1/events` сохраняет именованные `tracker` события и проверки
+видимости. При отставании подписчика broadcast stream выдаёт отдельное событие
+`resync_required` с `data: {}` без resource IDs. Клиент перечитывает только
+активные разрешённые запросы. То же перечитывание выполняется при первом open
+и reconnect через существующий Base authenticated transport. Gap не является
+снимком данных и не разрешает доступ к ресурсам другого пользователя.

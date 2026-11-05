@@ -226,11 +226,12 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             .await?;
         let file_name = sanitize_file_name(file_name);
         let content_type = validate_content_type(content_type)?;
-        let key = format!("{}-{}", uuid::Uuid::new_v4(), file_name);
+        let attachment_id = shared::AttachmentId::new();
+        let key = format!("{attachment_id}-{file_name}");
         let size_bytes = bytes.len() as i64;
         self.storage.put(&issue.id.to_string(), &key, bytes).await?;
         let attachment = domain::Attachment {
-            id: shared::AttachmentId::new(),
+            id: attachment_id,
             issue_id: issue.id,
             author_id,
             file_name: file_name.as_str().into(),
@@ -239,12 +240,22 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             storage_key: key.as_str().into(),
             created_at: shared::now(),
         };
-        if let Err(err) = self.attachments.save(&attachment).await {
-            let _ = self
-                .storage
-                .delete(&issue.id.to_string(), key.as_str())
-                .await;
-            return Err(err);
+        if let Err(error) = self.attachments.save(&attachment).await {
+            match error {
+                domain::AttachmentSaveError::NotCommitted(error) => {
+                    if let Err(cleanup) = self.storage.delete(&issue.id.to_string(), &key).await {
+                        tracing::warn!(attachment_id = %attachment.id, error = %cleanup, "uncommitted attachment cleanup failed");
+                    }
+                    return Err(error);
+                }
+                domain::AttachmentSaveError::Unknown(error) => {
+                    tracing::warn!(attachment_id = %attachment.id, issue_id = %issue.id, error = %error,
+                        "attachment write outcome unknown; blob retained for original-id readback");
+                    return Err(AppError::Unavailable(
+                        "attachment write outcome unknown; no automatic retry".into(),
+                    ));
+                }
+            }
         }
         let issue_key = issue.key.to_string();
         self.events.publish(shared::TrackerEvent::IssueUpdated {

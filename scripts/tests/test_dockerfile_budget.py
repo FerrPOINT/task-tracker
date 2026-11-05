@@ -24,6 +24,12 @@ class DockerfileBudgetTests(unittest.TestCase):
         )
         self.assertNotIn("CARGO_BUILD_JOBS", runtime)
 
+    def test_standalone_recipe_consumes_worker_budget_before_cargo(self):
+        builder, runtime = (ROOT / "backend/Dockerfile").read_text().split("FROM debian:bookworm-slim", 1)
+        self.assertIn("ARG CARGO_BUILD_JOBS=1", builder.splitlines())
+        self.assertLess(builder.index("ARG CARGO_BUILD_JOBS=1"), builder.index("cargo build"))
+        self.assertNotIn("CARGO_BUILD_JOBS", runtime)
+
     def test_locked_release_server_build_keeps_shared_cache_paths(self):
         self.assertIn(
             "--mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,"
@@ -59,6 +65,13 @@ class DockerfileBudgetTests(unittest.TestCase):
         )
         self.assertIn('CMD ["task-tracker-server"]', self.recipe.splitlines())
 
+
+    def test_retained_target_refreshes_first_party_and_sdk_before_cargo(self):
+        builder, runtime = (ROOT / "backend/Dockerfile.umbrella").read_text().split("FROM debian:bookworm-slim", 1)
+        refresh = "find /app /services-base/base-modules/rust -name '*.rs' -exec touch {} +"
+        self.assertIn(refresh, builder)
+        self.assertLess(builder.index(refresh), builder.index("CARGO_TARGET_DIR=/cargo-target cargo"))
+        self.assertNotIn(refresh, runtime)
 
 if __name__ == "__main__":
     unittest.main()
