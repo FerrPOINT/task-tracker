@@ -32,15 +32,8 @@ interface IssueDescriptionEditorProps {
 export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const descriptionId = useId()
-  const descriptionLines = issue.description?.split('\n') ?? []
-  const compactDescription = descriptionLines.slice(0, 4).join('\n').slice(0, 240).trimEnd()
-  const hasLongDescription =
-    issue.description != null &&
-    (issue.description.length > 280 || descriptionLines.length > 5) &&
-    compactDescription.length < issue.description.length
   const {
     register,
     handleSubmit,
@@ -100,32 +93,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           }
         />
         {issue.description ? (
-          hasLongDescription ? (
-            <>
-              <div id={descriptionId} className="lg:hidden">
-                {renderDescription(
-                  descriptionExpanded ? issue.description : `${compactDescription}…`,
-                )}
-              </div>
-              <div className="hidden lg:block">{renderDescription(issue.description)}</div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-1 lg:hidden"
-                aria-controls={descriptionId}
-                aria-expanded={descriptionExpanded}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setDescriptionExpanded((value) => !value)
-                }}
-              >
-                {t(descriptionExpanded ? 'issue.showLessDescription' : 'issue.showMoreDescription')}
-              </Button>
-            </>
-          ) : (
-            renderDescription(issue.description)
-          )
+          renderDescription(issue.description)
         ) : (
           <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
         )}

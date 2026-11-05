@@ -109,12 +109,14 @@ pub async fn move_issue(
 
 fn map_board(b: app::dto::BoardDto) -> BoardResponse {
     BoardResponse {
+        task_states: b.task_states,
         project_id: b.project_id,
         project_key: b.project_key,
         columns: b
             .columns
             .into_iter()
             .map(|c| crate::dto::BoardColumnResponse {
+                stage: c.stage,
                 id: c.id,
                 name: c.name,
                 wip_limit: c.wip_limit.map(|v| v as u32),

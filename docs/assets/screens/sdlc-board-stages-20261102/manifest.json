@@ -1,0 +1,57 @@
+{
+  "fixture": true,
+  "api_writes": 0,
+  "page_errors": 0,
+  "viewports": [
+    {
+      "width": 375,
+      "height": 812
+    },
+    {
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "width": 2560,
+      "height": 1080
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "backlog-chromium-375.png",
+      "width": 375,
+      "height": 812,
+      "sha256": "e1f86d47a386824a002f3eac4f9cd4275573d0f62469e5a0f849c874888919c6"
+    },
+    {
+      "file": "backlog-firefox-1920.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "727948b9e7c7be6bd2db21e1870064da13ea7bb26efe70109c46157bd4f0434c"
+    },
+    {
+      "file": "backlog-webkit-2560.png",
+      "width": 5120,
+      "height": 2160,
+      "sha256": "89e3c4392a4c4564c2ae27ba4921191f03b17171a5d6d89ce6ed67e7884e7da6"
+    },
+    {
+      "file": "board-chromium-375.png",
+      "width": 375,
+      "height": 812,
+      "sha256": "ee4045e986d31b832a0f068402baa9913eeddace76d2dc2bfe8cb55bf63ec8c6"
+    },
+    {
+      "file": "board-firefox-1920.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "e46bf4ce3053b88931ff0a181e8f71ab5431cc44f666c28a8913e1b4b17872b7"
+    },
+    {
+      "file": "board-webkit-2560.png",
+      "width": 5120,
+      "height": 2160,
+      "sha256": "efb1666f1faa936d4a53c4419ea0a34af26d4003d13eaeb97cb59fefd17ce8a5"
+    }
+  ]
+}

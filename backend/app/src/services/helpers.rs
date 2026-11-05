@@ -30,7 +30,7 @@ pub async fn resolve_names(
 }
 
 pub fn issue_status_column(status_id: StatusId) -> String {
-    default_board_columns()
+    legacy_board_columns()
         .into_iter()
         .find(|c| c.id == status_id)
         .map(|c| c.name.as_ref().to_string())
@@ -340,6 +340,11 @@ fn done_status() -> StatusId {
 }
 
 pub fn default_board_columns() -> Vec<BoardColumn> {
+    // Empty configuration means the documented SDLC stage projection.
+    vec![]
+}
+
+pub(super) fn legacy_board_columns() -> Vec<BoardColumn> {
     vec![
         BoardColumn {
             id: todo_status(),

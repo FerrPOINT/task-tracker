@@ -1,0 +1,50 @@
+{
+  "fixture": false,
+  "runtime": {
+    "source": "410fe0c5cff06946a29d15151bdcf772aabfbc53",
+    "build": "2b9392231d474be7a8fb02dc941df306",
+    "images": {
+      "task-web": "sha256:2e47a7f52bdc16452e6d4c16542838672c4fbe62a38b099af7ca8268b2767d3f"
+    },
+    "fleet_preserved": true,
+    "task_context_preserved": true,
+    "stage": "Backlog",
+    "status": "Ready",
+    "requirement_revision": 2,
+    "stage_columns": 9,
+    "backlog_total": 1,
+    "tracker_backend_preserved": true
+  },
+  "screenshots": [
+    {
+      "file": "full-1920.png",
+      "width": 65536,
+      "height": 4292542531,
+      "sha256": "a6fa719e28ac7f7fd34ac78845d242761906141716869e7edd496ee07e46f903"
+    },
+    {
+      "file": "full-2560.png",
+      "width": 65536,
+      "height": 4292542531,
+      "sha256": "096f9f5a8fe1d004640cbaecdadfa4b6c66258323d250c705dfdd44578cf4b30"
+    },
+    {
+      "file": "full-375.png",
+      "width": 65536,
+      "height": 4292542531,
+      "sha256": "b4533ff4e047ae39bcb967c186cbcf3a1a5b2dd466f4e8bc424e7f7b0d533225"
+    },
+    {
+      "file": "full-539.png",
+      "width": 65536,
+      "height": 4292542531,
+      "sha256": "337b97cb9b21fb63f2e907556e82801231a553763e383189cec554d272ef853e"
+    },
+    {
+      "file": "live-539.png",
+      "width": 65536,
+      "height": 4292542531,
+      "sha256": "2ab07d8cb4953d1d5ad748ea894f1082a675ec920c3bf2f572cf42458815c7c4"
+    }
+  ]
+}

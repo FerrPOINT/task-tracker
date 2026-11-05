@@ -18,10 +18,12 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 
 const navigateToFleet = vi.hoisted(() => vi.fn())
 const boardHooks = vi.hoisted(() => ({
+  stageMode: false,
   move: vi.fn(),
   transitions: [] as Array<{ from_status_id: string; to_status_id: string }>,
 }))
 beforeEach(() => {
+  boardHooks.stageMode = false
   boardHooks.move.mockReset()
   boardHooks.transitions = []
 })
@@ -42,25 +44,59 @@ vi.mock('@/api/project', () => ({
 
 vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
-    data: {
-      project_key: 'TT',
-      sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
-      columns: [
-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
-      ],
-      issues: [
-        {
-          id: 'i1',
-          key: 'TT-1',
-          summary: 'Do work',
-          priority: 'High',
-          issue_type: 'Task',
-          status_id: 'todo',
-          assignee_name: 'me',
+    data: boardHooks.stageMode
+      ? {
+          project_key: 'TT',
+          sprint: { id: 'none', name: 'Backlog', remaining_days: null },
+          task_states: [{ task_id: 'i1', stage: 'Backlog', status: 'Ready' }],
+          columns: [
+            'Draft',
+            'Backlog',
+            'Analysis',
+            'Architecture',
+            'Development',
+            'Review',
+            'Testing',
+            'Rework',
+            'Deployment',
+          ].map((stage) => ({
+            id: `stage:${stage}`,
+            name: stage,
+            stage,
+            wip_limit: null,
+            issue_ids: stage === 'Backlog' ? ['i1'] : [],
+          })),
+          issues: [
+            {
+              id: 'i1',
+              key: 'TT-1',
+              summary: 'Stage-based task',
+              priority: 'Medium',
+              issue_type: 'task',
+              status_id: 'ready-status',
+              assignee_name: null,
+            },
+          ],
+        }
+      : {
+          project_key: 'TT',
+          sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
+          columns: [
+            { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
+            { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
+          ],
+          issues: [
+            {
+              id: 'i1',
+              key: 'TT-1',
+              summary: 'Do work',
+              priority: 'High',
+              issue_type: 'Task',
+              status_id: 'todo',
+              assignee_name: 'me',
+            },
+          ],
         },
-      ],
-    },
     isLoading: false,
     error: null,
   }),
@@ -195,5 +231,44 @@ describe('ProjectBoardPage', () => {
     expect(
       screen.getByText('Do work').closest('article')?.querySelector('.base-card-content'),
     ).toHaveAttribute('data-density', 'compact')
+  })
+})
+
+describe('documented SDLC board', () => {
+  it('shows all nine stages and the operational status independently', () => {
+    boardHooks.stageMode = true
+    render(wrapper(<ProjectBoardPage />))
+    expect(screen.getByRole('heading', { name: 'Стадии · TT' })).toBeVisible()
+    const columns = screen.getByRole('region', { name: 'Колонки доски' })
+    for (const name of [
+      'Драфт',
+      'Бэклог',
+      'Анализ',
+      'Архитектура',
+      'Разработка',
+      'Ревью',
+      'Тестирование',
+      'Доработка',
+      'Деплой',
+    ]) {
+      expect(within(columns).getByText(name, { exact: true })).toBeInTheDocument()
+    }
+    expect(within(columns).getByText('Эксплуатация')).toBeInTheDocument()
+    expect(columns).not.toHaveTextContent('sdlc.publication.roles.')
+    const card = screen.getByRole('article')
+    expect(within(card).getByText('Готово')).toBeVisible()
+    expect(card).toHaveAttribute('draggable', 'false')
+    expect(screen.queryByRole('button', { name: 'Изменить статус TT-1' })).not.toBeInTheDocument()
+    expect(within(columns).queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()
+    expect(boardHooks.move).not.toHaveBeenCalled()
+  })
+
+  it('selects the occupied stage by default and preserves explicit URL selection', async () => {
+    boardHooks.stageMode = true
+    render(wrapper(<ProjectBoardPage />))
+    expect(screen.getByRole('radio', { name: 'Бэклог (1)' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Анализ (0)' }))
+    expect(screen.getByRole('radio', { name: 'Анализ (0)' })).toBeChecked()
+    expect(boardHooks.move).not.toHaveBeenCalled()
   })
 })

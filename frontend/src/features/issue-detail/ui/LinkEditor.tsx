@@ -11,7 +11,6 @@ import {
   Notice,
   ResourceStateView,
   resourceErrorState,
-  EmptyState,
   Fieldset,
 } from '@pdlc/ui/ui'
 import { useState } from 'react'
@@ -119,7 +118,7 @@ function IssueLinkEditor({ issueId, currentKey }: { issueId: string; currentKey:
               </ul>
             </ResourceList>
           )}
-          {links.length === 0 && <EmptyState message={t('links.none')} />}
+          {links.length === 0 && <p className="text-sm text-text-muted">{t('links.none')}</p>}
 
           {adding ? (
             <div className="flex flex-wrap gap-1">

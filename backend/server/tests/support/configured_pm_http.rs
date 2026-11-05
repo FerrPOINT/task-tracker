@@ -493,6 +493,70 @@ pub async fn verify(
     let final_context = get_json(f.client, &format!("{root}/context"), f.owner, 200).await;
     assert_eq!(final_context["stage"], "Backlog");
     assert_eq!(final_context["status"], "Ready");
+    // Stage and operational status are independent in the real board/backlog.
+    let project_key: String =
+        f.db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT key FROM projects WHERE id=$1",
+            [f.project.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "key")
+        .unwrap();
+    let board = get_json(
+        f.client,
+        &format!("{base}/api/v1/projects/{project_key}/board"),
+        f.owner,
+        200,
+    )
+    .await;
+    let backlog_column = board["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|column| column["stage"] == "Backlog")
+        .unwrap();
+    assert!(
+        backlog_column["issue_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(task))
+    );
+    assert_eq!(
+        board["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|column| column["stage"].is_string())
+            .count(),
+        9
+    );
+    let task_state = board["task_states"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|state| state["task_id"] == json!(task))
+        .unwrap();
+    assert_eq!(task_state["stage"], "Backlog");
+    assert_eq!(task_state["status"], "Ready");
+    let backlog = get_json(
+        f.client,
+        &format!("{base}/api/v1/projects/{project_key}/backlog"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert!(
+        backlog["backlog_issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["id"] == json!(task))
+    );
+    assert_eq!(backlog["sprint_issues"], json!([]));
+    assert!(backlog["backlog_total"].as_u64().unwrap() > 0);
     let start_url = format!("{root}/lifecycle");
     let operation_url = format!("{root}/lifecycle/operations/configured-http:start");
     let start_command = json!({"operation":"start_analysis", "pm_completion_id":completed["completion_id"],

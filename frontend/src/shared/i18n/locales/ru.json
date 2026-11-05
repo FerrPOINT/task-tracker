@@ -221,7 +221,7 @@
     "search": "Поиск проектов...",
     "all": "Все проекты",
     "active": "Активные",
-    "archived": "Архивные",
+    "archived": "В архиве",
     "anyType": "Любой тип",
     "scrum": "Scrum",
     "kanban": "Kanban",
@@ -231,7 +231,6 @@
     "done": "Готово",
     "lead": "Лид",
     "createProject": "Создать проект",
-    "archived": "В архиве",
     "manage": "Управление проектом",
     "managementUnavailable": "Управление проектом недоступно",
     "deleteDescription": "Проект «{{name}}» и все его задачи будут удалены без возможности восстановления.",
@@ -274,7 +273,28 @@
     "noTransitions": "Нет доступных переходов",
     "statusChanged": "Статус задачи изменён",
     "emptyStatus": "В этом статусе нет задач",
-    "notAvailable": "нет данных"
+    "notAvailable": "нет данных",
+    "sdlcTitle": "Стадии · {{projectName}}",
+    "sdlcDescription": "Стадии процесса SDLC. Статус выполнения показан на карточке; переходы выполняет процесс.",
+    "stagesLabel": "Стадии задач",
+    "stages": {
+      "Draft": "Драфт",
+      "Clarification": "Драфт",
+      "Backlog": "Бэклог",
+      "Analysis": "Анализ",
+      "Architecture": "Архитектура",
+      "Development": "Разработка",
+      "Review": "Ревью",
+      "Testing": "Тестирование",
+      "Rework": "Доработка",
+      "Deployment": "Деплой"
+    },
+    "executionStatus": {
+      "Ready": "Готово",
+      "InProgress": "В работе",
+      "Completed": "Завершено"
+    },
+    "emptyStage": "На этой стадии пока нет задач"
   },
   "backlog": {
     "createSprint": "Создать спринт",

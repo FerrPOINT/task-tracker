@@ -1,0 +1,22 @@
+{
+  "source": "90891bd357845c548f4777b38eb44b8e6ae9c6f0",
+  "build": "f2ec85bccef14a6890d5e94c6b2989e6",
+  "images": {
+    "task-web": "sha256:75dea2ac62f7a3a72a8fe718000c6df3c81d6bfc4630e218e7bb777e8432f3d9"
+  },
+  "fleet_preserved": true,
+  "task_context_preserved": true,
+  "stage": "Backlog",
+  "status": "Ready",
+  "requirement_revision": 2,
+  "stage_columns": 9,
+  "backlog_total": 1,
+  "tracker_backend_preserved": true,
+  "screenshot": {
+    "file": "live-539.png",
+    "width": 65536,
+    "height": 4292542531,
+    "sha256": "244fbe7f237ef7ce1776cb3fccfc04c62199819cb822626960b6840b00481625",
+    "fixture": false
+  }
+}

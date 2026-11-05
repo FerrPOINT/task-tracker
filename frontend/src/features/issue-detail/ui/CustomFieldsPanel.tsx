@@ -4,7 +4,6 @@ import {
   Select,
   FormField,
   Fieldset,
-  EmptyState,
   ResourceStateView,
   resourceErrorState,
   type ResourceState,
@@ -177,7 +176,7 @@ export function CustomFieldsPanel({
   return (
     <ResourceStateView state={state} scope="local">
       {fields.data?.length === 0 ? (
-        <EmptyState message={t('customFields.noFields')} />
+        <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
       ) : (
         <Fieldset
           key={`${projectKey}:${issueId}`}

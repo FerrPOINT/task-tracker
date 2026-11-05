@@ -1,5 +1,4 @@
 import {
-  EmptyState,
   Card,
   CardContent,
   IconMark,
@@ -37,7 +36,7 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
   const activity = buildActivity(comments, worklogs)
 
   if (activity.length === 0) {
-    return <EmptyState message={t('issue.noActivity')} />
+    return <p className="text-sm text-text-muted">{t('issue.noActivity')}</p>
   }
 
   return (
