@@ -1746,3 +1746,17 @@ Without the action there is no Analysis intent or configured discovery candidate
 After start, existing accepted role results advance the same task; seven roles /
 eight modes remain one root task, with no children or manual per-role advance.
 Synthetic source tests are not full seven-role native/live acceptance.
+
+## Стандартная доска SDLC (2026-11-02)
+
+По умолчанию доска показывает девять стадий регламента: Драфт, Бэклог, Анализ,
+Архитектура, Разработка, Ревью, Тестирование, Доработка, Деплой. Операционные
+статусы Готово / В работе / Завершено показываются на карточке отдельно.
+Задача Backlog/Ready видна в колонке «Бэклог» и в бэклоге без активного спринта.
+Переход между стадиями остаётся guarded-командой процесса.
+
+В компактном переключателе рядом с каждой стадией показано количество задач,
+включая ноль у пустых стадий. Счётчик соответствует содержимому колонки.
+
+Описание карточки задачи показывается полностью и на телефоне. Пустые
+дополнительные разделы используют компактные строки без больших заглушек.

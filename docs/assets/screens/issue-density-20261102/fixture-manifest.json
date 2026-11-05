@@ -1,0 +1,26 @@
+{
+  "fixture": true,
+  "browser": "chromium",
+  "api_writes": 0,
+  "page_errors": 0,
+  "screenshots": [
+    {
+      "file": "fixture-issue-1920.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "284bf33c7398d19484440f2b51f4308d1312563337fe4928b3cdce301b75da06"
+    },
+    {
+      "file": "fixture-issue-2560.png",
+      "width": 2560,
+      "height": 1080,
+      "sha256": "f42d5d17d06baf5c0fb40cb0c5ba94f226237b220c85c9d03bccead1831b6b81"
+    },
+    {
+      "file": "fixture-issue-375.png",
+      "width": 375,
+      "height": 1844,
+      "sha256": "ff44be9760529c2d61d353a35a65eb81ddffe99bfe1247aeeefe4b71c0ff1d22"
+    }
+  ]
+}

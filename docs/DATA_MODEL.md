@@ -2356,3 +2356,14 @@ ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
 No new table, permit family, task tree or scheduler is introduced.
+
+## Standard board stage projection (2026-11-02)
+
+No migration or persisted task rewrite is needed. Newly created standard boards
+store an empty `columns` configuration, meaning automatic SDLC stage projection.
+Read-only compatibility also recognizes the exact unchanged legacy template;
+customized boards keep their configuration and WIP guards. Stage and operational
+status come from `sdlc_tasks.state`, joined by matching task/project to nondeleted
+issues. Existing task/project indexes serve the lookup and backlog EXISTS clauses.
+The board projection exposes only task identity, stage and operational status,
+not the rest of the SDLC document.

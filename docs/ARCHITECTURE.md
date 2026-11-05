@@ -763,3 +763,14 @@ completion alone stays Backlog/Ready with zero intents. Role transitions retain
 the existing result/lease/fencing path, not a second planner. Historical operation
 readback rechecks current access without reapplying stale transition CAS.
 See [API](API.md#explicit-configured-analysis-start-source-candidate).
+
+## Board stages and operational status (2026-11-02)
+
+The standard board groups SDLC tasks by authoritative lifecycle stage, independently
+of the issue's operational status. Nine documented stages remain visible even
+on an empty project. The UI reuses the current board composition and Base controls,
+shows execution status on cards, and selects the first occupied stage on mobile
+unless the URL selects a valid column. It does not expose generic status moves
+for SDLC tasks. No scheduler, assignment or transition authority moves to the UI.
+The repository reads stage metadata once per project; it does not perform a context
+request per card. No database writes occur during board/backlog reads.

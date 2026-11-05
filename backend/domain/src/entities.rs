@@ -393,35 +393,21 @@ pub struct Board {
     pub columns: Vec<BoardColumn>,
 }
 
+/// Read-only SDLC projection; ordinary issue status does not determine a stage.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct BoardTaskState {
+    pub task_id: uuid::Uuid,
+    pub stage: crate::sdlc::Stage,
+    pub status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+}
+
 impl Default for Board {
     fn default() -> Self {
         Self {
             id: BoardId::new(),
             project_id: ProjectId::nil(),
             name: "Board".into(),
-            columns: vec![
-                BoardColumn {
-                    id: StatusId::nil(),
-                    name: "To Do".into(),
-                    category: StatusCategory::Todo,
-                    wip_limit: None,
-                    position: 0,
-                },
-                BoardColumn {
-                    id: StatusId::nil(),
-                    name: "In Progress".into(),
-                    category: StatusCategory::InProgress,
-                    wip_limit: None,
-                    position: 1,
-                },
-                BoardColumn {
-                    id: StatusId::nil(),
-                    name: "Done".into(),
-                    category: StatusCategory::Done,
-                    wip_limit: None,
-                    position: 2,
-                },
-            ],
+            columns: vec![],
         }
     }
 }

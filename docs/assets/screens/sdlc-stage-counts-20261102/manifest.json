@@ -1,0 +1,26 @@
+{
+  "fixture": true,
+  "browser": "chromium",
+  "api_writes": 0,
+  "page_errors": 0,
+  "screenshots": [
+    {
+      "file": "board-1920.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "de2d65cf18f0a4994e00d75ae8a476b7e5815a85db4ee5406f31d183dd09b8aa"
+    },
+    {
+      "file": "board-2560.png",
+      "width": 2560,
+      "height": 1080,
+      "sha256": "33bd030609a9c85da9e70e4e1f7e0da8f4a484e2eb9bdb41cdf3df5308f01b4f"
+    },
+    {
+      "file": "board-375.png",
+      "width": 375,
+      "height": 812,
+      "sha256": "ac8914c8cfa1a64d032f1450ebc039a3a3d8de67c6b5b9b7e94c69274be7e4a6"
+    }
+  ]
+}

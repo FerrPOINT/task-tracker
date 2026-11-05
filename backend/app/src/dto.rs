@@ -148,6 +148,7 @@ impl IssueDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoardColumnDto {
+    pub stage: Option<domain::sdlc::Stage>,
     pub id: String,
     pub name: String,
     pub wip_limit: Option<i64>,
@@ -195,6 +196,8 @@ impl SprintDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoardDto {
+    #[serde(default)]
+    pub task_states: Vec<domain::BoardTaskState>,
     pub project_id: String,
     pub project_key: String,
     pub columns: Vec<BoardColumnDto>,

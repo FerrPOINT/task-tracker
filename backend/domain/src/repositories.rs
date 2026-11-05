@@ -549,6 +549,12 @@ pub trait IssueRepository: Send + Sync {
             .await?
             .len() as u64)
     }
+    async fn list_board_task_states(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<crate::BoardTaskState>, AppError> {
+        Ok(vec![])
+    }
     async fn count_backlog(
         &self,
         project_id: ProjectId,

@@ -173,11 +173,9 @@ fn sprint_state_from_str() {
 }
 
 #[test]
-fn board_default_has_columns() {
+fn board_default_uses_automatic_stage_projection() {
     let board = Board::default();
-    assert_eq!(board.columns.len(), 3);
-    assert!(matches!(board.columns[0].category, StatusCategory::Todo));
-    assert!(matches!(board.columns[2].category, StatusCategory::Done));
+    assert!(board.columns.is_empty());
 }
 
 #[test]

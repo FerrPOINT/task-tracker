@@ -11423,6 +11423,16 @@
           "name": {
             "type": "string"
           },
+          "stage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Stage"
+              }
+            ]
+          },
           "wip_limit": {
             "type": [
               "integer",
@@ -11469,6 +11479,39 @@
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
+          },
+          "task_states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoardTaskState"
+            }
+          }
+        }
+      },
+      "BoardTaskState": {
+        "type": "object",
+        "description": "Read-only SDLC projection; ordinary issue status does not determine a stage.",
+        "required": [
+          "task_id",
+          "stage"
+        ],
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

@@ -1,0 +1,52 @@
+{
+  "runtime": {
+    "source": "9b6c7f36cdf1eb9a0823eb0de6c806128c7daf39",
+    "build": "b7f9269f89fb4775bf18ee71d8419a68",
+    "images": {
+      "task-web": "sha256:2e4ad170c44fe2764ede2b86d3fc74692ceed60578864d84abe9bba2424f8e37"
+    },
+    "fleet_preserved": true,
+    "task_context_preserved": true,
+    "stage": "Backlog",
+    "status": "Ready",
+    "requirement_revision": 2,
+    "stage_columns": 9,
+    "backlog_total": 1,
+    "tracker_backend_preserved": true
+  },
+  "screenshots": [
+    {
+      "height": 1755,
+      "file": "full-375.jpg",
+      "width": 360,
+      "sha256": "e3fe2b754818fb132fb1da8d6e13c075f36158826385a983afbd4e98c65e4a5b",
+      "viewport_width": 375,
+      "format": "JPEG"
+    },
+    {
+      "height": 1613,
+      "file": "full-539.jpg",
+      "width": 524,
+      "sha256": "ba9e6877bbbed1c77008d12e485ca9500ea60fd6b27d9636c51fa99dece5bf49",
+      "viewport_width": 539,
+      "format": "JPEG"
+    },
+    {
+      "height": 1080,
+      "file": "full-1920.jpg",
+      "width": 1920,
+      "sha256": "fa39d1afe063d7cfe77dd7778976649dffc9217c96c5223e7cf8b2762f062b32",
+      "viewport_width": 1920,
+      "format": "JPEG"
+    },
+    {
+      "height": 1080,
+      "file": "full-2560.jpg",
+      "width": 2560,
+      "sha256": "16ab47e00f0bf5e86a7fd7822f413bc4f279e975a670833e6264731c0b056e68",
+      "viewport_width": 2560,
+      "format": "JPEG"
+    }
+  ],
+  "fixture": false
+}
