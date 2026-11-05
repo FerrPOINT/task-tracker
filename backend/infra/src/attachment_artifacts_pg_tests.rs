@@ -392,81 +392,200 @@ async fn prepare_standalone_analyst_tool_fixture() {
     .unwrap();
     let name = input["scenario"].as_str().unwrap();
     assert!(["complete", "partial", "missing"].contains(&name));
-    let task = f
-        .draft(&format!("standalone-{name}"), Some(DraftFlow::SingleTaskV1))
+    let mut history_probe = json!(null);
+    for historical in [true, false] {
+        let label = if historical { "history" } else { name };
+        let task = f
+            .draft(
+                &format!("standalone-{label}"),
+                Some(DraftFlow::SingleTaskV1),
+            )
+            .await;
+        let document: RequirementsDocument = parse(input["requirements_by_case"][name].clone());
+        let (pm, _) = crate::sdlc::configured_test_support::confirmed_pm(
+            &f.repo,
+            task,
+            &f.owner,
+            f.roles.project_manager.agent_id,
+            document,
+            false,
+        )
         .await;
-    let document: RequirementsDocument = parse(input["requirements_by_case"][name].clone());
-    let (pm, _) = crate::sdlc::configured_test_support::confirmed_pm(
-        &f.repo,
-        task,
-        &f.owner,
-        f.roles.project_manager.agent_id,
-        document,
-        false,
-    )
-    .await;
-    // The historical PM receipt is explicitly synthetic, as in existing PG fixtures.
-    let mut no_automatic = f.repo.config.clone();
-    no_automatic.single_task_project_ids.remove(&f.project);
-    let repo = PostgresSdlcRepository {
-        db: crate::guarded_db::GuardedDb::new(
-            Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
-                .await
-                .unwrap(),
-        ),
-        config: no_automatic,
-        file_storage: None,
-    };
-    let pm_actor = actor(
-        &pm.assignment.machine_subject,
-        false,
-        &["task-tracker:read", "task-tracker:write"],
-    );
-    crate::sdlc::configured_test_support::complete_pm(&repo, task, &f.owner, &pm_actor, &pm).await;
-    seed_analysis_fixture(&f.db, task, &f.owner).await;
-    let receipt = f
-        .repo
-        .lifecycle_read(task, &f.reader)
-        .await
-        .unwrap()
-        .receipt;
-    let (reserved, _) = f
-        .repo
-        .lifecycle_command(
-            task,
-            &f.writer,
-            LifecycleCommand::Reserve {
-                expected_task_version: receipt.task.version,
-                machine_subject: Some(subject.into()),
-                idempotency_key: format!("standalone:reserve:{name}"),
-            },
-        )
-        .await
-        .unwrap();
-    let (bound, _) = f
-        .repo
-        .lifecycle_command(
-            task,
-            &f.writer,
-            LifecycleCommand::BindRun {
-                fence: delivery_fence(&reserved),
-                binding: RunBinding {
-                    chat_id: Uuid::new_v4(),
-                    run_id: Uuid::new_v4(),
-                    machine_subject: subject.into(),
-                    dispatch_receipt: ArtifactReceipt {
-                        reference: "fixture://standalone-no-fleet".into(),
-                        sha256: "c".repeat(64),
-                    },
+        // The historical PM receipt is explicitly synthetic, as in existing PG fixtures.
+        let mut no_automatic = f.repo.config.clone();
+        no_automatic.single_task_project_ids.remove(&f.project);
+        let repo = PostgresSdlcRepository {
+            db: crate::guarded_db::GuardedDb::new(
+                Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
+                    .await
+                    .unwrap(),
+            ),
+            config: no_automatic,
+            file_storage: None,
+        };
+        let pm_actor = actor(
+            &pm.assignment.machine_subject,
+            false,
+            &["task-tracker:read", "task-tracker:write"],
+        );
+        crate::sdlc::configured_test_support::complete_pm(&repo, task, &f.owner, &pm_actor, &pm)
+            .await;
+        seed_analysis_fixture(&f.db, task, &f.owner).await;
+        let receipt = f
+            .repo
+            .lifecycle_read(task, &f.reader)
+            .await
+            .unwrap()
+            .receipt;
+        let (reserved, _) = f
+            .repo
+            .lifecycle_command(
+                task,
+                &f.writer,
+                LifecycleCommand::Reserve {
+                    expected_task_version: receipt.task.version,
+                    machine_subject: Some(subject.into()),
+                    idempotency_key: format!("standalone:reserve:{label}"),
                 },
-                idempotency_key: format!("standalone:bind:{name}"),
-            },
-        )
-        .await
-        .unwrap();
-    let state = f.repo.read(task, &f.owner).await.unwrap();
-    cases[name] = json!({"task_id":task,"receipt":bound,"state":state,
-            "workflow_task_key":state.retained_fields["workflow_task_key"]});
+            )
+            .await
+            .unwrap();
+        let (bound, _) = f
+            .repo
+            .lifecycle_command(
+                task,
+                &f.writer,
+                LifecycleCommand::BindRun {
+                    fence: delivery_fence(&reserved),
+                    binding: RunBinding {
+                        chat_id: Uuid::new_v4(),
+                        run_id: Uuid::new_v4(),
+                        machine_subject: subject.into(),
+                        dispatch_receipt: ArtifactReceipt {
+                            reference: "fixture://standalone-no-fleet".into(),
+                            sha256: "c".repeat(64),
+                        },
+                    },
+                    idempotency_key: format!("standalone:bind:{label}"),
+                },
+            )
+            .await
+            .unwrap();
+
+        if historical {
+            // Historical input is prepared by the repository fixture only. No real
+            // Workflow/Fleet or HTTP/CLI proposal/Complete is called in the QA run.
+            let producer = actor(subject, false, &["task-tracker:read", "task-tracker:write"]);
+            let storage = domain::InMemoryStorage::default();
+            let file = artifacts::publish(
+                &f.db,
+                &f.repo.config,
+                &producer,
+                shared::IssueId::from_uuid(task),
+                upload(
+                    b"# Synthetic previous analysis\nRead probe only; no new requirements.",
+                    "history.md",
+                ),
+                &storage,
+            )
+            .await
+            .unwrap();
+            let seal = Seal::parse(file.storage_key.as_ref()).unwrap().unwrap();
+            let result = DeliveryResult::Analyst {
+                analysis: seal.artifact().receipt,
+            };
+            let workflow_receipt = ArtifactReceipt {
+                reference: "fixture://historical-not-live-workflow".into(),
+                sha256: "d".repeat(64),
+            };
+            crate::sdlc::configured_test_support::delivery_comment(
+                &f.repo,
+                task,
+                &producer,
+                bound.assignment.as_ref().unwrap(),
+                "standalone:history-comment",
+            )
+            .await;
+            let (proposal, _) = f
+                .repo
+                .submit_delivery_proposal(
+                    task,
+                    &producer,
+                    SubmitDeliveryProposal {
+                        fence: delivery_fence(&bound),
+                        workflow_receipt: workflow_receipt.clone(),
+                        result: result.clone(),
+                        idempotency_key: "standalone:history-proposal".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            let binding = bound.binding.as_ref().unwrap();
+            let (accepted, _) = f
+                .repo
+                .lifecycle_command(
+                    task,
+                    &f.writer,
+                    LifecycleCommand::Complete {
+                        fence: delivery_fence(&bound),
+                        result,
+                        terminal: TerminalReceipt {
+                            chat_id: binding.chat_id,
+                            run_id: binding.run_id,
+                            workflow_receipt,
+                            fleet_receipt: ArtifactReceipt {
+                                reference: "fixture://historical-not-live-fleet".into(),
+                                sha256: "e".repeat(64),
+                            },
+                            output_sha256: proposal.output_sha256,
+                        },
+                        idempotency_key: "standalone:history-import".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            let (reserved, _) = f
+                .repo
+                .lifecycle_command(
+                    task,
+                    &f.writer,
+                    LifecycleCommand::Reserve {
+                        expected_task_version: accepted.task.version,
+                        machine_subject: Some(subject.into()),
+                        idempotency_key: "standalone:history-reader".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            let (reader, _) = f
+                .repo
+                .lifecycle_command(
+                    task,
+                    &f.writer,
+                    LifecycleCommand::BindRun {
+                        fence: delivery_fence(&reserved),
+                        binding: RunBinding {
+                            chat_id: Uuid::new_v4(),
+                            run_id: Uuid::new_v4(),
+                            machine_subject: subject.into(),
+                            dispatch_receipt: ArtifactReceipt {
+                                reference: "fixture://history-read-only".into(),
+                                sha256: "c".repeat(64),
+                            },
+                        },
+                        idempotency_key: "standalone:history-reader-bind".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            history_probe = json!({"task_id":task,"receipt":reader,"result_id":accepted.result.unwrap().result_id,
+                "scope":"synthetic historical repository fixture; not live terminal acceptance"});
+        } else {
+            let state = f.repo.read(task, &f.owner).await.unwrap();
+            cases[name] = json!({"task_id":task,"receipt":bound,"state":state,
+                "workflow_task_key":state.retained_fields["workflow_task_key"]});
+        }
+    }
     let foreign_project = Uuid::new_v4();
     let foreign_board = Uuid::new_v4();
     exec(
@@ -522,7 +641,7 @@ async fn prepare_standalone_analyst_tool_fixture() {
         .unwrap();
     let foreign = foreign.task_id;
     let output = json!({"scope":"synthetic operator preparation; no Fleet/native/PM acceptance",
-        "project_id":f.project,"owner_subject":owner_subject,"instance_id":f.repo.config.instance_id,"cases":cases,"foreign_task_id":foreign});
+        "project_id":f.project,"owner_subject":owner_subject,"instance_id":f.repo.config.instance_id,"cases":cases,"history_probe":history_probe,"foreign_task_id":foreign});
     std::fs::write(output_path, serde_json::to_vec_pretty(&output).unwrap()).unwrap();
 }
 

@@ -3,6 +3,8 @@
 Проверка выполняется в отдельной disposable PDLC1 QA. Fleet и production
 не участвуют. Штатные CLI работают с реальным HTTP API; тестовое назначение
 подготавливается оператором, без доказательства запуска Fleet и без `Complete`.
+Workflow дорабатывается отдельно: текущая квалификация не вызывает его API/CLI,
+оценщика, финальный proposal или завершение текущей задачи.
 
 ## Подготовка назначения
 
@@ -20,6 +22,14 @@ Ignored тест `sdlc::candidates::tests::artifact_tests::prepare_standalone_an
 чтобы не переиспользовать ключ уже зарегистрированного исполнения Workflow.
 `routes` берутся из реальной установленной конфигурации Workflow. Subject
 идентичности — UUID, без переназначения прежних локальных профилей.
+
+Выход `history_probe` содержит отдельную задачу, непустой предыдущий результат
+и назначение читателя для прямой проверки `sdlc result read`. История создаётся
+существующими repository-операциями с явно синтетическими terminal receipts;
+это подготовка тестовых данных, а не live-вызов Workflow/Fleet или HTTP/CLI
+Complete. SQL-защиты результатов не отключаются. Исторический источник не
+подмешивается к требованиям самостоятельного сценария. Оператор поддерживает
+leases текущего анализа и отдельного читателя; аналитик не получает его token.
 
 ```sh
 cargo test --locked -p infra --lib \
@@ -89,13 +99,14 @@ credential для DeliveryFence. Это текущий readback назначен
 из `receipt.assignment`, expected_lease_version — из `receipt.lease.version`.
 
 Через обычный `attachment upload` сохранить один `analysis.md`, скачать
-через `attachment download` и сравнить SHA256. Итоговый комментарий и typed
-proposal проверяются в тестовом контексте, включая original-key readback,
-повтор и неправильную привязку. Proposal не завершает стадию; `Complete`
-в этой квалификации не вызывается. Фактические результаты CLI, Hermes и
+через `attachment download` и сравнить SHA256. Проверить автора, исходную задачу,
+assignment/execution/role в sealed metadata, receipt и обычный итоговый комментарий.
+Повторная загрузка тех же байтов сохраняет исходную ссылку; чужая задача и
+отозванный доступ не позволяют запись или скачивание. Текущая квалификация
+не вызывает typed proposal или `Complete`. Фактические результаты CLI, Hermes и
 содержательной проверки документа фиксируются раздельно в отчёте Base.
 
-Отдельная PG-регрессия без `Complete`:
+Ранее выполненная отдельная PG-регрессия без `Complete`:
 `sdlc::candidates::tests::artifact_tests::analyst_tool_proposal_is_replayed_bound_and_comment_checked_without_complete`.
 Она публикует и читает реальные sealed bytes через repository, проверяет
 дедупликацию, комментарий и его повтор, отказ при неверном execution binding,
