@@ -42,12 +42,21 @@ pub struct DiscussionComment {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct RelatedTask {
+    pub task_id: Uuid,
+    pub key: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct TaskDiscussion {
+    pub source_task_id: Uuid,
     pub task_id: Uuid,
     pub project_id: Uuid,
     pub title: String,
     pub description: String,
     pub comments: Vec<DiscussionComment>,
+    pub related_tasks: Vec<RelatedTask>,
     /// Upper bound captured on the first page. New comments require a fresh scan.
     pub snapshot: Option<Uuid>,
     pub next_after: Option<Uuid>,
@@ -56,6 +65,7 @@ pub struct TaskDiscussion {
 #[derive(Clone, Debug, Default, Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
 pub struct DiscussionQuery {
+    pub related_task: Option<Uuid>,
     pub limit: Option<u16>,
     pub after: Option<Uuid>,
     pub snapshot: Option<Uuid>,

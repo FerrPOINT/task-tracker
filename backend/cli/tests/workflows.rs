@@ -558,9 +558,10 @@ async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_ne
                 "not a configured-cli-v1 PM startup prerequisite",
                 "task-tracker sdlc context --task TASK_UUID",
                 "project-workflow --json step --task WORKFLOW_TASK_KEY",
-                "Do not acquire a native lease, rebind or borrow another token",
+                "Do not acquire a lease, rebind or borrow another token",
                 "authorization failures on required commands remain blockers",
-                "Legacy delivery callers retain this command",
+                "current technical-role assignment, run binding and lease for a DeliveryFence",
+                "expected_lease_version from receipt.lease.version",
             ],
         ),
         (
@@ -2505,3 +2506,75 @@ fn help_hides_token_environment_value() {
 }
 #[path = "workflows/decomposition.rs"]
 mod decomposition_tests;
+
+#[tokio::test]
+async fn analyst_source_reads_the_existing_binding_without_issue_lookup_or_mutation() {
+    const TASK: &str = "11111111-1111-4111-8111-111111111111";
+    let unavailable =
+        json!({"state":"blocked","reason":"missing_binding","binding":null,"current":null});
+    let server = Server::start(vec![
+        (200, unavailable.clone()),
+        (
+            503,
+            json!({"error":{"code":"UNAVAILABLE","message":"source reader unavailable"}}),
+        ),
+    ])
+    .await;
+    assert_eq!(
+        success(&server.run(&["sdlc", "source", "--task", TASK], None).await),
+        unavailable
+    );
+    assert!(
+        !server
+            .run(&["sdlc", "source", "--task", TASK], None)
+            .await
+            .status
+            .success()
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    for request in requests {
+        assert_eq!(request.method, "GET");
+        assert_eq!(
+            request.path,
+            format!("/api/v1/issues/{TASK}/sdlc/source-binding")
+        );
+        assert!(request.key.is_none());
+    }
+}
+
+#[tokio::test]
+async fn related_discussion_retains_the_assigned_task_as_authority() {
+    const TASK: &str = "11111111-1111-4111-8111-111111111111";
+    const RELATED: &str = "22222222-2222-4222-8222-222222222222";
+    let result = json!({"source_task_id":TASK,"task_id":RELATED,"comments":[],"related_tasks":[]});
+    let server = Server::start(vec![(200, result.clone())]).await;
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "discussion",
+                        "read",
+                        "--task",
+                        TASK,
+                        "--related-task",
+                        RELATED,
+                        "--limit",
+                        "1"
+                    ],
+                    None
+                )
+                .await
+        ),
+        result
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/discussion?related_task={RELATED}&limit=1")
+    );
+}

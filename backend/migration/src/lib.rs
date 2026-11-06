@@ -37,8 +37,10 @@ mod m20261027_0000108_configured_critical_lifecycle;
 mod m20261028_0000109_configured_initial_adoption;
 mod m20261028_0000110_configured_checkpoint_absence;
 mod m20261029_0000111_configured_analysis_start;
+mod m20261103_0000112_configured_analysis_auto_start;
 mod m20261103_0000112_workspace_source_reference;
 mod m20261103_0000113_decomposition;
+mod m20261104_0000113_native_task_artifacts;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -148,8 +150,12 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261028_0000109_configured_initial_adoption::Migration),
             Box::new(m20261028_0000110_configured_checkpoint_absence::Migration),
             Box::new(m20261029_0000111_configured_analysis_start::Migration),
+            // These distinct full names were published independently. Preserve
+            // both identities so existing migration ledgers remain valid.
             Box::new(m20261103_0000112_workspace_source_reference::Migration),
             Box::new(m20261103_0000113_decomposition::Migration),
+            Box::new(m20261103_0000112_configured_analysis_auto_start::Migration),
+            Box::new(m20261104_0000113_native_task_artifacts::Migration),
         ]
     }
 }

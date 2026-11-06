@@ -7,7 +7,7 @@ use domain::sdlc_routing::TaskRoutingSnapshot;
 // Filter business eligibility before LIMIT, including current PM completion, not consent alone.
 const CANDIDATES_SQL: &str = r#"
 SELECT t.state, s.payload AS routing, d.receipt,
-       started.task_id IS NOT NULL AS configured_started,
+       (started.task_id IS NOT NULL OR reviewed.operation_id IS NOT NULL) AS configured_started,
        COALESCE(sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state),false) AS pm_completed
 FROM sdlc_tasks t
 JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND issue.deleted_at IS NULL
@@ -17,12 +17,23 @@ JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id
  AND COALESCE(intent.routing_snapshot_id,intent.review_routing_snapshot_id)=s.snapshot_id
 LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
 LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
- AND started.command IS NOT NULL AND started.actor_subject=t.owner_subject
+ AND started.command->>'operation'='start_analysis' AND s.generation=1
+ AND EXISTS(SELECT 1 FROM sdlc_configured_pm_completions completed
+     WHERE completed.task_id=t.task_id AND completed.completion_id=(started.command->>'pm_completion_id')::uuid
+       AND completed.confirmation_id=c.id AND completed.requirement_revision=s.requirement_revision
+       AND completed.content_hash=s.content_hash
+       AND (started.actor_subject=t.owner_subject OR
+            (started.actor_subject=completed.actor_subject AND started.transaction_id=completed.transaction_id
+             AND started.idempotency_key='pm-analysis:'||completed.completion_id::text)))
+LEFT JOIN sdlc_task_routing_generations generation ON generation.task_id=t.task_id AND generation.snapshot_id=s.snapshot_id
+LEFT JOIN sdlc_critical_pm_lifecycle_operations reviewed ON reviewed.operation_id=generation.operation_id
+ AND reviewed.kind='complete' AND reviewed.configured_completion_id=generation.configured_completion_id
+ AND reviewed.result->>'confirmation_id'=c.id::text AND reviewed.after_state->'lifecycle'->'routing'=s.payload
 WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb
   AND (t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'
-       OR (started.task_id IS NOT NULL AND d.task_id IS NOT NULL
+       OR ((started.task_id IS NOT NULL OR reviewed.operation_id IS NOT NULL) AND d.task_id IS NOT NULL
            AND sdlc_current_configured_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)))
   AND ($3::uuid IS NULL OR t.task_id>$3)
   AND s.payload->'contract_version'='2'::jsonb AND s.payload->'policy'->'contract_version'='2'::jsonb

@@ -145,6 +145,18 @@ fn workflow_profile_configuration_matches_without_fabricating_a_base_package_or_
         serde_json::from_value(valid.clone()).unwrap(),
     )
     .unwrap();
+    // Workflow owns phase structure; both enrolled three-phase and new
+    // twelve-phase Analyst bindings keep the same identity/access contract.
+    let mut expanded = valid.clone();
+    expanded["workflow_binding"]["modes"][0]["phase_ids"] =
+        json!((4..=15).map(|n| n.to_string()).collect::<Vec<_>>());
+    compare_profile(
+        &route,
+        "analyst",
+        "analysis",
+        serde_json::from_value(expanded).unwrap(),
+    )
+    .unwrap();
     let mut enabled = valid.clone();
     enabled["workflow_binding"]["runtime_ready"] = json!(true);
     enabled["workflow_binding"]["live_activation_allowed"] = json!(true);
@@ -169,6 +181,8 @@ fn workflow_profile_configuration_matches_without_fabricating_a_base_package_or_
             json!("workflow-analyst"),
         ),
         ("/workflow_binding/modes/0/key", json!("delivery")),
+        ("/workflow_binding/modes/0/phase_ids", json!([])),
+        ("/workflow_binding/modes/0/phase_ids/1", json!("0")),
         ("/workflow_binding/modes/0/phase_ids/1", json!("4")),
     ] {
         let mut changed = valid.clone();

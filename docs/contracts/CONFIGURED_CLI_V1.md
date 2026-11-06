@@ -1,5 +1,64 @@
 # Configured CLI V1
 
+## Workflow Phase Inventory
+
+Workflow owns the number and structure of phases. A binding carries a nonempty
+list of canonical, unique phase IDs per mode; consumers do not prescribe three
+phases. The coordinated Analyst baseline has twelve phases. Existing enrolled
+three-phase snapshots remain valid; role, namespace, scope, manifest/hash and
+revision guards remain mandatory. This source change does not activate a runtime.
+
+## Automatic Analyst Handoff: coordinated source change
+
+For newly accepted configured PM completions in enabled single-task projects,
+Tracker atomically writes the original PM completion plus Analysis intent, queue,
+canonical issue projection and outbox. No manual stage/status change can substitute
+for exact owner consent, the saved Workflow terminal and final PM comment.
+The initial automatic start journal records the actual PM service actor and the
+same completion transaction; it never impersonates the human owner. Manual owner
+start remains available for retained Backlog tasks.
+
+The PM response/readback is the immutable historical Backlog/Ready receipt.
+Fresh context is authoritative for the current stage and may already be Analysis
+or a later accepted stage. Existing completed tasks are not backfilled. A disabled
+project retains PM-only Backlog behavior. There are no new HTTP commands or DTOs. The read-only CLI source command exposes
+the existing source-binding GET.
+
+Forward migration 112 adds a nullable same-transaction witness to the existing
+completion ledger and extends exact queue/review guards. It rewrites no historical
+rows or applied migration SQL. Rollback uses the previous compatible application
+with automatic rollout disabled, preserving schema, receipts and queued work.
+An already issued assignment must be reconciled/stopped through its existing owner.
+
+Analyst cannot submit a new critical PM-review blocker or return a task to PM;
+both operations for its assignment are rejected with409. Denial does not create a
+hold or change task/assignment/lease state. Findings stay in Analysis, and missing
+mandatory facts block completion.
+Historical critical-return receipts remain readable without changing current state.
+A critical PM review from other roles resolves through its existing journal and routing generation;
+completion queues analysis of the new exact approved revision with all prior
+terminal/fence/source guards retained. The single-task Analyst result remains an
+existing sealed attachment receipt, not a separate requirements confirmation.
+
+Source status (2026-11-04): [Tracker #202](https://github.com/FerrPOINT/task-tracker/pull/202)
+contains both the return prohibition and the later new-blocker prohibition.
+The 26 critical blocker application tests include both Analyst denials, retained
+receipt replay and unchanged custody for other roles. The infra test targets were
+compiled without running PostgreSQL tests; app Clippy passed. The coordinated
+[Base delivery record](https://github.com/FerrPOINT/services-base/pull/443)
+tracks exact versions and qualification. This source status does not claim a
+deployment or completed real-Hermes Analyst-to-Architecture acceptance.
+
+Current configured PM in Draft can list and download unsealed owner inputs from
+its assigned task. The existing PM reader checks project membership, current
+assignment and active owner before and after blob I/O; it verifies file size.
+Legacy PM grants keep their narrower critical-evidence policy. Sealed outputs
+remain limited to the existing saved critical evidence and delivery custody.
+Current Analyst reads ordinary inputs under its delivery assignment; a previous
+producer, unrelated role or scheduler does not inherit that access.
+
+## Recorded qualification before automatic handoff
+
 Recorded status (2026-10-27): Tracker backend `d5fca554` is installed as image
 `3f084e40`. Focused Rust/PG checks, forward-105 populated-history preservation
 and Rust OpenAPI/client parity passed on their recorded source revisions.
@@ -193,19 +252,20 @@ The configured result has interaction_protocol, completion_id, Tracker binding,
 fence/owner_version, requirement_revision/content_hash, confirmation_id, the
 verified workflow_receipt/hash, stage Backlog, status Ready, admission transition,
 idempotency_key and created_at. No lease/native receipt is synthesized. Its
-append-only ledger, exact Draft-to-Backlog/Ready aggregate and issue projection,
-and admission transition commit atomically with pm.completed. Until that commit
+append-only ledger and admission transition commit atomically with pm.completed.
+In enabled single-task projects the same transaction then queues Analysis through
+the existing start guards, intent, issue projection and outbox. Until that commit
 the task remains Draft, including while Workflow completes. Failed/foreign/stale
 terminal receipt leaves it Draft; consent alone cannot publish. The original
-confirmation receipt remains Draft even after publication. No Analysis intent,
-assignment or downstream dispatch is created. Legacy confirmation timing is
-unchanged.
+confirmation receipt remains Draft even after publication. Disabled projects keep
+Backlog/Ready without an Analysis intent. Fleet reserves and starts the queued
+Analyst separately; no running state is inferred from publication. Legacy
+confirmation timing is unchanged.
 
-Configured tasks are explicitly excluded before pagination from existing delivery
-candidate discovery. The existing EnsureQueued and Reserve consumer commands
-also reject this protocol, even when the project enables single-task delivery.
-Project enablement alone is not opt-in to Analyst or later roles. No new queue
-or authority flag is introduced; legacy discovery and consumers are unchanged.
+Configured delivery discovery includes only tasks admitted by exact automatic or
+manual start. Owner confirmation or a status patch alone cannot create a candidate.
+The existing consumer, lease and capacity boundaries remain authoritative; no new
+queue or authority flag is introduced. Historical Backlog tasks are not backfilled.
 
 Exact replay is 200, first commit is 201, changed key payload is 409. GET of the
 same completion route returns `{interaction_protocol,current}`; GET

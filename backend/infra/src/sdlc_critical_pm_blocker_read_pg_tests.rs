@@ -30,7 +30,7 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
     .await
     .unwrap();
     let storage = domain::InMemoryStorage::default();
-    let r = Box::pin(start(&f, "pm-blocker-reader", false, &storage)).await;
+    let r = Box::pin(start(&f, "pm-blocker-reader", true, &storage)).await;
     let unlisted = Box::pin(sealed_evidence_tests::unlisted(&f, &r, &storage)).await;
     let (held, _) = Box::pin(f.repo.submit_critical_blocker_with_storage(
         r.task,

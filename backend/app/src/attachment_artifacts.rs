@@ -7,6 +7,18 @@ pub fn raw_sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+/// The repository authorizes ordinary inputs; they have no delivery receipt.
+/// Outputs retain the full seal/hash check, including malformed-seal rejection.
+pub fn verify_read_bytes(attachment: &domain::Attachment, bytes: &[u8]) -> Result<(), AppError> {
+    if Seal::parse(attachment.storage_key.as_ref())?.is_some() {
+        verify_bytes(attachment, bytes)
+    } else if attachment.size_bytes != bytes.len() as i64 {
+        Err(AppError::conflict("input size mismatch"))
+    } else {
+        Ok(())
+    }
+}
+
 pub fn verify_bytes(attachment: &domain::Attachment, bytes: &[u8]) -> Result<(), AppError> {
     let seal = Seal::parse(attachment.storage_key.as_ref())?.ok_or(AppError::Forbidden)?;
     seal.validate_attachment(attachment)?;
@@ -143,11 +155,38 @@ mod tests {
             created_at: shared::now(),
         };
         verify_bytes(&item, bytes).unwrap();
+        verify_read_bytes(&item, bytes).unwrap();
         assert!(verify_bytes(&item, b"{\"analysis\":true}").is_err());
+        assert!(verify_read_bytes(&item, b"{\"analysis\":true}").is_err());
+        let mut tampered = bytes.to_vec();
+        tampered[1] = b'\t';
+        assert!(verify_bytes(&item, &tampered).is_err());
+        assert!(verify_read_bytes(&item, &tampered).is_err());
         item.size_bytes += 1;
         assert!(verify_bytes(&item, bytes).is_err());
+        assert!(verify_read_bytes(&item, bytes).is_err());
         item.size_bytes -= 1;
         item.issue_id = shared::IssueId::new();
         assert!(verify_bytes(&item, bytes).is_err());
+        assert!(verify_read_bytes(&item, bytes).is_err());
+    }
+
+    #[test]
+    fn ordinary_inputs_need_exact_size_and_never_become_sealed_results() {
+        let mut item = domain::Attachment {
+            id: shared::AttachmentId::new(),
+            issue_id: shared::IssueId::new(),
+            author_id: shared::UserId::new(),
+            file_name: "source.txt".into(),
+            content_type: "text/plain".into(),
+            size_bytes: 6,
+            storage_key: "owner-input.txt".into(),
+            created_at: shared::now(),
+        };
+        verify_read_bytes(&item, b"source").unwrap();
+        assert!(verify_bytes(&item, b"source").is_err());
+        assert!(verify_read_bytes(&item, b"short").is_err());
+        item.storage_key = "sdlc-artifact-v1_malformed".into();
+        assert!(verify_read_bytes(&item, b"source").is_err());
     }
 }

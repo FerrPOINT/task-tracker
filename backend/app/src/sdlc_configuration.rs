@@ -358,7 +358,7 @@ fn compare_profile(
                         && m.execution_scopes.len() == 1
                         && m.execution_scopes[0] == *scope
                 })
-                || m.phase_ids.len() != 3
+                || m.phase_ids.is_empty()
                 || m.phase_ids
                     .iter()
                     .any(|id| !database_id(id) || !phases.insert(id))

@@ -7,6 +7,11 @@
 Визуальный дизайн дорабатывается отдельно. Context и проверяемый design receipt
 подготавливают независимый цикл Architect; установленный агент и его работа
 инструментами принимаются отдельно. Workflow handoff не выводится из сохранения плана.
+Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Accepted PM completion atomically queues Analysis in enabled single-task projects;
+its immutable receipt remains historical Backlog/Ready. Forward112 preserves
+existing rows and binds automatic queue authority to the completion transaction.
+No new public DTO, user confirmation or source-registry table is introduced.
 
 An accepted terminal PM run before its first checkpoint may obtain a bounded
 checkpoint-only permit using real saved technical Feedback. This does not answer
