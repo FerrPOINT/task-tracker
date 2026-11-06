@@ -1217,7 +1217,19 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 receipt.binding = None;
                 receipt.result = None;
             }
-            LifecycleCommand::EnsureQueued { .. } => {}
+            LifecycleCommand::EnsureQueued { .. } => {
+                if receipt.task.runtime == RuntimeState::Terminal
+                    && (receipt.assignment.is_some()
+                        || receipt.lease.is_some()
+                        || receipt.binding.is_some()
+                        || receipt.result.is_some())
+                {
+                    return Err(AppError::conflict(
+                        "terminal delivery custody is not released",
+                    ));
+                }
+                app::sdlc_lifecycle::ensure_queued(&mut receipt.task)?;
+            }
             LifecycleCommand::Reserve {
                 expected_task_version,
                 machine_subject,
