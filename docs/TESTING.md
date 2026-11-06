@@ -1,5 +1,22 @@
 # Стратегия тестирования Task Tracker
 
+## Native retained read scope
+
+`TT_NATIVE_SCOPE_TEST_DATABASE_URL` must name a fresh owned database ending in
+`_native_scope_test`. Run the scoped PostgreSQL regression:
+
+```sh
+cargo test --locked -p migration --lib \
+  m20261106_0000114_native_read_scope_attenuation::tests::retained_reads_attenuate_mutation_without_granting_writes \
+  -- --exact --ignored --test-threads=1
+```
+
+It reproduces the old write-to-read rejection, applies forward114 and checks
+retained reads, ordinary reads/current writes, all native write entry points,
+read-to-write escalation, malformed flags, foreign identity/task/project,
+expired authority, archives and revoked membership. Its small SQL fixture tests
+the actual guard functions; a live PM completion remains a separate check.
+
 ## Configured Analysis Start: 2026-10-29
 
 PR197 qualifies the explicit owner start, not an automatic PM transition. On
