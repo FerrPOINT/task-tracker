@@ -1,5 +1,19 @@
 # Дата-модель Task Tracker
 
+Migration 0113 добавляет `issue_plan_revisions` и `issue_plan_operations`.
+План принадлежит `issues.id`; текущая редакция — максимальная revision.
+Сохранение сериализуется блокировкой исходной задачи. Content содержит общую
+архитектуру, точную ссылку на требования и плоский упорядоченный список разделов
+со стабильными UUID. History не изменяется; удалённые UUID не используются заново.
+Operation ledger сохраняет исходный hash команды и результат, включая no-op.
+Context проецирует previous_result_id и selected_source_policy из существующих
+delivery/source-selection ledgers. Design ArtifactReceipt ссылается на неизменяемую
+редакцию плана; отдельной копии результата или новой таблицы для связи нет.
+Применённые миграции и существующие SDLC receipts не переписываются.
+Автор/имя фиксируются снимком; удаление учётной записи не удаляет историю плана.
+[Контракт, API и CLI](contracts/task-decomposition.md).
+
+
 Workspace reference добавлен в существующие JSON receipts source policy,
 verification и task binding как optional `development_workspace_id`. Отсутствие
 поля сохраняет прежнюю сериализацию и hash. Migration 0112 добавляет INSERT guards

@@ -1,5 +1,13 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+[Управление встроенной декомпозицией](contracts/task-decomposition.md) реализуется
+в Tracker: постоянный план, редакции, права, конфликт и те же операции CLI.
+Разделы остаются частями одной задачи, без собственных статусов или поставок.
+Существующая вкладка подключается к owner API; dev-примеры остаются отдельными.
+Визуальный дизайн дорабатывается отдельно. Context и проверяемый design receipt
+подготавливают независимый цикл Architect; установленный агент и его работа
+инструментами принимаются отдельно. Workflow handoff не выводится из сохранения плана.
+
 An accepted terminal PM run before its first checkpoint may obtain a bounded
 checkpoint-only permit using real saved technical Feedback. This does not answer
 a business question or confirm requirements. [Source-only contract](contracts/pm-terminal-idle-recovery.md).

@@ -35,4 +35,5 @@ pub use context::*;
 pub use dto::*;
 pub use services::*;
 
+pub mod decomposition;
 pub mod native_space_access;

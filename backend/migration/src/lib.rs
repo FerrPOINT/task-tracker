@@ -38,6 +38,7 @@ mod m20261028_0000109_configured_initial_adoption;
 mod m20261028_0000110_configured_checkpoint_absence;
 mod m20261029_0000111_configured_analysis_start;
 mod m20261103_0000112_workspace_source_reference;
+mod m20261103_0000113_decomposition;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -148,6 +149,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261028_0000110_configured_checkpoint_absence::Migration),
             Box::new(m20261029_0000111_configured_analysis_start::Migration),
             Box::new(m20261103_0000112_workspace_source_reference::Migration),
+            Box::new(m20261103_0000113_decomposition::Migration),
         ]
     }
 }
