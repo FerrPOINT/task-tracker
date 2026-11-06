@@ -13,10 +13,13 @@ async fn seed_architect_system_fixture() {
     let spec: Json = serde_json::from_slice(&input).unwrap();
     let owner = Uuid::parse_str(spec["owner_subject"].as_str().unwrap()).unwrap();
     assert!(!owner.is_nil());
+    let scheduler = Uuid::parse_str(spec["scheduler_subject"].as_str().unwrap()).unwrap();
+    assert!(!scheduler.is_nil());
     let (f, queued) = ReworkFixture::with_architect_owner_inputs(
         Some(serde_json::from_value(spec["verification"].clone()).unwrap()),
         Some(serde_json::from_value(spec["requirements"].clone()).unwrap()),
         &owner.to_string(),
+        &scheduler.to_string(),
     )
     .await;
     let analyst = f

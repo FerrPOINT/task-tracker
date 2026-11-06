@@ -78,13 +78,14 @@ impl ReworkFixture {
         source: Option<domain::sdlc_source::VerifiedSource>,
         document: Option<RequirementsDocument>,
     ) -> (Self, LifecycleReceipt) {
-        Self::with_architect_owner_inputs(source, document, "owner").await
+        Self::with_architect_owner_inputs(source, document, "owner", "scheduler").await
     }
 
     async fn with_architect_owner_inputs(
         source: Option<domain::sdlc_source::VerifiedSource>,
         document: Option<RequirementsDocument>,
         owner_subject: &str,
+        scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
@@ -105,7 +106,7 @@ impl ReworkFixture {
         for (subject, id) in [
             (owner_subject, owner_id),
             ("pm", Uuid::new_v4()),
-            ("scheduler", Uuid::new_v4()),
+            (scheduler_subject, Uuid::new_v4()),
             ("verifier", Uuid::new_v4()),
         ] {
             exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
@@ -123,7 +124,7 @@ impl ReworkFixture {
                 instance_id: "single-task-rework-test".into(),
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
-                reservation_scheduler_subject: "scheduler".into(),
+                reservation_scheduler_subject: scheduler_subject.into(),
                 single_task_project_ids: [project].into_iter().collect(),
             },
         )
@@ -131,7 +132,7 @@ impl ReworkFixture {
         .unwrap();
         let owner = actor(owner_subject, true, vec![]);
         crate::sdlc::source::configure_test_source_verified(&repo, project, &owner, source).await;
-        let scheduler = actor("scheduler", false, vec![]);
+        let scheduler = actor(scheduler_subject, false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
         let routes = draft_flow_tests::single_task_routes();
