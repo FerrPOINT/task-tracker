@@ -224,6 +224,7 @@ task-tracker/
 - [docs/API.md](docs/API.md) — API notes.
 - [docs/SDLC_ROUTING_V1.md](docs/SDLC_ROUTING_V1.md) — owner API маршрутизации семи ролей и неизменяемый snapshot публикации; явный opt-in, не runtime admission.
 - [docs/SDLC_UI_V1.md](docs/SDLC_UI_V1.md) — owner consent/readback и отдельный opt-in опубликованной policy, без редактора или native readiness.
+- [docs/ANALYST_TOOLS_QA.md](docs/ANALYST_TOOLS_QA.md) — подготовка и проверка чтения источников, сохранения ТЗ и прав Analyst без Workflow/Fleet.
 - [docs/SDLC_RESERVATION_V1.md](docs/SDLC_RESERVATION_V1.md) — prepared Analysis assignment, capacity/lease/CAS и readback; без dispatch или admission.
 - [docs/SDLC_CONFIGURATION_PREFLIGHT_V1.md](docs/SDLC_CONFIGURATION_PREFLIGHT_V1.md) — свежий owner readback Fleet для prepared Analysis, без native admission или запуска.
 - [docs/CHAT_CLARIFICATION_CONTRACT.md](docs/CHAT_CLARIFICATION_CONTRACT.md) — SDLC Fleet DTOs, scoped paginated project directory, machine grants, PM reservation and ownership lease (not runtime admission).

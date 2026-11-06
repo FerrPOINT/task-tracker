@@ -145,6 +145,41 @@ impl DiscussionRepository for PostgresSdlcRepository {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load_read(&tx, task, actor).await?;
         self.discussion_author(&tx, &state, actor, None).await?;
+        let source_task_id = task;
+        let mut related_tasks = Vec::new();
+        let mut seen_related = std::collections::HashSet::new();
+        // Keep source visibility and project bindings stable until the read commits.
+        for row in tx
+            .query_all(statement(
+                "SELECT i.id,i.key,i.summary FROM issue_links l
+             JOIN issues i ON i.id=CASE WHEN l.source_id=$1 THEN l.target_id ELSE l.source_id END
+             WHERE (l.source_id=$1 OR l.target_id=$1) AND i.project_id=$2 AND i.deleted_at IS NULL
+               AND ($3::uuid IS NULL OR i.id=$3)
+             ORDER BY i.id,l.id FOR SHARE OF i,l",
+                vec![
+                    task.into(),
+                    state.project_id.into(),
+                    query.related_task.into(),
+                ],
+            ))
+            .await
+            .map_err(map_db)?
+        {
+            let related_id = row.try_get("", "id").map_err(map_db)?;
+            if !seen_related.insert(related_id) {
+                continue;
+            }
+            related_tasks.push(RelatedTask {
+                task_id: related_id,
+                key: row.try_get("", "key").map_err(map_db)?,
+                title: row.try_get("", "summary").map_err(map_db)?,
+            });
+        }
+        let task = match query.related_task {
+            Some(related) if related_tasks.iter().any(|item| item.task_id == related) => related,
+            Some(_) => return Err(AppError::Forbidden),
+            None => task,
+        };
         let issue = tx
             .query_one(statement(
                 "SELECT summary AS title,description FROM issues WHERE id=$1",
@@ -197,6 +232,7 @@ impl DiscussionRepository for PostgresSdlcRepository {
             None
         };
         let result = TaskDiscussion {
+            source_task_id,
             task_id: task,
             project_id: state.project_id,
             title: issue.try_get("", "title").map_err(map_db)?,
@@ -205,6 +241,7 @@ impl DiscussionRepository for PostgresSdlcRepository {
                 .map_err(map_db)?
                 .unwrap_or_default(),
             comments,
+            related_tasks,
             snapshot,
             next_after,
         };

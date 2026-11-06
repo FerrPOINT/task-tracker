@@ -168,7 +168,8 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         content_type: &str,
         bytes: Vec<u8>,
     ) -> Result<crate::context::AttachmentDto, AppError> {
-        crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        // The repository authorizes the current permanent producer against the
+        // task, assignment and live lease before publishing the sealed bytes.
         let upload = domain::attachment_artifact::ArtifactUpload {
             file_name: sanitize_file_name(file_name),
             content_type: validate_content_type(content_type)?,
@@ -208,7 +209,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             .attachments
             .download_artifact(self.artifact_config()?, actor, id, self.storage.as_ref())
             .await?;
-        crate::attachment_artifacts::verify_bytes(&attachment, &bytes)?;
+        crate::attachment_artifacts::verify_read_bytes(&attachment, &bytes)?;
         Ok((Self::to_dto(&attachment)?, bytes))
     }
 
@@ -375,7 +376,7 @@ mod tests {
             reservation_scheduler_subject: "scheduler".into(),
             single_task_project_ids: Default::default(),
         });
-        let mut actor = domain::sdlc::Principal {
+        let actor = domain::sdlc::Principal {
             subject: uuid::Uuid::new_v4().to_string(),
             human_session: false,
             trusted_human: false,
@@ -401,14 +402,6 @@ mod tests {
             upload(actor.clone()).await,
             Err(AppError::Unavailable(_))
         ));
-        actor.human_session = true;
-        assert!(matches!(
-            upload(actor.clone()).await,
-            Err(AppError::Forbidden)
-        ));
-        actor.human_session = false;
-        actor.scopes.remove("task-tracker:write");
-        assert!(matches!(upload(actor).await, Err(AppError::Forbidden)));
     }
 
     #[test]

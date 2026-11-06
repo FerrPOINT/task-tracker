@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-06: Workflow-Owned Phase Inventory
+
+- Accept nonempty Workflow phase inventories instead of prescribing three phases
+  in the binding consumer. Analyst can use the coordinated twelve-phase baseline.
+- Keep canonical/unique IDs, role, scope, namespace, hashes and revision checks.
+  Existing enrolled three-phase snapshots remain readable; no runtime activation
+  or phase scheduling change is included.
+
 ## 2026-10-29: Explicit Configured Delivery Start
 
 - Problem: configured PM correctly finishes in Backlog / Ready, but there was no

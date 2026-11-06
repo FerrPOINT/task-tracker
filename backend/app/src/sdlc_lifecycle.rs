@@ -1,5 +1,6 @@
 use domain::sdlc::{MAX_SAFE_VERSION, Principal};
 use domain::sdlc_lifecycle::*;
+use domain::sdlc_routing::TaskRoutingSnapshot;
 use shared::AppError;
 use uuid::Uuid;
 
@@ -276,6 +277,32 @@ pub fn configured_started_intent(
         .current_confirmation()
         .ok_or_else(|| AppError::conflict("exact owner confirmation absent"))?;
     crate::sdlc::analysis_intent_payload(state, confirmation, intent_id)
+}
+
+/// Read reconstruction after the repository verifies the actual critical-review journal.
+/// This does not authorize a new start or accept caller-supplied review proof.
+pub fn configured_review_intent(
+    state: &domain::sdlc::TaskState,
+    completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    routing: &TaskRoutingSnapshot,
+    intent_id: Uuid,
+) -> Result<domain::sdlc::AnalysisIntent, AppError> {
+    validate_start_binding(state, completion)?;
+    if state.stage != domain::sdlc::Stage::Analysis
+        || routing.task_id != state.task_id
+        || routing.confirmation_id != completion.confirmation_id
+        || routing.requirement_revision != completion.requirement_revision
+        || routing.content_hash != completion.content_hash
+    {
+        return Err(AppError::conflict("saved review Analysis binding differs"));
+    }
+    crate::sdlc::analysis_intent_payload(
+        state,
+        state
+            .current_confirmation()
+            .ok_or_else(|| AppError::conflict("Analysis confirmation absent"))?,
+        intent_id,
+    )
 }
 
 pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {

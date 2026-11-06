@@ -2206,15 +2206,8 @@ impl AttachmentRepository for AttachmentRepo {
         upload: domain::attachment_artifact::ArtifactUpload,
         storage: &dyn domain::FileStorage,
     ) -> Result<Attachment, AppError> {
-        crate::sdlc::attachment_artifacts::publish(
-            self.db.raw(),
-            config,
-            actor,
-            issue,
-            upload,
-            storage,
-        )
-        .await
+        crate::sdlc::attachment_artifacts::publish(&*self.db, config, actor, issue, upload, storage)
+            .await
     }
     async fn list_artifacts(
         &self,
@@ -2222,7 +2215,7 @@ impl AttachmentRepository for AttachmentRepo {
         actor: &domain::sdlc::Principal,
         issue: IssueId,
     ) -> Result<Vec<Attachment>, AppError> {
-        crate::sdlc::attachment_artifacts::list(self.db.raw(), config, actor, issue).await
+        crate::sdlc::attachment_artifacts::list(&*self.db, config, actor, issue).await
     }
     async fn download_artifact(
         &self,
@@ -2231,14 +2224,14 @@ impl AttachmentRepository for AttachmentRepo {
         id: AttachmentId,
         storage: &dyn domain::FileStorage,
     ) -> Result<(Attachment, Vec<u8>), AppError> {
-        crate::sdlc::attachment_artifacts::download(self.db.raw(), config, actor, id, storage).await
+        crate::sdlc::attachment_artifacts::download(&*self.db, config, actor, id, storage).await
     }
     async fn authorize_sealed_human_read(
         &self,
         issue: IssueId,
         requester: UserId,
     ) -> Result<(), AppError> {
-        crate::sdlc::attachment_artifacts::human_access(self.db.raw(), issue, requester).await
+        crate::sdlc::attachment_artifacts::human_access(&*self.db, issue, requester).await
     }
     async fn get_by_id(&self, id: AttachmentId) -> Result<Attachment, AppError> {
         let model = attachment::Entity::find_by_id(id.as_uuid())

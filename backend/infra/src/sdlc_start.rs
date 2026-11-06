@@ -1,4 +1,4 @@
-//! One explicit owner command on the existing lifecycle/permit/operation boundary.
+//! Manual and completion-owned starts share the existing lifecycle/permit/operation boundary.
 use super::*;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_routing::TaskRoutingSnapshot;
@@ -120,7 +120,50 @@ impl PostgresSdlcRepository {
         if completed.completion_id != *pm_completion_id {
             return Err(AppError::conflict("PM completion selector is stale"));
         }
-        app::sdlc_lifecycle::validate_start(&state, &completed)?;
+        let receipt = self
+            .queue_configured_analysis(&tx, &state, actor, &completed, &command)
+            .await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok((receipt, false))
+    }
+
+    /// Called only after the verified PM completion has been inserted in this transaction.
+    /// The journal records the real machine actor; it never impersonates the owner.
+    pub(super) async fn auto_start_configured_analysis(
+        &self,
+        tx: &DatabaseTransaction,
+        task: Uuid,
+        actor: &Principal,
+        completed: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+    ) -> Result<(), AppError> {
+        let state = self.load(tx, task, actor).await?;
+        if !self
+            .config
+            .single_task_project_ids
+            .contains(&state.project_id)
+        {
+            return Ok(());
+        }
+        let command = LifecycleCommand::StartAnalysis {
+            pm_completion_id: completed.completion_id,
+            idempotency_key: format!("pm-analysis:{}", completed.completion_id),
+        };
+        self.queue_configured_analysis(tx, &state, actor, completed, &command)
+            .await?;
+        Ok(())
+    }
+
+    async fn queue_configured_analysis(
+        &self,
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        actor: &Principal,
+        completed: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
+        command: &LifecycleCommand,
+    ) -> Result<LifecycleReceipt, AppError> {
+        let task = state.task_id;
+        let hash = app::sdlc::canonical_hash(command)?;
+        app::sdlc_lifecycle::validate_start(state, completed)?;
         let row = tx.query_one(statement(
             "SELECT pm_owner_version,sdlc_current_configured_pm_completed(task_id,pm_execution_id,state,pm_admission_state) AS completed
              FROM sdlc_tasks WHERE task_id=$1", vec![task.into()],
@@ -146,7 +189,7 @@ impl PostgresSdlcRepository {
             state.project_id,
             &state.tracker_instance_id,
         )?;
-        super::lifecycle::exact_snapshot(&state, &routing)?;
+        super::lifecycle::exact_snapshot(state, &routing)?;
         let receipt = LifecycleReceipt {
             task: LifecycleTask {
                 task_id: task,
@@ -168,7 +211,7 @@ impl PostgresSdlcRepository {
             result: None,
         };
         let mut intent =
-            app::sdlc_lifecycle::configured_start_intent(&state, &completed, Uuid::now_v7())?;
+            app::sdlc_lifecycle::configured_start_intent(state, completed, Uuid::now_v7())?;
         intent.workflow = receipt
             .task
             .routing
@@ -178,16 +221,16 @@ impl PostgresSdlcRepository {
             .workflow_key
             .clone();
         let event = Uuid::now_v7();
-        Self::ensure_initial_delivery_idle(&tx, task).await?;
+        Self::ensure_initial_delivery_idle(tx, task).await?;
         // Journal precedes projection so the SQL initial-transition guard can require
         // this exact command in the same transaction as its existing permit.
-        exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id,command,transaction_id)
+        exec(tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id,command,transaction_id)
             VALUES($1,$2,$3,$4,$5,$6,$7,pg_current_xact_id())",
             vec![task.into(), actor.subject.clone().into(), command.key().into(), hash.into(), json_value(&receipt)?, event.into(), json_value(&command)?]).await?;
-        exec(&tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id)
+        exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8)", vec![intent.intent_id.into(), task.into(), intent.requirement_revision.into(),
                 intent.content_hash.clone().into(), intent.confirmation_id.into(), intent.operation_key.clone().into(), json_value(&intent)?, receipt.task.routing.snapshot_id.into()]).await?;
-        Self::save_delivery_projection(&tx, actor, &receipt, true).await?;
+        Self::save_delivery_projection(tx, actor, &receipt, true).await?;
         for (event_id, kind, result) in [
             (
                 intent.intent_id,
@@ -204,13 +247,12 @@ impl PostgresSdlcRepository {
                 "project_id":state.project_id,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
                 "stage":"Analysis","requirement_revision":completed.requirement_revision,"result":result});
             exec(
-                &tx,
+                tx,
                 "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
                 vec![event_id.into(), task.into(), kind.into(), payload.into()],
             )
             .await?;
         }
-        tx.commit().await.map_err(map_db)?;
-        Ok((receipt, false))
+        Ok(receipt)
     }
 }

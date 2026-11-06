@@ -202,7 +202,7 @@ pub async fn pm_completion(
     Path(task): Path<Uuid>,
 ) -> Result<(HeaderMap, Json<PmCompletionReadbackResponse>), AppError> {
     let svc = service(&ctx)?;
-    let state = svc.repository.read(task, &actor).await?;
+    let state = svc.repository.pm_completion_state(task, &actor).await?;
     let result = if state.configured_cli() {
         let saved = svc
             .repository
@@ -225,7 +225,7 @@ pub async fn pm_completion_operation(
     Path((task, key)): Path<(Uuid, String)>,
 ) -> Result<(HeaderMap, Json<PmCompletionOperationResponse>), AppError> {
     let svc = service(&ctx)?;
-    let state = svc.repository.read(task, &actor).await?;
+    let state = svc.repository.pm_completion_state(task, &actor).await?;
     let result = if state.configured_cli() {
         let saved = svc
             .repository

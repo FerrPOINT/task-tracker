@@ -8,6 +8,9 @@ pub enum DiscussionCommand {
     Read {
         #[arg(long)]
         task: Uuid,
+        /// Read a directly linked task in the assigned task's project, retaining --task as authority
+        #[arg(long)]
+        related_task: Option<Uuid>,
         #[arg(long, value_parser = clap::value_parser!(u16).range(1..=500))]
         limit: Option<u16>,
         #[arg(long, requires = "snapshot")]
@@ -35,11 +38,15 @@ pub async fn execute(api: &Api, command: DiscussionCommand) -> Result<Value> {
     match command {
         DiscussionCommand::Read {
             task,
+            related_task,
             limit,
             after,
             snapshot,
         } => {
             let mut query = Vec::new();
+            if let Some(value) = related_task {
+                query.push(format!("related_task={value}"));
+            }
             if let Some(value) = limit {
                 query.push(format!("limit={value}"));
             }

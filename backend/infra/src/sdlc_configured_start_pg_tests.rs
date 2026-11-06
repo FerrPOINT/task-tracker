@@ -6,8 +6,8 @@ use super::*;
 async fn forward_start_migration_preserves_filled_110_history_without_auto_start() {
     Box::pin(async {
         let migrations = migration::Migrator::migrations();
-        assert_eq!(migrations.last().unwrap().name(), "m20261029_0000111_configured_analysis_start");
-        let f = Box::pin(Fixture::new_with_migration_steps(Some((migrations.len()-1) as u32))).await;
+        let checkpoint = migrations.iter().position(|migration| migration.name() == "m20261029_0000111_configured_analysis_start").unwrap();
+        let f = Box::pin(Fixture::new_with_migration_steps(Some(checkpoint as u32))).await;
         let historical = Box::pin(f.queued_analysis("historical", true)).await;
         f.repo.lifecycle_command(historical, &f.writer, LifecycleCommand::EnsureQueued {
             idempotency_key: "historical-queue".into(),
@@ -47,7 +47,12 @@ async fn command(f: &Fixture, task: Uuid, key: &str) -> LifecycleCommand {
 #[ignore = "requires isolated process and fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guards() {
     use app::native_space_access::{NativeRequest, with_request};
-    use axum::{Json as HttpJson, Router, extract::State, http::HeaderMap, routing::{get, post}};
+    use axum::{
+        Json as HttpJson, Router,
+        extract::State,
+        http::HeaderMap,
+        routing::{get, post},
+    };
     use std::sync::RwLock;
 
     // Seed through the existing business fixture before enabling the serving policies.
@@ -57,7 +62,8 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
     let mut f = Box::pin(Fixture::new()).await;
     // Create fresh identities and membership; existing identity aliases are immutable.
     let owner_identity = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
-    let scheduler_identity = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let scheduler_identity =
+        crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
     let owner = Uuid::parse_str(&owner_identity.subject).unwrap();
     let scheduler = Uuid::parse_str(&scheduler_identity.subject).unwrap();
     f.owner = actor(&owner_identity.subject, true, &[]);
@@ -68,11 +74,22 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
     let producer = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
     let task = Box::pin(f.confirmed("native-scheduler", true)).await;
     let start = command(&f, task, "native-scheduler-start").await;
-    let initial = f.repo.lifecycle_command(task, &f.owner, start).await.unwrap().0;
+    let initial = f
+        .repo
+        .lifecycle_command(task, &f.owner, start)
+        .await
+        .unwrap()
+        .0;
     // Activation validates every project, including those seeded by migrations.
     // Preserve existing bindings and add the missing synthetic owner receipts.
-    let unbound = f.db.query_all(statement("SELECT id FROM projects p WHERE NOT EXISTS
-        (SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id)", vec![])).await.unwrap();
+    let unbound =
+        f.db.query_all(statement(
+            "SELECT id FROM projects p WHERE NOT EXISTS
+        (SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id)",
+            vec![],
+        ))
+        .await
+        .unwrap();
     for row in unbound {
         let project: Uuid = row.try_get("", "id").unwrap();
         let registry = Uuid::new_v4();
@@ -85,14 +102,38 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
             VALUES($1,$2,$3,1,'active',$4)",
             vec![project.into(),registry.into(),namespace.into(),binding.into()]).await.unwrap();
     }
-    exec(&f.db, "INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state)
+    exec(
+        &f.db,
+        "INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state)
         SELECT registry_instance_id,namespace_id,1,state FROM tracker_namespace_bindings
-        ON CONFLICT(registry_instance_id,space_id) DO NOTHING", vec![]).await.unwrap();
-    exec(&f.db, "UPDATE tracker_space_catalog SET admin_revision=1 WHERE admin_revision IS NULL", vec![]).await.unwrap();
-    exec(&f.db, "INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id)
+        ON CONFLICT(registry_instance_id,space_id) DO NOTHING",
+        vec![],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "UPDATE tracker_space_catalog SET admin_revision=1 WHERE admin_revision IS NULL",
+        vec![],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id)
         SELECT resource_id,registry_instance_id,namespace_id FROM tracker_namespace_bindings
-        ON CONFLICT(project_id,registry_instance_id,space_id) DO NOTHING", vec![]).await.unwrap();
-    exec(&f.db, "UPDATE tracker_space_admission_state SET active=true", vec![]).await.unwrap();
+        ON CONFLICT(project_id,registry_instance_id,space_id) DO NOTHING",
+        vec![],
+    )
+    .await
+    .unwrap();
+    exec(
+        &f.db,
+        "UPDATE tracker_space_admission_state SET active=true",
+        vec![],
+    )
+    .await
+    .unwrap();
 
     #[derive(Clone)]
     struct Authority {
@@ -105,7 +146,11 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let authority = Arc::new(RwLock::new(Authority {
-        issuer: issuer.clone(), owner, scheduler, foreign: foreign.subject.clone(), owner_permitted: true,
+        issuer: issuer.clone(),
+        owner,
+        scheduler,
+        foreign: foreign.subject.clone(),
+        owner_permitted: true,
     }));
     let router = Router::new()
         .route("/oidc/jwks", get(|| async { HttpJson(json!({"keys":[]})) }))
@@ -139,25 +184,66 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/oidc/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
         std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_REQUIRED", "true");
-        std::env::set_var("TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN", "scheduler-scope-owner-reader");
+        std::env::set_var(
+            "TT_AUTH__CENTRAL_APPLICATION_ACCESS_READER_TOKEN",
+            "scheduler-scope-owner-reader",
+        );
     }
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let bridge = &app::space_access::CENTRAL_BRIDGE;
-    let write = bridge.try_verified_token("sdlc_pat_scheduler_scope_write").await.unwrap();
-    let read = bridge.try_verified_token("sdlc_pat_scheduler_scope_read").await.unwrap();
-    let mixed = bridge.try_verified_token("sdlc_pat_scheduler_scope_mixed").await.unwrap();
-    let other = bridge.try_verified_token("sdlc_pat_scheduler_scope_foreign").await.unwrap();
-    assert!(app::native_space_access::application_policy_required().await.unwrap());
-    assert!(matches!(NativeRequest::verified(&write, true, false), Err(AppError::Forbidden)),
-        "the separate write-only credential cannot enter a GET request");
+    let write = bridge
+        .try_verified_token("sdlc_pat_scheduler_scope_write")
+        .await
+        .unwrap();
+    let read = bridge
+        .try_verified_token("sdlc_pat_scheduler_scope_read")
+        .await
+        .unwrap();
+    let mixed = bridge
+        .try_verified_token("sdlc_pat_scheduler_scope_mixed")
+        .await
+        .unwrap();
+    let other = bridge
+        .try_verified_token("sdlc_pat_scheduler_scope_foreign")
+        .await
+        .unwrap();
+    assert!(
+        app::native_space_access::application_policy_required()
+            .await
+            .unwrap()
+    );
+    assert!(
+        matches!(
+            NativeRequest::verified(&write, true, false),
+            Err(AppError::Forbidden)
+        ),
+        "the separate write-only credential cannot enter a GET request"
+    );
     let scope = |proof| NativeRequest::verified(proof, true, true).unwrap();
 
-    async fn denied(label: &str, f: &Fixture, task: Uuid, actor: &Principal, native: NativeRequest, command: LifecycleCommand) {
+    async fn denied(
+        label: &str,
+        f: &Fixture,
+        task: Uuid,
+        actor: &Principal,
+        native: NativeRequest,
+        command: LifecycleCommand,
+    ) {
         let before = f.snapshot().await;
-        let outcome = Box::pin(with_request(native, f.repo.lifecycle_command(task, actor, command))).await;
-        assert!(matches!(&outcome, Err(AppError::Forbidden)),
-            "{label}: expected Forbidden, got {outcome:?}");
-        assert_eq!(f.snapshot().await, before, "{label}: denial must not leave a command, hold or assignment");
+        let outcome = Box::pin(with_request(
+            native,
+            f.repo.lifecycle_command(task, actor, command),
+        ))
+        .await;
+        assert!(
+            matches!(&outcome, Err(AppError::Forbidden)),
+            "{label}: expected Forbidden, got {outcome:?}"
+        );
+        assert_eq!(
+            f.snapshot().await,
+            before,
+            "{label}: denial must not leave a command, hold or assignment"
+        );
     }
     async fn scheduler_membership(f: &Fixture, present: bool) {
         // Synthetic owner admission for fixture administration, as in the
@@ -175,14 +261,28 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
                 WHERE l.project_id=p.id AND c.state='active' AND c.admin_revision IS NOT NULL) s
             WHERE p.id=$1", vec![f.project.into()])).await.unwrap().unwrap();
         let owner: Json = row.try_get("", "actor").unwrap();
-        crate::guarded_db::bind_commit_clock(&tx, owner["valid_until"].as_i64().unwrap()).await.unwrap();
-        exec(&tx, "SELECT set_config('pdlc.tracker.write_actor',$1,true)", vec![owner.to_string().into()]).await.unwrap();
+        crate::guarded_db::bind_commit_clock(&tx, owner["valid_until"].as_i64().unwrap())
+            .await
+            .unwrap();
+        exec(
+            &tx,
+            "SELECT set_config('pdlc.tracker.write_actor',$1,true)",
+            vec![owner.to_string().into()],
+        )
+        .await
+        .unwrap();
         let sql = if present {
             "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2"
         } else {
             "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub=$2)"
         };
-        exec(&tx, sql, vec![f.project.into(),f.writer.subject.clone().into()]).await.unwrap();
+        exec(
+            &tx,
+            sql,
+            vec![f.project.into(), f.writer.subject.clone().into()],
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
     }
     let mut next = LifecycleCommand::Reserve {
@@ -192,39 +292,120 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
     };
     for phase in ["reserve", "bind"] {
         // The same subject's legitimate GET frame cannot borrow its separate write credential.
-        denied(&format!("{phase}/read_frame"), &f, task, &f.writer, NativeRequest::verified(&read, true, false).unwrap(), next.clone()).await;
+        denied(
+            &format!("{phase}/read_frame"),
+            &f,
+            task,
+            &f.writer,
+            NativeRequest::verified(&read, true, false).unwrap(),
+            next.clone(),
+        )
+        .await;
         let mut unregistered = foreign.clone();
         unregistered.scopes = ["task-tracker:write".into()].into();
-        denied(&format!("{phase}/unregistered_scheduler"), &f, task, &unregistered, scope(&other), next.clone()).await;
+        denied(
+            &format!("{phase}/unregistered_scheduler"),
+            &f,
+            task,
+            &unregistered,
+            scope(&other),
+            next.clone(),
+        )
+        .await;
         let mut combined = f.writer.clone();
         combined.scopes.insert("task-tracker:read".into());
-        denied(&format!("{phase}/mixed_scopes"), &f, task, &combined, scope(&mixed), next.clone()).await;
+        denied(
+            &format!("{phase}/mixed_scopes"),
+            &f,
+            task,
+            &combined,
+            scope(&mixed),
+            next.clone(),
+        )
+        .await;
 
         scheduler_membership(&f, false).await;
-        denied(&format!("{phase}/revoked_membership"), &f, task, &f.writer, scope(&write), next.clone()).await;
+        denied(
+            &format!("{phase}/revoked_membership"),
+            &f,
+            task,
+            &f.writer,
+            scope(&write),
+            next.clone(),
+        )
+        .await;
         scheduler_membership(&f, true).await;
 
-        exec(&f.db, "UPDATE tracker_space_catalog SET state='restoring'", vec![]).await.unwrap();
-        denied(&format!("{phase}/restoring_space"), &f, task, &f.writer, scope(&write), next.clone()).await;
-        exec(&f.db, "UPDATE tracker_space_catalog SET state='active'", vec![]).await.unwrap();
+        exec(
+            &f.db,
+            "UPDATE tracker_space_catalog SET state='restoring'",
+            vec![],
+        )
+        .await
+        .unwrap();
+        denied(
+            &format!("{phase}/restoring_space"),
+            &f,
+            task,
+            &f.writer,
+            scope(&write),
+            next.clone(),
+        )
+        .await;
+        exec(
+            &f.db,
+            "UPDATE tracker_space_catalog SET state='active'",
+            vec![],
+        )
+        .await
+        .unwrap();
         authority.write().unwrap().owner_permitted = false;
-        denied(&format!("{phase}/revoked_owner_application"), &f, task, &f.writer, scope(&write), next.clone()).await;
+        denied(
+            &format!("{phase}/revoked_owner_application"),
+            &f,
+            task,
+            &f.writer,
+            scope(&write),
+            next.clone(),
+        )
+        .await;
         authority.write().unwrap().owner_permitted = true;
 
         let native = scope(&write);
         let original_deadline = native.deadline();
         let retained_clock = native.clone();
-        let (saved, replay) = Box::pin(with_request(native, f.repo.lifecycle_command(task, &f.writer, next))).await.unwrap();
+        let (saved, replay) = Box::pin(with_request(
+            native,
+            f.repo.lifecycle_command(task, &f.writer, next),
+        ))
+        .await
+        .unwrap();
         assert!(!replay);
-        assert!(retained_clock.deadline() <= original_deadline, "owner proof cannot renew the native clock");
+        assert!(
+            retained_clock.deadline() <= original_deadline,
+            "owner proof cannot renew the native clock"
+        );
         if phase == "reserve" {
             assert_eq!(saved.task.runtime, RuntimeState::Reserved);
-            assert_eq!(saved.assignment.as_ref().unwrap().machine_subject.as_deref(), Some(producer.subject.as_str()));
+            assert_eq!(
+                saved
+                    .assignment
+                    .as_ref()
+                    .unwrap()
+                    .machine_subject
+                    .as_deref(),
+                Some(producer.subject.as_str())
+            );
             next = LifecycleCommand::BindRun {
                 fence: fence(&saved),
                 binding: RunBinding {
-                    chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(), machine_subject: producer.subject.clone(),
-                    dispatch_receipt: ArtifactReceipt { reference: "fixture://scheduler-native-acceptance".into(), sha256: "a".repeat(64) },
+                    chat_id: Uuid::new_v4(),
+                    run_id: Uuid::new_v4(),
+                    machine_subject: producer.subject.clone(),
+                    dispatch_receipt: ArtifactReceipt {
+                        reference: "fixture://scheduler-native-acceptance".into(),
+                        sha256: "a".repeat(64),
+                    },
                 },
                 idempotency_key: "native-scheduler-bind".into(),
             };
@@ -235,10 +416,18 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
         }
     }
     let before_read = f.snapshot().await;
-    let context = Box::pin(with_request(NativeRequest::verified(&read, true, false).unwrap(),
-        f.repo.context(task, &f.reader))).await.unwrap();
+    let context = Box::pin(with_request(
+        NativeRequest::verified(&read, true, false).unwrap(),
+        f.repo.context(task, &f.reader),
+    ))
+    .await
+    .unwrap();
     assert_eq!(context.task_id, task);
-    assert_eq!(f.snapshot().await, before_read, "the separate reader keeps current context read-only");
+    assert_eq!(
+        f.snapshot().await,
+        before_read,
+        "the separate reader keeps current context read-only"
+    );
     server.abort();
 }
 
@@ -505,5 +694,88 @@ async fn start_sql_rejects_detached_command_and_direct_permit_bypass() {
         assert!(tx.commit().await.is_err());
         assert_eq!(f.snapshot().await, before);
         assert_eq!(state.stage, Stage::Backlog);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn pm_completion_automatically_queues_once_without_impersonating_owner() {
+    Box::pin(async {
+        let f = Box::pin(Fixture::new()).await;
+        let task = Box::pin(f.confirmed_with_rollout("automatic", true, true)).await;
+        let state = f.repo.read(task, &f.owner).await.unwrap();
+        assert_eq!(state.stage, Stage::Analysis);
+        assert_eq!(state.status, Some(LifecycleStatus::Ready));
+        let receipt = f.repo.lifecycle_read(task, &f.reader).await.unwrap().receipt;
+        assert_eq!(receipt.task.runtime, RuntimeState::Queued);
+        assert!(receipt.assignment.is_none());
+        let completion = f.repo.configured_pm_completion(task, &f.owner, None).await.unwrap().unwrap();
+        assert_eq!(completion.result.stage, Stage::Backlog); // Immutable PM fact, not the current cursor.
+        let intent = f.repo.analysis_intent(task, &f.owner).await.unwrap();
+        assert_eq!(intent.content_hash, completion.result.content_hash);
+        assert_eq!(intent.confirmation_id, completion.result.confirmation_id);
+        let row = f.db.query_one(statement("SELECT actor_subject,transaction_id=(SELECT transaction_id FROM sdlc_configured_pm_completions WHERE completion_id=$2) AS same_transaction FROM sdlc_delivery_operations WHERE task_id=$1 AND command IS NOT NULL", vec![task.into(),completion.result.completion_id.into()])).await.unwrap().unwrap();
+        assert_ne!(row.try_get::<String>("", "actor_subject").unwrap(), f.owner.subject);
+        let pm_subject = state.assignment.unwrap().machine_subject;
+        assert_eq!(row.try_get::<String>("", "actor_subject").unwrap(), pm_subject);
+        let pm = actor(&pm_subject, false, &["task-tracker:read", "task-tracker:write"]);
+        assert!(f.repo.read(task, &pm).await.is_err());
+        let saved = f.repo.configured_pm_completion(task, &pm, None).await.unwrap().unwrap();
+        assert_eq!(saved.result.completion_id, completion.result.completion_id);
+        assert!(f.repo.pm_completion_state(task, &pm).await.is_ok());
+        let foreign = actor(&Uuid::new_v4().to_string(), false, &["task-tracker:read", "task-tracker:write"]);
+        assert!(f.repo.configured_pm_completion(task, &foreign, None).await.is_err());
+        assert!(row.try_get::<bool>("", "same_transaction").unwrap());
+        let before = f.snapshot().await;
+        for _ in 0..2 {
+            let current = f.repo.read_delivery_candidates(&f.reader, f.query(None,100)).await.unwrap();
+            assert_eq!(current.items.len(),1);
+            assert_eq!(current.items[0].task_id,task);
+        }
+        assert_eq!(before,f.snapshot().await);
+        assert!(matches!(f.repo.lifecycle_command(task,&f.owner,command(&f,task,"manual-after-auto").await).await,Err(AppError::Conflict(_))));
+        assert_eq!(before,f.snapshot().await);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn automatic_start_requires_completion_and_respects_disabled_project() {
+    Box::pin(async {
+        let f = Box::pin(Fixture::new()).await;
+        let pending = Box::pin(f.confirmed_with_rollout("consent-only",false,true)).await;
+        assert_eq!(f.repo.read(pending,&f.owner).await.unwrap().stage,Stage::Draft);
+        assert!(f.repo.analysis_intent(pending,&f.owner).await.is_err());
+        let retained = Box::pin(f.confirmed("disabled",true)).await;
+        f.assert_backlog_without_analysis(retained).await;
+        let before=f.snapshot().await;
+        let tx=f.db.begin().await.unwrap();
+        assert!(tx.execute(statement("UPDATE sdlc_tasks SET state=state||'{\"stage\":\"Analysis\",\"status\":\"Ready\"}'::jsonb WHERE task_id=$1",vec![pending.into()])).await.is_err());
+        tx.rollback().await.unwrap();
+        assert_eq!(before,f.snapshot().await);
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
+async fn forward_auto_start_preserves_completed_backlog_and_manual_start_history() {
+    Box::pin(async {
+        let migrations=migration::Migrator::migrations();
+        let checkpoint=migrations.iter().position(|migration| migration.name() == "m20261103_0000112_configured_analysis_auto_start").unwrap();
+        let f=Box::pin(Fixture::new_with_migration_steps(Some(checkpoint as u32))).await;
+        let retained=Box::pin(f.confirmed("pre-auto",true)).await;
+        // Historical images can have LF function bodies while the new source uses CRLF.
+        for function in ["sdlc_critical_pm_lifecycle_insert_gate()", "sdlc_critical_pm_lifecycle_commit_gate()", "sdlc_configured_cli_completion_transition()"] {
+            let row=f.db.query_one(statement("SELECT replace(pg_get_functiondef($1::regprocedure),chr(13)||chr(10),chr(10)) AS definition",vec![function.into()])).await.unwrap().unwrap();
+            f.db.execute_unprepared(&row.try_get::<String>("","definition").unwrap()).await.unwrap();
+        }
+        let before=f.snapshot().await;
+        let rows:Json=f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(c) ORDER BY completion_id) AS rows FROM sdlc_configured_pm_completions c",vec![])).await.unwrap().unwrap().try_get("","rows").unwrap();
+        migration::Migrator::up(&f.db,None).await.unwrap();
+        assert_eq!(before,f.snapshot().await);
+        let after:Json=f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(c)-'transaction_id' ORDER BY completion_id) AS rows FROM sdlc_configured_pm_completions c",vec![])).await.unwrap().unwrap().try_get("","rows").unwrap();
+        assert_eq!(rows,after);
+        f.assert_backlog_without_analysis(retained).await;
+        assert!(f.repo.read_delivery_candidates(&f.reader,f.query(None,100)).await.unwrap().items.is_empty());
     }).await;
 }

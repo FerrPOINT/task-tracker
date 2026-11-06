@@ -80,7 +80,7 @@ fn critical_pg_future_size_probe() {
             "artifact_publish",
             future_size(|| {
                 artifacts::publish(
-                    type_only(),
+                    type_only::<&crate::guarded_db::GuardedDb>(),
                     type_only(),
                     type_only(),
                     type_only(),
@@ -399,7 +399,7 @@ async fn critical_pg_scenario() {
     .await
     .unwrap();
     let storage = domain::InMemoryStorage::default();
-    // Hold Architect, leaving the distinct Analyst agent/pool slot available for the race case.
+    // Hold Architect while the distinct Analyst proves its PM-hold request cannot stop completion.
     let r = start(&f, "critical-main", true, &storage).await;
     let terminal = proposal(&f, &r).await;
     let body = blocker(&r);
@@ -795,23 +795,20 @@ async fn critical_pg_scenario() {
                 }
             ),
         );
-        assert_ne!(
-            post.is_ok(),
+        assert!(
+            post.is_err(),
+            "Analyst cannot enter PM review, regardless of lock order"
+        );
+        assert!(
             complete.is_ok(),
-            "exactly one actual task-locked operation wins"
+            "a denied PM hold cannot stop valid Analyst completion"
         );
         let final_state = snapshot(&f, race.task).await;
-        if post.is_ok() {
-            assert_eq!(final_state["blockers"], json!(1));
-            assert_eq!(final_state["holds"], json!(1));
-            assert_eq!(final_state["state"]["waiting_reason"], json!(HOLD_REASON));
-        } else {
-            assert_eq!(final_state["blockers"], json!(0));
-            assert_eq!(final_state["operations"], json!(0));
-            assert_eq!(final_state["heads"], json!(0));
-            assert_eq!(final_state["holds"], json!(0));
-            assert_eq!(final_state["state"]["stage"], json!("Architecture"));
-        }
+        assert_eq!(final_state["blockers"], json!(0));
+        assert_eq!(final_state["operations"], json!(0));
+        assert_eq!(final_state["heads"], json!(0));
+        assert_eq!(final_state["holds"], json!(0));
+        assert_eq!(final_state["state"]["stage"], json!("Architecture"));
         (race, final_state)
     })
     .await;

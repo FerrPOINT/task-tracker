@@ -12,7 +12,7 @@ fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult, field: &str) -> Res
 }
 
 pub(crate) async fn human_access(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     issue: IssueId,
     user: UserId,
 ) -> Result<(), AppError> {
@@ -295,7 +295,15 @@ async fn allowed(
     attachment: &domain::Attachment,
 ) -> Result<bool, AppError> {
     let Some(seal) = Seal::parse(attachment.storage_key.as_ref())? else {
-        return Ok(false);
+        // Research inputs belong to the task, not to a delivery receipt. Only
+        // its current Analyst may read ordinary attachments after the same
+        // assignment, project membership and live custody checks above.
+        return Ok(!auth.scheduler
+            && auth
+                .head
+                .assignment
+                .as_ref()
+                .is_some_and(|assignment| assignment.role == DeliveryRole::Analyst));
     };
     provenance(tx, attachment, &seal).await?;
     let current = auth.head.assignment.as_ref().ok_or(AppError::Forbidden)?;
@@ -372,7 +380,7 @@ async fn allowed(
 }
 
 pub(crate) async fn publish(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     issue: IssueId,
@@ -438,6 +446,17 @@ pub(crate) async fn publish(
     app::attachment_artifacts::verify_bytes(&item, &retained)?;
     // Locks retain assignment/ACL throughout I/O; check the actual clock again before metadata commit.
     ensure_live(&tx, &auth.head).await?;
+    let metadata = serde_json::json!({
+        "id": item.id.as_uuid(), "issue_id": issue.as_uuid(), "author_id": auth.user,
+        "file_name": item.file_name, "content_type": item.content_type,
+        "size_bytes": item.size_bytes, "storage_key": item.storage_key,
+    });
+    tx.execute(statement(
+        "SELECT set_config('pdlc.tracker.native_artifact',$1,true)",
+        vec![metadata.to_string().into()],
+    ))
+    .await
+    .map_err(map_db)?;
     let saved = attachment::ActiveModel {
         id: Set(item.id.as_uuid()),
         issue_id: Set(issue.as_uuid()),
@@ -457,11 +476,27 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn list(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     issue: IssueId,
 ) -> Result<Vec<domain::Attachment>, AppError> {
+    if app::sdlc_configured_cli::authorize_configured_identity(actor).is_ok() {
+        let row = db
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=$1
+             AND t.state->>'interaction_protocol'='configured-cli-v1' AND t.state->>'stage'='Draft'
+             AND t.state->'assignment'->>'machine_subject'=$2) AS pm",
+                vec![issue.as_uuid().into(), actor.subject.clone().into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        if row.try_get::<bool>("", "pm").map_err(map_db)? {
+            return super::critical_blockers::pm_evidence::list_inputs(db, config, actor, issue)
+                .await;
+        }
+    }
     let tx = db.begin().await.map_err(map_db)?;
     let auth = authority(&tx, config, issue.as_uuid(), actor, false).await?;
     let models = attachment::Entity::find()
@@ -482,7 +517,7 @@ pub(crate) async fn list(
 }
 
 pub(crate) async fn download(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + TransactionTrait),
     config: &SdlcConfig,
     actor: &Principal,
     id: AttachmentId,
@@ -526,7 +561,7 @@ pub(crate) async fn download(
     let bytes = storage
         .get(&item.issue_id.to_string(), item.storage_key.as_ref())
         .await?;
-    app::attachment_artifacts::verify_bytes(&item, &bytes)?;
+    app::attachment_artifacts::verify_read_bytes(&item, &bytes)?;
     tx.commit().await.map_err(map_db)?;
     Ok((item, bytes))
 }
