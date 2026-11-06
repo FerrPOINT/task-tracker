@@ -5,11 +5,11 @@ use domain::decomposition::*;
 #[ignore = "fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test"]
 async fn decomposition_upgrade_preserves_existing_task_and_history() {
     let migrations = migration::Migrator::migrations();
-    assert_eq!(
-        migrations.last().unwrap().name(),
-        "m20261103_0000113_decomposition"
-    );
-    let f = Fixture::new_with_migration_steps(Some((migrations.len() - 1) as u32)).await;
+    let before_plan = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261103_0000113_decomposition")
+        .expect("published decomposition migration");
+    let f = Fixture::new_with_migration_steps(Some(before_plan as u32)).await;
     let task = f.draft("existing-before-plan-storage", None).await;
     let before = f.snapshot().await;
     let issue =
