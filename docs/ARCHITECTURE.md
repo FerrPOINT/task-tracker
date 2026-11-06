@@ -6,6 +6,12 @@ its immutable receipt remains historical Backlog/Ready. Forward112 preserves
 existing rows and binds automatic queue authority to the completion transaction.
 No new public DTO, user confirmation or source-registry table is introduced.
 
+PM completion first reads its retained operation before committing a new result.
+The SQL task scope may therefore attenuate a native POST from write to read,
+while preserving identity and deadline. Each native write entry point requires
+both the original caller and task scope to be writable. Forward114 fixes this
+boundary without changing the public API or assigning human authority to PM.
+
 The terminal-idle branch grants a single exact Workflow checkpoint operation
 after trusted Fleet readback and a task-locked custody recheck. It never restores
 general lease authority; ordinary resume follows only after a real checkpoint ACK.

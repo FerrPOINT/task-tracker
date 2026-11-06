@@ -6,6 +6,12 @@ its immutable receipt remains historical Backlog/Ready. Forward112 preserves
 existing rows and binds automatic queue authority to the completion transaction.
 No new public DTO, user confirmation or source-registry table is introduced.
 
+Forward114 permits a retained read scope within a native mutating request.
+It preserves the exact caller identity and original validity window; a read
+scope cannot authorize SDLC writes, issue status projections or task content.
+Read-to-write escalation remains forbidden. No rows or historical migrations
+are rewritten.
+
 Forward113 (`native_task_artifacts`) сохраняет guarded native context при
 публикации артефактов. Транзакционный port связывает INSERT с точной sealed
 metadata текущей роли; задача, автор, ACL, admission и исходный clock проверяются
