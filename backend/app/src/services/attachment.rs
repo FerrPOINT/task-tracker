@@ -168,7 +168,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         content_type: &str,
         bytes: Vec<u8>,
     ) -> Result<crate::context::AttachmentDto, AppError> {
-        crate::sdlc_lifecycle::producer(actor, true)?;
+        crate::sdlc_configured_cli::authorize_configured_identity(actor)?;
         let upload = domain::attachment_artifact::ArtifactUpload {
             file_name: sanitize_file_name(file_name),
             content_type: validate_content_type(content_type)?,
@@ -354,6 +354,62 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
 mod tests {
     use super::*;
     use crate::context::AttachmentService;
+
+    #[tokio::test]
+    async fn configured_upload_preserves_repository_failure_without_legacy_grants() {
+        let repos = domain::Repositories::default();
+        let service = AttachmentServiceImpl::new(
+            repos.attachments,
+            repos.issues,
+            Arc::new(domain::InMemoryStorage::default()),
+            repos.watchers,
+            crate::context::EventBus::default(),
+            repos.notifications,
+            repos.notification_settings,
+            Authz::new(repos.members, repos.projects),
+        )
+        .with_artifact_config(domain::sdlc::SdlcConfig {
+            instance_id: "test".into(),
+            orchestrator_subject: "pm".into(),
+            verifier_subject: "verifier".into(),
+            reservation_scheduler_subject: "scheduler".into(),
+            single_task_project_ids: Default::default(),
+        });
+        let mut actor = domain::sdlc::Principal {
+            subject: uuid::Uuid::new_v4().to_string(),
+            human_session: false,
+            trusted_human: false,
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+        };
+        let issue = IssueId::new();
+        let upload = |actor: domain::sdlc::Principal| {
+            let service = &service;
+            async move {
+                service
+                    .upload_artifact(
+                        issue,
+                        &actor,
+                        "design.md",
+                        "text/markdown",
+                        b"Design".to_vec(),
+                    )
+                    .await
+            }
+        };
+        // Repository admission remains authoritative; its outage must not become a 403.
+        assert!(matches!(
+            upload(actor.clone()).await,
+            Err(AppError::Unavailable(_))
+        ));
+        actor.human_session = true;
+        assert!(matches!(
+            upload(actor.clone()).await,
+            Err(AppError::Forbidden)
+        ));
+        actor.human_session = false;
+        actor.scopes.remove("task-tracker:write");
+        assert!(matches!(upload(actor).await, Err(AppError::Forbidden)));
+    }
 
     #[test]
     fn artifact_policy_is_opt_in_and_scheduler_is_read_download_only() {
