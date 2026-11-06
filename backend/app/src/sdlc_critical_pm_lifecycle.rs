@@ -658,6 +658,7 @@ pub fn prepare_configured_critical_pm_completion(
     command: &domain::sdlc_configured_cli::CompleteConfiguredPm,
     completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
     snapshot_id: Uuid,
+    intent_id: Uuid,
 ) -> Result<ConfiguredCriticalPmCompletionPlan, AppError> {
     validate_source(&source, config)?;
     crate::sdlc_configured_cli::validate_completion(source.state, actor, command)?;
@@ -709,16 +710,19 @@ pub fn prepare_configured_critical_pm_completion(
         routing_generation: routing.generation,
     });
     after.lifecycle.task.version = next(before.lifecycle.task.version)?;
-    after.lifecycle.task.stage = LifecycleStage::Backlog;
+    after.lifecycle.task.stage = LifecycleStage::Analysis;
     after.lifecycle.task.status = LifecycleStatus::Ready;
-    after.lifecycle.task.runtime = RuntimeState::Terminal;
-    after.lifecycle.task.waiting_reason = None;
+    after.lifecycle.task.runtime = RuntimeState::Queued;
+    after.lifecycle.task.waiting_reason = Some("queued_for_assignment".into());
     after.lifecycle.task.routing = routing.snapshot.clone();
     after.lifecycle.task.cycle = 0;
     after.lifecycle.task.transient_retries = 0;
     after.state.draft_submode = None;
     sync(&mut after)?;
+    let mut intent = crate::sdlc::analysis_intent_payload(&after.state, confirmation, intent_id)?;
+    intent.workflow = routing.snapshot.policy.routes.analyst.workflow_key.clone();
     Ok(ConfiguredCriticalPmCompletionPlan {
+        intent,
         before,
         after,
         routing,
@@ -1398,12 +1402,16 @@ mod tests {
                 &command,
                 &completion,
                 id(802),
+                id(803),
             )
             .unwrap();
-            assert_eq!(plan.after.state.stage, Stage::Backlog);
+            assert_eq!(plan.after.state.stage, Stage::Analysis);
             assert_eq!(plan.after.lifecycle.task.status, LifecycleStatus::Ready);
-            assert_eq!(plan.after.lifecycle.task.runtime, RuntimeState::Terminal);
-            assert!(plan.after.lifecycle.task.waiting_reason.is_none());
+            assert_eq!(plan.after.lifecycle.task.runtime, RuntimeState::Queued);
+            assert_eq!(
+                plan.after.lifecycle.task.waiting_reason.as_deref(),
+                Some("queued_for_assignment")
+            );
             assert!(
                 plan.after.lifecycle.assignment.is_none() && plan.after.lifecycle.lease.is_none()
             );
@@ -1430,6 +1438,7 @@ mod tests {
                         &command,
                         &altered,
                         id(802),
+                        id(803),
                     )
                     .is_err(),
                     "case {kind}"

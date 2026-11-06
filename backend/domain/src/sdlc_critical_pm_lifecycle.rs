@@ -45,8 +45,9 @@ pub struct CriticalPmRoutingGeneration {
     pub snapshot: TaskRoutingSnapshot,
 }
 
-/// Business completion has no native receipt and does not enqueue Analyst.
+/// Exact business completion queues analysis of the newly approved revision.
 pub struct ConfiguredCriticalPmCompletionPlan {
+    pub intent: crate::sdlc::AnalysisIntent,
     pub before: CriticalPmProjection,
     pub after: CriticalPmProjection,
     pub routing: CriticalPmRoutingGeneration,

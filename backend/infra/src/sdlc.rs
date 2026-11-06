@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use domain::sdlc::*;
 use domain::sdlc_metadata::{MetadataCandidate, MetadataErrorCode};
 use domain::sdlc_pm_draft::*;
+#[cfg(test)]
+use sea_orm::DatabaseConnection;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    QueryResult, Statement, TransactionTrait, Value,
+    ConnectionTrait, Database, DatabaseBackend, DatabaseTransaction, QueryResult, Statement,
+    TransactionTrait, Value,
 };
 use serde_json::{Value as Json, json};
 use shared::AppError;
@@ -544,7 +546,7 @@ impl PostgresSdlcRepository {
             .ok_or_else(|| AppError::conflict("Analysis confirmation unavailable"))?;
         let row = tx.query_one(statement(
             "SELECT i.payload,s.payload AS routing_payload,
-             COALESCE(i.routing_snapshot_id,i.review_routing_snapshot_id) AS routing_id
+             COALESCE(i.routing_snapshot_id,i.review_routing_snapshot_id) AS routing_id,s.generation AS routing_generation
              FROM sdlc_analysis_intents i LEFT JOIN sdlc_routing_snapshot_inventory s
              ON s.snapshot_id=COALESCE(i.routing_snapshot_id,i.review_routing_snapshot_id) AND s.task_id=i.task_id
              WHERE i.task_id=$1 AND i.requirement_revision=$2",
@@ -554,27 +556,53 @@ impl PostgresSdlcRepository {
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
                 .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
         let mut expected = if state.configured_cli() {
-            let started = tx
-                .query_one(statement(
-                    "SELECT result FROM sdlc_delivery_operations WHERE task_id=$1
-                     AND actor_subject=$2 AND command->>'operation'='start_analysis'",
-                    vec![state.task_id.into(), state.owner_subject.clone().into()],
-                ))
-                .await
-                .map_err(map_db)?
-                .ok_or_else(|| AppError::conflict("saved configured start absent"))?;
-            let original: domain::sdlc_lifecycle::LifecycleReceipt =
-                serde_json::from_value(started.try_get::<Json>("", "result").map_err(map_db)?)
-                    .map_err(|_| AppError::conflict("saved configured start invalid"))?;
             let completed = Self::configured_saved(tx, state, None)
                 .await?
                 .ok_or_else(|| AppError::conflict("saved PM completion absent"))?;
-            app::sdlc_lifecycle::configured_started_intent(
-                state,
-                &completed.result,
-                &original,
-                intent.intent_id,
-            )?
+            let generation = row
+                .try_get::<Option<i64>>("", "routing_generation")
+                .map_err(map_db)?;
+            if generation.is_some_and(|value| value > 1) {
+                // A new confirmed review has its own immutable completion journal;
+                // never reconstruct it from the initial owner's start operation.
+                let proof = tx.query_one(statement(
+                    "SELECT g.payload FROM sdlc_task_routing_generations g
+                     JOIN sdlc_critical_pm_lifecycle_operations j ON j.operation_id=g.operation_id
+                     WHERE g.task_id=$1 AND g.configured_completion_id=$2 AND g.snapshot_id=$3
+                        AND j.kind='complete' AND j.configured_completion_id=g.configured_completion_id
+                        AND j.result=$4 AND j.after_state->'lifecycle'->'routing'=g.payload",
+                    vec![state.task_id.into(),completed.result.completion_id.into(),
+                        row.try_get::<Option<Uuid>>("", "routing_id").map_err(map_db)?.into(),json_value(&completed.result)?],
+                )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("saved review Analysis start absent"))?;
+                let routing =
+                    serde_json::from_value(proof.try_get::<Json>("", "payload").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
+                app::sdlc_lifecycle::configured_review_intent(
+                    state,
+                    &completed.result,
+                    &routing,
+                    intent.intent_id,
+                )?
+            } else {
+                let started = tx.query_one(statement(
+                    "SELECT o.result FROM sdlc_delivery_operations o
+                     JOIN sdlc_configured_pm_completions c ON c.task_id=o.task_id
+                        AND c.completion_id=(o.command->>'pm_completion_id')::uuid
+                     WHERE o.task_id=$1 AND c.completion_id=$2 AND o.command->>'operation'='start_analysis'
+                        AND (o.actor_subject=$3 OR (o.actor_subject=c.actor_subject
+                            AND c.transaction_id=o.transaction_id AND o.idempotency_key='pm-analysis:'||c.completion_id::text))",
+                    vec![state.task_id.into(),completed.result.completion_id.into(),state.owner_subject.clone().into()],
+                )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("saved configured start absent"))?;
+                let original =
+                    serde_json::from_value(started.try_get::<Json>("", "result").map_err(map_db)?)
+                        .map_err(|_| AppError::conflict("saved configured start invalid"))?;
+                app::sdlc_lifecycle::configured_started_intent(
+                    state,
+                    &completed.result,
+                    &original,
+                    intent.intent_id,
+                )?
+            }
         } else {
             app::sdlc::analysis_intent(state, confirmation, intent.intent_id)?
         };
@@ -1778,6 +1806,24 @@ impl SdlcRepository for PostgresSdlcRepository {
         }
         tx.commit().await.map_err(map_db)?;
         Ok(result)
+    }
+
+    async fn pm_completion_state(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        let state = if state.configured_cli() {
+            self.authorize_completion_reader(&tx, &state, actor, None)
+                .await?;
+            state
+        } else {
+            self.load_read(&tx, task, actor).await?
+        };
+        tx.commit().await.map_err(map_db)?;
+        Ok(state)
     }
 
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError> {

@@ -1,5 +1,11 @@
 # Архитектура Task Tracker
 
+Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Accepted PM completion atomically queues Analysis in enabled single-task projects;
+its immutable receipt remains historical Backlog/Ready. Forward112 preserves
+existing rows and binds automatic queue authority to the completion transaction.
+No new public DTO, user confirmation or source-registry table is introduced.
+
 The terminal-idle branch grants a single exact Workflow checkpoint operation
 after trusted Fleet readback and a task-locked custody recheck. It never restores
 general lease authority; ordinary resume follows only after a real checkpoint ACK.

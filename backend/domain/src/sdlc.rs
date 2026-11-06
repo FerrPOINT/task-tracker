@@ -951,6 +951,15 @@ pub trait SdlcRepository: Send + Sync {
         key: &str,
     ) -> Result<CreatedDraft, AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
+    /// Internal receipt selection, not authority to read the next profession's context.
+    async fn pm_completion_state(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
+        self.read(task, actor).await
+    }
+
     async fn confirmation_read(
         &self,
         task: Uuid,

@@ -1,5 +1,17 @@
 # Дата-модель Task Tracker
 
+Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Accepted PM completion atomically queues Analysis in enabled single-task projects;
+its immutable receipt remains historical Backlog/Ready. Forward112 preserves
+existing rows and binds automatic queue authority to the completion transaction.
+No new public DTO, user confirmation or source-registry table is introduced.
+
+Forward113 (`native_task_artifacts`) сохраняет guarded native context при
+публикации артефактов. Транзакционный port связывает INSERT с точной sealed
+metadata текущей роли; задача, автор, ACL, admission и исходный clock проверяются
+повторно на COMMIT. Сохранение native комментария использует ту же границу
+задачи/автора. Новых таблиц источников и изменений исторических миграций нет.
+
 Workspace reference добавлен в существующие JSON receipts source policy,
 verification и task binding как optional `development_workspace_id`. Отсутствие
 поля сохраняет прежнюю сериализацию и hash. Migration 0112 добавляет INSERT guards
@@ -2339,9 +2351,9 @@ lease fields are absent together only for the configured command family; old
 rows retain their original foreign keys. 109 permits the first configured
 assignment to adopt only an untouched Draft while preserving its original
 creation receipt and input. Deferred guards require complete
-projection, ledger, resolution and outbox effects in one transaction. No Analysis
-intent is created by configured PM completion. Fresh/filled PostgreSQL acceptance
-of these unapplied candidate migrations remains required.
+projection, ledger, resolution and outbox effects in one transaction. These historical migrations did not create an Analysis intent on completion.
+Forward112 adds the automatic handoff described at the start of this document;
+fresh and populated PostgreSQL qualification remains a separate evidence gate.
 
 Migration 110 corrects the configured critical-PM question guard: missing and JSON-null `checkpoint_id` both mean absence; non-null native checkpoints remain forbidden. Applied migrations and stored history are unchanged.
 
@@ -2350,8 +2362,8 @@ Migration 110 corrects the configured critical-PM question guard: missing and JS
 Forward migration `m20261029_0000111_configured_analysis_start` extends existing
 `sdlc_delivery_operations` with nullable `command` and `transaction_id`. Historical
 rows keep NULL values and their original fields; no old SQL or ledger rows are
-rewritten. The pair exists only for explicit configured owner start: its closed
-command must match the current completion/consent/source tuple. The transaction ID
+rewritten. Forward112 also admits the real PM actor in the same completion transaction.
+The closed start command must match the current completion/consent/source tuple. The transaction ID
 ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.

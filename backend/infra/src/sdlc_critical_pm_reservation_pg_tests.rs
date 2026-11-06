@@ -204,7 +204,7 @@ async fn actual_critical_pm_review_reservation_is_atomic_scoped_and_replayable()
     .await
     .unwrap();
     let storage = domain::InMemoryStorage::default();
-    let r = Box::pin(start(&f, "pm-review-root", false, &storage)).await;
+    let r = Box::pin(start(&f, "pm-review-root", true, &storage)).await;
     let body = blocker(&r);
     let (held, _) =
         Box::pin(

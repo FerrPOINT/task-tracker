@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Accepted PM completion atomically queues Analysis in enabled single-task projects;
+its immutable receipt remains historical Backlog/Ready. Forward112 preserves
+existing rows and binds automatic queue authority to the completion transaction.
+The read-only CLI `sdlc source --task UUID` uses the existing source-binding GET.
+No new HTTP DTO, user confirmation or source-registry table is introduced.
+
 Registered namespace reader `GET /api/v1/namespace-tasks/{id}` сохраняет прежний
 metadata response при отсутствии `include_execution`. Аддитивный opt-in
 `include_execution=true` добавляет текущие protocol, root task, stage/status,
@@ -68,10 +75,10 @@ receipt with the existing no-store GET
 CLI: `task-tracker sdlc start analysis --task UUID --pm-completion-id UUID --key KEY`;
 readback: `task-tracker sdlc start operation --task UUID --key KEY`.
 On unknown POST outcome read that original key before retrying the same command.
-PM completion and its replay still create zero Analysis intents. Explicit start
-atomically creates one intent, initial queued lifecycle and existing outbox events;
-it does not assign or dispatch an agent. Discovery includes only explicitly started
-configured tasks. Accepted role results use the existing next-stage queue on the
+New PM completion in an enabled project atomically creates one Analysis intent,
+initial queued lifecycle and existing outbox events. Replay creates no extra effects.
+The manual command remains available for retained completed Backlog tasks; it does
+not assign or dispatch an agent. Discovery includes only admitted configured tasks. Accepted role results use the existing next-stage queue on the
 same root task, without manual per-role advance or child tasks. This source package
 does not establish seven-role live acceptance or enable a deployed project.
 
@@ -135,7 +142,11 @@ persistence still await their own qualification, not the earlier Return pass.
 The source also registers scheduler-only POST
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns` and original-operation GET
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}`.
-Both return the typed `{lifecycle, blocker}` plan and use no-store. The existing
+Both return the typed `{lifecycle, blocker}` plan and use no-store.
+Analyst assignment cannot create a new critical PM-review blocker or a return to
+PM: both endpoints reject these requests with409 before creating a new hold or
+changing task/assignment/lease state. Findings and missing facts remain in Analysis; existing
+historical receipts retain their original readback and replay semantics. The
 separate scheduler WRITE/READ credentials and authoritative fresh task/project
 checks remain unchanged. Return requires actual matching native terminal before
 the trusted caller sends it; the producer's Held acknowledgement is not terminal

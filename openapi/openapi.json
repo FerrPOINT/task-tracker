@@ -2948,6 +2948,18 @@
             }
           },
           {
+            "name": "related_task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -19667,6 +19679,26 @@
           }
         }
       },
+      "RelatedTask": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "key",
+          "title"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "ReplaceProjectSpaces": {
         "type": "object",
         "required": [
@@ -21309,11 +21341,13 @@
       "TaskDiscussion": {
         "type": "object",
         "required": [
+          "source_task_id",
           "task_id",
           "project_id",
           "title",
           "description",
-          "comments"
+          "comments",
+          "related_tasks"
         ],
         "properties": {
           "comments": {
@@ -21336,6 +21370,12 @@
             "type": "string",
             "format": "uuid"
           },
+          "related_tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedTask"
+            }
+          },
           "snapshot": {
             "type": [
               "string",
@@ -21343,6 +21383,10 @@
             ],
             "format": "uuid",
             "description": "Upper bound captured on the first page. New comments require a fresh scan."
+          },
+          "source_task_id": {
+            "type": "string",
+            "format": "uuid"
           },
           "task_id": {
             "type": "string",
