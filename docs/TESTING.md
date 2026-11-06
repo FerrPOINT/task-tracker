@@ -17,6 +17,23 @@ read-to-write escalation, malformed flags, foreign identity/task/project,
 expired authority, archives and revoked membership. Its small SQL fixture tests
 the actual guard functions; a live PM completion remains a separate check.
 
+On 2026-11-06 the isolated shop QA installed source `0dba758a` as image
+`59a971855daf` and applied forward114 through normal startup. The original
+Hermes PM completion for CAND-4 succeeded; its exact replay returned the same
+receipt. A fresh Fleet-owned CAND-5 passed normal PM completion and automatically
+created one analysis intent and assignment, with one Analyst chat. The historical
+PM receipt remained Backlog/Ready while current context reported Analysis/Ready.
+The scoped migration test, strict migration Clippy and Tracker image build passed.
+
+The Analyst run did not start: Fleet attempts Workflow enrollment before native
+submission, while Workflow requires InProgress for technical-role enrollment and
+Tracker waits for a confirmed run binding. The native journal retained
+`submitted=false`, with no acceptance. This is an unresolved integration gate,
+not a failed retained-read regression or proof of Analyst research/completion.
+Workflow code/catalog were not changed and no task state or run binding was
+fabricated to bypass the refusal. See the coordinated
+[Analyst acceptance record](https://github.com/FerrPOINT/services-base/pull/487).
+
 ## Configured Analysis Start: 2026-10-29
 
 PR197 qualifies the explicit owner start, not an automatic PM transition. On
