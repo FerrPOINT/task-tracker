@@ -66,7 +66,7 @@ async fn complete_initial_pm(
         completed.unwrap().fence.execution_id,
         reserved.assignment.execution_id
     );
-    crate::sdlc::seed_analysis_fixture(repo.db.raw(), task, owner).await;
+    assert_eq!(repo.read(task, owner).await.unwrap().stage, Stage::Analysis);
 }
 
 impl ReworkFixture {
