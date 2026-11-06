@@ -1,5 +1,12 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+[Управление встроенной декомпозицией](contracts/task-decomposition.md) реализуется
+в Tracker: постоянный план, редакции, права, конфликт и те же операции CLI.
+Разделы остаются частями одной задачи, без собственных статусов или поставок.
+Существующая вкладка подключается к owner API; dev-примеры остаются отдельными.
+Визуальный дизайн дорабатывается отдельно. Context и проверяемый design receipt
+подготавливают независимый цикл Architect; установленный агент и его работа
+инструментами принимаются отдельно. Workflow handoff не выводится из сохранения плана.
 Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
 Accepted PM completion atomically queues Analysis in enabled single-task projects;
 its immutable receipt remains historical Backlog/Ready. Forward112 preserves

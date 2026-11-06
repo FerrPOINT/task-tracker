@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
-import { Label, Select, Button, Notice } from '@pdlc/ui/ui'
+import { Button, Notice, ResourceListDescription, Select } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -20,6 +20,46 @@ interface IssueMetaEditorProps {
     sprint_id?: string | null
   }) => void
   disabled?: boolean
+}
+
+type MetaOption = { value: string; label: string; disabled?: boolean }
+
+function MetaChoice({
+  label,
+  value,
+  fallback,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  fallback?: string
+  options: MetaOption[]
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  const choices = options.some((option) => option.value === value)
+    ? options
+    : [{ value, label: fallback ?? value, disabled: true }, ...options]
+  const selected = choices.find((option) => option.value === value)?.label ?? value
+  return (
+    <div className="min-w-0">
+      <dt>
+        <ResourceListDescription>{label}</ResourceListDescription>
+      </dt>
+      <dd className="min-w-0">
+        <Select
+          value={value}
+          options={choices}
+          disabled={disabled}
+          onValueChange={onChange}
+          aria-label={`${label}: ${selected}`}
+          className="w-full"
+        />
+      </dd>
+    </div>
+  )
 }
 
 export function IssueMetaEditor({
@@ -74,64 +114,40 @@ export function IssueMetaEditor({
   }, [issue.assignee_id, issue.assignee_name, t, usersQuery.data])
 
   return (
-    <div className="space-y-4 text-sm">
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-status" className="block">
-          {t('issue.status')}
-        </Label>
-        <Select
-          id="issue-status"
-          value={issue.status_id}
-          onValueChange={(nextValue) => onChange({ status_id: nextValue })}
-          disabled={disabled}
-          className="w-full"
-          options={[
-            ...(statusOptions.map((s) => ({
-              value: String(s.id),
-              label: String(statusLabel(s.name, t)),
-            })) ?? []),
-          ]}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-priority" className="block">
-          {t('issue.priority')}
-        </Label>
-        <Select
-          id="issue-priority"
-          value={issue.priority}
-          onValueChange={(nextValue) => onChange({ priority: nextValue })}
-          disabled={disabled}
-          className="w-full"
-          options={[
-            ...(priorities.map((p) => ({
-              value: String(p),
-              label: String(t(`priority.${p.toLowerCase()}`, { defaultValue: p })),
-            })) ?? []),
-          ]}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="issue-assignee" className="block">
-          {t('issue.assignee')}
-        </Label>
-        <Select
-          id="issue-assignee"
-          value={issue.assignee_id ?? ''}
-          onValueChange={(nextValue) => onChange({ assignee_id: nextValue || null })}
-          disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
-          className="w-full"
-          options={[
-            ...(assigneeOptions.map((opt) => ({
-              value: String(opt.value),
-              label: String(opt.label),
-              disabled: opt.disabled,
-            })) ?? []),
-          ]}
-        />
-        {usersQuery.isError && (
+    <dl
+      className="grid grid-cols-2 items-start gap-x-3 gap-y-1 text-sm"
+      aria-label={t('issue.details')}
+    >
+      <MetaChoice
+        label={t('issue.status')}
+        value={issue.status_id}
+        fallback={statusLabel(issue.status, t)}
+        disabled={disabled}
+        onChange={(status_id) => onChange({ status_id })}
+        options={statusOptions.map((status) => ({
+          value: status.id,
+          label: statusLabel(status.name, t),
+        }))}
+      />
+      <MetaChoice
+        label={t('issue.priority')}
+        value={issue.priority}
+        disabled={disabled}
+        onChange={(priority) => onChange({ priority })}
+        options={priorities.map((priority) => ({
+          value: priority,
+          label: t(`priority.${priority.toLowerCase()}`, { defaultValue: priority }),
+        }))}
+      />
+      <MetaChoice
+        label={t('issue.assignee')}
+        value={issue.assignee_id ?? ''}
+        disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
+        onChange={(assignee_id) => onChange({ assignee_id: assignee_id || null })}
+        options={assigneeOptions}
+      />
+      {usersQuery.isError && (
+        <dd className="col-span-2">
           <Notice
             role="alert"
             tone="danger"
@@ -154,27 +170,20 @@ export function IssueMetaEditor({
                 : 'issue.assigneeDirectoryError',
             )}
           </Notice>
-        )}
-      </div>
-
-      {sprints && (
-        <div className="space-y-1.5">
-          <Label htmlFor="issue-sprint" className="block">
-            {t('issue.sprint')}
-          </Label>
-          <Select
-            id="issue-sprint"
-            value={issue.sprint_id ?? ''}
-            onValueChange={(nextValue) => onChange({ sprint_id: nextValue || null })}
-            disabled={disabled}
-            className="w-full"
-            options={[
-              { value: '', label: String(t('issue.noSprint')) },
-              ...(sprints.map((s) => ({ value: String(s.id), label: String(s.name) })) ?? []),
-            ]}
-          />
-        </div>
+        </dd>
       )}
-    </div>
+      {sprints && (
+        <MetaChoice
+          label={t('issue.sprint')}
+          value={issue.sprint_id ?? ''}
+          disabled={disabled}
+          onChange={(sprint_id) => onChange({ sprint_id: sprint_id || null })}
+          options={[
+            { value: '', label: t('issue.noSprint') },
+            ...sprints.map((sprint) => ({ value: sprint.id, label: sprint.name })),
+          ]}
+        />
+      )}
+    </dl>
   )
 }

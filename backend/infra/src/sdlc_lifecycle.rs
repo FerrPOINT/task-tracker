@@ -955,6 +955,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
         app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+        Self::validate_plan_artifact(&tx, &state, &command.result).await?;
         super::discussion::require_stage_comment(
             &tx,
             &state,
@@ -1302,6 +1303,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     LifecycleCommand::Complete {
                         terminal, result, ..
                     } => {
+                        Self::validate_plan_artifact(&tx, &state, result).await?;
                         let row = tx.query_one(statement(
                             "SELECT payload FROM sdlc_delivery_proposals WHERE assignment_id=$1 AND task_id=$2",
                             vec![expected.assignment_id.into(),task.into()],

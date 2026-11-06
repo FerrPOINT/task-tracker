@@ -186,7 +186,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
   }
 
   return (
-    <ContentSection asChild dividers="start">
+    <ContentSection asChild dividers="none">
       <section aria-label={t('sdlc.title')} className="min-w-0 text-sm">
         <SectionHeader
           title={t('sdlc.title')}

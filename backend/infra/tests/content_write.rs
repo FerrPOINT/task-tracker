@@ -2,6 +2,7 @@
 #[path = "support/write_context.rs"]
 mod write_context;
 use app::space_access::with_request_context;
+use domain::decomposition::*;
 use infra::repos::{SeaOrmRepositories, to_domain_repositories};
 use migration::MigratorTrait;
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
@@ -45,21 +46,12 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
     let repos = Arc::new(to_domain_repositories(SeaOrmRepositories::new(connection)));
     let mut users = Vec::new();
     for name in ["owner", "reader", "other-owner"] {
-        let user = repos
-            .users
-            .find_or_create_central_user(
-                &Uuid::new_v4().to_string(),
-                &format!("{name}@example.test"),
-                name,
-            )
-            .await
-            .unwrap();
-        db.execute(statement(
-            "UPDATE users SET central_sub=$1 WHERE id=$2",
-            [user.id.to_string().into(), user.id.as_uuid().into()],
-        ))
-        .await
-        .unwrap();
+        // Choose the fixture identity once. Rebinding an existing central_sub
+        // would violate the real identity-alias guard introduced by migration 103.
+        let id = shared::UserId::new();
+        db.execute(statement("INSERT INTO users(id,central_sub,email,username,display_name,password_hash,is_active) VALUES($1,$2,$3,$4,$4,'!',true)",
+            [id.as_uuid().into(),id.to_string().into(),format!("{name}@example.test").into(),name.into()])).await.unwrap();
+        let user = repos.users.get_by_id(id).await.unwrap();
         users.push(user);
     }
     let owner = users[0].id;
@@ -169,6 +161,41 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
         .await
         .unwrap();
     }
+    let plan_repo = infra::sdlc::PostgresSdlcRepository::connect(
+        url.as_str(),
+        domain::sdlc::SdlcConfig {
+            instance_id: "content-write-plan-test".into(),
+            orchestrator_subject: String::new(),
+            verifier_subject: String::new(),
+            reservation_scheduler_subject: String::new(),
+            single_task_project_ids: Default::default(),
+        },
+    )
+    .await
+    .unwrap();
+    let plan_actor = domain::sdlc::Principal {
+        subject: owner.to_string(),
+        human_session: false,
+        trusted_human: true,
+        scopes: ["task-tracker:write".into()].into(),
+    };
+    let plan_command = SavePlan {
+        expected_revision: 0,
+        idempotency_key: "v2-plan".into(),
+        reason: String::new(),
+        fence: None,
+        content: PlanContent {
+            overview: "Use the existing issue".into(),
+            source: None,
+            sections: vec![PlanSection {
+                id: Uuid::new_v4(),
+                title: "One change".into(),
+                description: "Keep one delivery".into(),
+                criteria: "PostgreSQL verifies access and retention".into(),
+                requirements: "R1".into(),
+            }],
+        },
+    };
     let auth = write_context::Fixture::start().await;
     let allowed = [
         (b.clone(), SpaceState::Active),
@@ -176,6 +203,15 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
     ];
     let frame = auth.frame(owner, owner.as_uuid(), &allowed, 60, true).await;
     with_request_context(frame, async {
+        // Ordinary non-SDLC issue under current V2 proof; historical archived A
+        // must not deny the active B grant. New plan tables keep that same guard.
+        let (saved, replayed) = plan_repo
+            .save_plan(issues[0].id.as_uuid(), &plan_actor, plan_command.clone())
+            .await
+            .unwrap();
+        assert!(!replayed);
+        assert_eq!(saved.result.revision, 1);
+
         let created = domain::Project {
             id: ProjectId::new(),
             key: ProjectKey::new("NEWV2"),
@@ -335,6 +371,18 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
         ));
     })
     .await;
+    assert!(
+        plan_repo
+            .read_plan(issues[0].id.as_uuid(), &plan_actor)
+            .await
+            .is_err()
+    );
+    assert!(
+        plan_repo
+            .save_plan(issues[0].id.as_uuid(), &plan_actor, plan_command.clone())
+            .await
+            .is_err()
+    );
     let archived = auth
         .frame(
             owner,
@@ -472,6 +520,7 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
         remaining, 1,
         "purge does not touch unrelated hidden-project links"
     );
+    drop(plan_repo);
     drop(guarded);
     direct_pool.close().await;
     drop(repos);
