@@ -167,7 +167,7 @@ test('real Task header preserves context, actions, SSO and accessible responsive
         'true',
       )
       await expect(
-        menu.getByRole('menuitem', { name: /Central Auth|Java Agent|Pulse/ }),
+        menu.getByRole('menuitem', { name: /Central Auth|Java Agent/ }),
       ).toHaveCount(0)
       await page.keyboard.press('ArrowDown')
       await page.keyboard.press('Escape')

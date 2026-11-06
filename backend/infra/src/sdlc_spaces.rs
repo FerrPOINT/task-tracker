@@ -260,10 +260,12 @@ async fn bind_task_scope(
     if !state.configured_cli() {
         app::sdlc::authorize_pm_read(state, actor)?;
     }
-    // Scheduler commands have their own exact identity/scope check. They do not
-    // borrow the current producer's identity when binding the aggregate below.
+    // Only a mutating native request lets the registered write-only scheduler
+    // drive this lifecycle; it is not an assigned producer or server reader.
     if matches!(scope, TaskScope::Current)
-        && app::sdlc_reservation::scheduler(actor, config).is_err()
+        && (!state.configured_cli()
+            || !native.may_write()
+            || app::sdlc_reservation::scheduler(actor, config).is_err())
     {
         super::lifecycle::authorize_read(tx, state, actor).await?;
     }
@@ -277,16 +279,16 @@ async fn bind_task_scope(
         native
             .require_owner(owner, &["task-tracker", "fleet-control"])
             .await?;
-        crate::guarded_db::bind_commit_clock(tx, native.validity()?.valid_until)
-            .await
-            .map_err(map_db)?;
     }
+    let validity = crate::guarded_db::bind_native_context(tx, &native)
+        .await
+        .map_err(map_db)?;
     if !space_policy {
         return Ok(());
     }
     let scope = serde_json::json!({
         "schema_version":1,"task_id":state.task_id,"project_id":state.project_id,
-        "identity":native.identity(),"validity":native.validity()?,
+        "identity":native.identity(),"validity":validity,
         "writable":matches!(scope, TaskScope::Current) && native.may_write()
     });
     tx.execute(statement(
