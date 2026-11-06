@@ -78,6 +78,14 @@ impl ReworkFixture {
         source: Option<domain::sdlc_source::VerifiedSource>,
         document: Option<RequirementsDocument>,
     ) -> (Self, LifecycleReceipt) {
+        Self::with_architect_owner_inputs(source, document, "owner").await
+    }
+
+    async fn with_architect_owner_inputs(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+    ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
@@ -95,7 +103,7 @@ impl ReworkFixture {
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
-            ("owner", owner_id),
+            (owner_subject, owner_id),
             ("pm", Uuid::new_v4()),
             ("scheduler", Uuid::new_v4()),
             ("verifier", Uuid::new_v4()),
@@ -107,8 +115,8 @@ impl ReworkFixture {
             vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
         exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Rework','[]' FROM projects WHERE id=$1",
             vec![project.into()]).await.unwrap();
-        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>'owner'",
-            vec![project.into()]).await.unwrap();
+        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>$2",
+            vec![project.into(), owner_subject.into()]).await.unwrap();
         let repo = PostgresSdlcRepository::connect(
             &url,
             SdlcConfig {
@@ -121,7 +129,7 @@ impl ReworkFixture {
         )
         .await
         .unwrap();
-        let owner = actor("owner", true, vec![]);
+        let owner = actor(owner_subject, true, vec![]);
         crate::sdlc::source::configure_test_source_verified(&repo, project, &owner, source).await;
         let scheduler = actor("scheduler", false, vec![]);
         let mut reader = scheduler.clone();

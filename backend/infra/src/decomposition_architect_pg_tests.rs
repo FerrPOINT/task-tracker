@@ -11,9 +11,12 @@ use domain::sdlc_source::TaskSourceRepository;
 async fn seed_architect_system_fixture() {
     let input = std::fs::read(std::env::var("ARCHITECT_QA_FIXTURE_SPEC").unwrap()).unwrap();
     let spec: Json = serde_json::from_slice(&input).unwrap();
-    let (f, queued) = ReworkFixture::with_architect_inputs(
+    let owner = Uuid::parse_str(spec["owner_subject"].as_str().unwrap()).unwrap();
+    assert!(!owner.is_nil());
+    let (f, queued) = ReworkFixture::with_architect_owner_inputs(
         Some(serde_json::from_value(spec["verification"].clone()).unwrap()),
         Some(serde_json::from_value(spec["requirements"].clone()).unwrap()),
+        &owner.to_string(),
     )
     .await;
     let analyst = f
