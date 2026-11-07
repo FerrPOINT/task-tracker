@@ -462,15 +462,50 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             "SELECT source_revision IS NULL AS missing FROM sdlc_effective_task_source_selections WHERE task_id=$1",
             vec![task.into()],
         )).await.map_err(map_db)?.map(|r|r.try_get::<bool>("", "missing").map_err(map_db)).transpose()?.unwrap_or(false);
-        let result = if missing_policy && binding.is_none() {
+        let mut result = if missing_policy && binding.is_none() {
             TaskSourceReadback::Blocked {
                 reason: SourceBlockReason::MissingProjectSourcePolicy,
                 binding: None,
                 current,
+                workspace_preparation_commit: None,
             }
         } else {
             app::sdlc_source::readback(binding, current)?
         };
+        if let TaskSourceReadback::Blocked {
+            reason: SourceBlockReason::ExecutionNotRunning,
+            binding: Some(binding),
+            current: Some(current),
+            workspace_preparation_commit,
+        } = &mut result
+            && binding.development_workspace_id.is_some()
+            && current.runtime_state == domain::sdlc_lifecycle::RuntimeState::Reserved
+            && let Some(assignment) = current.receipt.assignment.as_ref()
+        {
+            *workspace_preparation_commit = match assignment.stage {
+                domain::sdlc_lifecycle::LifecycleStage::Development => Some(binding.base_commit.clone()),
+                domain::sdlc_lifecycle::LifecycleStage::Rework => {
+                    // Follow the immutable accepted predecessor chain from the
+                    // finding, rather than trusting the current Git branch head.
+                    tx.query_one(statement(
+                        "WITH RECURSIVE chain(result_id,assignment_id,payload,depth) AS (
+                            SELECT r.result_id,r.assignment_id,r.payload,0 FROM sdlc_delivery_results r
+                            WHERE r.task_id=$1 AND r.result_id=$2 AND r.payload->>'next_stage'='Rework'
+                            UNION ALL
+                            SELECT p.result_id,p.assignment_id,p.payload,c.depth+1
+                            FROM chain c JOIN sdlc_delivery_assignments a ON a.assignment_id=c.assignment_id
+                            JOIN sdlc_delivery_results p ON p.result_id=(a.payload->>'previous_result_id')::uuid
+                            WHERE p.task_id=$1 AND c.depth<3 AND c.payload#>>'{output,role}' IN ('reviewer','tester')
+                        ) SELECT payload#>>'{output,commit_sha}' AS commit_sha FROM chain
+                        WHERE payload#>>'{output,role}'='developer' ORDER BY depth LIMIT 1",
+                        vec![task.into(),assignment.previous_result_id.into()],
+                    )).await.map_err(map_db)?
+                        .map(|row| row.try_get::<String>("", "commit_sha").map_err(map_db))
+                        .transpose()?
+                }
+                _ => None,
+            };
+        }
         tx.commit().await.map_err(map_db)?;
         Ok(result)
     }

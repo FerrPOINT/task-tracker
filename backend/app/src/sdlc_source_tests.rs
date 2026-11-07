@@ -115,6 +115,50 @@ fn current(binding: &TaskSourceBinding, routing: &TaskRoutingSnapshot) -> Lifecy
 }
 
 #[test]
+fn only_the_current_unexpired_developer_reservation_allows_workspace_preparation() {
+    let (state, confirmation, routing, mut policy) = fixture();
+    let workspace = Uuid::new_v4();
+    policy.source.development_workspace_id = Some(workspace);
+    policy.verification.development_workspace_id = Some(workspace);
+    policy.source_hash = sealed_hash(&policy).unwrap();
+    let binding = freeze_binding(&state, &confirmation, &routing, &policy).unwrap();
+    let mut reserved = current(&binding, &routing);
+    reserved.runtime_state = RuntimeState::Reserved;
+    reserved.receipt.task.runtime = RuntimeState::Reserved;
+    reserved.receipt.task.status = LifecycleStatus::Ready;
+    reserved.receipt.task.waiting_reason = Some("awaiting_run_binding".into());
+    reserved.receipt.binding = None;
+    let assignment = reserved.receipt.assignment.as_mut().unwrap();
+    assignment.machine_subject = Some("test-developer".into());
+    let actor = Principal {
+        subject: "central-owner".into(),
+        human_session: true,
+        trusted_human: true,
+        scopes: Default::default(),
+    };
+    let mut execution = state.context(&actor);
+    execution.status = Some(LifecycleStatus::Ready);
+    execution.assignment = Some(domain::sdlc::PmAssignment {
+        assignment_id: assignment.assignment_id,
+        execution_id: assignment.execution_id,
+        agent_id: assignment.agent_id,
+        version: assignment.fencing_token,
+        machine_subject: "test-developer".into(),
+    });
+    let source = readback(Some(binding.clone()), Some(reserved.clone())).unwrap();
+    assert_eq!(
+        workspace_preparation_expires_at(&source, &execution),
+        Some(reserved.receipt.lease.as_ref().unwrap().expires_at)
+    );
+    execution.assignment.as_mut().unwrap().version += 1;
+    assert_eq!(workspace_preparation_expires_at(&source, &execution), None);
+    execution.assignment.as_mut().unwrap().version -= 1;
+    reserved.observed_at += chrono::Duration::seconds(31);
+    let expired = readback(Some(binding), Some(reserved)).unwrap();
+    assert_eq!(workspace_preparation_expires_at(&expired, &execution), None);
+}
+
+#[test]
 fn workspace_reference_is_frozen_only_after_matching_owner_source_verification() {
     let (state, confirmation, routing, mut policy) = fixture();
     let legacy = serde_json::to_value(&policy.source).unwrap();

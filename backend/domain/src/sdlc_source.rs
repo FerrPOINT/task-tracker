@@ -108,6 +108,8 @@ pub enum TaskSourceReadback {
         reason: SourceBlockReason,
         binding: Option<TaskSourceBinding>,
         current: Option<LifecycleReadback>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_preparation_commit: Option<String>,
     },
     Bound {
         binding: TaskSourceBinding,
