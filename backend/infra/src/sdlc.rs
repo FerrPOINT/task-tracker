@@ -26,6 +26,8 @@ mod critical_blockers;
 mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
+#[path = "decomposition.rs"]
+mod decomposition;
 #[path = "sdlc_discussion.rs"]
 mod discussion;
 #[path = "sdlc_execution_lease.rs"]
@@ -983,6 +985,11 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn decomposition_repository(
+        &self,
+    ) -> Option<&dyn domain::decomposition::DecompositionRepository> {
+        Some(self)
+    }
     fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
         Some(self)
     }
@@ -1838,6 +1845,22 @@ impl SdlcRepository for PostgresSdlcRepository {
         let mut context = state.context(actor);
         if state.configured_cli() {
             context.assignment = lifecycle::configured_assignment(&tx, &state, actor).await?;
+            context.selected_source_policy = Self::selected_source_policy(&tx, &state).await?;
+            if state.stage == Stage::Architecture && context.selected_source_policy.is_none() {
+                return Err(AppError::Unavailable(
+                    "Architect task source policy is missing".into(),
+                ));
+            }
+            if let Some(current) = lifecycle::current(&tx, task).await? {
+                context.previous_result_id = current.task.previous_result_id;
+                if current
+                    .assignment
+                    .as_ref()
+                    .is_some_and(|a| a.previous_result_id != context.previous_result_id)
+                {
+                    return Err(AppError::conflict("previous result context differs"));
+                }
+            }
             context.critical_review = self.configured_review_context(&tx, &state).await?;
             if !actor.trusted_human && app::sdlc_reservation::reader(actor).is_ok() {
                 // This server read is Workflow's current execution authority,

@@ -37,6 +37,33 @@ task-tracker auth login --email admin@example.com --password secret
 task-tracker auth whoami
 ```
 
+## Декомпозиция одной задачи
+
+```bash
+task-tracker decomposition read --task <task-uuid>
+task-tracker decomposition save --task <task-uuid> --from-file plan.json
+task-tracker decomposition history --task <task-uuid> --limit 20
+task-tracker decomposition revision --task <task-uuid> --revision 1
+task-tracker decomposition operation --task <task-uuid> --key <original-key>
+```
+
+Полная команда сохранения и правила: [контракт](../docs/contracts/task-decomposition.md).
+Используйте `current_source` из readback, сохранённые UUID разделов,
+`expected_revision` и один стабильный `idempotency_key` на неизменную команду.
+После timeout сначала прочитайте operation с исходным ключом. Не генерируйте
+новый ключ для неизвестного результата. 409 требует чтения актуального плана и
+явного согласования правки, 403 не разрешает повтор с чужими credentials.
+Configured Architect передаёт точный текущий `fence`; остальные роли могут читать
+в рамках своего назначения. Human PAT остаётся человеческим доступом, machine
+credential не становится human session. CLI не обходит штатные ограничения.
+
+Перед планированием прочитать `sdlc context --task <uuid>`. Его optional
+`previous_result_id` читается через `sdlc result read --task <uuid> --result <id>`;
+`selected_source_policy` фиксирует источник этой задачи, а не текущий project head.
+Источник и base_commit использовать в существующем Forge repository tree/blob.
+Design ArtifactReceipt содержит reference `/api/v1/issues/<uuid>/decomposition/revisions/<n>`
+и серверный content_sha256; новый current plan не подменяет эту редакцию.
+
 ## Проекты
 
 ```bash
