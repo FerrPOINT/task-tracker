@@ -1473,6 +1473,321 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/decomposition": {
+      "get": {
+        "tags": [
+          "decomposition"
+        ],
+        "operationId": "read_decomposition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "decomposition"
+        ],
+        "operationId": "save_decomposition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOperation"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/decomposition/operations/{key}": {
+      "get": {
+        "tags": [
+          "decomposition"
+        ],
+        "operationId": "decomposition_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/decomposition/revisions": {
+      "get": {
+        "tags": [
+          "decomposition"
+        ],
+        "operationId": "decomposition_history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/decomposition/revisions/{revision}": {
+      "get": {
+        "tags": [
+          "decomposition"
+        ],
+        "operationId": "decomposition_revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRevision"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/restore": {
       "post": {
         "tags": [
@@ -18129,6 +18444,241 @@
           }
         }
       },
+      "PlanContent": {
+        "type": "object",
+        "required": [
+          "overview",
+          "sections"
+        ],
+        "properties": {
+          "overview": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanSection"
+            },
+            "description": "Array order is the section order. IDs survive rename and reorder."
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanSource"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlanHistory": {
+        "type": "object",
+        "required": [
+          "revisions"
+        ],
+        "properties": {
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanRevisionSummary"
+            }
+          }
+        }
+      },
+      "PlanOperation": {
+        "type": "object",
+        "required": [
+          "request_sha256",
+          "result",
+          "changed"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/PlanRevision"
+          }
+        }
+      },
+      "PlanReadback": {
+        "type": "object",
+        "required": [
+          "can_edit"
+        ],
+        "properties": {
+          "can_edit": {
+            "type": "boolean"
+          },
+          "current_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanSource"
+              }
+            ]
+          },
+          "edit_restriction": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanRevision"
+              }
+            ]
+          }
+        }
+      },
+      "PlanRevision": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "revision",
+          "content",
+          "content_sha256",
+          "author_subject",
+          "author_name",
+          "reason",
+          "created_at"
+        ],
+        "properties": {
+          "author_name": {
+            "type": "string"
+          },
+          "author_subject": {
+            "type": "string"
+          },
+          "content": {
+            "$ref": "#/components/schemas/PlanContent"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PlanRevisionSummary": {
+        "type": "object",
+        "required": [
+          "revision",
+          "author_name",
+          "author_subject",
+          "reason",
+          "created_at",
+          "content_sha256"
+        ],
+        "properties": {
+          "author_name": {
+            "type": "string"
+          },
+          "author_subject": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PlanSection": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "criteria",
+          "requirements"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirements": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlanSource": {
+        "type": "object",
+        "required": [
+          "requirements_revision",
+          "requirements_hash"
+        ],
+        "properties": {
+          "analysis_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirements_hash": {
+            "type": "string"
+          },
+          "requirements_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "PmAssignment": {
         "type": "object",
         "required": [
@@ -20605,6 +21155,43 @@
           "cancelled"
         ]
       },
+      "SavePlan": {
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "idempotency_key",
+          "reason",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/PlanContent"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Zero creates the first revision; all edits compare the current revision."
+          },
+          "fence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MachineFence",
+                "description": "Required only for the current configured Architect, forbidden for humans."
+              }
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "SdlcContext": {
         "type": "object",
         "required": [
@@ -20682,6 +21269,13 @@
           "permissions": {
             "$ref": "#/components/schemas/Permissions"
           },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "project_id": {
             "type": "string",
             "format": "uuid"
@@ -20696,6 +21290,16 @@
           "root_task_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "selected_source_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectSourcePolicy"
+              }
+            ]
           },
           "source_binding": {
             "oneOf": [

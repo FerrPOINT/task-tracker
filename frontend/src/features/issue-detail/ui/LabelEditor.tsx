@@ -17,7 +17,7 @@ import {
   Notice,
   ResourceStateView,
   resourceErrorState,
-  EmptyState,
+  ResourceListDescription,
   Fieldset,
   type ResourceState,
 } from '@pdlc/ui/ui'
@@ -102,15 +102,30 @@ function IssueLabelEditor({ issueId, projectKey }: { issueId: string; projectKey
 
   return (
     <div className="space-y-2" data-testid="label-editor">
-      <SectionHeader
-        level={3}
-        title={
-          <>
-            <Tag className="h-4 w-4" aria-hidden />
-            {t('labels.title')}
-          </>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionHeader
+          level={3}
+          title={
+            <>
+              <Tag className="h-4 w-4" aria-hidden />
+              {t('labels.title')}
+            </>
+          }
+        />
+        {!creating && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!canEdit}
+            onClick={() => setCreating(true)}
+            aria-label={t('labels.create')}
+          >
+            <Plus className="h-3 w-3" aria-hidden />
+            {t('labels.create')}
+          </Button>
+        )}
+      </div>
 
       <ResourceStateView state={state} scope="local">
         <Fieldset legend={t('labels.title')} legendVisuallyHidden disabled={!canEdit}>
@@ -135,7 +150,9 @@ function IssueLabelEditor({ issueId, projectKey }: { issueId: string; projectKey
               ))}
             </div>
           )}
-          {issueLabels.length === 0 && <EmptyState message={t('labels.none')} />}
+          {issueLabels.length === 0 && (
+            <ResourceListDescription>{t('labels.none')}</ResourceListDescription>
+          )}
 
           {creating ? (
             <div className="space-y-1">
@@ -188,16 +205,6 @@ function IssueLabelEditor({ issueId, projectKey }: { issueId: string; projectKey
                     + {l.name}
                   </Button>
                 ))}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setCreating(true)}
-                aria-label={t('labels.create')}
-              >
-                <Plus className="h-3 w-3" aria-hidden />
-                {t('labels.create')}
-              </Button>
             </div>
           )}
         </Fieldset>

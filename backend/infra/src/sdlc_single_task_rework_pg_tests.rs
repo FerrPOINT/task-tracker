@@ -2,6 +2,8 @@
 //! Real repository transactions, synthetic role artifacts and trusted terminal receipts.
 //! No live Fleet/Workflow execution or attachment-byte verification is claimed.
 use super::*;
+#[path = "decomposition_architect_pg_tests.rs"]
+mod decomposition_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -51,12 +53,13 @@ async fn complete_initial_pm(
     owner: &Principal,
     reader: &Principal,
     agent: Uuid,
+    document: Option<RequirementsDocument>,
 ) -> LifecycleReceipt {
-    let document: RequirementsDocument = parse(json!({
+    let document: RequirementsDocument = document.unwrap_or_else(|| parse(json!({
         "goal":"One task with actual persisted rework","scope":["One root task"],"exclusions":["No children"],
         "scenarios":["Review and testing reject work"],
         "acceptance_criteria":["Rework repeats review and testing before deployment"],
-        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}));
+        "constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]})));
     let (reserved, completed) = crate::sdlc::configured_test_support::confirmed_pm(
         repo, task, owner, agent, document, true,
     )
@@ -88,6 +91,22 @@ async fn complete_initial_pm(
 
 impl ReworkFixture {
     async fn new() -> (Self, LifecycleReceipt) {
+        Self::with_architect_inputs(None, None).await
+    }
+
+    async fn with_architect_inputs(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+    ) -> (Self, LifecycleReceipt) {
+        Self::with_architect_owner_inputs(source, document, "owner", "scheduler").await
+    }
+
+    async fn with_architect_owner_inputs(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+        scheduler_subject: &str,
+    ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
@@ -105,9 +124,9 @@ impl ReworkFixture {
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
-            ("owner", owner_id),
+            (owner_subject, owner_id),
             ("pm", Uuid::new_v4()),
-            ("scheduler", Uuid::new_v4()),
+            (scheduler_subject, Uuid::new_v4()),
             ("verifier", Uuid::new_v4()),
         ] {
             exec(&db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$3,true)",
@@ -117,23 +136,23 @@ impl ReworkFixture {
             vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
         exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Rework','[]' FROM projects WHERE id=$1",
             vec![project.into()]).await.unwrap();
-        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>'owner'",
-            vec![project.into()]).await.unwrap();
+        exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>$2",
+            vec![project.into(), owner_subject.into()]).await.unwrap();
         let repo = PostgresSdlcRepository::connect(
             &url,
             SdlcConfig {
                 instance_id: "single-task-rework-test".into(),
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
-                reservation_scheduler_subject: "scheduler".into(),
+                reservation_scheduler_subject: scheduler_subject.into(),
                 single_task_project_ids: [project].into_iter().collect(),
             },
         )
         .await
         .unwrap();
-        let owner = actor("owner", true, vec![]);
-        crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
-        let scheduler = actor("scheduler", false, vec![]);
+        let owner = actor(owner_subject, true, vec![]);
+        crate::sdlc::source::configure_test_source_verified(&repo, project, &owner, source).await;
+        let scheduler = actor(scheduler_subject, false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
         let routes = draft_flow_tests::single_task_routes();
@@ -170,6 +189,7 @@ impl ReworkFixture {
             &owner,
             &reader,
             routes.project_manager.agent_id,
+            document,
         )
         .await;
         let (queued, replayed) = repo

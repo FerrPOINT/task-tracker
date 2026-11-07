@@ -510,6 +510,10 @@ pub struct Permissions {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_result_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_source_policy: Option<crate::sdlc_source::ProjectSourcePolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_binding: Option<crate::sdlc_source::TaskSourceBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub critical_review: Option<crate::sdlc_critical_pm_reservation::CriticalPmReviewContext>,
@@ -686,6 +690,8 @@ impl TaskState {
                 .iter()
                 .any(|q| q.state == QuestionState::Open);
         SdlcContext {
+            previous_result_id: None,
+            selected_source_policy: None,
             source_binding: None,
             critical_review: None,
             interaction_protocol: self.interaction_protocol().ok().flatten(),
@@ -832,6 +838,11 @@ pub trait SdlcRepository: Send + Sync {
         ))
     }
 
+    fn decomposition_repository(
+        &self,
+    ) -> Option<&dyn crate::decomposition::DecompositionRepository> {
+        None
+    }
     fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
         None
     }

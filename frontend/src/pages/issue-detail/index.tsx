@@ -10,10 +10,8 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  SectionHeader,
+  Disclosure,
   Button,
   ConfirmDialog,
   DropdownMenu,
@@ -48,26 +46,49 @@ import { CustomFieldsPanel } from '@/features/issue-detail/ui/CustomFieldsPanel'
 import { IssueEngagementPanel } from '@/features/issue-detail/ui/IssueEngagementPanel'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
+import { statusLabel } from '@/shared/lib/status-label'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import {
+  useBoard,
+  useUpdateIssue,
+  useDeleteIssue,
+  useSprints,
+  useIssue,
+  useStatuses,
+} from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
+import { DecompositionPanel } from '@/features/decomposition/panel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
-const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
+const issueTabs = [
+  'activity',
+  'comments',
+  'worklog',
+  'attachments',
+  'decomposition',
+  'sdlc',
+] as const
 type IssueTab = (typeof issueTabs)[number]
 
-function parseIssueTab(value: string | null): IssueTab {
-  return issueTabs.find((tab) => tab === value) ?? 'activity'
+function parseIssueTab(value: string | null, hasDecomposition = true): IssueTab {
+  return (
+    issueTabs.find((tab) => tab === value && (tab !== 'decomposition' || hasDecomposition)) ??
+    'activity'
+  )
 }
 
-export function IssueDetailPage() {
+export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: ReactNode } = {}) {
   const { id = '' } = useParams()
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
   const activeTab = parseIssueTab(tabParam)
+  const [decompositionVisited, setDecompositionVisited] = useState(activeTab === 'decomposition')
+  useEffect(() => {
+    if (activeTab === 'decomposition') setDecompositionVisited(true)
+  }, [activeTab])
   const latestTab = useRef(activeTab)
   const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -75,6 +96,7 @@ export function IssueDetailPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const issueActionsRef = useRef<HTMLButtonElement | null>(null)
   const worklogTabRef = useRef<HTMLButtonElement | null>(null)
+  const tabsViewportRef = useRef<HTMLDivElement | null>(null)
 
   const issueQuery = useIssue(id)
   const issueClipboard = useClipboard(issueQuery.data?.key ?? '', {
@@ -82,6 +104,7 @@ export function IssueDetailPage() {
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
   const boardQuery = useBoard(issueQuery.data?.project_key)
+  const statusesQuery = useStatuses()
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
@@ -96,6 +119,24 @@ export function IssueDetailPage() {
   useEffect(() => {
     latestTab.current = activeTab
   }, [activeTab])
+
+  useEffect(() => {
+    const revealSelected = () => {
+      const viewport = tabsViewportRef.current
+      const selected = viewport?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+      if (!viewport || !selected) return
+      const bounds = viewport.getBoundingClientRect()
+      const tab = selected.getBoundingClientRect()
+      const spacing = getComputedStyle(viewport)
+      const left = bounds.left + Number.parseFloat(spacing.paddingLeft)
+      const right = bounds.right - Number.parseFloat(spacing.paddingRight)
+      if (tab.left < left) viewport.scrollLeft -= left - tab.left
+      else if (tab.right > right) viewport.scrollLeft += tab.right - right
+    }
+    revealSelected()
+    window.addEventListener('resize', revealSelected)
+    return () => window.removeEventListener('resize', revealSelected)
+  }, [activeTab, issueQuery.data?.id])
 
   useEffect(() => {
     const isCanonical = tabParam === null || (activeTab !== 'activity' && tabParam === activeTab)
@@ -250,8 +291,9 @@ export function IssueDetailPage() {
         </div>
 
         <IssueDetailLayout
+          detailsSummary={`${t('issue.details')} · ${statusLabel(statusesQuery.data?.find((status) => status.id === issue.status_id)?.name ?? issue.status, t)}`}
           description={
-            <ContentSection asChild dividers="start">
+            <ContentSection asChild dividers="none">
               <section className="min-w-0 lg:col-start-1 lg:row-start-1">
                 <IssueDescriptionEditor
                   issue={issue}
@@ -265,11 +307,8 @@ export function IssueDetailPage() {
             </ContentSection>
           }
           details={
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
+            <ContentSection asChild dividers="none">
+              <section className="min-w-0" aria-label={t('issue.details')}>
                 <IssueMetaEditor
                   issue={issue}
                   columns={boardQuery.data?.columns ?? []}
@@ -279,21 +318,31 @@ export function IssueDetailPage() {
                     updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
                   }
                 />
-              </CardContent>
-            </Card>
+              </section>
+            </ContentSection>
           }
           activity={
-            <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
+            <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
-                  <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
-                  <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
-                  <TabsTrigger ref={worklogTabRef} value="worklog">
-                    {t('timeTracking.worklog.title')}
-                  </TabsTrigger>
-                  <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
-                  <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
-                </TabsList>
+                <div ref={tabsViewportRef} className="-m-1 min-w-0 overflow-x-auto p-1">
+                  <TabsList
+                    appearance="underline"
+                    style={{
+                      flexWrap: 'nowrap',
+                      width: 'max-content',
+                      maxWidth: 'none',
+                    }}
+                  >
+                    <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
+                    <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
+                    <TabsTrigger ref={worklogTabRef} value="worklog">
+                      {t('timeTracking.worklog.title')}
+                    </TabsTrigger>
+                    <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
+                    <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
+                    <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
+                  </TabsList>
+                </div>
                 <TabsContent value="activity">
                   {commentsQuery.error && (
                     <ErrorState
@@ -337,68 +386,61 @@ export function IssueDetailPage() {
                 <TabsContent value="attachments">
                   <AttachmentPanel issueId={issue.id} />
                 </TabsContent>
+                <TabsContent
+                  key={issue.id}
+                  value="decomposition"
+                  forceMount
+                  hidden={activeTab !== 'decomposition'}
+                >
+                  {(activeTab === 'decomposition' || decompositionVisited) &&
+                    (decompositionPanel ?? <DecompositionPanel issueId={issue.id} />)}
+                </TabsContent>
                 <TabsContent value="sdlc">
                   <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>
               </Tabs>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardContent>
-                    <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
-                  </CardContent>
-                </Card>
-                <Card className="md:col-span-2">
-                  <CardContent>
-                    <LinkEditor issueId={issue.id} currentKey={issue.key} />
-                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                      <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
-                    )}
-                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                      <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
-                    )}
-                  </CardContent>
-                </Card>
+              <div className="grid items-start gap-x-4 gap-y-2 md:grid-cols-2">
+                <ContentSection density="compact">
+                  <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
+                </ContentSection>
+                <ContentSection density="compact">
+                  <SectionHeader level={3} title={t('customFields.title')} />
+                  <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
+                </ContentSection>
+                <ContentSection density="compact" className="md:col-span-2">
+                  <LinkEditor issueId={issue.id} currentKey={issue.key} />
+                  {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                    <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                  )}
+                  {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                    <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                  )}
+                </ContentSection>
               </div>
             </div>
           }
           supplemental={
             <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TimeTrackingPanel
-                    timeSpentSeconds={issue.time_spent_seconds}
-                    originalEstimateSeconds={issue.original_estimate_seconds ?? null}
-                    remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
-                    onLogWork={handleLogWork}
-                  />
-                </CardContent>
-              </Card>
+              <ContentSection density="compact" className="space-y-2">
+                <SectionHeader level={3} title={t('timeTracking.title')} />
+                <TimeTrackingPanel
+                  timeSpentSeconds={issue.time_spent_seconds}
+                  originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+                  remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+                  onLogWork={handleLogWork}
+                />
+              </ContentSection>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <IssueEngagementPanel
-                    issueId={issue.id}
-                    projectKey={issue.project_key}
-                    currentUserId={currentUserId}
-                    reporterId={issue.reporter_id}
-                  />
-                </CardContent>
-              </Card>
+              <ContentSection density="compact" className="space-y-2">
+                <SectionHeader level={3} title={t('engagement.title')} />
+                <IssueEngagementPanel
+                  issueId={issue.id}
+                  projectKey={issue.project_key}
+                  currentUserId={currentUserId}
+                  reporterId={issue.reporter_id}
+                />
+              </ContentSection>
             </>
           }
         />
@@ -434,11 +476,13 @@ const desktopLayoutQuery = '(min-width: 1024px)'
 function IssueDetailLayout({
   description,
   details,
+  detailsSummary,
   activity,
   supplemental,
 }: {
   description: ReactNode
   details: ReactNode
+  detailsSummary: ReactNode
   activity: ReactNode
   supplemental: ReactNode
 }) {
@@ -449,20 +493,22 @@ function IssueDetailLayout({
       className={
         desktop
           ? 'grid min-w-0 grid-cols-[minmax(0,1fr)_320px] grid-rows-[min-content_minmax(0,1fr)] gap-6'
-          : 'grid min-w-0 gap-4'
+          : 'grid min-w-0 gap-2'
       }
     >
       {description}
       {desktop ? (
-        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 self-start space-y-4">
+        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 self-start space-y-2">
           {details}
           {supplemental}
         </aside>
       ) : (
-        details
+        <Disclosure appearance="row" summary={detailsSummary}>
+          {details}
+        </Disclosure>
       )}
       {activity}
-      {!desktop && <aside className="space-y-4">{supplemental}</aside>}
+      {!desktop && <aside className="space-y-2">{supplemental}</aside>}
     </div>
   )
 }

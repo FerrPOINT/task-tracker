@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_commands.rs"]
 mod critical_commands;
+#[path = "decomposition_commands.rs"]
+mod decomposition_commands;
 #[path = "sdlc_discussion_commands.rs"]
 mod discussion_commands;
 #[path = "sdlc_pm_commands.rs"]
@@ -74,6 +76,11 @@ pub fn query(path: &str, pairs: Vec<(&str, Option<String>)>) -> String {
 
 #[derive(Subcommand)]
 pub enum WorkCommand {
+    /// Versioned plan inside one task (shared human and configured Architect API)
+    Decomposition {
+        #[command(subcommand)]
+        command: decomposition_commands::DecompositionCommand,
+    },
     /// Справочник статусов
     Statuses,
     /// Справочник типов задач
@@ -703,6 +710,7 @@ fn request(api: &Api, method: Method, path: &str) -> Result<reqwest::RequestBuil
 pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
     match command {
         WorkCommand::Statuses => api.get("/api/v1/statuses").await,
+        WorkCommand::Decomposition { command } => decomposition_commands::execute(api, command).await,
         WorkCommand::IssueTypes => api.get("/api/v1/issue-types").await,
         WorkCommand::Transitions { issue } => {
             let issue = api.get(&format!("/api/v1/issues/{}", enc(&issue))).await?;

@@ -356,6 +356,54 @@ mod tests {
     use super::*;
     use crate::context::AttachmentService;
 
+    #[tokio::test]
+    async fn configured_upload_preserves_repository_failure_without_legacy_grants() {
+        let repos = domain::Repositories::default();
+        let service = AttachmentServiceImpl::new(
+            repos.attachments,
+            repos.issues,
+            Arc::new(domain::InMemoryStorage::default()),
+            repos.watchers,
+            crate::context::EventBus::default(),
+            repos.notifications,
+            repos.notification_settings,
+            Authz::new(repos.members, repos.projects),
+        )
+        .with_artifact_config(domain::sdlc::SdlcConfig {
+            instance_id: "test".into(),
+            orchestrator_subject: "pm".into(),
+            verifier_subject: "verifier".into(),
+            reservation_scheduler_subject: "scheduler".into(),
+            single_task_project_ids: Default::default(),
+        });
+        let actor = domain::sdlc::Principal {
+            subject: uuid::Uuid::new_v4().to_string(),
+            human_session: false,
+            trusted_human: false,
+            scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
+        };
+        let issue = IssueId::new();
+        let upload = |actor: domain::sdlc::Principal| {
+            let service = &service;
+            async move {
+                service
+                    .upload_artifact(
+                        issue,
+                        &actor,
+                        "design.md",
+                        "text/markdown",
+                        b"Design".to_vec(),
+                    )
+                    .await
+            }
+        };
+        // Repository admission remains authoritative; its outage must not become a 403.
+        assert!(matches!(
+            upload(actor.clone()).await,
+            Err(AppError::Unavailable(_))
+        ));
+    }
+
     #[test]
     fn artifact_policy_is_opt_in_and_scheduler_is_read_download_only() {
         let repos = domain::Repositories::default();

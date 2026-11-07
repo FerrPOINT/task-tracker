@@ -16,10 +16,16 @@ const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
 const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
+const mockUseStatuses = vi.hoisted(() => vi.fn())
 
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
   ...(await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()),
+}))
+vi.mock('@/features/decomposition/panel', () => ({
+  DecompositionPanel: ({ issueId }: { issueId: string }) => (
+    <section aria-label="Decomposition mount">{issueId}</section>
+  ),
 }))
 vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
   SdlcPanel: ({ issueId }: { issueId: string }) => (
@@ -109,7 +115,7 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
   }),
   useUsers: () => ({ data: [], isLoading: false }),
-  useStatuses: () => ({ data: [], isLoading: false }),
+  useStatuses: () => mockUseStatuses(),
   useTransitions: () => ({ data: [], isLoading: false }),
   useProjectLabels: () => ({ data: [], isLoading: false }),
   useIssueLabels: () => ({ data: [], isLoading: false }),
@@ -211,6 +217,7 @@ describe('IssueDetailPage', () => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
+    mockUseStatuses.mockReturnValue({ data: [], isLoading: false })
     mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
     mockUseDeleteIssue.mockReturnValue({
       mutate: vi.fn(),
@@ -255,6 +262,38 @@ describe('IssueDetailPage', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'SDLC' }))
     expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
     expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1?tab=sdlc')
+  })
+
+  it('places decomposition before SDLC in the existing issue and retains its draft across tabs', async () => {
+    render(
+      wrapper(
+        <IssueDetailPage decompositionPanel={<input aria-label="Plan draft" defaultValue="" />} />,
+        '/issues/i1?tab=decomposition&view=compact',
+      ),
+    )
+    const user = userEvent.setup()
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs.indexOf('Декомпозиция')).toBe(tabs.indexOf('SDLC') - 1)
+    expect(screen.getByText('Test issue summary')).toBeVisible()
+    await user.type(screen.getByLabelText('Plan draft'), 'Architecture draft')
+    await user.click(screen.getByRole('tab', { name: 'SDLC' }))
+    expect(screen.getByLabelText('Plan draft')).not.toBeVisible()
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    await user.click(screen.getByRole('tab', { name: 'Декомпозиция' }))
+    expect(screen.getByLabelText('Plan draft')).toHaveValue('Architecture draft')
+    expect(screen.getByLabelText('current location')).toHaveTextContent(
+      'tab=decomposition&view=compact',
+    )
+  })
+
+  it('mounts the persistent decomposition controller on a normal issue route', () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=decomposition'))
+    expect(screen.getByRole('tab', { name: 'Декомпозиция' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByLabelText('Decomposition mount')).toHaveTextContent('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('tab=decomposition')
   })
 
   it('keeps issue details available while worklogs load', () => {
@@ -336,12 +375,34 @@ describe('IssueDetailPage', () => {
   it('places editable details between the heading and activity in document order', () => {
     render(wrapper(<IssueDetailPage />))
     const heading = screen.getByText('Test issue summary')
-    const details = screen.getByText(/^(детали|details)$/i)
+    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
     const activity = screen.getByRole('tab', { name: /активность|activity/i })
     expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(
       details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('collapses mobile properties without losing their choices or changing the issue', async () => {
+    render(wrapper(<IssueDetailPage />))
+    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
+    const disclosure = details.closest('details')!
+    expect(disclosure.open).toBe(false)
+    const summary = disclosure.querySelector('summary')!
+    await userEvent.click(summary)
+    expect(disclosure.open).toBe(true)
+    expect(within(details).getAllByRole('combobox')).toHaveLength(4)
+    await userEvent.click(summary)
+    expect(disclosure.open).toBe(false)
+    expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
+  })
+
+  it('uses the status catalog for the mobile summary when the legacy label is unknown', () => {
+    mockUseIssue.mockReturnValue({ data: { ...issueData, status: 'Unknown' }, isLoading: false })
+    mockUseStatuses.mockReturnValue({ data: [{ id: 'in-progress', name: 'SDLC Ready' }] })
+    render(wrapper(<IssueDetailPage />))
+    expect(document.querySelector('details > summary')).toHaveTextContent('SDLC Ready')
+    expect(document.querySelector('details > summary')).not.toHaveTextContent('Unknown')
   })
 
   it('links the issue back to its project board', () => {
@@ -449,7 +510,7 @@ describe('IssueDetailPage', () => {
 
     const sidebar = screen.getByRole('complementary')
     expect(sidebar).toHaveClass('sticky')
-    expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByRole('region', { name: /^(детали|details)$/i })).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
     expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()

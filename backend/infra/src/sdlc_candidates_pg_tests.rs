@@ -8,6 +8,8 @@ mod artifact_tests;
 mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
 mod critical_blocker_tests;
+#[path = "decomposition_pg_tests.rs"]
+mod decomposition_tests;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
 use sea_orm_migration::MigratorTrait;

@@ -2620,6 +2620,8 @@ fn help_hides_token_environment_value() {
     assert!(!stdout.contains("help-only-fixture-token"));
     assert!(!String::from_utf8_lossy(&output.stderr).contains("help-only-fixture-token"));
 }
+#[path = "workflows/decomposition.rs"]
+mod decomposition_tests;
 
 #[tokio::test]
 async fn analyst_source_reads_the_existing_binding_without_issue_lookup_or_mutation() {
