@@ -222,9 +222,97 @@ pub async fn verify(
     let assignment = &saved["assignment"];
     let fence = json!({"assignment_id":assignment["assignment_id"],"execution_id":assignment["execution_id"],
         "agent_id":agent,"assignment_version":assignment["version"]});
+    let initial = get_json(f.client, &format!("{root}/context"), &pm, 200).await;
+    assert_eq!(initial["stage"], "Draft");
+    assert_eq!(initial["status"], "Ready");
+    let stage_url = format!("{root}/stage-starts");
+    let stage_operation_url = format!("{stage_url}/operations/configured-http:stage-start");
+    let mut stage_fence = fence.clone();
+    stage_fence["kind"] = json!("pm");
+    let stage_start = json!({"fence":stage_fence,"idempotency_key":"configured-http:stage-start"});
+    get_json(f.client, &stage_operation_url, &pm, 404).await;
+    let foreign_subject = std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT").unwrap();
+    assert!(Uuid::parse_str(&foreign_subject).is_ok());
+    assert_ne!(foreign_subject, pm_subject);
+    let foreign = machine(
+        f.secret,
+        f.issuer,
+        &foreign_subject,
+        vec!["task-tracker:read".into(), "task-tracker:write".into()],
+    );
+    let before_start = [
+        count(f.db, "sdlc_idempotency").await,
+        count(f.db, "issue_status_history").await,
+        count(f.db, "sdlc_outbox").await,
+    ];
+    for token in [f.owner, f.operator, foreign.as_str()] {
+        expect(f.client, &stage_url, token, &stage_start, 403).await;
+    }
+    for field in [
+        "assignment_id",
+        "execution_id",
+        "agent_id",
+        "assignment_version",
+    ] {
+        let mut stale = stage_start.clone();
+        stale["fence"][field] = if field == "assignment_version" {
+            json!(assignment["version"].as_i64().unwrap() + 1)
+        } else {
+            json!(Uuid::new_v4())
+        };
+        expect(f.client, &stage_url, &pm, &stale, 409).await;
+    }
+    let mut arbitrary_status = stage_start.clone();
+    arbitrary_status["status"] = json!("InProgress");
+    expect(f.client, &stage_url, &pm, &arbitrary_status, 422).await;
+    assert_eq!(
+        [
+            count(f.db, "sdlc_idempotency").await,
+            count(f.db, "issue_status_history").await,
+            count(f.db, "sdlc_outbox").await,
+        ],
+        before_start
+    );
+    let unstarted = get_json(f.client, &format!("{root}/context"), &pm, 200).await;
+    assert_eq!(unstarted["status"], "Ready");
+    assert_eq!(unstarted["assignment"], initial["assignment"]);
+    get_json(f.client, &stage_operation_url, &pm, 404).await;
+    let started = expect(f.client, &stage_url, &pm, &stage_start, 201).await;
+    assert_eq!(started["task_id"], json!(task));
+    assert_eq!(started["stage"], "Draft");
+    assert_eq!(started["status"], "InProgress");
+    assert_eq!(started["execution_id"], fence["execution_id"]);
+    assert_eq!(started["idempotency_key"], stage_start["idempotency_key"]);
+    assert_eq!(
+        get_json(f.client, &stage_operation_url, &pm, 200).await,
+        started
+    );
+    assert_eq!(
+        expect(f.client, &stage_url, &pm, &stage_start, 200).await,
+        started
+    );
+    let mut changed_start = stage_start.clone();
+    changed_start["fence"]["assignment_version"] =
+        json!(assignment["version"].as_i64().unwrap() + 1);
+    expect(f.client, &stage_url, &pm, &changed_start, 409).await;
+    let mut another_start = stage_start.clone();
+    another_start["idempotency_key"] = json!("configured-http:another-stage-start");
+    expect(f.client, &stage_url, &pm, &another_start, 409).await;
+    assert_eq!(
+        [
+            count(f.db, "sdlc_idempotency").await,
+            count(f.db, "issue_status_history").await,
+            count(f.db, "sdlc_outbox").await,
+        ],
+        [before_start[0] + 1, before_start[1] + 1, before_start[2]]
+    );
+    let working = get_json(f.client, &format!("{root}/context"), &pm, 200).await;
+    assert_eq!(working["stage"], "Draft");
+    assert_eq!(working["status"], "InProgress");
+    assert_eq!(working["assignment"], initial["assignment"]);
     let publish = json!({"fence":fence,"expected_requirement_revision":null,"idempotency_key":"configured-http:rev1",
         "document":{"goal":"HTTP configured PM","scope":["Saved scope"],"exclusions":[],"scenarios":["Owner approves"],
-        "acceptance_criteria":["Backlog after terminal receipt"],"constraints":[],"dependencies":[],"assumptions":[],
+        "acceptance_criteria":["Draft Completed receipt and application-owned Analysis Ready queue"],"constraints":[],"dependencies":[],"assumptions":[],
         "checklist":["Review"],"prerequisites":["Source"]}});
     expect(
         f.client,
@@ -438,8 +526,8 @@ pub async fn verify(
         201,
     )
     .await;
-    assert_eq!(completed["stage"], "Backlog");
-    assert_eq!(completed["status"], "Ready");
+    assert_eq!(completed["stage"], "Draft");
+    assert_eq!(completed["status"], "Completed");
     *response.lock().await = Value::Null;
     assert_eq!(
         expect(
@@ -486,13 +574,43 @@ pub async fn verify(
         .await
         .unwrap()
         .unwrap();
-    for key in ["intents", "assignments", "native_leases"] {
+    for key in ["assignments", "native_leases"] {
         assert_eq!(row.try_get::<i64>("", key).unwrap(), 0, "{key}");
     }
+    assert_eq!(row.try_get::<i64>("", "intents").unwrap(), 1);
     assert_eq!(row.try_get::<i64>("", "completions").unwrap(), 1);
     let final_context = get_json(f.client, &format!("{root}/context"), f.owner, 200).await;
-    assert_eq!(final_context["stage"], "Backlog");
+    assert_eq!(final_context["stage"], "Analysis");
     assert_eq!(final_context["status"], "Ready");
+    assert!(final_context["assignment"].is_null());
+    assert!(final_context["expected_assignment_version"].is_null());
+    let lifecycle = get_json(f.client, &format!("{root}/lifecycle"), f.owner, 200).await;
+    assert_eq!(lifecycle["runtime_state"], "queued");
+    let queued = &lifecycle["receipt"];
+    assert_eq!(queued["task"]["stage"], "Analysis");
+    assert_eq!(queued["task"]["status"], "Ready");
+    assert_eq!(queued["task"]["runtime"], "queued");
+    assert_eq!(
+        queued["task"]["routing"]["confirmation_id"],
+        confirmed["id"]
+    );
+    assert_eq!(queued["task"]["routing"]["requirement_revision"], 2);
+    assert_eq!(
+        queued["task"]["routing"]["content_hash"],
+        revision["content_hash"]
+    );
+    assert!(
+        queued["assignment"].is_null() && queued["lease"].is_null() && queued["binding"].is_null()
+    );
+    assert!(queued["result"].is_null());
+    assert_eq!(
+        get_json(f.client, &stage_operation_url, &pm, 200).await,
+        started
+    );
+    assert_eq!(
+        expect(f.client, &stage_url, &pm, &stage_start, 200).await,
+        started
+    );
     let start_url = format!("{root}/lifecycle");
     let operation_url = format!("{root}/lifecycle/operations/configured-http:start");
     let start_command = json!({"operation":"start_analysis", "pm_completion_id":completed["completion_id"],
@@ -504,19 +622,9 @@ pub async fn verify(
     let mut wrong_start = start_command.clone();
     wrong_start["pm_completion_id"] = json!(Uuid::new_v4());
     expect(f.client, &start_url, f.owner, &wrong_start, 409).await;
-    let started = expect(f.client, &start_url, f.owner, &start_command, 201).await;
-    assert_eq!(started["task"]["stage"], "Analysis");
-    assert_eq!(started["task"]["status"], "Ready");
-    assert_eq!(started["task"]["runtime"], "queued");
-    assert!(started["assignment"].is_null());
-    assert_eq!(
-        expect(f.client, &start_url, f.owner, &start_command, 200).await,
-        started
-    );
-    assert_eq!(
-        get_json(f.client, &operation_url, f.owner, 200).await,
-        started
-    );
+    // This task is already queued by PM completion, not an old unqueued Backlog.
+    expect(f.client, &start_url, f.owner, &start_command, 409).await;
+    get_json(f.client, &operation_url, f.owner, 404).await;
     expect(f.client, &start_url, f.owner, &wrong_start, 409).await;
     let counts = f.db.query_one(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -528,6 +636,8 @@ pub async fn verify(
     assert_eq!(counts.try_get::<i64>("", "intents").unwrap(), 1);
     assert_eq!(counts.try_get::<i64>("", "starts").unwrap(), 1);
     assert_eq!(counts.try_get::<i64>("", "assignments").unwrap(), 0);
+    let after_replay = get_json(f.client, &format!("{root}/lifecycle"), f.owner, 200).await;
+    assert_eq!(after_replay["receipt"], *queued);
     for suffix in [
         "",
         "/heartbeat",

@@ -77,6 +77,7 @@ pub(super) async fn confirmed_pm(
         agent_id: agent,
         assignment_version: reservation.assignment.version,
     };
+    start_pm(repo, task, &pm, &fence).await;
     let hash = app::sdlc::canonical_hash(&document).unwrap();
     repo.execute(
         task,
@@ -106,6 +107,31 @@ pub(super) async fn confirmed_pm(
     }
     let saved = complete_pm(repo, task, owner, &pm, &reservation).await;
     (reservation, Some(saved))
+}
+
+pub(super) async fn start_pm(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    pm: &Principal,
+    fence: &MachineFence,
+) {
+    use domain::sdlc_stage_status::{StageStartFence, StartStage};
+    let (receipt, replay) = repo
+        .start_stage(
+            task,
+            pm,
+            StartStage {
+                fence: StageStartFence::Pm(fence.clone()),
+                idempotency_key: format!("fixture:start:{}", fence.execution_id),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!replay);
+    assert_eq!(
+        receipt.status,
+        domain::sdlc_lifecycle::LifecycleStatus::InProgress
+    );
 }
 
 pub(super) async fn complete_pm(

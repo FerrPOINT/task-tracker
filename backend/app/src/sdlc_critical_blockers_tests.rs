@@ -717,6 +717,7 @@ fn atomic_post_losing_to_complete_fails_and_committed_hold_blocks_complete_and_r
     let complete = DeliveryResult::Architect {
         design: artifact("synthetic-design"),
     };
+    f.current.task.status = LifecycleStatus::Completed;
     crate::sdlc_lifecycle::accept_result(&mut f.current.task, &complete).unwrap();
     let completed = f.current.clone();
     assert!(f.plan().is_err());
@@ -725,10 +726,14 @@ fn atomic_post_losing_to_complete_fails_and_committed_hold_blocks_complete_and_r
     let held = f.hold();
     let before = f.current.clone();
     let mut after = before.clone();
+    after.task.status = LifecycleStatus::Completed;
+    let proposed = after.clone();
+    let mut without_hold_guard = after.task.clone();
+    crate::sdlc_lifecycle::accept_result(&mut without_hold_guard, &complete).unwrap();
     let complete_attempt = ensure_technical_progress_allowed(&after, Some(&held))
         .and_then(|()| crate::sdlc_lifecycle::accept_result(&mut after.task, &complete));
     assert!(complete_attempt.is_err());
-    assert_eq!(after, before);
+    assert_eq!(after, proposed);
     let reserve_gate = ensure_technical_progress_allowed(&f.current, Some(&held));
     assert!(reserve_gate.is_err());
     assert_eq!(f.current, before);

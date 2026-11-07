@@ -1,10 +1,35 @@
 # Архитектура Task Tracker
 
-Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
-Accepted PM completion atomically queues Analysis in enabled single-task projects;
-its immutable receipt remains historical Backlog/Ready. Forward112 preserves
-existing rows and binds automatic queue authority to the completion transaction.
-No new public DTO, user confirmation or source-registry table is introduced.
+## Целевой Контракт Статуса И Стадии
+
+Один порядок для PM, Analyst, Architect, Developer, Reviewer, Tester и DevOps:
+агент первым предметным действием устанавливает InProgress; выполняет работу
+и Workflow; последним действием устанавливает Completed. Приложение обрабатывает
+принятое завершение именно этой стадии, выбирает следующую по действующему
+типизированному результату и атомарно меняет stage со сбросом status в Ready.
+Следующий агент сам устанавливает InProgress. На финальной стадии Completed
+сохраняется без сброса. Условия Rework и подтверждение требований не отменяются.
+
+Статус описывает работу на стадии; стадия определяет профессию/маршрутизацию.
+Ready — ожидание начала, не завершение предыдущего агента. Завершение Workflow,
+native run и стадии различается. Повтор completion не передаёт ещё одну стадию;
+неизвестный исход сначала читается по исходному ключу. Старые результаты и
+receipts не переписываются и не получают новых полномочий.
+
+В установленном b54 начало для delivery выполняет BindRun, PM completion
+записывает Backlog/Ready, а последующий серверный Complete меняет и stage, и
+status. Это разрывы реализации, не исполнение нового требования. Source-пакет
+исправляет действующие границы, без второго scheduler, новых сервисов, смысловых
+keyword-проверок или скрытого fallback. Активация допускается только совместно
+с соответствующими CLI, Workflow admission и проверкой переходов.
+
+Принятый main f98faed9 уже содержит [completion-owned autoqueue](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change)
+для enabled single-task проектов. Его forward112 связывает queue с той же
+completion-транзакцией; прежние Backlog/Ready receipts остаются неизменными.
+Новый status-пакет должен использовать один этот handoff после Draft/Completed,
+не создавать второй intent/queue и не подменять агентский Start/InProgress.
+На rework limit без передачи и после финального DevOps сохраняется Completed.
+Autoqueue не вводит новый public DTO, owner confirmation или source registry.
 
 The terminal-idle branch grants a single exact Workflow checkpoint operation
 after trusted Fleet readback and a task-locked custody recheck. It never restores

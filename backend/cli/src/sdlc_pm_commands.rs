@@ -3,6 +3,40 @@ use clap::Subcommand;
 use uuid::Uuid;
 
 #[derive(Subcommand)]
+pub enum StageCommand {
+    /// Set InProgress for this agent's exact current assignment, without changing stage
+    Start {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+    /// Read the original start operation after an unknown submission outcome
+    Operation {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        key: String,
+    },
+}
+
+pub async fn stage(api: &Api, command: StageCommand) -> Result<Value> {
+    match command {
+        StageCommand::Start { task, from_file } => {
+            api.post(&sdlc_path(task, "/stage-starts"), json_input(&from_file)?)
+                .await
+        }
+        StageCommand::Operation { task, key } => {
+            api.get(&sdlc_path(
+                task,
+                &format!("/stage-starts/operations/{}", enc(&key)),
+            ))
+            .await
+        }
+    }
+}
+
+#[derive(Subcommand)]
 pub enum RoutingCommand {
     Policy {
         #[arg(long)]
@@ -34,7 +68,7 @@ pub enum DeliveryResultCommand {
         #[arg(long)]
         result: Uuid,
     },
-    /// Persist Workflow terminal evidence while this runtime run is still alive
+    /// Set Completed with Workflow evidence; application waits for native terminal before handoff
     Propose {
         #[arg(long)]
         task: Uuid,

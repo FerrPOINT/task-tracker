@@ -124,6 +124,63 @@ async fn setup() -> ReviewFixture {
         agent_id: a.agent_id,
         assignment_version: a.version,
     };
+    let state = f.repo.read(r.task, &f.owner).await.unwrap();
+    if state.configured_cli() {
+        assert_eq!(state.stage, Stage::Draft);
+        assert_eq!(state.status, Some(LifecycleStatus::Ready));
+        let document = state.revisions.last().unwrap().document.clone();
+        let denied = Box::pin(f.repo.execute(
+            r.task,
+            &pm,
+            SdlcCommand::PublishRevision(PublishRevision {
+                fence: fence.clone(),
+                expected_requirement_revision: state.current_revision(),
+                document,
+                idempotency_key: "review-revision:before-start".into(),
+            }),
+        ))
+        .await;
+        assert!(matches!(denied, Err(AppError::Conflict(message))
+            if message == "PM must explicitly start the current stage"));
+        assert_eq!(
+            json!(f.repo.read(r.task, &f.owner).await.unwrap()),
+            json!(state)
+        );
+        let start = StartStage {
+            fence: StageStartFence::Pm(fence.clone()),
+            idempotency_key: "review:explicit-start".into(),
+        };
+        let (started, replayed) = Box::pin(f.repo.start_stage(r.task, &pm, start.clone()))
+            .await
+            .unwrap();
+        assert!(!replayed);
+        assert_eq!(started.stage, Stage::Draft);
+        assert_eq!(started.status, LifecycleStatus::InProgress);
+        assert_eq!(started.execution_id, fence.execution_id);
+        assert_eq!(
+            f.repo
+                .stage_start_operation(r.task, &pm, &start.idempotency_key)
+                .await
+                .unwrap(),
+            started
+        );
+        let current = f.repo.read(r.task, &f.owner).await.unwrap();
+        assert_eq!(current.status, Some(LifecycleStatus::InProgress));
+        assert_eq!(current.assignment, state.assignment);
+        assert_eq!(json!(current.revisions), json!(state.revisions));
+        assert_eq!(current.confirmations, state.confirmations);
+        let lifecycle = f
+            .repo
+            .lifecycle_read(r.task, &f.reader)
+            .await
+            .unwrap()
+            .receipt;
+        assert_eq!(lifecycle.task.stage, LifecycleStage::Draft);
+        assert_eq!(lifecycle.task.status, LifecycleStatus::InProgress);
+        assert!(lifecycle.assignment.is_none());
+        assert!(lifecycle.lease.is_none());
+        assert!(lifecycle.binding.is_none());
+    }
     let original = frozen_history(&f, r.task).await;
     ReviewFixture {
         f,
@@ -286,11 +343,12 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
     );
     assert_eq!(confirmed.try_get::<i64>("", "confirmations").unwrap(), 1);
     assert_eq!(confirmed.try_get::<i64>("", "journals").unwrap(), 1);
-    let row=r.f.db.query_one(statement("SELECT state->>'stage' AS stage,state->>'waiting_reason' AS reason,
+    let row=r.f.db.query_one(statement("SELECT state->>'stage' AS stage,state->>'status' AS status,state->>'waiting_reason' AS reason,
         NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=2) AS no_intent,
         NOT EXISTS(SELECT 1 FROM sdlc_configured_pm_completions WHERE execution_id=$2) AS no_completion FROM sdlc_tasks WHERE task_id=$1",
         vec![r.task.into(),r.fence.execution_id.into()])).await.unwrap().unwrap();
     assert_eq!(row.try_get::<String>("", "stage").unwrap(), "Draft");
+    assert_eq!(row.try_get::<String>("", "status").unwrap(), "InProgress");
     assert_eq!(
         row.try_get::<String>("", "reason").unwrap(),
         "critical_pm_awaiting_finalization"
@@ -309,6 +367,8 @@ async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation)
         &r.review.reservation,
     )
     .await;
+    assert_eq!(saved.stage, Stage::Draft);
+    assert_eq!(saved.status, LifecycleStatus::Completed);
     assert_eq!(saved.requirement_revision, 2);
     assert_eq!(saved.content_hash, hash);
     assert_eq!(saved.confirmation_id, confirmation.id);

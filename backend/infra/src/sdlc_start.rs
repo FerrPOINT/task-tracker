@@ -142,7 +142,9 @@ impl PostgresSdlcRepository {
             .single_task_project_ids
             .contains(&state.project_id)
         {
-            return Ok(());
+            return Err(AppError::Unavailable(
+                "single_task_lifecycle_project_not_enabled".into(),
+            ));
         }
         let command = LifecycleCommand::StartAnalysis {
             pm_completion_id: completed.completion_id,

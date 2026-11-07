@@ -10,6 +10,18 @@ fn confirmed() -> (
     let (mut state, pm, mut config, fence) = super::tests::fixture();
     config.verifier_subject.clear();
     state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    let start = crate::sdlc_stage_status::prepare_stage_start(
+        &state,
+        &pm,
+        &domain::sdlc_stage_status::StartStage {
+            fence: domain::sdlc_stage_status::StageStartFence::Pm(fence.clone()),
+            idempotency_key: "start-before-work".into(),
+        },
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    state.status = Some(start.status);
     let revision:PublishRevision=serde_json::from_value(json!({"fence":fence,"expected_requirement_revision":null,
         "idempotency_key":"revision","document":{"goal":"Goal","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],
         "acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["Check"],"prerequisites":["Prerequisite"]}})).unwrap();
@@ -83,6 +95,32 @@ fn response(receipt: &ConfiguredWorkflowReceipt) -> Value {
     json!({"ok":true,"complete":true,"receipt":receipt,"workflow_receipt":{
         "reference":format!("workflow-configured-cli:{}:{}",receipt.execution_ref,receipt.history_id),
         "sha256":crate::sdlc::canonical_hash(receipt).unwrap()}})
+}
+
+#[test]
+fn current_delivery_context_does_not_advertise_retained_pm_assignment() {
+    let (mut state, pm, command, _) = confirmed();
+    let retained = state.assignment.clone();
+    assert_eq!(state.context(&pm).assignment, retained);
+    for stage in [
+        Stage::Analysis,
+        Stage::Architecture,
+        Stage::Development,
+        Stage::Review,
+        Stage::Testing,
+        Stage::Rework,
+        Stage::Deployment,
+    ] {
+        state.stage = stage;
+        let context = state.context(&pm);
+        assert!(context.assignment.is_none());
+        assert!(context.expected_assignment_version.is_none());
+        assert_eq!(state.assignment, retained);
+        let historical =
+            completion_history_state(&state, retained.as_ref().unwrap(), &command).unwrap();
+        assert_eq!(historical.assignment, retained);
+        assert_eq!(historical.revisions[0].content_hash, command.content_hash);
+    }
 }
 
 #[test]
@@ -200,6 +238,41 @@ fn configured_consent_is_draft_without_a_verifier_and_remains_exact_after_public
         .unwrap()
         .remove("interaction_protocol");
     assert!(crate::sdlc_metadata::project(&event, refs()).is_err());
+}
+
+#[test]
+fn new_completion_refuses_ready_backlog_and_already_completed_states() {
+    let (state, pm, command, _) = confirmed();
+    validate_completion(&state, &pm, &command).unwrap();
+    for (stage, status) in [
+        (
+            Stage::Backlog,
+            domain::sdlc_lifecycle::LifecycleStatus::Ready,
+        ),
+        (Stage::Draft, domain::sdlc_lifecycle::LifecycleStatus::Ready),
+        (
+            Stage::Draft,
+            domain::sdlc_lifecycle::LifecycleStatus::Completed,
+        ),
+        (
+            Stage::Analysis,
+            domain::sdlc_lifecycle::LifecycleStatus::Ready,
+        ),
+    ] {
+        let mut changed = state.clone();
+        changed.stage = stage;
+        changed.status = Some(status);
+        assert!(
+            validate_completion(&changed, &pm, &command).is_err(),
+            "{stage:?}/{status:?}"
+        );
+    }
+    let mut human = pm;
+    human.human_session = true;
+    assert!(matches!(
+        validate_completion(&state, &human, &command),
+        Err(AppError::Forbidden)
+    ));
 }
 
 #[test]

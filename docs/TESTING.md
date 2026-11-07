@@ -1,6 +1,31 @@
 # Стратегия тестирования Task Tracker
 
+## Agent Stage Status: 2026-11-07
+
+Source qualification covers explicit agent Start/InProgress, recorded Completed
+and application-owned next-stage/Ready. PM Draft/Completed hands off through the
+existing atomic Analysis queue; delivery requires native terminal verification.
+Final DevOps and rework-limit outcomes without handoff retain Completed. Owner
+consent, assignment/fence checks, exact replay and preserved history remain gates.
+There is no new autoAdvance flag or Analyst-disable requirement for acceptance;
+Analysis/Ready is the normal handoff and the Analyst may subsequently run.
+
+Qualification is composite, not one green full run: native backend tests,
+selected real PostgreSQL/HTTP scenarios (PM start/handoff, all delivery roles,
+rework limits, critical review/read, queue and populated history), CLI, strict
+backend/CLI Clippy and Rustfmt pass across retained runs and targeted follow-ups.
+All 855 frontend tests and typecheck pass. Unselected ignored PG tests are not passes.
+The final receipt `sdlc-qa-tracker-status-8f8cd28bb6c6-result.json` identifies tree
+`046b58d720e054a7bb96d199c29d28bc67388322`, SDK `ed61ec63` and CLI supplier
+`a657f51f`: 62 CLI tests, critical-read PG, both Clippy checks and fmt pass;
+owned cleanup is verified. Earlier failed results remain evidence of their
+original candidates. This package is NOT installed or live-agent accepted;
+source qualification performed no model calls. The dated section below records
+the previous contract, not the current status behavior.
+
 ## Configured Analysis Start: 2026-10-29
+
+Historical qualification of the previous contract, superseded above.
 
 PR197 qualifies the explicit owner start, not an automatic PM transition. On
 backend tree `1458e3abfd17f62aa94411a4d602dbcc3bd76987`,13 selected real

@@ -200,6 +200,7 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         assignment_version: reservation.assignment.version,
     };
     configured_pm_reads_only_current_task_inputs(&f, task, &pm, local).await;
+    crate::sdlc::configured_test_support::start_pm(&f.repo, task, &pm, &fence).await;
     assert_eq!(pm.scopes.len(), 2);
     for scope in ["task-tracker:read", "task-tracker:write"] {
         let mut partial = pm.clone();
@@ -758,8 +759,30 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             .await
             .unwrap();
     }
-    // Retained PM-only behavior when rollout is disabled after valid Draft preparation.
+    // Disabling rollout cannot turn current completion into a historical Backlog publication.
     f.repo.config.single_task_project_ids.remove(&f.project);
+    let before_disabled = f.snapshot().await;
+    let (left, right) = tokio::join!(
+        f.repo
+            .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
+        f.repo
+            .complete_configured_pm(task, &pm, command.clone(), receipt.clone())
+    );
+    assert!(matches!(left, Err(AppError::Unavailable(_))));
+    assert!(matches!(right, Err(AppError::Unavailable(_))));
+    assert_eq!(f.snapshot().await, before_disabled);
+    assert!(
+        f.repo
+            .configured_pm_completion(task, &pm, Some(&command.idempotency_key))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        json!(f.repo.read(task, &pm).await.unwrap()),
+        json!(confirmed)
+    );
+    f.repo.config.single_task_project_ids.insert(f.project);
     let (left, right) = tokio::join!(
         f.repo
             .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
@@ -768,10 +791,10 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
     );
     let left = left.unwrap();
     let right = right.unwrap();
-    // Enabling discovery later must not backfill a historical completed Backlog.
-    f.repo.config.single_task_project_ids.insert(f.project);
     assert_eq!(left.0, right.0);
     assert_ne!(left.1, right.1);
+    assert_eq!(left.0.stage, Stage::Draft);
+    assert_eq!(left.0.status, LifecycleStatus::Completed);
     let saved = f
         .repo
         .configured_pm_completion(task, &pm, Some(&command.idempotency_key))
@@ -811,8 +834,12 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         assert!(tx.execute_unprepared(sql).await.is_err());
         tx.rollback().await.unwrap();
     }
-    let after = f.repo.read(task, &pm).await.unwrap();
-    assert_eq!(after.stage, Stage::Backlog);
+    assert!(matches!(
+        f.repo.read(task, &pm).await,
+        Err(AppError::Forbidden)
+    ));
+    let after = f.repo.read(task, &f.owner).await.unwrap();
+    assert_eq!(after.stage, Stage::Analysis);
     assert_eq!(after.status, Some(LifecycleStatus::Ready));
     assert_eq!(
         f.db.query_one(statement(
@@ -827,34 +854,68 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         .unwrap()
         .try_get::<String>("", "projected")
         .unwrap(),
-        "Backlog/Ready"
+        "Analysis/Ready"
     );
     assert_eq!(after.confirmations, confirmed.confirmations);
     assert_eq!(
-        f.repo.confirmation_read(task, &pm, 2).await.unwrap().stage,
+        f.repo
+            .confirmation_read(task, &f.owner, 2)
+            .await
+            .unwrap()
+            .stage,
         Stage::Draft
     );
     let mut expected = confirmed.clone();
-    expected.stage = Stage::Backlog;
+    expected.stage = Stage::Analysis;
     expected.status = Some(LifecycleStatus::Ready);
     expected.draft_submode = None;
+    let queued = f
+        .repo
+        .lifecycle_read(task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(queued.task.stage, LifecycleStage::Analysis);
+    assert_eq!(queued.task.status, LifecycleStatus::Ready);
+    assert_eq!(queued.task.runtime, RuntimeState::Queued);
+    assert!(queued.assignment.is_none() && queued.lease.is_none() && queued.binding.is_none());
+    expected
+        .retained_fields
+        .insert("waiting_reason".into(), json!(queued.task.waiting_reason));
+    expected
+        .retained_fields
+        .insert("runtime_state".into(), json!(RuntimeState::Queued));
+    expected
+        .retained_fields
+        .insert("lifecycle".into(), json!(queued.task));
     assert_eq!(
         serde_json::to_value(expected).unwrap(),
         serde_json::to_value(&after).unwrap()
     );
     assert!(f.repo.config.single_task_project_ids.contains(&f.project));
+    assert!(
+        f.repo
+            .context(task, &f.owner)
+            .await
+            .unwrap()
+            .assignment
+            .is_none()
+    );
     let before_scheduler = f.snapshot().await;
     assert!(matches!(
         f.repo.read(task, &f.writer).await,
         Err(AppError::Forbidden)
     ));
-    assert!(
-        f.repo
-            .read_delivery_candidates(&f.reader, f.query(None, 100))
-            .await
-            .unwrap()
-            .items
-            .is_empty()
+    let page = f
+        .repo
+        .read_delivery_candidates(&f.reader, f.query(None, 100))
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].task_id, task);
+    assert_eq!(
+        page.items[0].next_operation,
+        domain::sdlc_candidates::CandidateOperation::Reserve
     );
     for command in [
         LifecycleCommand::EnsureQueued {
@@ -868,8 +929,8 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         },
     ] {
         assert!(matches!(
-            f.repo.lifecycle_command(task, &f.writer, command).await,
-            Err(AppError::Conflict(_))
+            f.repo.lifecycle_command(task, &pm, command).await,
+            Err(AppError::Forbidden)
         ));
     }
     assert_eq!(f.snapshot().await, before_scheduler);
@@ -920,8 +981,15 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
                 .unwrap()
                 .try_get::<i64>("", "n")
                 .unwrap(),
-            0,
-            "configured PM must not create native or downstream rows in {table}"
+            if matches!(
+                table,
+                "sdlc_analysis_intents" | "sdlc_delivery_heads" | "sdlc_delivery_operations"
+            ) {
+                1
+            } else {
+                0
+            },
+            "completion creates only its initial queue, never native work or assignments in {table}"
         );
     }
     for table in ["sdlc_task_routing_snapshots", "sdlc_task_source_bindings"] {

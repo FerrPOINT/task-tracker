@@ -1,10 +1,24 @@
 # Дата-модель Task Tracker
 
-Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
-Accepted PM completion atomically queues Analysis in enabled single-task projects;
-its immutable receipt remains historical Backlog/Ready. Forward112 preserves
-existing rows and binds automatic queue authority to the completion transaction.
-No new public DTO, user confirmation or source-registry table is introduced.
+## Статус И Стадия
+
+Stage и status — разные поля. Целевые переходы: агент Ready→InProgress→Completed
+в рамках своего назначения; затем приложение переводит stage и атомарно
+устанавливает Ready для следующего назначения. Финальный Completed сохраняется.
+Сохранённое завершение относится ровно к исходной стадии/назначению; replay не
+завершает следующую стадию. Прежние записи и применённые миграции сохраняются,
+новые guards вводятся forward-миграцией только при доказанной необходимости.
+Эта цель ещё не считается установленной; фактические gaps описаны в архитектуре.
+
+Новый PM receipt относится к Draft/Completed; приложение сохраняет отдельную
+Analysis/Ready queue. Assignment/lease/binding нового delivery до резервирования
+отсутствуют; старый PM receipt не становится текущим назначением Analyst.
+Rework limit без handoff и финальный DevOps сохраняют Completed.
+
+Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Его forward112 связывает autoqueue с completion-транзакцией; сохранённые
+Backlog/Ready receipts не переписываются. Это не второй handoff нового status-пакета.
+Autoqueue не вводит новый public DTO, owner confirmation или source registry.
 
 Forward113 (`native_task_artifacts`) сохраняет guarded native context при
 публикации артефактов. Транзакционный port связывает INSERT с точной sealed

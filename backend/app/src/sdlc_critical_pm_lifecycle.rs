@@ -130,7 +130,7 @@ fn validate_source(
         || current.task.stage != LifecycleStage::Draft
         || !matches!(
             current.task.status,
-            LifecycleStatus::Ready | LifecycleStatus::InProgress
+            LifecycleStatus::Ready | LifecycleStatus::InProgress | LifecycleStatus::Completed
         )
         || state.draft_submode.is_none()
         || current.task.task_id != state.task_id
@@ -633,6 +633,10 @@ pub fn prepare_critical_pm_command(
     let before = frame(&source);
     let mut after = before.clone();
     let result = apply_command(&mut after.state, actor, config, command, &allocation)?;
+    // Business clarification/consent changes waiting, not the agent-owned status.
+    if source.state.configured_cli() {
+        after.state.status = before.state.status;
+    }
     after.lifecycle.task.version = next(before.lifecycle.task.version)?;
     after.lifecycle.task.status = after.state.status.ok_or_else(conflict)?;
     if matches!(command, SdlcCommand::Confirm { .. }) {
@@ -661,7 +665,10 @@ pub fn prepare_configured_critical_pm_completion(
     intent_id: Uuid,
 ) -> Result<ConfiguredCriticalPmCompletionPlan, AppError> {
     validate_source(&source, config)?;
-    crate::sdlc_configured_cli::validate_completion(source.state, actor, command)?;
+    crate::sdlc_configured_cli::validate_completion_tuple(source.state, actor, command)?;
+    if source.state.status != Some(LifecycleStatus::Completed) {
+        return Err(conflict());
+    }
     let expected = crate::sdlc_configured_cli::completion_result(
         source.state,
         command,
@@ -1012,7 +1019,33 @@ mod tests {
         }
     }
 
-    fn configured_at(generation: i64) -> Fixture {
+    #[test]
+    fn canonical_analysis_projection_removes_only_draft_specific_context() {
+        let f = Fixture::new(1);
+        let original = value(&f.state).unwrap();
+        assert!(original.get("draft_submode").is_some());
+        let draft =
+            crate::sdlc_lifecycle::canonical_projection(&original, &f.lifecycle.task).unwrap();
+        assert_eq!(draft["draft_submode"], original["draft_submode"]);
+        let mut task = f.lifecycle.task;
+        task.stage = LifecycleStage::Analysis;
+        task.status = LifecycleStatus::Ready;
+        let analysis = crate::sdlc_lifecycle::canonical_projection(&original, &task).unwrap();
+        assert!(analysis.get("draft_submode").is_none());
+        for field in [
+            "assignment",
+            "questions",
+            "revisions",
+            "confirmations",
+            "evidence",
+            "owner_subject",
+            "project_id",
+        ] {
+            assert_eq!(analysis[field], original[field], "{field}");
+        }
+    }
+
+    fn configured_ready_at(generation: i64) -> Fixture {
         let mut f = Fixture::new(generation);
         let subject = id(700).to_string();
         f.state
@@ -1034,6 +1067,56 @@ mod tests {
         f.lease.lease.expires_at = f.now - Duration::days(1);
         f.lease.fence.execution_id = Uuid::nil();
         f
+    }
+
+    fn configured_at(generation: i64) -> Fixture {
+        use domain::sdlc_stage_status::{StageStartFence, StartStage};
+
+        let mut f = configured_ready_at(generation);
+        let start = crate::sdlc_stage_status::prepare_stage_start(
+            &f.state,
+            &f.pm(),
+            &StartStage {
+                fence: StageStartFence::Pm(fence(&f.review.reservation.assignment)),
+                idempotency_key: "fixture:review-start".into(),
+            },
+            None,
+            f.now,
+        )
+        .unwrap();
+        assert_eq!(start.stage, Stage::Draft);
+        assert_eq!(
+            start.execution_id,
+            f.review.reservation.assignment.execution_id
+        );
+        assert_eq!(start.status, LifecycleStatus::InProgress);
+        f.lifecycle.task.status = start.status;
+        f.lifecycle.task.version += 1;
+        f.state = serde_json::from_value(
+            crate::sdlc_lifecycle::canonical_projection(
+                &value(&f.state).unwrap(),
+                &f.lifecycle.task,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        f
+    }
+
+    #[test]
+    fn configured_review_ready_cannot_publish_before_explicit_start() {
+        let f = configured_ready_at(1);
+        assert_eq!(f.state.status, Some(LifecycleStatus::Ready));
+        assert_eq!(f.lifecycle.task.status, LifecycleStatus::Ready);
+        let before = value(&f.state).unwrap();
+        for command in [f.revision_command(), f.question_command()] {
+            assert!(matches!(
+                f.command(&command, &f.pm(), None),
+                Err(AppError::Conflict(message))
+                    if message == "PM must explicitly start the current stage"
+            ));
+        }
+        assert_eq!(value(&f.state).unwrap(), before);
     }
 
     #[test]
@@ -1343,7 +1426,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_review_completion_resolves_to_backlog_and_keeps_the_frozen_policy() {
+    fn configured_review_completion_resolves_to_analysis_ready_and_keeps_the_frozen_policy() {
         use domain::sdlc_configured_cli::{CompleteConfiguredPm, ConfiguredWorkflowReceipt};
         for generation in [1, 2, 17] {
             let mut f = configured_at(generation);
@@ -1392,6 +1475,16 @@ mod tests {
                 f.review.reservation.owner_cas.version,
                 id(801),
                 f.now,
+            )
+            .unwrap();
+            f.lifecycle.task.status = LifecycleStatus::Completed;
+            f.lifecycle.task.version += 1;
+            f.state = serde_json::from_value(
+                crate::sdlc_lifecycle::canonical_projection(
+                    &value(&f.state).unwrap(),
+                    &f.lifecycle.task,
+                )
+                .unwrap(),
             )
             .unwrap();
             let before = value(&f.state).unwrap();

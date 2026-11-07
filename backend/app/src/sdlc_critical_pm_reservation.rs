@@ -225,8 +225,8 @@ fn verify_completion(source: &CriticalPmReservationSource<'_>) -> Result<(), App
             if !state.configured_cli()
                 || saved.interaction_protocol != InteractionProtocol::ConfiguredCliV1
                 || saved.completion_id.is_nil()
-                || saved.stage != Stage::Backlog
-                || saved.status != LifecycleStatus::Ready
+                || saved.stage != Stage::Draft
+                || saved.status != LifecycleStatus::Completed
             {
                 return Err(conflict());
             }
@@ -827,6 +827,8 @@ mod tests {
     fn configured_review_uses_the_saved_business_receipt_and_permanent_identity() {
         let mut f = Fixture::new();
         let completed = f.configured_completion();
+        assert_eq!(completed.stage, Stage::Draft);
+        assert_eq!(completed.status, LifecycleStatus::Completed);
         let mut source = f.source();
         source.current_completed = CompletedPmReceipt::Configured(&completed);
         let plan = prepare_critical_pm_reservation(
@@ -854,13 +856,57 @@ mod tests {
             completed.workflow_receipt.task
         );
         assert!(plan.lifecycle.lease.is_none() && plan.lifecycle.binding.is_none());
+        assert_eq!(plan.state.status, Some(LifecycleStatus::Ready));
+        assert_eq!(plan.lifecycle.task.status, LifecycleStatus::Ready);
         // A legacy native receipt is history, not authority for configured work.
         assert!(f.plan().is_err());
     }
 
     #[test]
+    fn subsequent_configured_reviews_require_the_current_completed_receipt() {
+        for version in [2, 17] {
+            let mut f = Fixture::new();
+            f.completed_generation(version);
+            let completed = f.configured_completion();
+            let before = json!({"state":f.state,"previous":f.previous,"completed":completed,
+                "initial":f.original_pm_assignment,"input":f.input});
+            let mut source = f.source();
+            source.current_completed = CompletedPmReceipt::Configured(&completed);
+            let plan = prepare_critical_pm_reservation(
+                source,
+                &f.scheduler,
+                &f.config,
+                &f.command,
+                Fixture::allocation(),
+            )
+            .unwrap();
+            assert_eq!(plan.result.reservation.assignment.version, version + 1);
+            assert_eq!(plan.result.reservation.owner_cas.expected_version, version);
+            assert_eq!(plan.result.reservation.owner_cas.version, version + 1);
+            assert_eq!(
+                plan.result.reservation.assignment.agent_id,
+                f.original_pm_assignment.agent_id
+            );
+            assert_eq!(
+                plan.result.reservation.assignment.machine_subject,
+                completed.workflow_receipt.machine_subject
+            );
+            assert_eq!(plan.state.status, Some(LifecycleStatus::Ready));
+            assert!(!plan.result.reservation.dispatch_allowed);
+            assert!(plan.lifecycle.assignment.is_none());
+            assert!(plan.lifecycle.lease.is_none());
+            assert!(plan.lifecycle.binding.is_none());
+            assert_eq!(
+                before,
+                json!({"state":f.state,"previous":f.previous,"completed":completed,
+                    "initial":f.original_pm_assignment,"input":f.input})
+            );
+        }
+    }
+
+    #[test]
     fn configured_review_rejects_a_changed_completion_or_machine_identity() {
-        for changed in 0..6 {
+        for changed in 0..10 {
             let mut f = Fixture::new();
             let mut completed = f.configured_completion();
             match changed {
@@ -869,10 +915,17 @@ mod tests {
                 2 => completed.workflow_receipt_sha256 = "b".repeat(64),
                 3 => completed.content_hash = "c".repeat(64),
                 4 => completed.owner_subject = "foreign".into(),
-                _ => {
+                5 => {
                     f.previous.assignment.machine_subject = f.config.orchestrator_subject.clone();
                     f.state.assignment = Some(f.previous.assignment.clone());
                 }
+                6 => {
+                    completed.stage = Stage::Backlog;
+                    completed.status = LifecycleStatus::Ready;
+                }
+                7 => completed.status = LifecycleStatus::Ready,
+                8 => completed.stage = Stage::Backlog,
+                _ => completed.stage = Stage::Analysis,
             }
             let mut source = f.source();
             source.current_completed = CompletedPmReceipt::Configured(&completed);

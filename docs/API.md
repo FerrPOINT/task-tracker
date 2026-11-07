@@ -1,11 +1,48 @@
 # API v1 Specification — Task Tracker
 
-Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
-Accepted PM completion atomically queues Analysis in enabled single-task projects;
-its immutable receipt remains historical Backlog/Ready. Forward112 preserves
-existing rows and binds automatic queue authority to the completion transaction.
+## Agent-Owned Stage Status (Source Candidate)
+
+The agent starts its exact current assignment with
+`POST /api/v1/issues/{id}/sdlc/stage-starts`. The strict body contains only
+`fence` and `idempotency_key`. `fence.kind=pm` carries the existing PM
+`assignment_id`, `execution_id`, `agent_id`, `assignment_version`;
+`fence.kind=delivery` carries the existing delivery `assignment_id`,
+`execution_id`, `fencing_token`, `lease_id`, `expected_lease_version`.
+Use values from the authorized assignment readback, never invented values.
+The caller cannot select a stage or a status.
+
+An accepted start changes Ready to InProgress without changing stage or
+assignment. The receipt contains `task_id`, `stage`, `status`, `execution_id`,
+`idempotency_key`, `started_at`. A new operation returns201, exact replay200.
+Read an unknown outcome with
+`GET /api/v1/issues/{id}/sdlc/stage-starts/operations/{idempotency_key}`;
+readback does not start work again. A changed payload under the same key
+conflicts. Both routes use existing SDLC authentication and no-store replies.
+
+CLI: `task-tracker sdlc stage start --task UUID --from-file -`, then, only
+when reconciliation is needed, `task-tracker sdlc stage operation --task UUID
+--key KEY`. The CLI uses the existing API client and does not retry rejected
+starts or fall back to another command.
+
+Completion uses the existing PM completion or delivery result operation,
+not a second status setter. The agent completes the current stage; the
+application alone advances the stage and atomically resets status to Ready.
+Delivery handoff still requires real native terminal proof. The final stage
+and a no-handoff rework limit retain Completed. The new immutable PM receipt
+records Draft/Completed; the application queues Analysis/Ready through the
+existing completion-owned handoff, not a second start or dispatch.
+This source contract is not yet installed or accepted live;
+the coordinated Tracker/Workflow/CLI/instructions gates remain open.
+
+## Accepted Main Autoqueue And Source Readers
+
+Main f98faed9 includes [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Its forward112 binds the existing automatic queue to the completion transaction
+in enabled single-task projects. Its Backlog/Ready receipts remain historical;
+the new status candidate above changes new PM receipts, not saved results.
 The read-only CLI `sdlc source --task UUID` uses the existing source-binding GET.
-No new HTTP DTO, user confirmation or source-registry table is introduced.
+The autoqueue/source-reader package introduces no new HTTP DTO, user confirmation
+or source-registry table.
 
 Registered namespace reader `GET /api/v1/namespace-tasks/{id}` сохраняет прежний
 metadata response при отсутствии `include_execution`. Аддитивный opt-in
@@ -49,36 +86,36 @@ are not restored. New configured tasks use persistent service identities and
 the existing owner/project/fence checks. No automatic conversion of started
 legacy tasks is supported. See [local rollout boundary](LOCAL_SETUP.md#31-configured-cli-cohort).
 
-## Explicit Configured Analysis Start (Source Candidate)
+## Historical Configured Analysis Start Readback
 
-The existing `POST /api/v1/issues/{id}/sdlc/lifecycle` accepts exactly:
+The existing `POST /api/v1/issues/{id}/sdlc/lifecycle` retains exact replay of an
+already accepted historical owner operation with its original payload and key:
 
 ```json
 {"operation":"start_analysis","pm_completion_id":"22222222-2222-4222-8222-222222222222","idempotency_key":"owner-start-1"}
 ```
 
-Only the current human task owner with current project admission may start an
-opt-in `single-task-v1`, `configured-cli-v1` task in Backlog/Ready before its first
-delivery lifecycle. A verified human session is required, as for owner consent. An agent,
-administrator or scheduler cannot substitute for that owner. The server derives
-and checks the exact current PM completion, owner/version, assignment fence,
-requirements revision/hash, saved Draft confirmation and frozen routing/source
-binding. No caller-supplied authority tuple or new confirmation is accepted.
+This is not an executable policy for starting retained Backlog/Ready tasks.
+Incompatible historical tasks are not automatically converted or continued;
+a new key does not authorize their Analysis start. An agent, administrator or
+scheduler cannot substitute for the original human owner.
 
-New success is 201; exact original-key replay is 200 with the original
-`LifecycleReceipt`, even after later lifecycle advancement. Changed payload is
-409. Replay/readback rechecks current user activity, project access and actual
+Exact original-key replay is 200 with the original `LifecycleReceipt`, even
+after later lifecycle advancement. Changed payload is 409. Replay/readback
+rechecks current user activity, project access and actual
 task ownership; it does not roll back the current lifecycle. Read the original
 receipt with the existing no-store GET
 `/api/v1/issues/{id}/sdlc/lifecycle/operations/{idempotency_key}`.
 
-CLI: `task-tracker sdlc start analysis --task UUID --pm-completion-id UUID --key KEY`;
-readback: `task-tracker sdlc start operation --task UUID --key KEY`.
-On unknown POST outcome read that original key before retrying the same command.
-New PM completion in an enabled project atomically creates one Analysis intent,
-initial queued lifecycle and existing outbox events. Replay creates no extra effects.
-The manual command remains available for retained completed Backlog tasks; it does
-not assign or dispatch an agent. Discovery includes only admitted configured tasks. Accepted role results use the existing next-stage queue on the
+CLI readback: `task-tracker sdlc start operation --task UUID --key KEY`.
+Only to replay an accepted historical operation, use its original
+`task-tracker sdlc start analysis --task UUID --pm-completion-id UUID --key KEY`.
+On an unknown POST outcome read that original key before any exact replay.
+New PM completion records an immutable Draft/Completed receipt and, in an enabled
+project, atomically creates one Analysis/Ready queued lifecycle, Analysis intent
+and existing outbox events. Replay creates no extra effects. It does not assign
+or dispatch an agent. Discovery includes only admitted configured tasks.
+Accepted role results use the existing next-stage queue on the
 same root task, without manual per-role advance or child tasks. This source package
 does not establish seven-role live acceptance or enable a deployed project.
 

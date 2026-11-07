@@ -333,7 +333,7 @@ fn fence(
     exact_fence(receipt, expected, observed_at, renewing)
 }
 
-fn exact_fence(
+pub(super) fn exact_fence(
     receipt: &LifecycleReceipt,
     expected: &DeliveryFence,
     observed_at: DateTime<Utc>,
@@ -935,7 +935,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         let grant = producer_grant(&tx, &state, actor, true).await?;
-        let receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
+        let mut receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
         exact_revision(&state, &receipt)?;
         super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
         let binding = receipt
@@ -999,6 +999,15 @@ impl LifecycleRepository for PostgresSdlcRepository {
         .await?;
         exec(&tx, "INSERT INTO sdlc_delivery_proposal_operations(task_id,actor_subject,idempotency_key,payload_hash,result)
             VALUES($1,$2,$3,$4,$5)", vec![task.into(),actor.subject.clone().into(),command.idempotency_key.into(),hash.into(),json_value(&proposal)?]).await?;
+        // The agent completes its current stage; native settlement still owns the later handoff.
+        receipt.task.status = LifecycleStatus::Completed;
+        receipt.task.version = receipt
+            .task
+            .version
+            .checked_add(1)
+            .filter(|v| *v <= MAX_SAFE_VERSION)
+            .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
+        Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
         let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
             "project_id":state.project_id,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
             "stage":receipt.task.stage,"requirement_revision":receipt.task.routing.requirement_revision,"result":&proposal});
@@ -1294,7 +1303,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
                             VALUES($1,$2,$3,$4)", vec![expected.assignment_id.into(), binding.run_id.into(),
                                 binding.chat_id.into(), json_value(binding)?]).await?;
                         receipt.binding = Some(binding.clone());
-                        receipt.task.status = LifecycleStatus::InProgress;
                         receipt.task.runtime = RuntimeState::Running;
                         receipt.task.waiting_reason = None;
                         receipt.task.version += 1;
