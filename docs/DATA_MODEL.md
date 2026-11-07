@@ -41,6 +41,13 @@ metadata текущей роли; задача, автор, ACL, admission и и
 повторно на COMMIT. Сохранение native комментария использует ту же границу
 задачи/автора. Новых таблиц источников и изменений исторических миграций нет.
 
+Forward114 (`native_read_scope_attenuation`) меняет только два SQL guard:
+retained read может сузить write-caller с прежними identity/validity, но не
+получить write или продлить clock. Status projection требует writable у обоих.
+114 зарегистрирована перед115; обе опубликованные113 (`decomposition` и
+`native_task_artifacts`) сохранены под исходными полными именами. Таблицы,
+данные и bytes применённых миграций не переписываются.
+
 Workspace reference добавлен в существующие JSON receipts source policy,
 verification и task binding как optional `development_workspace_id`. Отсутствие
 поля сохраняет прежнюю сериализацию и hash. Migration 0112 добавляет INSERT guards

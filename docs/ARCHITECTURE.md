@@ -42,6 +42,11 @@ completion-транзакцией; прежние Backlog/Ready receipts ост�
 На rework limit без передачи и после финального DevOps сохраняется Completed.
 Autoqueue не вводит новый public DTO, owner confirmation или source registry.
 
+PM completion читает сохранённую операцию до нового commit. Forward114 разрешает
+сужение native write-caller до retained read-scope без повышения read→write,
+смены identity или продления исходного clock. Проекция статуса требует writable
+одновременно у caller и task scope; остальные write guards сохраняются.
+
 The terminal-idle branch grants a single exact Workflow checkpoint operation
 after trusted Fleet readback and a task-locked custody recheck. It never restores
 general lease authority; ordinary resume follows only after a real checkpoint ACK.

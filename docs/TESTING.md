@@ -10,18 +10,41 @@ consent, assignment/fence checks, exact replay and preserved history remain gate
 There is no new autoAdvance flag or Analyst-disable requirement for acceptance;
 Analysis/Ready is the normal handoff and the Analyst may subsequently run.
 
-Qualification is composite, not one green full run: native backend tests,
-selected real PostgreSQL/HTTP scenarios (PM start/handoff, all delivery roles,
-rework limits, critical review/read, queue and populated history), CLI, strict
-backend/CLI Clippy and Rustfmt pass across retained runs and targeted follow-ups.
-All 855 frontend tests and typecheck pass. Unselected ignored PG tests are not passes.
-The final receipt `sdlc-qa-tracker-status-8f8cd28bb6c6-result.json` identifies tree
-`046b58d720e054a7bb96d199c29d28bc67388322`, SDK `ed61ec63` and CLI supplier
-`a657f51f`: 62 CLI tests, critical-read PG, both Clippy checks and fmt pass;
-owned cleanup is verified. Earlier failed results remain evidence of their
-original candidates. This package is NOT installed or live-agent accepted;
-source qualification performed no model calls. The dated section below records
-the previous contract, not the current status behavior.
+Qualification is composite, not one green full run. Frozen tree `c155a6b9`
+passes827 native backend tests,63 CLI tests and24 selected real PostgreSQL/HTTP
+scenarios, including all delivery roles, PM handoff, Rework, decomposition and
+populated history. Strict backend/CLI Clippy, Rustfmt and actual Rust OpenAPI
+generation pass. The generated OpenAPI exactly matches the checked-in file.
+Receipt: `sdlc-qa-tracker-status-8f690dafafa2-result.json`; SDK `ed61ec63`,
+independent CLI supplier `a657f51f`, owned cleanup verified.
+
+Forward114 tree `dad19419` separately passes its native-scope PostgreSQL regression,
+PM explicit Start/handoff and terminal readback with the combined114→115 registry,
+strict backend Clippy and Rustfmt. Receipt:
+`sdlc-qa-tracker-status-b75ca7495316-result.json`; owned cleanup verified.
+All897 frontend tests and typecheck pass on the unchanged frontend tree of main.
+Unselected ignored tests are not passes. Earlier failures retain their original
+results. Source qualification used no model calls; installation and live-agent
+acceptance remain open. The dated section below records the previous contract.
+
+## Native Retained Read Scope: Forward114
+
+Существующий тест требует свежую собственную disposable PostgreSQL DB без таблицы `projects`;
+`TT_NATIVE_SCOPE_TEST_DATABASE_URL` указывает имя с суффиксом `_native_scope_test`.
+Не использовать рабочую БД. Из `backend` внутри штатного QA runner:
+
+```sh
+cargo test --locked -p migration --lib \
+  m20261106_0000114_native_read_scope_attenuation::tests::retained_reads_attenuate_mutation_without_granting_writes \
+  -- --exact --ignored --test-threads=1
+```
+
+Регрессия воспроизводит прежний отказ и проверяет attenuation, запрет escalation,
+SDLC/content/status writes из read-scope, identity/clock, ACL и archive. Она
+исполняет реальные guard-функции на узком SQL fixture, не весь registry114→115
+и не живой PM completion. Нужен ровно `1 passed; 0 failed; 0 ignored`;
+этот результат получен на `dad19419`. Совместимость registry и PM handoff проверена
+отдельными сценариями выше; живая приёмка PM этим не подменяется.
 
 ## Configured Analysis Start: 2026-10-29
 
