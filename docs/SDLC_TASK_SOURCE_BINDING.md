@@ -35,6 +35,13 @@ requires its workspace UUID to match, even for two workspaces of the same projec
 Migration0112 guards policy/verification/binding agreement in the existing ledger.
 Source metadata alone still grants no Git or execution permission.
 
+The existing namespace task reader projects the current assignment and the
+sealed binding. During a valid `Ready` reservation, it also exposes the
+preparation deadline and exact commit for Fleet and Forge. Initial uses the
+sealed base SHA. Rework uses the SHA attached to the accepted review finding.
+Fleet prepares the assigned checkout before native submission. Tracker retains
+ownership of the assignment and of the transition to Review.
+
 For NEW `single-task-v1` Drafts only, Tracker pins the project policy revision/hash
 and the verified repository link in the existing Draft-creation transaction.
 There is no model prompt, branch input, queue, allocator framework or additional

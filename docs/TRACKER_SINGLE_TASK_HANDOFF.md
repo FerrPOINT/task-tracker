@@ -156,6 +156,14 @@ GET `P/pm-feedback/operations/{key}`. Parent owns handlers, OpenAPI and registra
 
 `LifecycleCommand` currently has an internal `operation` discriminator with
 snake_case values `ensure_queued`, `reserve`, `heartbeat`, `bind_run`, `complete`, `reconcile`.
+
+After a terminal run without an accepted typed result, the scheduler can explicitly
+call the existing `ensure_queued` command after correcting the cause. It queues
+only unfinished `Ready` work with released assignment, lease and run binding.
+This consumes the existing bounded retry counter and increments the task version;
+it preserves inputs, chat, prior results and the original terminal history.
+Exact-key replay returns the saved receipt; already queued work consumes no attempt.
+Running/unknown work is never reopened, and completed work cannot be retried this way.
 Reserve takes `expected_task_version`; fence contains assignment/execution UUID,
 integer fencing token, lease UUID and expected lease version. `bind_run` takes
 actual chat/run UUIDs, `machine_subject` and dispatch receipt.

@@ -674,6 +674,50 @@ fn verified_terminal_recovery_keeps_stage_and_bounds_retries_without_business_re
 }
 
 #[test]
+fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
+    let mut state = task();
+    state.stage = LifecycleStage::Development;
+    state.status = LifecycleStatus::Ready;
+    state.runtime = RuntimeState::Terminal;
+    state.resume_chat_id = Some(Uuid::new_v4());
+    let original = state.clone();
+    ensure_queued(&mut state).unwrap();
+    assert_eq!(state.runtime, RuntimeState::Queued);
+    assert_eq!(state.version, original.version + 1);
+    assert_eq!(state.transient_retries, 1);
+    assert_eq!(state.task_id, original.task_id);
+    assert_eq!(state.stage, original.stage);
+    assert_eq!(state.routing, original.routing);
+    assert_eq!(state.previous_result_id, original.previous_result_id);
+    assert_eq!(state.resume_chat_id, original.resume_chat_id);
+    let queued = state.clone();
+    ensure_queued(&mut state).unwrap();
+    assert_eq!(state, queued);
+    for runtime in [
+        RuntimeState::Reserved,
+        RuntimeState::Running,
+        RuntimeState::Unknown,
+    ] {
+        state.runtime = runtime;
+        let before = state.clone();
+        ensure_queued(&mut state).unwrap();
+        assert_eq!(state, before);
+    }
+    for status in [LifecycleStatus::InProgress, LifecycleStatus::Completed] {
+        state = original.clone();
+        state.status = status;
+        let before = state.clone();
+        assert!(ensure_queued(&mut state).is_err());
+        assert_eq!(state, before);
+    }
+    state = original.clone();
+    state.transient_retries = MAX_TRANSIENT_RETRIES;
+    let before = state.clone();
+    assert!(ensure_queued(&mut state).is_err());
+    assert_eq!(state, before);
+}
+
+#[test]
 fn canonical_projection_preserves_original_history_and_exact_status_keys() {
     let original = serde_json::json!({"stage":"Analysis","questions":[{"historical":"Clarification"}],
         "confirmations":[{"id":"original-consent"}],"assignment":{"original":"pm"},"extra":"preserve"});

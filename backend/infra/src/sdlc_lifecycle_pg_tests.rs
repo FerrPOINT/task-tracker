@@ -945,7 +945,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .unwrap()
             .1
     );
-    let (retry, _) = repo
+    let (mut retry, _) = repo
         .lifecycle_command(
             task,
             &scheduler,
@@ -993,6 +993,86 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await
         .is_err()
     );
+    // A successful native stop without a typed result needs explicit intervention,
+    // never automatic retry or a fabricated business completion.
+    let (stopped, _) = repo
+        .lifecycle_command(
+            task,
+            &scheduler,
+            LifecycleCommand::Reconcile {
+                fence: delivery_fence(&retry),
+                terminal: RuntimeTerminalObservation {
+                    assignment_hash: retry.assignment.as_ref().unwrap().assignment_hash.clone(),
+                    chat_id: binding.chat_id,
+                    run_id: Uuid::new_v4(),
+                    state: RuntimeTerminalState::Succeeded,
+                    receipt: artifact("closed-without-result"),
+                },
+                recovery: RecoveryDisposition::Stop,
+                idempotency_key: "explicit-stop".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(stopped.task.runtime, RuntimeState::Terminal);
+    let intervention = LifecycleCommand::EnsureQueued {
+        idempotency_key: "explicit-intervention".into(),
+    };
+    assert!(
+        repo.lifecycle_command(task, &producer, intervention.clone())
+            .await
+            .is_err()
+    );
+    let (queued_again, replayed) = repo
+        .lifecycle_command(task, &scheduler, intervention.clone())
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(queued_again.task.runtime, RuntimeState::Queued);
+    assert_eq!(queued_again.task.version, stopped.task.version + 1);
+    assert_eq!(queued_again.task.transient_retries, 2);
+    assert_eq!(queued_again.task.routing, stopped.task.routing);
+    assert_eq!(
+        queued_again.task.previous_result_id,
+        stopped.task.previous_result_id
+    );
+    assert!(
+        queued_again.assignment.is_none()
+            && queued_again.binding.is_none()
+            && queued_again.result.is_none()
+    );
+    let (replayed_queue, replayed) = repo
+        .lifecycle_command(task, &scheduler, intervention)
+        .await
+        .unwrap();
+    assert!(replayed);
+    assert_eq!(replayed_queue, queued_again);
+    let (same_queue, _) = repo
+        .lifecycle_command(
+            task,
+            &scheduler,
+            LifecycleCommand::EnsureQueued {
+                idempotency_key: "already-queued-intervention".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(same_queue, queued_again);
+    retry = repo
+        .lifecycle_command(
+            task,
+            &scheduler,
+            LifecycleCommand::Reserve {
+                expected_task_version: queued_again.task.version,
+                machine_subject: Some(producer.subject.clone()),
+                idempotency_key: "after-intervention".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 3);
+    assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
     repo.config.single_task_project_ids.clear();
     let before_replay = pm_ordinal_head(&db).await;
     assert!(
