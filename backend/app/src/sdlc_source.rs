@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use domain::{
-    sdlc::{Confirmation, MAX_SAFE_VERSION, Principal, TaskState},
-    sdlc_lifecycle::{LifecycleReadback, LifecycleStatus, RuntimeState},
+    sdlc::{Confirmation, MAX_SAFE_VERSION, Principal, SdlcContext, TaskState},
+    sdlc_lifecycle::{DeliveryRole, LifecycleReadback, LifecycleStatus, RuntimeState},
     sdlc_routing::TaskRoutingSnapshot,
     sdlc_source::*,
 };
@@ -211,6 +211,54 @@ pub fn configured_source_binding(
     Ok(source)
 }
 
+/// The existing namespace reader may prove checkout preparation while Fleet
+/// holds the exact Developer reservation. This does not authorize a run.
+pub fn workspace_preparation_expires_at(
+    source: &TaskSourceReadback,
+    execution: &SdlcContext,
+) -> Option<DateTime<Utc>> {
+    let TaskSourceReadback::Blocked {
+        reason: SourceBlockReason::ExecutionNotRunning,
+        binding: Some(source),
+        current: Some(current),
+        ..
+    } = source
+    else {
+        return None;
+    };
+    let receipt = &current.receipt;
+    let assignment = receipt.assignment.as_ref()?;
+    let lease = receipt.lease.as_ref()?;
+    let exposed = execution.assignment.as_ref()?;
+    (source.development_workspace_id.is_some()
+        && execution.task_id == source.task_id
+        && execution.status == Some(LifecycleStatus::Ready)
+        && current.runtime_state == RuntimeState::Reserved
+        && receipt.task.runtime == RuntimeState::Reserved
+        && receipt.task.status == LifecycleStatus::Ready
+        && receipt.task.waiting_reason.as_deref() == Some("awaiting_run_binding")
+        && receipt.binding.is_none()
+        && assignment.role == DeliveryRole::Developer
+        && Some(assignment.role) == receipt.task.stage.role()
+        && assignment.stage == receipt.task.stage
+        && assignment.routing == receipt.task.routing
+        && assignment.task_id == source.task_id
+        && assignment.lease_id == lease.lease_id
+        && assignment.assignment_id == exposed.assignment_id
+        && assignment.execution_id == exposed.execution_id
+        && assignment.agent_id == exposed.agent_id
+        && assignment.fencing_token == exposed.version
+        && assignment.machine_subject.as_deref() == Some(exposed.machine_subject.as_str())
+        && lease.version > 0
+        && !lease.holder_subject.is_empty()
+        && lease.holder_subject != assignment.owner_subject
+        && lease.claimed_at <= lease.heartbeat_at
+        && lease.heartbeat_at <= current.observed_at
+        && current.observed_at < lease.expires_at
+        && lease.expires_at - lease.heartbeat_at <= chrono::Duration::seconds(30))
+        .then_some(lease.expires_at)
+}
+
 pub fn readback(
     binding: Option<TaskSourceBinding>,
     current: Option<LifecycleReadback>,
@@ -293,6 +341,7 @@ pub fn readback(
             reason,
             binding,
             current,
+            workspace_preparation_commit: None,
         }),
         _ => Err(AppError::conflict("source readback inconsistent")),
     }

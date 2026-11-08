@@ -69,6 +69,12 @@ no-store`; reader не получает разрешения изменять з
 назначение отдельно. Changed source context или повреждённый hash не принимаются.
 Этот readback используется Forge для собственной сессии постоянного Developer;
 человеческие ручные workspace-сессии по-прежнему требуют только task metadata.
+При действующей резервации Developer этот ответ также содержит
+`workspace_preparation_expires_at` и `workspace_preparation_commit`. Срок
+подтверждает точное текущее назначение и живой lease до `BindRun`. Для initial
+SHA берётся из frozen binding. Для rework SHA берётся из истории принятого
+кандидата, к которому ведёт принятое замечание. Поля разрешают Forge только
+подготовку окружения. Состояние Tracker и право записи Git от них не меняются.
 
 `SourcePolicySpec`, `VerifiedSource` и `TaskSourceBinding` аддитивно поддерживают
 optional `development_workspace_id`. Source reader передаёт выбранный UUID

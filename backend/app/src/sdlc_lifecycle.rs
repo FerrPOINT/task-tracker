@@ -736,6 +736,31 @@ pub fn transient_retry_allowed(retries: u8, safely_replayable: bool) -> bool {
     safely_replayable && retries < MAX_TRANSIENT_RETRIES
 }
 
+/// Explicit scheduler intervention after a closed run without an accepted result.
+/// Reuses the existing bounded attempt counter; it never reopens an assignment.
+pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
+    if task.runtime != RuntimeState::Terminal {
+        return Ok(());
+    }
+    if task.status != LifecycleStatus::Ready || task.stage.role().is_none() {
+        return Err(AppError::conflict(
+            "only unfinished terminal work can be queued",
+        ));
+    }
+    if task.transient_retries >= MAX_TRANSIENT_RETRIES {
+        return Err(AppError::conflict("delivery retry limit reached"));
+    }
+    task.version = task
+        .version
+        .checked_add(1)
+        .filter(|v| *v <= MAX_SAFE_VERSION)
+        .ok_or_else(|| AppError::conflict("task version exhausted"))?;
+    task.transient_retries += 1;
+    task.runtime = RuntimeState::Queued;
+    task.waiting_reason = Some("queued_after_intervention".into());
+    Ok(())
+}
+
 pub fn reconcile_terminal(
     task: &mut LifecycleTask,
     terminal: &RuntimeTerminalObservation,
