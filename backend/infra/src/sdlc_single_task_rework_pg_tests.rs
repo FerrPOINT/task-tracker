@@ -409,6 +409,20 @@ impl ReworkFixture {
         )
         .await;
         self.assert_current(&started).await;
+        let output = if matches!(output, DeliveryResult::Architect { .. }) {
+            DeliveryResult::Architect {
+                design: crate::sdlc::configured_test_support::save_architect_plan(
+                    &self.repo,
+                    self.task,
+                    &producer,
+                    &started,
+                    &format!("rework:{index}:plan"),
+                )
+                .await,
+            }
+        } else {
+            output
+        };
         if let Some(previous) = &queued.result {
             assert_eq!(assignment.previous_result_id, Some(previous.result_id));
             let DeliveryInput::Delivery(actual) = self

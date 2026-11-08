@@ -27,6 +27,17 @@ Unselected ignored tests are not passes. Earlier failures retain their original
 results. Source qualification used no model calls; installation and live-agent
 acceptance remain open. The dated section below records the previous contract.
 
+Новые Architect proposal/Complete требуют сохранённую decomposition revision с
+точным hash и requirements binding даже до первого плана. Регрессия
+`decomposition_architect_requires_current_role_fence_and_requirements` проверяет
+отказ opaque/missing references без изменений состояния; успешные all-role,
+rework и critical fixtures сохраняют план через repository API. На исходниках
+`0ad2841c8820d3040ad0402b9b648290532f6d5e` пройдены девять адресных
+PostgreSQL-сценариев (Architect, все роли, Rework, ограничения Reviewer/Tester и
+четыре critical-сценария), полный backend-набор и Clippy с запретом warnings.
+Workspace rustfmt проверен отдельно. Временные QA-ресурсы убраны; вызовов модели
+не было. Установка и живая приёмка Analyst/Architect остаются отдельными gates.
+
 ## Native Retained Read Scope: Forward114
 
 Существующий тест требует свежую собственную disposable PostgreSQL DB без таблицы `projects`;

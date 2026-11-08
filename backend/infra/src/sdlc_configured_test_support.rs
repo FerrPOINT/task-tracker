@@ -1,5 +1,8 @@
 //! Synthetic Workflow receipt for downstream ledger tests, never live acceptance.
 use super::*;
+use domain::decomposition::{
+    DecompositionRepository, PlanContent, PlanSection, PlanSource, SavePlan,
+};
 use domain::sdlc_configured_cli::*;
 use domain::sdlc_discussion::{DiscussionRepository, PublishStageComment};
 use domain::sdlc_pm_draft::ReservePmDraft;
@@ -197,6 +200,71 @@ pub(super) async fn complete_pm(
     assert!(replay);
     assert_eq!(same, saved);
     saved
+}
+
+pub(super) async fn save_architect_plan(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    actor: &Principal,
+    running: &domain::sdlc_lifecycle::LifecycleReceipt,
+    key: &str,
+) -> domain::sdlc_lifecycle::ArtifactReceipt {
+    let read = repo.read_plan(task, actor).await.unwrap();
+    let source = read.current_source.unwrap();
+    let assignment = running.assignment.as_ref().unwrap();
+    assert_eq!(
+        source.requirements_revision,
+        running.task.routing.requirement_revision
+    );
+    assert_eq!(source.requirements_hash, running.task.routing.content_hash);
+    let (saved, replayed) = repo
+        .save_plan(
+            task,
+            actor,
+            SavePlan {
+                expected_revision: read.plan.map_or(0, |p| p.revision),
+                idempotency_key: key.into(),
+                reason: "Synthetic repository fixture plan".into(),
+                fence: Some(MachineFence {
+                    assignment_id: assignment.assignment_id,
+                    execution_id: assignment.execution_id,
+                    agent_id: assignment.agent_id,
+                    assignment_version: assignment.fencing_token,
+                }),
+                content: PlanContent {
+                    overview: "Implement the task within its existing components".into(),
+                    source: Some(PlanSource {
+                        analysis_result_id: assignment.previous_result_id,
+                        ..source
+                    }),
+                    sections: vec![PlanSection {
+                        id: Uuid::new_v4(),
+                        title: "Implement and verify".into(),
+                        description: "Update the existing task implementation".into(),
+                        criteria: "Verify success, denied access and retry behavior".into(),
+                        requirements: "The current task requirements".into(),
+                    }],
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(
+        json!(
+            repo.plan_revision(task, actor, saved.result.revision)
+                .await
+                .unwrap()
+        ),
+        json!(saved.result)
+    );
+    domain::sdlc_lifecycle::ArtifactReceipt {
+        reference: format!(
+            "/api/v1/issues/{task}/decomposition/revisions/{}",
+            saved.result.revision
+        ),
+        sha256: saved.result.content_sha256,
+    }
 }
 
 pub(super) async fn delivery_comment(

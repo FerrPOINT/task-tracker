@@ -101,6 +101,7 @@ struct Running {
     head: LifecycleReceipt,
     producer: Principal,
     evidence: domain::attachment_artifact::AttachmentArtifact,
+    result: DeliveryResult,
 }
 
 fn fence(head: &LifecycleReceipt) -> DeliveryFence {
@@ -239,24 +240,33 @@ async fn output(
         .unwrap()
         .unwrap()
         .artifact();
+    let result = match head.task.stage {
+        LifecycleStage::Analysis => DeliveryResult::Analyst {
+            analysis: evidence.receipt.clone(),
+        },
+        LifecycleStage::Architecture => DeliveryResult::Architect {
+            design: crate::sdlc::configured_test_support::save_architect_plan(
+                &f.repo,
+                task,
+                &producer,
+                &head,
+                "critical:architect-plan",
+            )
+            .await,
+        },
+        _ => panic!("fixture supports only its actual Analyst/Architect assignments"),
+    };
     Running {
         task,
         head,
         producer,
         evidence,
+        result,
     }
 }
 
 fn result(r: &Running) -> DeliveryResult {
-    match r.head.task.stage {
-        LifecycleStage::Analysis => DeliveryResult::Analyst {
-            analysis: r.evidence.receipt.clone(),
-        },
-        LifecycleStage::Architecture => DeliveryResult::Architect {
-            design: r.evidence.receipt.clone(),
-        },
-        _ => panic!("fixture supports only its actual Analyst/Architect assignments"),
-    }
+    r.result.clone()
 }
 
 fn completion_request(r: &Running) -> (SubmitDeliveryProposal, TerminalReceipt) {
