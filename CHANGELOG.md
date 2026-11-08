@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-11-07: Agent Stage Status: Source Qualified, Not Installed
+
+- Agents explicitly Start the current assignment as InProgress and finish it as
+  Completed. PM completion records immutable Draft/Completed; the application
+  reuses the existing atomic queue to hand off to Analysis/Ready on enabled
+  single-task projects. Delivery handoff retains native terminal verification;
+  final DevOps and rework-limit outcomes without handoff remain Completed.
+- No new autoAdvance flag or acceptance-only Analyst disablement is introduced:
+  Analysis/Ready is the ordinary result, and the Analyst may subsequently run.
+  Owner consent, authorization, fencing and historical readback remain enforced.
+- Forward114 permits a retained read inside a native write request without
+  escalating read authority or extending its clock. Status projections still
+  require both the original caller and task scope to be writable. Both published
+  migrations113 are preserved;114 is registered before115.
+- Composite qualification passes827 native backend tests,63 CLI tests,
+  24 selected PostgreSQL/HTTP scenarios, strict Clippy, Rustfmt and OpenAPI
+  generation. The targeted114 regression and combined PM handoff/readback pass
+  separately. All897 frontend tests and typecheck pass. Owned cleanup is verified;
+  earlier failures remain recorded, not relabeled.
+  Installation and live agent acceptance have NOT been performed; see
+  [qualification scope](docs/TESTING.md#agent-stage-status-2026-11-07).
+
 ## 2026-11-06: Workflow-Owned Phase Inventory
 
 - Accept nonempty Workflow phase inventories instead of prescribing three phases

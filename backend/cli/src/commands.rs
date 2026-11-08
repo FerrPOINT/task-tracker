@@ -225,10 +225,15 @@ pub enum SdlcCommand {
         #[arg(long)]
         task: Uuid,
     },
-    /// Explicit owner start after PM completion; never a PM completion side effect
+    /// Read or exactly replay accepted historical Analysis starts; not a new Backlog queue
     Start {
         #[command(subcommand)]
         command: StartCommand,
+    },
+    /// Explicitly begin work on the current assigned stage or read its saved operation
+    Stage {
+        #[command(subcommand)]
+        command: pm_commands::StageCommand,
     },
     /// Read the complete discussion or publish/reconcile an ordinary final comment
     Discussion {
@@ -242,13 +247,13 @@ pub enum SdlcCommand {
     },
     /// Read the current authoritative single-task assignment and lifecycle
     #[command(
-        after_long_help = "Read the current technical-role assignment, run binding and lease for a DeliveryFence.\nBefore proposing an Analyst or other technical result, read this receipt with your\nassigned credential. Take assignment_id, execution_id, fencing_token and lease_id\nfrom receipt.assignment, and expected_lease_version from receipt.lease.version.\nThis is not a configured-cli-v1 PM startup prerequisite: PM starts with\n`task-tracker sdlc context --task TASK_UUID` and its workflow_task_key, then reads\n`project-workflow --json step --task WORKFLOW_TASK_KEY`.\nDo not acquire a lease, rebind or borrow another token to make a denied read succeed;\nauthorization failures on required commands remain blockers."
+        after_long_help = "Read the current technical-role assignment, run binding and lease for a DeliveryFence.\nBefore proposing an Analyst or other technical result, read this receipt with your\nassigned credential. Take assignment_id, execution_id, fencing_token and lease_id\nfrom receipt.assignment, and expected_lease_version from receipt.lease.version.\nThis is not a configured-cli-v1 PM startup prerequisite: PM starts with\n`task-tracker sdlc context --task TASK_UUID` and its workflow_task_key, then reads\n`project-workflow --json step --task WORKFLOW_TASK_KEY`.\nUse `task-tracker sdlc stage start --task TASK_UUID --from-file -` with the exact\nassignment fence before business work or a Workflow report. This sets InProgress,\nnot a new stage. Delivery agents use this readback for their actual assignment\nand runtime binding. Do not acquire a lease, rebind or borrow another token\nto make a denied read succeed; authorization failures on required commands remain blockers."
     )]
     Lifecycle {
         #[arg(long)]
         task: Uuid,
     },
-    /// Propose a typed role result; only Fleet accepts it after runtime terminal
+    /// Complete current role work with a typed result; application advances after native terminal
     Result {
         #[command(subcommand)]
         command: pm_commands::DeliveryResultCommand,
@@ -275,7 +280,7 @@ pub enum SdlcCommand {
     },
     /// Read server-derived SDLC task context by canonical issue UUID
     #[command(
-        after_long_help = "For interaction_protocol=configured-cli-v1, start PM work with this context read.\nUse the returned workflow_task_key (SDLC-N), not the Tracker task UUID, with\n`project-workflow --json step --task WORKFLOW_TASK_KEY` in the configured environment.\nRead the real Workflow step before work; no native lifecycle read, lease or rebind\nis required for configured PM dialogue. requirement_revision=null is expected\nbefore the first saved requirements document: continue substantive brainstorming,\nthen publish a real working revision when enough product facts are known.\npermissions.can_answer and permissions.can_confirm describe owner-only actions.\nBoth may be false for the assigned PM; they do not prohibit publishing questions\nor requirements under the current assignment. PM service identity must never\nanswer or confirm as the owner. A real 403 on publication remains a blocker.\nDo not publish a placeholder just to remove an expected absence. Missing Workflow\nbinding or denied context/Workflow access remains a blocker; never invent IDs."
+        after_long_help = "For interaction_protocol=configured-cli-v1, read the exact current assignment here.\nUse the returned workflow_task_key (SDLC-N), not the Tracker task UUID, with\n`project-workflow --json step --task WORKFLOW_TASK_KEY` in the configured environment.\nAn initial Ready instruction read is not a start: use\n`task-tracker sdlc stage start --task TASK_UUID --from-file -` with the returned\nassignment fence before business work or a Workflow report. The agent sets\nInProgress and finally Completed; only the application changes stage and resets\nstatus to Ready for the next agent. No native lifecycle read, lease or rebind\nis required for configured PM dialogue. requirement_revision=null is expected\nbefore the first saved requirements document: continue substantive brainstorming,\nthen publish a real working revision when enough product facts are known.\npermissions.can_answer and permissions.can_confirm describe owner-only actions.\nBoth may be false for the assigned PM; they do not prohibit publishing questions\nor requirements under the current assignment. PM service identity must never\nanswer or confirm as the owner. A real 403 on publication remains a blocker.\nDo not publish a placeholder just to remove an expected absence. Missing Workflow\nbinding or denied context/Workflow access remains a blocker; never invent IDs."
     )]
     Context {
         #[arg(long)]
@@ -602,6 +607,7 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
             critical_commands::critical_blocker(api, command).await
         }
         SdlcCommand::Lifecycle { task } => api.get(&sdlc_path(task, "/lifecycle")).await,
+        SdlcCommand::Stage { command } => pm_commands::stage(api, command).await,
         SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
         SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,
         SdlcCommand::Confirmation { command } => pm_commands::confirmation(api, command).await,

@@ -180,11 +180,13 @@ pub fn validate_start(
     state: &domain::sdlc::TaskState,
     completion: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
 ) -> Result<(), AppError> {
-    if state.stage != domain::sdlc::Stage::Backlog
-        || state.status != Some(LifecycleStatus::Ready)
+    if state.stage != domain::sdlc::Stage::Draft
+        || state.status != Some(LifecycleStatus::Completed)
+        || completion.stage != domain::sdlc::Stage::Draft
+        || completion.status != LifecycleStatus::Completed
         || state.retained_fields.contains_key("lifecycle")
     {
-        return Err(AppError::conflict("initial approved Backlog required"));
+        return Err(AppError::conflict("initial completed Draft required"));
     }
     validate_start_binding(state, completion)
 }
@@ -204,8 +206,9 @@ fn validate_start_binding(
     if !state.configured_cli()
         || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
         || completion.interaction_protocol != domain::sdlc::InteractionProtocol::ConfiguredCliV1
-        || completion.stage != Stage::Backlog
-        || completion.status != LifecycleStatus::Ready
+        // This shared tuple check also reconstructs already-journaled historical starts.
+        || !matches!((completion.stage, completion.status),
+            (Stage::Draft, LifecycleStatus::Completed) | (Stage::Backlog, LifecycleStatus::Ready))
         || completion.next_pm_admission_state != "completed"
         || completion.task_id != state.task_id
         || completion.root_task_id != state.root_task_id
@@ -227,7 +230,7 @@ fn validate_start_binding(
         || consent.task_id != state.task_id
     {
         return Err(AppError::conflict(
-            "PM completion is not the current approved Backlog",
+            "PM completion differs from the approved business tuple",
         ));
     }
     Ok(())
@@ -624,6 +627,9 @@ pub fn canonical_projection(
     let object = next
         .as_object_mut()
         .ok_or_else(|| AppError::internal("canonical task object absent"))?;
+    if task.stage != LifecycleStage::Draft {
+        object.remove("draft_submode");
+    }
     object.insert(
         "stage".into(),
         serde_json::to_value(task.stage.canonical()).map_err(AppError::internal)?,
@@ -664,7 +670,7 @@ pub fn issue_mapping_keys(task: &LifecycleTask) -> Result<(String, String), AppE
 
 /// Apply only after the repository accepts the exact live fence and terminal run.
 pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Result<(), AppError> {
-    if task.status != LifecycleStatus::InProgress
+    if task.status != LifecycleStatus::Completed
         || task.runtime != RuntimeState::Running
         || task.cycle > MAX_REWORK_CYCLES
         || task.stage.role() != Some(result.role())
@@ -705,8 +711,8 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.transient_retries = 0;
     task.resume_chat_id = None;
     if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
-        // Keep the rejected stage; never silently mark a failed task completed.
-        task.status = LifecycleStatus::Ready;
+        // Work is completed, not approved; no handoff means no reset to Ready.
+        task.status = LifecycleStatus::Completed;
         task.waiting_reason = Some("rework_limit_reached".into());
         return Ok(());
     }

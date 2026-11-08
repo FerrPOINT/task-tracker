@@ -41,6 +41,8 @@ mod m20261103_0000112_configured_analysis_auto_start;
 mod m20261103_0000112_workspace_source_reference;
 mod m20261103_0000113_decomposition;
 mod m20261104_0000113_native_task_artifacts;
+mod m20261106_0000114_native_read_scope_attenuation;
+mod m20261107_0000115_agent_stage_status;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -156,6 +158,8 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261103_0000113_decomposition::Migration),
             Box::new(m20261103_0000112_configured_analysis_auto_start::Migration),
             Box::new(m20261104_0000113_native_task_artifacts::Migration),
+            Box::new(m20261106_0000114_native_read_scope_attenuation::Migration),
+            Box::new(m20261107_0000115_agent_stage_status::Migration),
         ]
     }
 }

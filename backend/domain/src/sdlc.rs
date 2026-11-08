@@ -675,6 +675,13 @@ impl TaskState {
         })
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
+        // Delivery authority comes from its current lifecycle, not retained PM history.
+        let assignment = self.assignment.as_ref().filter(|_| {
+            matches!(
+                self.stage,
+                Stage::Draft | Stage::Clarification | Stage::Backlog
+            )
+        });
         let can_answer = self.owner(actor)
             && self.clarifying()
             && self.current_confirmation().is_none()
@@ -695,7 +702,7 @@ impl TaskState {
                 .map(str::to_owned),
             expected_assignment_version: self
                 .configured_cli()
-                .then(|| self.assignment.as_ref().map(|a| a.version))
+                .then(|| assignment.map(|a| a.version))
                 .flatten(),
             content_hash: self
                 .configured_cli()
@@ -767,7 +774,7 @@ impl TaskState {
                     && self.current_confirmation().is_none()
                     && self.ready(),
             },
-            assignment: self.assignment.clone(),
+            assignment: assignment.cloned(),
         }
     }
 }
@@ -809,6 +816,28 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn start_stage(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_stage_status::StartStage,
+    ) -> Result<(crate::sdlc_stage_status::StageStartReceipt, bool), AppError> {
+        Err(AppError::Unavailable(
+            "agent stage start is unavailable".into(),
+        ))
+    }
+
+    async fn stage_start_operation(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: &str,
+    ) -> Result<crate::sdlc_stage_status::StageStartReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "agent stage start is unavailable".into(),
+        ))
+    }
+
     fn decomposition_repository(
         &self,
     ) -> Option<&dyn crate::decomposition::DecompositionRepository> {

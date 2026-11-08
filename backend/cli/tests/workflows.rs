@@ -420,6 +420,8 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
         (200, json!({"operation":"reservation"})),
         (200, json!({"operation":"result"})),
         (200, json!({"context":"plain-base"})),
+        (200, json!({"operation":"reservation"})),
+        (200, json!({"operation":"result"})),
     ])
     .await;
 
@@ -504,33 +506,48 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
     assert_eq!(invalid.status.code(), Some(2));
     assert_eq!(server.requests().len(), 10);
 
-    // Base rejects encoded path separators before credentials can be sent.
-    for args in [
-        vec![
-            "sdlc",
-            "analysis",
-            "reservation",
-            "operation",
-            "--task",
-            TASK,
-            "--key",
-            "lease key/1",
-        ],
-        vec![
-            "sdlc",
-            "analysis",
-            "result",
-            "operation",
-            "--task",
-            TASK,
-            "--key",
-            "result key/1",
-        ],
+    // Operation keys remain one opaque path segment, including encoded slashes.
+    for (args, path) in [
+        (
+            vec![
+                "sdlc",
+                "analysis",
+                "reservation",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                "lease key/1",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%2F1"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "analysis",
+                "result",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                "result key/1",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%2F1"),
+        ),
     ] {
-        let invalid = server.run(&args, None).await;
-        assert_eq!(invalid.status.code(), Some(1));
-        assert_eq!(server.requests().len(), 10);
+        let before = server.requests().len();
+        success(&server.run(&args, None).await);
+        let requests = server.requests();
+        assert_eq!(requests.len(), before + 1);
+        let last = requests.last().unwrap();
+        assert_eq!(last.method, "GET");
+        assert_eq!(last.path, path);
+        assert!(last.body.is_empty());
+        assert!(last.key.is_none());
     }
+    let requests = server.requests();
+    assert_eq!(requests.len(), 12);
+    assert!(requests.iter().all(|request| request.method == "GET"));
 }
 
 #[tokio::test]
@@ -543,6 +560,8 @@ async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_ne
                 "interaction_protocol=configured-cli-v1",
                 "workflow_task_key (SDLC-N), not the Tracker task UUID",
                 "project-workflow --json step --task WORKFLOW_TASK_KEY",
+                "task-tracker sdlc stage start --task TASK_UUID --from-file -",
+                "only the application changes stage and resets",
                 "requirement_revision=null is expected",
                 "permissions.can_answer and permissions.can_confirm describe owner-only actions",
                 "Both may be false for the assigned PM; they do not prohibit publishing questions",
@@ -562,6 +581,9 @@ async fn sdlc_configured_pm_discovery_help_preserves_error_boundaries_without_ne
                 "authorization failures on required commands remain blockers",
                 "current technical-role assignment, run binding and lease for a DeliveryFence",
                 "expected_lease_version from receipt.lease.version",
+                "task-tracker sdlc stage start --task TASK_UUID --from-file -",
+                "not a new stage",
+                "Delivery agents use this readback",
             ],
         ),
         (
@@ -1435,6 +1457,100 @@ async fn sdlc_lifecycle_and_accepted_result_reads_reject_invalid_uuids_before_ht
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
     }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_stage_start_preserves_typed_fences_and_reads_only_the_original_operation() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    for fence in [
+        json!({"kind":"pm","assignment_id":"22222222-2222-2222-2222-222222222222",
+            "execution_id":"33333333-3333-3333-3333-333333333333",
+            "agent_id":"44444444-4444-4444-4444-444444444444","assignment_version":2}),
+        json!({"kind":"delivery","assignment_id":"22222222-2222-2222-2222-222222222222",
+            "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":7,
+            "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":2}),
+    ] {
+        let command = json!({"fence":fence,"idempotency_key":"start-key 1"});
+        let typed: domain::sdlc_stage_status::StartStage =
+            serde_json::from_value(command.clone()).unwrap();
+        assert_eq!(serde_json::to_value(typed).unwrap(), command);
+        let receipt = json!({"task_id":TASK,"stage":"Draft","status":"InProgress",
+            "execution_id":command["fence"]["execution_id"],"idempotency_key":"start-key 1",
+            "started_at":"2026-11-07T10:00:00Z"});
+        let server = Server::start(vec![(201, receipt.clone()), (200, receipt)]).await;
+        success(
+            &server
+                .run(
+                    &["sdlc", "stage", "start", "--task", TASK, "--from-file", "-"],
+                    Some(&command.to_string()),
+                )
+                .await,
+        );
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "stage",
+                        "operation",
+                        "--task",
+                        TASK,
+                        "--key",
+                        "start-key 1",
+                    ],
+                    None,
+                )
+                .await,
+        );
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(
+            requests[0].path,
+            format!("/api/v1/issues/{TASK}/sdlc/stage-starts")
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+            command
+        );
+        assert_eq!(requests[1].method, "GET");
+        assert_eq!(
+            requests[1].path,
+            format!("/api/v1/issues/{TASK}/sdlc/stage-starts/operations/start-key%201")
+        );
+        assert!(requests[1].body.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn sdlc_stage_start_does_not_retry_or_fall_back_on_rejection() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    for status in [403, 409, 422, 503] {
+        let server = Server::start(vec![(
+            status,
+            json!({"error":{"code":"rejected","message":"start not accepted"}}),
+        )])
+        .await;
+        let output = server
+            .run(
+                &["sdlc", "stage", "start", "--task", TASK, "--from-file", "-"],
+                Some(r#"{"fence":{"kind":"pm"},"idempotency_key":"start"}"#),
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert_eq!(server.requests().len(), 1);
+        assert_eq!(server.requests()[0].method, "POST");
+    }
+    let server = Server::start(vec![]).await;
+    let output = server
+        .run(
+            &["sdlc", "stage", "start", "--task", TASK, "--from-file", "-"],
+            Some("{"),
+        )
+        .await;
+    assert!(!output.status.success());
     assert!(server.requests().is_empty());
 }
 

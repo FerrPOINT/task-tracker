@@ -108,7 +108,7 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
     let assignment = reserved.assignment.as_ref().unwrap();
     assert!(!f.repo.read_plan(f.task, &f.owner).await.unwrap().can_edit);
     assert!(!f.repo.read_plan(f.task, architect).await.unwrap().can_edit);
-    let running = f
+    let bound = f
         .repo
         .lifecycle_command(
             f.task,
@@ -159,6 +159,39 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
             }],
         },
     };
+    assert!(!f.repo.read_plan(f.task, architect).await.unwrap().can_edit);
+    assert!(matches!(
+        f.repo.save_plan(f.task, architect, command.clone()).await,
+        Err(AppError::Conflict(message))
+            if message == "Запись доступна только текущему работающему Architect"
+    ));
+    assert_eq!(
+        f.repo
+            .lifecycle_read(f.task, &f.reader)
+            .await
+            .unwrap()
+            .receipt,
+        bound
+    );
+    assert!(
+        f.repo
+            .read_plan(f.task, architect)
+            .await
+            .unwrap()
+            .plan
+            .is_none()
+    );
+    let (_, _, running) = start_delivery(
+        &f.repo,
+        f.task,
+        architect,
+        &bound,
+        &DeliveryResult::Architect {
+            design: artifact("synthetic-plan-before-start"),
+        },
+        "plan:start",
+    )
+    .await;
     assert!(
         f.repo
             .save_plan(f.task, &f.owner, command.clone())
@@ -254,6 +287,30 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
                 .is_err()
         );
     }
+    let mut newer = command.clone();
+    newer.expected_revision = 1;
+    newer.idempotency_key = "plan:second".into();
+    newer.reason = "Clarify the expected checks".into();
+    newer.content.sections[0]
+        .criteria
+        .push_str(" and reconnect");
+    f.repo
+        .save_plan(f.task, architect, newer.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        f.repo
+            .lifecycle_read(f.task, &f.reader)
+            .await
+            .unwrap()
+            .receipt,
+        running,
+        "saving a plan never advances task SDLC"
+    );
+    assert_eq!(
+        json!(f.repo.plan_revision(f.task, architect, 1).await.unwrap()),
+        json!(saved.result)
+    );
     crate::sdlc::configured_test_support::delivery_comment(
         &f.repo,
         f.task,
@@ -306,14 +363,30 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
         .submit_delivery_proposal(f.task, architect, proposal.clone())
         .await
         .unwrap();
-    let mut newer = command;
-    newer.expected_revision = 1;
-    newer.idempotency_key = "plan:second".into();
-    newer.reason = "Clarify the expected checks".into();
-    newer.content.sections[0]
-        .criteria
-        .push_str(" and reconnect");
-    f.repo.save_plan(f.task, architect, newer).await.unwrap();
+    newer.expected_revision = 2;
+    newer.idempotency_key = "plan:after-completed".into();
+    newer.content.overview.push_str(" too late");
+    assert!(matches!(
+        f.repo.save_plan(f.task, architect, newer).await,
+        Err(AppError::Conflict(message))
+            if message == "Запись доступна только текущему работающему Architect"
+    ));
+    let (replayed_plan, replayed) = f.repo.save_plan(f.task, architect, command).await.unwrap();
+    assert!(replayed);
+    assert_eq!(json!(replayed_plan), json!(saved));
+    assert_eq!(
+        f.repo
+            .read_plan(f.task, architect)
+            .await
+            .unwrap()
+            .plan
+            .unwrap()
+            .revision,
+        2
+    );
+    let mut completed = running;
+    completed.task.status = LifecycleStatus::Completed;
+    completed.task.version += 1;
     assert_eq!(
         json!(
             f.repo
@@ -338,7 +411,7 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
             .await
             .unwrap()
             .receipt,
-        running,
-        "saving a plan never advances task SDLC"
+        completed,
+        "proposal records Completed but does not hand off the stage"
     );
 }

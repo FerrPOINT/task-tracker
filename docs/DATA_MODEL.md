@@ -1,5 +1,7 @@
 # Дата-модель Task Tracker
 
+## Встроенная Декомпозиция
+
 Migration 0113 добавляет `issue_plan_revisions` и `issue_plan_operations`.
 План принадлежит `issues.id`; текущая редакция — максимальная revision.
 Сохранение сериализуется блокировкой исходной задачи. Content содержит общую
@@ -13,17 +15,38 @@ delivery/source-selection ledgers. Design ArtifactReceipt ссылается н�
 Автор/имя фиксируются снимком; удаление учётной записи не удаляет историю плана.
 [Контракт, API и CLI](contracts/task-decomposition.md).
 
-Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
-Accepted PM completion atomically queues Analysis in enabled single-task projects;
-its immutable receipt remains historical Backlog/Ready. Forward112 preserves
-existing rows and binds automatic queue authority to the completion transaction.
-No new public DTO, user confirmation or source-registry table is introduced.
+## Статус И Стадия
+
+Stage и status — разные поля. Целевые переходы: агент Ready→InProgress→Completed
+в рамках своего назначения; затем приложение переводит stage и атомарно
+устанавливает Ready для следующего назначения. Финальный Completed сохраняется.
+Сохранённое завершение относится ровно к исходной стадии/назначению; replay не
+завершает следующую стадию. Прежние записи и применённые миграции сохраняются,
+новые guards вводятся forward-миграцией только при доказанной необходимости.
+Эта цель ещё не считается установленной; фактические gaps описаны в архитектуре.
+
+Новый PM receipt относится к Draft/Completed; приложение сохраняет отдельную
+Analysis/Ready queue. Assignment/lease/binding нового delivery до резервирования
+отсутствуют; старый PM receipt не становится текущим назначением Analyst.
+Rework limit без handoff и финальный DevOps сохраняют Completed.
+
+Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
+Его forward112 связывает autoqueue с completion-транзакцией; сохранённые
+Backlog/Ready receipts не переписываются. Это не второй handoff нового status-пакета.
+Autoqueue не вводит новый public DTO, owner confirmation или source registry.
 
 Forward113 (`native_task_artifacts`) сохраняет guarded native context при
 публикации артефактов. Транзакционный port связывает INSERT с точной sealed
 metadata текущей роли; задача, автор, ACL, admission и исходный clock проверяются
 повторно на COMMIT. Сохранение native комментария использует ту же границу
 задачи/автора. Новых таблиц источников и изменений исторических миграций нет.
+
+Forward114 (`native_read_scope_attenuation`) меняет только два SQL guard:
+retained read может сузить write-caller с прежними identity/validity, но не
+получить write или продлить clock. Status projection требует writable у обоих.
+114 зарегистрирована перед115; обе опубликованные113 (`decomposition` и
+`native_task_artifacts`) сохранены под исходными полными именами. Таблицы,
+данные и bytes применённых миграций не переписываются.
 
 Workspace reference добавлен в существующие JSON receipts source policy,
 verification и task binding как optional `development_workspace_id`. Отсутствие

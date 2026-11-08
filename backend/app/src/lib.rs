@@ -24,6 +24,7 @@ pub mod sdlc_metadata;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
 pub mod sdlc_source;
+pub mod sdlc_stage_status;
 pub mod sdlc_workflow_receipt;
 pub mod services;
 pub mod space_access;

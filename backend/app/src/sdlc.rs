@@ -517,6 +517,13 @@ pub fn authorize(
                 }
             } else {
                 authorize_configured_pm(state, actor)?;
+                if state.configured_cli()
+                    && state.status != Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
+                {
+                    return Err(AppError::conflict(
+                        "PM must explicitly start the current stage",
+                    ));
+                }
             }
             Ok(())
         }
@@ -587,6 +594,12 @@ pub(crate) fn analysis_intent_payload(
         .ok_or_else(|| AppError::conflict("requirements absent"))?;
     if intent_id.is_nil()
         || confirmation.id.is_nil()
+        || confirmation.stage
+            != if state.configured_cli() {
+                Stage::Draft
+            } else {
+                Stage::Backlog
+            }
         || confirmation.task_id != state.task_id
         || confirmation.owner_subject != state.owner_subject
         || confirmation.revision != revision.revision
@@ -962,7 +975,7 @@ pub fn apply(
         }
     };
     let result = result.map_err(AppError::internal)?;
-    if state.status.is_some() {
+    if state.status.is_some() && !state.configured_cli() {
         use domain::sdlc_lifecycle::LifecycleStatus;
         match command {
             SdlcCommand::PublishRevision(_)
@@ -982,12 +995,8 @@ pub fn apply(
                 );
             }
             SdlcCommand::Confirm { .. } => {
-                if state.configured_cli() {
-                    state.status = Some(LifecycleStatus::InProgress);
-                } else {
-                    state.status = Some(LifecycleStatus::Ready);
-                    state.draft_submode = None;
-                }
+                state.status = Some(LifecycleStatus::Ready);
+                state.draft_submode = None;
             }
             SdlcCommand::Evidence(_) => {}
         }

@@ -1,5 +1,7 @@
 //! Existing PostgreSQL owner ledgers; Fleet/Workflow observations below are explicitly synthetic.
 use super::*;
+#[path = "sdlc_agent_stage_status_pg_tests.rs"]
+mod agent_stage_status_tests;
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
 #[path = "sdlc_configured_cli_pg_tests.rs"]
@@ -172,7 +174,7 @@ impl Fixture {
     }
 
     async fn confirmed(&self, key: &str, completed: bool) -> Uuid {
-        self.confirmed_with_rollout(key, completed, false).await
+        self.confirmed_with_rollout(key, completed, true).await
     }
 
     async fn confirmed_with_rollout(&self, key: &str, completed: bool, automatic: bool) -> Uuid {
@@ -181,8 +183,8 @@ impl Fixture {
             "goal":"Candidate fixture","scope":["scope"],"exclusions":[],
             "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],
             "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]}));
-        // Draft intake and confirmation require rollout. Disable only the completion
-        // producer in retained PM-only/manual-start fixtures, never their preparation.
+        // Current completion requires rollout and atomically queues Analysis.
+        // The explicit false branch is not a historical-schema writer.
         let (reservation, _) = crate::sdlc::configured_test_support::confirmed_pm(
             &self.repo,
             task,
@@ -251,7 +253,21 @@ impl Fixture {
 
     async fn queued_analysis(&self, key: &str, completed: bool) -> Uuid {
         let task = self.confirmed(key, completed).await;
-        seed_analysis_fixture(&self.db, task, &self.owner).await;
+        let receipt = self
+            .repo
+            .lifecycle_read(task, &self.reader)
+            .await
+            .unwrap()
+            .receipt;
+        assert_eq!(receipt.task.stage, LifecycleStage::Analysis);
+        assert_eq!(receipt.task.status, LifecycleStatus::Ready);
+        assert_eq!(receipt.task.runtime, RuntimeState::Queued);
+        assert!(
+            receipt.assignment.is_none() && receipt.lease.is_none() && receipt.binding.is_none()
+        );
+        let intent = self.repo.analysis_intent(task, &self.owner).await.unwrap();
+        assert_eq!(intent.confirmation_id, receipt.task.routing.confirmation_id);
+        assert_eq!(intent.content_hash, receipt.task.routing.content_hash);
         task
     }
 
@@ -271,37 +287,36 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
-async fn pm_publication_stops_at_backlog_without_analysis_on_confirmation_completion_or_replay() {
+async fn pm_completion_queues_analysis_once_and_readback_does_not_dispatch() {
     let f = Fixture::new().await;
-    let task = f.confirmed("backlog-only", true).await;
-    f.assert_backlog_without_analysis(task).await;
+    let task = f.queued_analysis("completed-pm", true).await;
     let completion = f
         .repo
         .configured_pm_completion(task, &f.reader, None)
         .await
         .unwrap();
-    assert!(completion.is_some());
+    let completion = completion.unwrap();
+    assert_eq!(completion.result.stage, Stage::Draft);
+    assert_eq!(completion.result.status, LifecycleStatus::Completed);
     let before = f.snapshot().await;
-    assert!(
-        f.repo
-            .read_delivery_candidates(&f.reader, f.query(None, 100))
-            .await
-            .unwrap()
-            .items
-            .is_empty()
+    let page = f
+        .repo
+        .read_delivery_candidates(&f.reader, f.query(None, 100))
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].task_id, task);
+    assert_eq!(
+        page.items[0].next_operation,
+        domain::sdlc_candidates::CandidateOperation::Reserve
     );
-    assert!(matches!(
-        f.repo
-            .lifecycle_command(
-                task,
-                &f.writer,
-                LifecycleCommand::EnsureQueued {
-                    idempotency_key: "must-not-queue-analysis".into()
-                }
-            )
-            .await,
-        Err(AppError::Conflict(_))
-    ));
+    let reread = f
+        .repo
+        .configured_pm_completion(task, &f.reader, None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(json!(reread), json!(completion));
     assert_eq!(f.snapshot().await, before);
 }
 
@@ -318,8 +333,7 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
     f.draft("legacy", None).await;
     expected.sort();
     let before = f.snapshot().await;
-    // Current CLI assignments do not opt into the legacy auto-dispatcher,
-    // even when a standalone technical test imports a queued snapshot.
+    // Discovery exposes the completed PM handoff, without assigning or dispatching.
     for after in std::iter::once(None).chain(expected.iter().copied().map(Some)) {
         for limit in [1, 2, 100] {
             let page = f
@@ -330,8 +344,30 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
             assert_eq!(page.contract_version, 1);
             assert_eq!(page.tracker_instance_id, "candidates-test");
             assert_eq!(page.project_id, f.project);
-            assert!(page.items.is_empty());
-            assert_eq!(page.next_cursor, None);
+            let remaining: Vec<_> = expected
+                .iter()
+                .copied()
+                .filter(|id| after.is_none_or(|cursor| *id > cursor))
+                .collect();
+            let visible: Vec<_> = remaining.iter().copied().take(usize::from(limit)).collect();
+            assert_eq!(
+                page.items
+                    .iter()
+                    .map(|item| item.task_id)
+                    .collect::<Vec<_>>(),
+                visible
+            );
+            assert!(page.items.iter().all(|item| item.next_operation
+                == domain::sdlc_candidates::CandidateOperation::Reserve
+                && item.task_version == Some(1)));
+            assert_eq!(
+                page.next_cursor,
+                if remaining.len() > usize::from(limit) {
+                    visible.last().copied()
+                } else {
+                    None
+                }
+            );
         }
     }
     assert_eq!(f.snapshot().await, before);
@@ -375,32 +411,27 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
     ));
     f.repo.config.single_task_project_ids = enabled_projects;
     let task = expected[0];
-    let machine_subject = f
+    let producer = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
+    let machine_subject = producer.subject;
+    let queued = f
         .repo
-        .read(task, &f.owner)
+        .lifecycle_read(task, &f.reader)
         .await
         .unwrap()
-        .assignment
-        .unwrap()
-        .machine_subject;
-    let (queued, _) = f
-        .repo
-        .lifecycle_command(
-            task,
-            &f.writer,
-            LifecycleCommand::EnsureQueued {
-                idempotency_key: "queue".into(),
-            },
-        )
-        .await
-        .unwrap();
+        .receipt;
     let before = f.snapshot().await;
     let page = f
         .repo
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    assert!(page.items.is_empty());
+    assert_eq!(
+        page.items
+            .iter()
+            .map(|item| item.task_id)
+            .collect::<Vec<_>>(),
+        expected
+    );
     assert_eq!(page.next_cursor, None);
     assert_eq!(f.snapshot().await, before);
     assert!(
@@ -437,7 +468,13 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
         .read_delivery_candidates(&f.reader, f.query(None, 100))
         .await
         .unwrap();
-    assert!(page.items.is_empty());
+    assert_eq!(
+        page.items
+            .iter()
+            .map(|item| item.task_id)
+            .collect::<Vec<_>>(),
+        expected[1..]
+    );
     assert_eq!(page.next_cursor, None);
     let state = f.repo.read(expected[1], &f.owner).await.unwrap();
     let snapshot = f

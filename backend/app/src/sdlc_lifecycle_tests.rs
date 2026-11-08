@@ -209,6 +209,12 @@ fn running(task: &mut LifecycleTask) {
     task.runtime = RuntimeState::Running;
 }
 
+// Synthetic state after the agent's accepted proposal, before native settlement.
+fn proposed(task: &mut LifecycleTask) {
+    running(task);
+    task.status = LifecycleStatus::Completed;
+}
+
 #[test]
 fn one_task_traverses_all_six_delivery_roles_and_completes_only_after_devops() {
     let mut state = task();
@@ -251,7 +257,7 @@ fn one_task_traverses_all_six_delivery_roles_and_completes_only_after_devops() {
         ),
     ];
     for (i, (output, next)) in outcomes.iter().enumerate() {
-        running(&mut state);
+        proposed(&mut state);
         accept_result(&mut state, output).unwrap();
         assert_eq!(state.task_id, original_id);
         assert_eq!(state.routing, snapshot);
@@ -287,15 +293,15 @@ fn review_and_testing_rework_both_return_to_developer_then_repeat_review_and_tes
         };
         for cycle in 1..=MAX_REWORK_CYCLES {
             state.stage = source;
-            running(&mut state);
+            proposed(&mut state);
             accept_result(&mut state, &rejected).unwrap();
             assert_eq!(state.stage, LifecycleStage::Rework);
             assert_eq!(state.stage.role(), Some(DeliveryRole::Developer));
             assert_eq!(state.cycle, cycle);
-            running(&mut state);
+            proposed(&mut state);
             accept_result(&mut state, &developer()).unwrap();
             assert_eq!(state.stage, LifecycleStage::Review);
-            running(&mut state);
+            proposed(&mut state);
             accept_result(
                 &mut state,
                 &DeliveryResult::Reviewer {
@@ -307,11 +313,11 @@ fn review_and_testing_rework_both_return_to_developer_then_repeat_review_and_tes
             assert_eq!(state.stage, LifecycleStage::Testing);
         }
         state.stage = source;
-        running(&mut state);
+        proposed(&mut state);
         accept_result(&mut state, &rejected).unwrap();
         assert_eq!(state.stage, source);
         assert_eq!(state.cycle, 3);
-        assert_eq!(state.status, LifecycleStatus::Ready);
+        assert_eq!(state.status, LifecycleStatus::Completed);
         assert_eq!(state.runtime, RuntimeState::Terminal);
         assert_eq!(
             state.waiting_reason.as_deref(),
@@ -321,9 +327,25 @@ fn review_and_testing_rework_both_return_to_developer_then_repeat_review_and_tes
 }
 
 #[test]
+fn in_progress_stage_cannot_accept_terminal_result_before_proposal() {
+    let mut state = task();
+    running(&mut state);
+    let before = state.clone();
+    let output = DeliveryResult::Analyst {
+        analysis: artifact("analysis"),
+    };
+    assert!(matches!(
+        accept_result(&mut state, &output),
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(state, before);
+}
+
+#[test]
 fn wrong_role_reserved_run_and_exhausted_version_cannot_mutate_state() {
     for variant in 0..3 {
         let mut state = task();
+        proposed(&mut state);
         let output = if variant == 0 {
             developer()
         } else {

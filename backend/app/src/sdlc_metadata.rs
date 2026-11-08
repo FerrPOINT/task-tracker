@@ -141,8 +141,12 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                     && receipt.project_id == source.project_id
                     && receipt.owner_subject == source.owner_subject
                     && receipt.tracker_instance_id == source.tracker_instance_id
-                    && receipt.stage == Stage::Backlog
-                    && receipt.status == domain::sdlc_lifecycle::LifecycleStatus::Ready
+                    && source.stage == receipt.stage
+                    && ((receipt.stage == Stage::Backlog
+                        && receipt.status == domain::sdlc_lifecycle::LifecycleStatus::Ready)
+                        || (receipt.stage == Stage::Draft
+                            && receipt.status
+                                == domain::sdlc_lifecycle::LifecycleStatus::Completed))
                     && source.requirement_revision == Some(receipt.requirement_revision)
                     && canonical_hash(&receipt.workflow_receipt)
                         .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
@@ -729,6 +733,150 @@ mod tests {
             input: None,
             question: None,
             requirement_hash: None,
+        }
+    }
+
+    fn configured_pm_completion(stage: Stage) -> OutboxEvent {
+        let mut event = source(1, "owner");
+        let assignment = Uuid::from_u128(31);
+        let execution = Uuid::from_u128(32);
+        let agent = Uuid::from_u128(33);
+        let confirmation = Uuid::from_u128(34);
+        let workflow: domain::sdlc_configured_cli::ConfiguredWorkflowReceipt =
+            serde_json::from_value(json!({"interaction_protocol":"configured-cli-v1",
+                "execution_ref":Uuid::from_u128(35),"task":"SDLC-1","tracker_task_id":event.task_id,
+                "namespace_id":2,"concrete_agent_ref":agent,"assignment_ref":assignment,
+                "tracker_execution_id":execution,"assignment_version":1,
+                "machine_subject":Uuid::from_u128(36).to_string(),"operation_key":"workflow-final",
+                "request_sha256":"b".repeat(64),"result_version":4,
+                "requirements_revision":1,"requirements_sha256":"a".repeat(64),
+                "owner_subject":"owner","confirmation_id":confirmation,"history_id":17,"status":"done"}))
+                .unwrap();
+        let receipt = domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt {
+            interaction_protocol: InteractionProtocol::ConfiguredCliV1,
+            completion_id: event.event_id,
+            tracker_instance_id: "test".into(),
+            project_id: Uuid::from_u128(2),
+            task_id: event.task_id,
+            root_task_id: event.task_id,
+            owner_subject: "owner".into(),
+            fence: MachineFence {
+                assignment_id: assignment,
+                execution_id: execution,
+                agent_id: agent,
+                assignment_version: 1,
+            },
+            owner_version: 1,
+            requirement_revision: 1,
+            content_hash: "a".repeat(64),
+            confirmation_id: confirmation,
+            workflow_receipt_sha256: canonical_hash(&workflow).unwrap(),
+            workflow_receipt: workflow,
+            status: if stage == Stage::Backlog {
+                domain::sdlc_lifecycle::LifecycleStatus::Ready
+            } else {
+                domain::sdlc_lifecycle::LifecycleStatus::Completed
+            },
+            stage,
+            previous_pm_admission_state: "reserved".into(),
+            next_pm_admission_state: "completed".into(),
+            idempotency_key: "pm-final".into(),
+            created_at: event.created_at,
+        };
+        event.event_type = "pm.completed".into();
+        event.payload["interaction_protocol"] = json!("configured-cli-v1");
+        event.payload["stage"] = json!(stage);
+        event.payload["requirement_revision"] = json!(1);
+        event.payload["result"] = json!(receipt);
+        event
+    }
+
+    fn completion_refs() -> MetadataReferences {
+        MetadataReferences {
+            requirement_hash: Some("a".repeat(64)),
+            ..refs()
+        }
+    }
+
+    #[test]
+    fn configured_pm_metadata_reads_old_and_current_terminal_pairs_without_rewriting_history() {
+        for stage in [Stage::Backlog, Stage::Draft] {
+            let event = configured_pm_completion(stage);
+            let before = json!(event);
+            let projected = value(project(&event, completion_refs()).unwrap()).unwrap();
+            assert_eq!(projected["payload"]["stage"], json!(stage));
+            assert_eq!(
+                projected["payload"]["resource"]["completion_id"],
+                json!(event.event_id)
+            );
+            assert_eq!(
+                projected["payload"]["resource"]["content_hash"],
+                json!("a".repeat(64))
+            );
+            assert_eq!(json!(event), before);
+        }
+    }
+
+    #[test]
+    fn configured_pm_metadata_rejects_mixed_pairs_and_source_stage_mismatches() {
+        for stage in [Stage::Backlog, Stage::Draft] {
+            let event = configured_pm_completion(stage);
+            for status in ["Ready", "InProgress", "Completed"] {
+                if event.payload["result"]["status"] == status {
+                    continue;
+                }
+                let mut bad = event.clone();
+                bad.payload["result"]["status"] = json!(status);
+                assert!(matches!(
+                    project(&bad, completion_refs()),
+                    Err(MetadataErrorCode::MetadataSourceInvalid)
+                ));
+            }
+            for source_stage in [Stage::Draft, Stage::Backlog, Stage::Analysis] {
+                if source_stage == stage {
+                    continue;
+                }
+                let mut bad = event.clone();
+                bad.payload["stage"] = json!(source_stage);
+                assert!(matches!(
+                    project(&bad, completion_refs()),
+                    Err(MetadataErrorCode::MetadataSourceInvalid)
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn configured_pm_metadata_keeps_identity_revision_and_receipt_hash_guards_for_both_pairs() {
+        for stage in [Stage::Backlog, Stage::Draft] {
+            let event = configured_pm_completion(stage);
+            for (field, changed) in [
+                ("completion_id", json!(Uuid::from_u128(90))),
+                ("task_id", json!(Uuid::from_u128(91))),
+                ("root_task_id", json!(Uuid::from_u128(92))),
+                ("project_id", json!(Uuid::from_u128(93))),
+                ("owner_subject", json!("foreign")),
+                ("tracker_instance_id", json!("foreign")),
+                ("requirement_revision", json!(2)),
+                ("content_hash", json!("c".repeat(64))),
+                ("workflow_receipt_sha256", json!("d".repeat(64))),
+            ] {
+                let mut bad = event.clone();
+                bad.payload["result"][field] = changed;
+                assert!(
+                    matches!(
+                        project(&bad, completion_refs()),
+                        Err(MetadataErrorCode::MetadataSourceInvalid)
+                    ),
+                    "{field}"
+                );
+            }
+            let mut bad = event;
+            bad.payload["result"]["workflow_receipt"]["operation_key"] = json!("different-final");
+            assert!(matches!(
+                project(&bad, completion_refs()),
+                Err(MetadataErrorCode::MetadataSourceInvalid)
+            ));
         }
     }
 

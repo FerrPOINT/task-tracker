@@ -91,6 +91,23 @@ pub fn validate_completion(
     command: &CompleteConfiguredPm,
 ) -> Result<(), AppError> {
     authorize_configured_pm(state, actor)?;
+    if state.stage != Stage::Draft
+        || state.status != Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
+    {
+        return Err(AppError::conflict(
+            "new PM completion requires Draft InProgress",
+        ));
+    }
+    validate_completion_tuple(state, actor, command)
+}
+
+// Also checks the exact tuple after Completed was persisted within the same commit.
+pub(crate) fn validate_completion_tuple(
+    state: &TaskState,
+    actor: &Principal,
+    command: &CompleteConfiguredPm,
+) -> Result<(), AppError> {
+    authorize_configured_pm(state, actor)?;
     crate::sdlc::validate_key(&command.idempotency_key)?;
     crate::sdlc::validate_key(&command.workflow_operation_key)?;
     let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
@@ -102,11 +119,8 @@ pub fn validate_completion(
         .current_confirmation()
         .ok_or_else(|| AppError::conflict("exact owner confirmation required"))?;
     crate::sdlc::validate_document(&revision.document)?;
-    if !((state.stage == Stage::Draft
-        && state.status == Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
-        && state.ready())
-        || (state.stage == Stage::Backlog
-            && state.status == Some(domain::sdlc_lifecycle::LifecycleStatus::Ready)))
+    if state.stage != Stage::Draft
+        || !state.ready()
         || command.fence.assignment_id != assignment.assignment_id
         || command.fence.execution_id != assignment.execution_id
         || command.fence.agent_id != assignment.agent_id
@@ -198,8 +212,8 @@ pub fn completion_result(
             .ok_or_else(|| AppError::conflict("PM confirmation absent"))?,
         workflow_receipt: receipt,
         workflow_receipt_sha256,
-        stage: Stage::Backlog,
-        status: domain::sdlc_lifecycle::LifecycleStatus::Ready,
+        stage: Stage::Draft,
+        status: domain::sdlc_lifecycle::LifecycleStatus::Completed,
         previous_pm_admission_state: "reserved".into(),
         next_pm_admission_state: "completed".into(),
         idempotency_key: command.idempotency_key.clone(),
@@ -269,6 +283,10 @@ impl crate::sdlc::SdlcService {
             .configured_pm_completion(task, actor, Some(&command.idempotency_key))
             .await?
         {
+            authorize_configured_identity(actor)?;
+            if actor.subject != saved.result.workflow_receipt.machine_subject {
+                return Err(AppError::Forbidden);
+            }
             if saved.request_sha256 != hash {
                 return Err(AppError::conflict("PM completion key payload conflict"));
             }
@@ -281,11 +299,6 @@ impl crate::sdlc::SdlcService {
                 .await;
         }
         validate_completion(&state, actor, &command)?;
-        if state.stage != Stage::Draft {
-            return Err(AppError::conflict(
-                "configured completion requires confirmed Draft",
-            ));
-        }
         let reader = self.configured_workflow.as_ref().ok_or_else(|| {
             AppError::Unavailable("Workflow receipt reader is not configured".into())
         })?;
@@ -488,6 +501,19 @@ mod tests {
     #[test]
     fn configured_question_and_revision_keep_business_fence_and_owner_confirmation() {
         let (mut state, actor, config, fence) = fixture();
+        state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+        let start = crate::sdlc_stage_status::prepare_stage_start(
+            &state,
+            &actor,
+            &domain::sdlc_stage_status::StartStage {
+                fence: domain::sdlc_stage_status::StageStartFence::Pm(fence.clone()),
+                idempotency_key: "start".into(),
+            },
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+        state.status = Some(start.status);
         let revision: PublishRevision = serde_json::from_value(json!({
             "fence":fence,"expected_requirement_revision":null,"idempotency_key":"revision",
             "document":{"goal":"A goal","scope":["scope"],"exclusions":[],"constraints":[],"dependencies":[],"assumptions":[],"scenarios":["scenario"],

@@ -95,6 +95,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_discussion::publish,
         routes::sdlc_discussion::operation,
         routes::sdlc_delivery::current,
+        routes::sdlc_delivery::start_stage,
+        routes::sdlc_delivery::stage_start_operation,
         routes::sdlc_delivery::command,
         routes::sdlc_delivery::operation,
         routes::sdlc_delivery::result,

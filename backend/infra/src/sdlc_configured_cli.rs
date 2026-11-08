@@ -23,10 +23,14 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         completion: Option<Uuid>,
     ) -> Result<(), AppError> {
-        tx.query_one(statement("SELECT completion_id FROM sdlc_configured_pm_completions
-            WHERE task_id=$1 AND actor_subject=$2 AND ($3::uuid IS NULL OR completion_id=$3) LIMIT 1",
-            vec![task.into(),actor.subject.clone().into(),completion.into()])).await.map_err(map_db)?
-            .ok_or(AppError::Forbidden)?;
+        tx.query_one(statement(
+            "SELECT completion_id FROM sdlc_configured_pm_completions WHERE task_id=$1
+             AND actor_subject=$2 AND ($3::uuid IS NULL OR completion_id=$3) LIMIT 1",
+            vec![task.into(), actor.subject.clone().into(), completion.into()],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or(AppError::Forbidden)?;
         Ok(())
     }
 
@@ -57,7 +61,7 @@ impl PostgresSdlcRepository {
         let assignment = &reservation.assignment;
         let saved_state =
             app::sdlc_configured_cli::completion_history_state(state, assignment, &command)?;
-        let expected = app::sdlc_configured_cli::completion_result(
+        let mut expected = app::sdlc_configured_cli::completion_result(
             &saved_state,
             &command,
             workflow,
@@ -65,6 +69,13 @@ impl PostgresSdlcRepository {
             row.try_get("", "completion_id").map_err(map_db)?,
             row.try_get("", "created_at").map_err(map_db)?,
         )?;
+        // Historical receipts retain their original terminal projection, never a new execution path.
+        if result.stage == Stage::Backlog
+            && result.status == domain::sdlc_lifecycle::LifecycleStatus::Ready
+        {
+            expected.stage = result.stage;
+            expected.status = result.status;
+        }
         let hash: String = row.try_get("", "payload_hash").map_err(map_db)?;
         let saved_key: String = row.try_get("", "idempotency_key").map_err(map_db)?;
         if result != expected
@@ -137,6 +148,15 @@ impl PostgresSdlcRepository {
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         app::sdlc_configured_cli::validate_completion(&state, actor, &command)?;
         app::sdlc_configured_cli::validate_receipt(&state, &command, &receipt)?;
+        if !self
+            .config
+            .single_task_project_ids
+            .contains(&state.project_id)
+        {
+            return Err(AppError::Unavailable(
+                "single_task_lifecycle_project_not_enabled".into(),
+            ));
+        }
         let confirmation = state
             .current_confirmation()
             .ok_or_else(|| AppError::conflict("owner confirmation missing"))?;
@@ -158,6 +178,7 @@ impl PostgresSdlcRepository {
             .ok_or_else(|| AppError::conflict("PM cursor absent"))?;
         let version: i64 = row.try_get("", "pm_owner_version").map_err(map_db)?;
         if state.stage != Stage::Draft
+            || state.status != Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
             || row
                 .try_get::<Option<String>>("", "pm_admission_state")
                 .map_err(map_db)?
@@ -196,42 +217,25 @@ impl PostgresSdlcRepository {
             vec![result.completion_id.into(),task.into(),assignment.execution_id.into(),confirmation.id.into(),command.requirement_revision.into(),
                 command.content_hash.clone().into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),
                 json_value(&command)?,json_value(&result.workflow_receipt)?,json_value(&result)?,now.into()]).await?;
+        let completed = Self::record_pm_stage_completed(&tx, &state, actor).await?;
         if !self
-            .finalize_configured_critical_pm_review(&tx, &state, actor, &command, &result)
+            .finalize_configured_critical_pm_review(&tx, &completed, actor, &command, &result)
             .await?
         {
-            let mut next = state.clone();
-            next.stage = Stage::Backlog;
-            next.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
-            next.draft_submode = None;
-            let next_state = json_value(&next)?;
+            // Critical review retains reserved custody until its journal; ordinary start reads completed custody.
             exec(
                 &tx,
-                "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
-            VALUES($1,pg_current_xact_id(),$2)",
-                vec![task.into(), next_state.clone()],
+                "UPDATE sdlc_tasks SET pm_admission_state='completed' WHERE task_id=$1",
+                vec![task.into()],
             )
             .await?;
-            exec(
-                &tx,
-                "UPDATE sdlc_tasks SET state=$2,pm_admission_state='completed' WHERE task_id=$1",
-                vec![task.into(), next_state],
-            )
-            .await?;
-            let status_id = lifecycle::mapped_issue_status(
-                &tx,
-                Stage::Backlog,
-                domain::sdlc_lifecycle::LifecycleStatus::Ready,
-            )
-            .await?;
-            lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
             self.auto_start_configured_analysis(&tx, task, actor, &result)
                 .await?;
         }
         exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'pm.completed',$3)",
             vec![result.completion_id.into(),task.into(),json!({"contract_version":1,"interaction_protocol":"configured-cli-v1",
                 "tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
-                "owner_subject":state.owner_subject,"stage":"Backlog","requirement_revision":command.requirement_revision,"result":result}).into()]).await?;
+                "owner_subject":state.owner_subject,"stage":"Draft","requirement_revision":command.requirement_revision,"result":result}).into()]).await?;
         tx.commit().await.map_err(map_db)?;
         Ok((result, false))
     }

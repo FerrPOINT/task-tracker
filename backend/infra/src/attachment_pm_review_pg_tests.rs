@@ -158,18 +158,35 @@ pub(super) async fn check(
     exec(&f.db,"INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at)
         SELECT $1,issue_id,author_id,'ordinary.txt','text/plain',1,'ordinary-private-file',created_at FROM attachments WHERE id=$2",
         vec![ordinary.into(),id.as_uuid().into()]).await.unwrap();
-    assert!(
-        crate::sdlc::attachment_artifacts::download(
-            &f.db,
-            &f.repo.config,
-            pm,
-            shared::AttachmentId::from_uuid(ordinary),
-            &observed
+    let mut expected = item.clone();
+    expected.id = shared::AttachmentId::from_uuid(ordinary);
+    expected.file_name = "ordinary.txt".into();
+    expected.content_type = "text/plain".into();
+    expected.size_bytes = 1;
+    expected.storage_key = "ordinary-private-file".into();
+    storage
+        .put(
+            &expected.issue_id.to_string(),
+            expected.storage_key.as_ref(),
+            b"x".to_vec(),
         )
         .await
-        .is_err()
+        .unwrap();
+    let (ordinary_item, ordinary_bytes) = crate::sdlc::attachment_artifacts::download(
+        &f.db,
+        &f.repo.config,
+        pm,
+        expected.id,
+        &observed,
+    )
+    .await
+    .unwrap();
+    assert_eq!(ordinary_bytes, b"x");
+    assert_eq!(
+        serde_json::to_value(&ordinary_item).unwrap(),
+        serde_json::to_value(&expected).unwrap()
     );
-    assert_eq!(observed.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(observed.calls.load(Ordering::SeqCst), 2);
     exec(
         &f.db,
         "DELETE FROM attachments WHERE id=$1",
@@ -177,6 +194,14 @@ pub(super) async fn check(
     )
     .await
     .unwrap();
+    storage
+        .delete(
+            &expected.issue_id.to_string(),
+            expected.storage_key.as_ref(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read_snapshot(f, r.task).await, before);
 
     for action in [
         DuringIo::OwnerRevoked,

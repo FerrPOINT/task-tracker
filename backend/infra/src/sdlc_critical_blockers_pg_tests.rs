@@ -12,6 +12,7 @@ mod pm_review_tests;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
 use domain::sdlc_critical_blockers::*;
+use domain::sdlc_stage_status::{StageStartFence, StartStage};
 use std::future::Future;
 
 fn future_size<F: Future>(_: fn() -> F) -> usize {
@@ -30,7 +31,7 @@ fn critical_pg_future_size_probe() {
         ("fixture_new", future_size(Fixture::new)),
         (
             "fixture_confirmed",
-            future_size(|| Fixture::queued_analysis(type_only(), "type-only", true)),
+            future_size(|| Fixture::confirmed_with_rollout(type_only(), "type-only", true, true)),
         ),
         (
             "start",
@@ -137,7 +138,8 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
         .unwrap()
         .0;
     eprintln!("critical_pg.phase.bind.run.begin");
-    f.repo
+    let running = f
+        .repo
         .lifecycle_command(
             task,
             &f.writer,
@@ -157,7 +159,53 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
         )
         .await
         .unwrap()
-        .0
+        .0;
+    let state = f.repo.read(task, &f.owner).await.unwrap();
+    if !state.configured_cli() {
+        return running;
+    }
+    assert_eq!(running.task.status, LifecycleStatus::Ready);
+    assert_eq!(running.task.runtime, RuntimeState::Running);
+    let producer = actor(
+        &running.binding.as_ref().unwrap().machine_subject,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    let start = StartStage {
+        fence: StageStartFence::Delivery(fence(&running)),
+        idempotency_key: format!("critical:start:{}", running.task.version),
+    };
+    let (started, replayed) = Box::pin(f.repo.start_stage(task, &producer, start.clone()))
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(started.stage, running.task.stage.canonical());
+    assert_eq!(started.status, LifecycleStatus::InProgress);
+    assert_eq!(
+        started.execution_id,
+        running.assignment.as_ref().unwrap().execution_id
+    );
+    assert_eq!(
+        f.repo
+            .stage_start_operation(task, &producer, &start.idempotency_key)
+            .await
+            .unwrap(),
+        started
+    );
+    let current = f
+        .repo
+        .lifecycle_read(task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(current.task.stage, running.task.stage);
+    assert_eq!(current.task.status, LifecycleStatus::InProgress);
+    assert_eq!(current.task.runtime, RuntimeState::Running);
+    assert_eq!(current.task.version, running.task.version + 1);
+    assert_eq!(current.assignment, running.assignment);
+    assert_eq!(current.lease, running.lease);
+    assert_eq!(current.binding, running.binding);
+    current
 }
 
 async fn output(
@@ -211,12 +259,36 @@ fn result(r: &Running) -> DeliveryResult {
     }
 }
 
-async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
+fn completion_request(r: &Running) -> (SubmitDeliveryProposal, TerminalReceipt) {
     let output = result(r);
     let workflow_receipt = ArtifactReceipt {
         reference: "fixture://synthetic-workflow-completion-not-live-proof".into(),
         sha256: "b".repeat(64),
     };
+    let binding = r.head.binding.as_ref().unwrap();
+    let terminal = TerminalReceipt {
+        chat_id: binding.chat_id,
+        run_id: binding.run_id,
+        fleet_receipt: ArtifactReceipt {
+            reference: "fixture://synthetic-native-terminal".into(),
+            sha256: "c".repeat(64),
+        },
+        workflow_receipt: workflow_receipt.clone(),
+        output_sha256: app::sdlc::canonical_hash(&output).unwrap(),
+    };
+    (
+        SubmitDeliveryProposal {
+            fence: fence(&r.head),
+            workflow_receipt,
+            result: output,
+            idempotency_key: format!("proposal-{}", r.head.task.version),
+        },
+        terminal,
+    )
+}
+
+async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
+    let (command, terminal) = completion_request(r);
     eprintln!("critical_pg.phase.proposal.begin");
     crate::sdlc::configured_test_support::delivery_comment(
         &f.repo,
@@ -227,30 +299,11 @@ async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
     )
     .await;
     f.repo
-        .submit_delivery_proposal(
-            r.task,
-            &r.producer,
-            SubmitDeliveryProposal {
-                fence: fence(&r.head),
-                workflow_receipt: workflow_receipt.clone(),
-                result: output.clone(),
-                idempotency_key: format!("proposal-{}", r.head.task.version),
-            },
-        )
+        .submit_delivery_proposal(r.task, &r.producer, command)
         .await
         .unwrap();
     eprintln!("critical_pg.phase.proposal.done");
-    let binding = r.head.binding.as_ref().unwrap();
-    TerminalReceipt {
-        chat_id: binding.chat_id,
-        run_id: binding.run_id,
-        fleet_receipt: ArtifactReceipt {
-            reference: "fixture://synthetic-native-terminal".into(),
-            sha256: "c".repeat(64),
-        },
-        workflow_receipt,
-        output_sha256: app::sdlc::canonical_hash(&output).unwrap(),
-    }
+    terminal
 }
 
 async fn start(
@@ -260,7 +313,7 @@ async fn start(
     storage: &domain::InMemoryStorage,
 ) -> Running {
     eprintln!("critical_pg.phase.start.confirm.begin");
-    let task = f.queued_analysis(key, true).await;
+    let task = f.confirmed_with_rollout(key, true, true).await;
     eprintln!("critical_pg.phase.start.confirm.done");
     f.repo
         .lifecycle_command(
@@ -359,7 +412,7 @@ async fn critical_pg_scenario() {
     let f = Fixture::new().await;
     eprintln!("critical_pg.phase.fixture.done");
     eprintln!("critical_pg.phase.setup.begin");
-    let (storage, mut r, terminal, body, original_completion_proposal) = Box::pin(async {
+    let (storage, mut r, terminal, body, completion_proposal) = Box::pin(async {
     if f.db
         .query_one(statement(
             "SELECT to_regclass('sdlc_critical_blockers') IS NULL AS missing",
@@ -399,17 +452,46 @@ async fn critical_pg_scenario() {
     .await
     .unwrap();
     let storage = domain::InMemoryStorage::default();
+    // Completed work cannot acquire a new hold; its exact saved proposal still replays.
+    let completed = start(&f, "critical-completed-first", true, &storage).await;
+    let terminal = proposal(&f, &completed).await;
+    let (saved_proposal, _) = completion_request(&completed);
+    let current = f.repo.lifecycle_read(completed.task, &f.reader).await.unwrap().receipt;
+    assert_eq!(current.task.status, LifecycleStatus::Completed);
+    assert_eq!(current.task.runtime, RuntimeState::Running);
+    assert_eq!(current.assignment, completed.head.assignment);
+    assert_eq!(current.binding, completed.head.binding);
+    let before = snapshot(&f, completed.task).await;
+    assert!(matches!(
+        f.repo.submit_critical_blocker_with_storage(
+            completed.task, &completed.producer, blocker(&completed), &storage
+        ).await,
+        Err(AppError::Conflict(message)) if message == "critical blocker does not match current lifecycle"
+    ));
+    assert_eq!(snapshot(&f, completed.task).await, before);
+    let replay = f.repo.submit_delivery_proposal(
+        completed.task, &completed.producer, saved_proposal.clone()
+    ).await.unwrap();
+    assert!(replay.1);
+    assert_eq!(replay.0.result, saved_proposal.result);
+    assert_eq!(replay.0.workflow_receipt, saved_proposal.workflow_receipt);
+    assert_eq!(snapshot(&f, completed.task).await, before);
+    let (settled, replayed) = f.repo.lifecycle_command(
+        completed.task, &f.writer, LifecycleCommand::Complete {
+            fence: fence(&current), terminal, result: result(&completed),
+            idempotency_key: "critical-completed-first:settle".into(),
+        }
+    ).await.unwrap();
+    assert!(!replayed);
+    assert_eq!(settled.task.stage, LifecycleStage::Development);
+    assert_eq!(settled.task.status, LifecycleStatus::Ready);
+    assert!(settled.assignment.is_none() && settled.lease.is_none() && settled.binding.is_none());
     // Hold Architect while the distinct Analyst proves its PM-hold request cannot stop completion.
     let r = start(&f, "critical-main", true, &storage).await;
-    let terminal = proposal(&f, &r).await;
+    assert_eq!(r.head.task.status, LifecycleStatus::InProgress);
+    let (completion_proposal, terminal) = completion_request(&r);
     let body = blocker(&r);
-    let original_completion_proposal = SubmitDeliveryProposal {
-        fence: fence(&r.head),
-        workflow_receipt: terminal.workflow_receipt.clone(),
-        result: result(&r),
-        idempotency_key: format!("proposal-{}", r.head.task.version),
-    };
-        (storage, r, terminal, body, original_completion_proposal)
+        (storage, r, terminal, body, completion_proposal)
     }).await;
     eprintln!("critical_pg.phase.setup.done");
     eprintln!("critical_pg.phase.hold.begin");
@@ -669,18 +751,10 @@ async fn critical_pg_scenario() {
             one
         );
         let before_progress = snapshot(&f, r.task).await;
-        let historical = f
-            .repo
-            .submit_delivery_proposal(r.task, &r.producer, original_completion_proposal.clone())
-            .await
-            .unwrap();
-        assert!(historical.1);
-        assert_eq!(historical.0.result, original_completion_proposal.result);
-        assert_eq!(snapshot(&f, r.task).await, before_progress);
         let fresh = SubmitDeliveryProposal {
             fence: fence(&r.head),
             idempotency_key: "normal-completion-after-hold".into(),
-            ..original_completion_proposal
+            ..completion_proposal
         };
         match f
             .repo
@@ -740,10 +814,14 @@ async fn critical_pg_scenario() {
                 idempotency_key: "held-retry".into(),
             },
         ] {
-            assert!(matches!(
-                f.repo.lifecycle_command(r.task, &f.writer, command).await,
-                Err(AppError::Conflict(_))
-            ));
+            let completing = matches!(&command, LifecycleCommand::Complete { .. });
+            let refused = f.repo.lifecycle_command(r.task, &f.writer, command).await;
+            if completing {
+                assert!(matches!(refused, Err(AppError::Conflict(message))
+                    if message.contains("critical PM review holds")));
+            } else {
+                assert!(matches!(refused, Err(AppError::Conflict(_))));
+            }
             assert_eq!(snapshot(&f, r.task).await, before_progress);
         }
         let tx = f.db.begin().await.unwrap();

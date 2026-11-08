@@ -128,6 +128,7 @@ fn new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state() {
         assert!(validate_new_pm_feedback(&state).is_err());
     }
     state.stage = Stage::Draft;
+    start_pm(&mut state, &pm, &fence);
     publish(&mut state, &config, &pm, &fence);
     assert_eq!(
         state.draft_submode,
@@ -201,6 +202,7 @@ fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
     state
         .retained_fields
         .insert("flow".into(), json!("single-task-v1"));
+    start_pm(&mut state, &pm, &fence);
     publish(&mut state, &config, &pm, &fence);
     for check in ["review", "contract"] {
         record_evidence(&mut state, &config, &verifier, &fence, check, check);
@@ -333,7 +335,58 @@ fn fixture() -> (
         false,
         vec!["task-tracker:read".into(), "task-tracker:write".into()],
     );
+    start_pm(&mut state, &pm, &fence);
     (state, config, owner, pm, verifier, fence)
+}
+
+fn start_pm(state: &mut TaskState, pm: &Principal, fence: &MachineFence) {
+    use domain::sdlc_stage_status::{StageStartFence, StartStage};
+
+    let started = crate::sdlc_stage_status::prepare_stage_start(
+        state,
+        pm,
+        &StartStage {
+            fence: StageStartFence::Pm(fence.clone()),
+            idempotency_key: "fixture:pm-start".into(),
+        },
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    assert_eq!(started.task_id, state.task_id);
+    assert_eq!(started.stage, Stage::Draft);
+    assert_eq!(started.execution_id, fence.execution_id);
+    assert_eq!(
+        started.status,
+        domain::sdlc_lifecycle::LifecycleStatus::InProgress
+    );
+    state.status = Some(started.status);
+}
+
+#[test]
+fn configured_pm_revision_requires_explicit_start_without_mutating_ready_state() {
+    let (mut state, config, _, pm, _, fence) = fixture();
+    state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+    let command = SdlcCommand::PublishRevision(PublishRevision {
+        fence: fence.clone(),
+        expected_requirement_revision: state.current_revision(),
+        document: document(),
+        idempotency_key: "revision-after-start".into(),
+    });
+    let before = serde_json::to_value(&state).unwrap();
+    assert!(matches!(
+        apply(&mut state, &pm, &config, &command),
+        Err(AppError::Conflict(message))
+            if message == "PM must explicitly start the current stage"
+    ));
+    assert_eq!(serde_json::to_value(&state).unwrap(), before);
+    start_pm(&mut state, &pm, &fence);
+    apply(&mut state, &pm, &config, &command).unwrap();
+    assert_eq!(
+        state.status,
+        Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress)
+    );
+    assert_eq!(state.current_revision(), Some(1));
 }
 
 fn document() -> RequirementsDocument {
@@ -549,7 +602,7 @@ fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
     state.draft_submode = Some(DraftSubmode::Brainstorming);
     publish(&mut state, &config, &pm, &fence);
     assert_eq!(state.stage, Stage::Draft);
-    assert_eq!(state.status, Some(LifecycleStatus::Ready));
+    assert_eq!(state.status, Some(LifecycleStatus::InProgress));
     assert_eq!(
         state.draft_submode,
         Some(DraftSubmode::AwaitingConfirmation)

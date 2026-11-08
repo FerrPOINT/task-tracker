@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use domain::sdlc_stage_status::{StageStartReceipt, StartStage};
 use domain::{sdlc::Principal, sdlc_critical_blockers::*, sdlc_lifecycle::*};
 use shared::AppError;
 use std::sync::Arc;
@@ -13,6 +14,11 @@ use uuid::Uuid;
 
 pub(super) fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
+        .route("/issues/{id}/sdlc/stage-starts", post(start_stage))
+        .route(
+            "/issues/{id}/sdlc/stage-starts/operations/{idempotency_key}",
+            get(stage_start_operation),
+        )
         .route("/issues/{id}/sdlc/lifecycle", get(current).post(command))
         .route(
             "/issues/{id}/sdlc/lifecycle/operations/{idempotency_key}",
@@ -74,6 +80,38 @@ fn written<T>(result: (T, bool)) -> (StatusCode, HeaderMap, Json<T>) {
         no_store(),
         Json(result.0),
     )
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/stage-starts",operation_id="start_assigned_stage_work",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=StartStage,
+    responses((status=201,body=StageStartReceipt),(status=200,body=StageStartReceipt,description="Original durable replay"),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn start_stage(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Json(input): Json<StartStage>,
+) -> Result<(StatusCode, HeaderMap, Json<StageStartReceipt>), AppError> {
+    Ok(written(
+        service(&ctx)?.start_stage(task, &actor, input).await?,
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/stage-starts/operations/{idempotency_key}",operation_id="read_assigned_stage_start_operation",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=StageStartReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn stage_start_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<StageStartReceipt>), AppError> {
+    app::sdlc::validate_key(&key)?;
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .stage_start_operation(task, &actor, &key)
+                .await?,
+        ),
+    ))
 }
 
 // Parent registers both on the EXISTING strict-Central SDLC router (never the generic issues router).
@@ -312,6 +350,158 @@ mod tests {
     use super::*;
     use utoipa::OpenApi;
 
+    fn stage_start_bodies() -> [serde_json::Value; 2] {
+        use serde_json::json;
+        [
+            json!({"fence":{"kind":"pm","assignment_id":Uuid::from_u128(1),
+                "execution_id":Uuid::from_u128(2),"agent_id":Uuid::from_u128(3),
+                "assignment_version":1},"idempotency_key":"start:1"}),
+            json!({"fence":{"kind":"delivery","assignment_id":Uuid::from_u128(1),
+                "execution_id":Uuid::from_u128(2),"fencing_token":1,
+                "lease_id":Uuid::from_u128(3),"expected_lease_version":1},
+                "idempotency_key":"start:1"}),
+        ]
+    }
+
+    #[test]
+    fn stage_start_openapi_has_tagged_body_and_closed_receipt() {
+        use serde_json::json;
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let path = "/api/v1/issues/{id}/sdlc/stage-starts";
+        assert_eq!(
+            spec["paths"][path]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/StartStage"
+        );
+        assert_eq!(spec["paths"][path]["post"]["requestBody"]["required"], true);
+        for (path, method, statuses) in [
+            (path, "post", vec!["200", "201"]),
+            (
+                "/api/v1/issues/{id}/sdlc/stage-starts/operations/{idempotency_key}",
+                "get",
+                vec!["200"],
+            ),
+        ] {
+            let operation = &spec["paths"][path][method];
+            assert_eq!(operation["security"], json!([{"bearer":[]}]));
+            for status in statuses {
+                assert_eq!(
+                    operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+                    "#/components/schemas/StageStartReceipt"
+                );
+            }
+            for status in ["401", "403", "404", "409", "422", "503"] {
+                assert!(
+                    operation["responses"][status].is_object(),
+                    "{path}: {status}"
+                );
+            }
+        }
+        let schemas = &spec["components"]["schemas"];
+        let request = &schemas["StartStage"];
+        assert_eq!(request["additionalProperties"], false);
+        assert_eq!(request["properties"].as_object().unwrap().len(), 2);
+        assert_eq!(request["required"], json!(["fence", "idempotency_key"]));
+        assert_eq!(
+            request["properties"]["fence"]["$ref"],
+            "#/components/schemas/StageStartFence"
+        );
+        let variants = schemas["StageStartFence"]["oneOf"].as_array().unwrap();
+        assert_eq!(variants.len(), 2);
+        for (variant, kind) in variants.iter().zip(["pm", "delivery"]) {
+            // A tagged newtype may compose its fields through JSON Schema allOf.
+            let tag = std::iter::once(variant)
+                .chain(variant["allOf"].as_array().into_iter().flatten())
+                .find(|node| node["properties"].get("kind").is_some())
+                .expect("fence variant has an explicit kind discriminator");
+            assert_eq!(tag["properties"]["kind"]["enum"], json!([kind]));
+            assert!(tag["required"].as_array().unwrap().contains(&json!("kind")));
+        }
+        let receipt = &schemas["StageStartReceipt"];
+        assert_eq!(receipt["additionalProperties"], false);
+        let fields = [
+            "task_id",
+            "stage",
+            "status",
+            "execution_id",
+            "idempotency_key",
+            "started_at",
+        ];
+        assert_eq!(
+            receipt["properties"].as_object().unwrap().len(),
+            fields.len()
+        );
+        assert_eq!(receipt["required"].as_array().unwrap().len(), fields.len());
+        for field in fields {
+            assert!(
+                receipt["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(field))
+            );
+        }
+        assert_eq!(receipt["properties"]["task_id"]["format"], "uuid");
+        assert_eq!(receipt["properties"]["execution_id"]["format"], "uuid");
+        assert_eq!(receipt["properties"]["started_at"]["format"], "date-time");
+        assert_eq!(
+            receipt["properties"]["stage"]["$ref"],
+            "#/components/schemas/Stage"
+        );
+        assert_eq!(
+            receipt["properties"]["status"]["$ref"],
+            "#/components/schemas/LifecycleStatus"
+        );
+        let value = json!({"task_id":Uuid::from_u128(4),"stage":"Draft","status":"InProgress",
+            "execution_id":Uuid::from_u128(2),"idempotency_key":"start:1","started_at":"2026-11-07T10:00:00Z"});
+        let parsed: StageStartReceipt = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), value);
+        let mut foreign = value;
+        foreign["owner_subject"] = json!("caller");
+        assert!(serde_json::from_value::<StageStartReceipt>(foreign).is_err());
+    }
+
+    #[tokio::test]
+    async fn stage_start_actual_json_extractor_requires_closed_typed_kind() {
+        use axum::extract::FromRequest;
+        use serde_json::json;
+        for body in stage_start_bodies() {
+            for mismatch in 0..7 {
+                let mut value = body.clone();
+                match mismatch {
+                    0 => {}
+                    1 => value["stage"] = json!("Analysis"),
+                    2 => value["status"] = json!("InProgress"),
+                    3 => value["fence"]["owner_subject"] = json!("caller"),
+                    4 => value["fence"]["kind"] = json!("human"),
+                    5 => {
+                        value["fence"].as_object_mut().unwrap().remove("kind");
+                    }
+                    _ => {
+                        value["fence"]["kind"] = if body["fence"]["kind"] == "pm" {
+                            json!("delivery")
+                        } else {
+                            json!("pm")
+                        };
+                    }
+                }
+                let request = axum::http::Request::builder()
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(axum::body::Body::from(value.to_string()))
+                    .unwrap();
+                let parsed = Json::<StartStage>::from_request(request, &()).await;
+                if mismatch == 0 {
+                    assert_eq!(serde_json::to_value(parsed.unwrap().0).unwrap(), body);
+                } else {
+                    assert!(serde_json::from_value::<StartStage>(value).is_err());
+                    assert_eq!(
+                        parsed.unwrap_err().into_response().status(),
+                        StatusCode::UNPROCESSABLE_ENTITY
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn critical_return_contract_is_separate_typed_authenticated_and_no_store() {
         #[derive(utoipa::OpenApi)]
@@ -441,6 +631,11 @@ mod tests {
     fn every_lifecycle_surface_is_documented_with_auth_and_typed_readback() {
         let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
         for (path, method) in [
+            ("/api/v1/issues/{id}/sdlc/stage-starts", "post"),
+            (
+                "/api/v1/issues/{id}/sdlc/stage-starts/operations/{idempotency_key}",
+                "get",
+            ),
             ("/api/v1/issues/{id}/sdlc/lifecycle", "get"),
             ("/api/v1/issues/{id}/sdlc/lifecycle", "post"),
             (

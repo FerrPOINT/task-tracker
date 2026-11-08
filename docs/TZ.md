@@ -1,5 +1,7 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+## Встроенная Декомпозиция
+
 [Управление встроенной декомпозицией](contracts/task-decomposition.md) реализовано
 в Tracker: постоянный план, редакции, права, конфликт и те же операции CLI.
 Разделы остаются частями одной задачи, без собственных статусов или поставок.
@@ -7,11 +9,28 @@
 Визуальный дизайн дорабатывается отдельно. Context и проверяемый design receipt
 подготавливают независимый цикл Architect; установленный агент и его работа
 инструментами принимаются отдельно. Workflow handoff не выводится из сохранения плана.
-Automatic Analyst source candidate: [configured CLI contract](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
-Accepted PM completion atomically queues Analysis in enabled single-task projects;
-its immutable receipt remains historical Backlog/Ready. Forward112 preserves
-existing rows and binds automatic queue authority to the completion transaction.
-No new public DTO, user confirmation or source-registry table is introduced.
+
+## Обязательное Правило Семи Агентов
+
+Агент сам первым действием ставит InProgress, последним Completed. Приложение
+на основании принятого Completed текущего назначения переводит следующую стадию
+и сбрасывает статус в Ready; следующий агент сам начинает InProgress. Финальная
+стадия сохраняет Completed. Приёмка проверяет действия агента и приложения
+раздельно, защиту повторов и атомарность stage/Ready. Прежние Backlog/Ready и
+BindRun-driven статусы не считаются реализацией этого правила.
+
+Начальные технические context/Workflow reads разрешены в Ready; до предметной
+работы требуется явный Start/InProgress текущего назначения. Существующий PM
+completion сохраняет Draft/Completed, delivery proposal — Completed текущей
+стадии; передача delivery по-прежнему требует настоящего native terminal proof.
+При rework limit без следующей стадии Completed не сбрасывается.
+
+Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change)
+в enabled single-task проектах. Forward112 связывает autoqueue с completion
+и сохраняет старые Backlog/Ready receipts. Новый контракт использует этот один
+handoff, не создаёт второго и не считает queue началом работы агента.
+Новых owner confirmations, source registry или отдельного dispatch API нет.
+Source, qualification и установленная live-приёмка остаются разными состояниями.
 
 An accepted terminal PM run before its first checkpoint may obtain a bounded
 checkpoint-only permit using real saved technical Feedback. This does not answer

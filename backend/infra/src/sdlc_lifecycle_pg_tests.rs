@@ -1,6 +1,7 @@
 //! Synthetic repository fixtures, not receipts from a real Fleet/Workflow execution.
 use super::*;
 use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
+use domain::sdlc_stage_status::{StageStartFence, StageStartReceipt, StartStage};
 use sea_orm_migration::MigratorTrait;
 use serde::de::DeserializeOwned;
 
@@ -72,6 +73,134 @@ fn delivery_fence(receipt: &LifecycleReceipt) -> DeliveryFence {
         lease_id: assignment.lease_id,
         expected_lease_version: receipt.lease.as_ref().unwrap().version,
     }
+}
+
+async fn start_delivery(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    producer: &Principal,
+    bound: &LifecycleReceipt,
+    output: &DeliveryResult,
+    key: &str,
+) -> (StartStage, StageStartReceipt, LifecycleReceipt) {
+    assert_eq!(bound.task.status, LifecycleStatus::Ready);
+    assert_eq!(bound.task.runtime, RuntimeState::Running);
+    let start = StartStage {
+        fence: StageStartFence::Delivery(delivery_fence(bound)),
+        idempotency_key: key.into(),
+    };
+    let db = repo.db.raw();
+    let operations = count(db, "sdlc_idempotency").await;
+    let history = count(db, "issue_status_history").await;
+    let outbox = count(db, "sdlc_outbox").await;
+    let proposals = count(db, "sdlc_delivery_proposals").await;
+    assert!(
+        repo.submit_delivery_proposal(
+            task,
+            producer,
+            SubmitDeliveryProposal {
+                fence: delivery_fence(bound),
+                workflow_receipt: artifact("before-start"),
+                result: output.clone(),
+                idempotency_key: format!("{key}:before-start"),
+            }
+        )
+        .await
+        .is_err()
+    );
+    let mut foreign = producer.clone();
+    foreign.subject = Uuid::new_v4().to_string();
+    assert!(
+        repo.start_stage(task, &foreign, start.clone())
+            .await
+            .is_err()
+    );
+    for field in 0..5 {
+        let mut stale = start.clone();
+        let StageStartFence::Delivery(fence) = &mut stale.fence else {
+            unreachable!()
+        };
+        match field {
+            0 => fence.assignment_id = Uuid::new_v4(),
+            1 => fence.execution_id = Uuid::new_v4(),
+            2 => fence.fencing_token += 1,
+            3 => fence.lease_id = Uuid::new_v4(),
+            _ => fence.expected_lease_version += 1,
+        }
+        assert!(
+            repo.start_stage(task, producer, stale).await.is_err(),
+            "{key}/{field}"
+        );
+    }
+    assert_eq!(
+        repo.lifecycle_read(task, producer).await.unwrap().receipt,
+        *bound
+    );
+    assert_eq!(count(db, "sdlc_idempotency").await, operations);
+    assert_eq!(count(db, "issue_status_history").await, history);
+    assert_eq!(count(db, "sdlc_outbox").await, outbox);
+    assert_eq!(count(db, "sdlc_delivery_proposals").await, proposals);
+
+    let (saved, replayed) = repo
+        .start_stage(task, producer, start.clone())
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(saved.task_id, task);
+    assert_eq!(saved.stage, bound.task.stage.canonical());
+    assert_eq!(saved.status, LifecycleStatus::InProgress);
+    assert_eq!(
+        saved.execution_id,
+        bound.assignment.as_ref().unwrap().execution_id
+    );
+    let started = repo.lifecycle_read(task, producer).await.unwrap().receipt;
+    assert_eq!(started.task.status, LifecycleStatus::InProgress);
+    assert_eq!(started.task.runtime, RuntimeState::Running);
+    assert_eq!(started.task.version, bound.task.version + 1);
+    assert_eq!(started.task.stage, bound.task.stage);
+    assert_eq!(started.task.cycle, bound.task.cycle);
+    assert_eq!(started.task.routing, bound.task.routing);
+    assert_eq!(started.assignment, bound.assignment);
+    assert_eq!(started.lease, bound.lease);
+    assert_eq!(started.binding, bound.binding);
+    let canonical = repo.read(task, producer).await.unwrap();
+    assert_eq!(canonical.stage, saved.stage);
+    assert_eq!(canonical.status, Some(LifecycleStatus::InProgress));
+    assert_eq!(count(db, "sdlc_idempotency").await, operations + 1);
+    assert_eq!(count(db, "issue_status_history").await, history + 1);
+    assert_eq!(count(db, "sdlc_outbox").await, outbox);
+    assert_eq!(
+        repo.stage_start_operation(task, producer, key)
+            .await
+            .unwrap(),
+        saved
+    );
+    assert_eq!(
+        repo.start_stage(task, producer, start.clone())
+            .await
+            .unwrap(),
+        (saved.clone(), true)
+    );
+    let mut changed = start.clone();
+    let StageStartFence::Delivery(fence) = &mut changed.fence else {
+        unreachable!()
+    };
+    fence.expected_lease_version += 1;
+    assert!(matches!(
+        repo.start_stage(task, producer, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    let mut repeated = start.clone();
+    repeated.idempotency_key.push_str(":new-operation");
+    assert!(repo.start_stage(task, producer, repeated).await.is_err());
+    assert_eq!(
+        repo.lifecycle_read(task, producer).await.unwrap().receipt,
+        started
+    );
+    assert_eq!(count(db, "sdlc_idempotency").await, operations + 1);
+    assert_eq!(count(db, "issue_status_history").await, history + 1);
+    assert_eq!(count(db, "sdlc_outbox").await, outbox);
+    (start, saved, started)
 }
 
 async fn count(db: &DatabaseConnection, table: &str) -> i64 {
@@ -231,6 +360,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         "acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
+    crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &pm_fence).await;
     repo.execute(
         task,
         &pm,
@@ -296,10 +426,33 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         ],
         before_receipt_reads
     );
-    crate::sdlc::configured_test_support::complete_pm(&repo, task, &owner, &pm, &reservation).await;
-    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
-    // The remaining test targets delivery, not automatic PM promotion.
-    crate::sdlc::seed_analysis_fixture(&db, task, &owner).await;
+    let completed =
+        crate::sdlc::configured_test_support::complete_pm(&repo, task, &owner, &pm, &reservation)
+            .await;
+    assert_eq!(completed.stage, Stage::Draft);
+    assert_eq!(completed.status, LifecycleStatus::Completed);
+    let after_pm = repo.read(task, &owner).await.unwrap();
+    assert_eq!(after_pm.stage, Stage::Analysis);
+    assert_eq!(after_pm.status, Some(LifecycleStatus::Ready));
+    assert_eq!(after_pm.owner_subject, owner.subject);
+    assert_eq!(after_pm.root_task_id, task);
+    let automatic = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+    assert_eq!(automatic.task.stage, LifecycleStage::Analysis);
+    assert_eq!(automatic.task.status, LifecycleStatus::Ready);
+    assert_eq!(automatic.task.runtime, RuntimeState::Queued);
+    assert_eq!(automatic.task.owner_subject, owner.subject);
+    assert!(
+        automatic.assignment.is_none() && automatic.lease.is_none() && automatic.binding.is_none()
+    );
+    let consent = after_pm.current_confirmation().unwrap();
+    assert_eq!(automatic.task.routing.confirmation_id, consent.id);
+    assert_eq!(
+        automatic.task.routing.requirement_revision,
+        consent.revision
+    );
+    assert_eq!(automatic.task.routing.content_hash, consent.content_hash);
+    assert_eq!(automatic.task.routing.policy.version, 1);
+    assert_eq!(automatic.task.routing.policy.routes, routes);
     let ensure = LifecycleCommand::EnsureQueued {
         idempotency_key: "queue".into(),
     };
@@ -307,6 +460,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .lifecycle_command(task, &scheduler, ensure.clone())
         .await
         .unwrap();
+    assert_eq!(queued, automatic);
     let tx = db.begin().await.unwrap();
     assert_eq!(
         mapped_issue_status(&tx, Stage::Development, LifecycleStatus::Ready)
@@ -537,17 +691,22 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         RuntimeState::Reserved
     );
     db.execute_unprepared("DROP TRIGGER fixture_fail_lifecycle_outbox ON sdlc_outbox; DROP FUNCTION fixture_fail_lifecycle_outbox();").await.unwrap();
-    repo.lifecycle_command(
-        task,
-        &scheduler,
-        LifecycleCommand::BindRun {
-            fence: stale.clone(),
-            binding: binding.clone(),
-            idempotency_key: "bind-0".into(),
-        },
-    )
-    .await
-    .unwrap();
+    let (bound, _) = repo
+        .lifecycle_command(
+            task,
+            &scheduler,
+            LifecycleCommand::BindRun {
+                fence: stale.clone(),
+                binding: binding.clone(),
+                idempotency_key: "bind-0".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let output = DeliveryResult::Analyst {
+        analysis: artifact("analysis"),
+    };
+    start_delivery(&repo, task, &producer, &bound, &output, "start-analysis-0").await;
     let heartbeat = LifecycleCommand::Heartbeat {
         fence: stale.clone(),
         idempotency_key: "heartbeat-0".into(),
@@ -615,9 +774,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await
         .is_err()
     );
-    let output = DeliveryResult::Analyst {
-        analysis: artifact("analysis"),
-    };
     let proposal_command = SubmitDeliveryProposal {
         fence: stale.clone(),
         workflow_receipt: artifact("workflow"),
@@ -654,6 +810,12 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         3
     );
     let (proposal, _) = concurrent_proposal.unwrap();
+    let after_proposal = repo.lifecycle_read(task, &producer).await.unwrap().receipt;
+    assert_eq!(after_proposal.task.stage, LifecycleStage::Analysis);
+    assert_eq!(after_proposal.task.status, LifecycleStatus::Completed);
+    assert_eq!(after_proposal.task.runtime, RuntimeState::Running);
+    assert_eq!(after_proposal.assignment, reserved.assignment);
+    assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
     // The concurrent proposal remains a business event; the second heartbeat does not.
     assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
     let operations_after_race = count(&db, "sdlc_delivery_operations").await;
@@ -936,17 +1098,27 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             machine_subject: role_producer.subject.clone(),
             dispatch_receipt: artifact("role-dispatch"),
         };
-        repo.lifecycle_command(
+        let (bound, _) = repo
+            .lifecycle_command(
+                task,
+                &scheduler,
+                LifecycleCommand::BindRun {
+                    fence: fence.clone(),
+                    binding: role_binding.clone(),
+                    idempotency_key: format!("role-{i}-bind"),
+                },
+            )
+            .await
+            .unwrap();
+        let (start, start_receipt, started) = start_delivery(
+            &repo,
             task,
-            &scheduler,
-            LifecycleCommand::BindRun {
-                fence: fence.clone(),
-                binding: role_binding.clone(),
-                idempotency_key: format!("role-{i}-bind"),
-            },
+            &role_producer,
+            &bound,
+            &result,
+            &format!("role-{i}-start"),
         )
-        .await
-        .unwrap();
+        .await;
         if let Some(expected) = &previous_accepted {
             assert_eq!(assignment.previous_result_id, Some(expected.result_id));
             assert!(
@@ -1062,6 +1234,18 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             )
             .await
             .unwrap();
+        let proposed = repo
+            .lifecycle_read(task, &role_producer)
+            .await
+            .unwrap()
+            .receipt;
+        assert_eq!(proposed.task.stage, started.task.stage);
+        assert_eq!(proposed.task.status, LifecycleStatus::Completed);
+        assert_eq!(proposed.task.runtime, RuntimeState::Running);
+        assert_eq!(proposed.task.version, started.task.version + 1);
+        assert_eq!(proposed.assignment, started.assignment);
+        assert_eq!(proposed.binding, started.binding);
+        assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
         cursor = repo
             .lifecycle_command(
                 task,
@@ -1082,6 +1266,35 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .await
             .unwrap()
             .0;
+        assert_eq!(cursor.task.version, proposed.task.version + 1);
+        if started.task.stage == LifecycleStage::Deployment {
+            assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+            assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
+        } else {
+            assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+            assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+        }
+        let history_after_handoff = count(&db, "issue_status_history").await;
+        let outbox_after_handoff = count(&db, "sdlc_outbox").await;
+        assert_eq!(
+            repo.stage_start_operation(task, &role_producer, &start.idempotency_key)
+                .await
+                .unwrap(),
+            start_receipt
+        );
+        assert_eq!(
+            repo.start_stage(task, &role_producer, start).await.unwrap(),
+            (start_receipt, true)
+        );
+        assert_eq!(
+            repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+            cursor
+        );
+        assert_eq!(
+            count(&db, "issue_status_history").await,
+            history_after_handoff
+        );
+        assert_eq!(count(&db, "sdlc_outbox").await, outbox_after_handoff);
         previous_accepted = cursor.result.clone();
         assert!(previous_accepted.is_some());
         previous_producer = Some(role_producer);
