@@ -75,6 +75,7 @@
       "unknown": "The SDLC result could not be received; refresh required"
     },
     "reasons": {
+      "review_completed": "Review completed; the result is saved and the next stage does not start automatically",
       "waiting_for_pm": "Waiting for PM",
       "waiting_for_owner_answers": "Waiting for owner answers",
       "waiting_for_requirements_or_evidence": "Waiting for requirements or evidence",

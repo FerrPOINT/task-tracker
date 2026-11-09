@@ -332,7 +332,11 @@ Accepted history/evidence не переписывается. После barrier 
 Development/Ready aggregate → Review → Testing → Deployment/Completed.
 Root завершает собственный Deployment + acceptance, не rollup children.
 
-## Terminal transitions
+## Целевые terminal transitions
+
+Ниже сохранена target-модель прежнего протокола. Для нового Reviewer Complete
+текущий source-контракт — Review/Completed/Terminal с review_completed, без
+Testing/Rework handoff; см. раздел Reviewer terminal в конце документа.
 
 `completeAssignedStage(sessionId, runId, expectedTaskRevision, outcome,
 findings?, operationKey)` — название target capability, не CLI-команда.
@@ -381,3 +385,26 @@ findings empty/late; retry vs cycle; cycle limit; insufficient capacity; TTL с
 живым run; stale fences; mode injection; context token mutation; permission leak.
 Текущие generic CRUD/status/links переиспользуются; новые guarded lifecycle команды
 не заменять автоматизацией UI или обычным issue transition.
+
+## Reviewer terminal без автоматического handoff (source 2026-11-08)
+
+Для нового Complete роли Reviewer оба typed verdict approved/rework сохраняются
+прежней транзакцией результатов. Task остаётся Review/Completed, runtime Terminal,
+waiting_reason=review_completed, cycle не изменяется. Assignment/lease/binding
+освобождаются; delivery.queued для следующей роли не создаётся. Повтор исходного
+proposal/Complete возвращает сохранённую операцию, restart читает то же состояние.
+Новый Reserve после завершения отклоняется. Найденные дефекты не делают выполненное
+ревью незавершённым; Completed не означает одобрения кода.
+
+Сводка принятого Workflow отчёта публикуется обычным комментарием Task в существующем
+доступе назначения. Новые API доступа к задаче не нужны. Fleet выполняет прежний
+native terminal/Complete; агент не получает scheduler credentials. Старые принятые
+результаты и переходы не переписываются. Автоматический возврат Reviewer в Rework
+и переход в Testing — будущий этап циклов Developer ↔ Reviewer ↔ Tester; сейчас
+они не выполняются. Остальные существующие правила ролей сохраняются.
+
+Миграция 0116 обновляет только назначение следующей стадии в существующем
+`sdlc_delivery_result_gate`: Reviewer сохраняет Review/Completed и прежний cycle.
+Проверки producer, живого назначения/lease, proposal и terminal receipt остаются.
+Прежние миграции и строки истории не изменяются; откат нового контракта — только
+новой согласованной миграцией, без удаления принятых результатов.
