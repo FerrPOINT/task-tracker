@@ -877,6 +877,13 @@ pub trait SdlcRepository: Send + Sync {
             "configured PM completion is unavailable".into(),
         ))
     }
+    /// Only issue IDs from an already authorized project board may be passed.
+    async fn board_tasks(
+        &self,
+        project: Uuid,
+        issues: &[Uuid],
+    ) -> Result<Option<Vec<crate::sdlc_lifecycle::SdlcBoardTask>>, AppError>;
+
     fn source_repository(&self) -> Option<&dyn crate::sdlc_source::TaskSourceRepository> {
         None
     }

@@ -181,6 +181,14 @@ pub struct BoardResponse {
     pub sprint: SprintResponse,
     /// Total number of backlog (unscheduled) issues for the project.
     pub backlog_total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sdlc: Option<SdlcBoardResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SdlcBoardResponse {
+    pub stages: Vec<domain::sdlc_lifecycle::LifecycleStage>,
+    pub tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

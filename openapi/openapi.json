@@ -11930,6 +11930,16 @@
           "project_key": {
             "type": "string"
           },
+          "sdlc": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SdlcBoardResponse"
+              }
+            ]
+          },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
           }
@@ -21191,6 +21201,53 @@
           }
         },
         "additionalProperties": false
+      },
+      "SdlcBoardResponse": {
+        "type": "object",
+        "required": [
+          "stages",
+          "tasks"
+        ],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStage"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SdlcBoardTask"
+            }
+          }
+        }
+      },
+      "SdlcBoardTask": {
+        "type": "object",
+        "required": [
+          "issue_id",
+          "stage"
+        ],
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          }
+        }
       },
       "SdlcContext": {
         "type": "object",

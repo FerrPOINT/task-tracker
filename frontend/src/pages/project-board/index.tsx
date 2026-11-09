@@ -42,31 +42,32 @@ type DragState = {
 
 function IssueCard({
   issue,
-  columnId,
   compact,
-  onDragStart,
-  destinations,
-  onMove,
-  isMoving,
+  status,
+  move,
 }: {
   issue: Issue
-  columnId: string
   compact: boolean
-  onDragStart: (issueId: string, columnId: string) => void
-  destinations: Array<{ id: string; name: string }>
-  onMove: (issueId: string, statusId: string) => void
-  isMoving: boolean
+  status?: string
+  move?: {
+    columnId: string
+    onDragStart: (issueId: string, columnId: string) => void
+    destinations: Array<{ id: string; name: string }>
+    onMove: (issueId: string, statusId: string) => void
+    isMoving: boolean
+  }
 }) {
   const { t } = useTranslation()
   function handleDragStart(e: React.DragEvent) {
-    onDragStart(issue.id, columnId)
+    if (!move) return
+    move.onDragStart(issue.id, move.columnId)
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', issue.id)
   }
 
   return (
     <Card asChild surface="raised">
-      <article draggable onDragStart={handleDragStart}>
+      <article draggable={Boolean(move)} onDragStart={move ? handleDragStart : undefined}>
         <CardContent density={compact ? 'compact' : 'default'}>
           <div className="flex items-start gap-2">
             <TextLink asChild className="min-w-0 flex-1">
@@ -79,6 +80,7 @@ function IssueCard({
                 </div>
               </Link>
             </TextLink>
+            {move && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -87,15 +89,15 @@ function IssueCard({
                   size="icon"
                   className="shrink-0"
                   aria-label={`Изменить статус ${issue.key}`}
-                  disabled={isMoving}
+                  disabled={move.isMoving}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                {destinations.length > 0 ? (
-                  destinations.map((status) => (
-                    <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
+                {move.destinations.length > 0 ? (
+                  move.destinations.map((status) => (
+                    <DropdownMenuItem key={status.id} onClick={() => move.onMove(issue.id, status.id)}>
                       {t('board.moveTo', { status: statusLabel(status.name, t) })}
                     </DropdownMenuItem>
                   ))
@@ -104,6 +106,7 @@ function IssueCard({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -114,11 +117,85 @@ function IssueCard({
                 })}
               </Badge>
             </div>
+            {status && <Badge tone="muted">{status}</Badge>}
             <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
           </div>
         </CardContent>
       </article>
     </Card>
+  )
+}
+
+function SdlcBoard({
+  projectKey,
+  sdlc,
+  issues,
+  compact,
+}: {
+  projectKey: string
+  sdlc: components['schemas']['SdlcBoardResponse']
+  issues: Issue[]
+  compact: boolean
+}) {
+  const { t } = useTranslation()
+  const tasks = new Map(sdlc.tasks.map((task) => [task.issue_id, task]))
+  const ordinary = issues.filter((issue) => !tasks.has(issue.id))
+  return (
+    <>
+      <div
+        role="region"
+        aria-label={t('board.columns')}
+        className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
+      >
+        {sdlc.stages.map((stage) => {
+          const stageIssues = issues.filter((issue) => tasks.get(issue.id)?.stage === stage)
+          return (
+            <section key={stage} className="min-w-0 rounded-md border border-border bg-surface">
+              <div className="flex items-center justify-between p-2">
+                <h2 className="text-sm font-semibold">{t(`board.sdlcStage.${stage}`)}</h2>
+                <div className="text-xs text-text-muted">{stageIssues.length}</div>
+              </div>
+              <div className="space-y-2 p-2">
+                {stageIssues.map((issue) => {
+                  const status = tasks.get(issue.id)?.status
+                  return (
+                    <IssueCard
+                      key={issue.id}
+                      issue={issue}
+                      compact={compact}
+                      status={status ? t(`board.sdlcStatus.${status}`) : undefined}
+                    />
+                  )
+                })}
+                {stageIssues.length === 0 && (
+                  <p className="text-xs text-text-muted">{t('board.emptyStatus')}</p>
+                )}
+              </div>
+              {stage === 'Draft' && (
+                <CreateTaskAction projectKey={projectKey} variant="dashed" className="m-2">
+                  {t('board.create')}
+                </CreateTaskAction>
+              )}
+            </section>
+          )
+        })}
+      </div>
+      {ordinary.length > 0 && (
+        <section className="mt-4">
+          <h2 className="mb-2 text-sm font-semibold">{t('board.ordinaryIssues')}</h2>
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {ordinary.map((issue) => (
+              <IssueCard
+                key={issue.id}
+                issue={issue}
+                compact={compact}
+                status={statusLabel(issue.status, t)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
   )
 }
 
@@ -256,7 +333,10 @@ export function ProjectBoardPage() {
           }
         />
       </div>
-
+      {board.sdlc ? (
+        <SdlcBoard projectKey={key} sdlc={board.sdlc} issues={issues} compact={density === 'compact'} />
+      ) : (
+        <>
       <div className="mb-3 md:hidden">
         <RadioGroup
           appearance="segmented"
@@ -323,14 +403,16 @@ export function ProjectBoardPage() {
                   <IssueCard
                     key={issue.id}
                     issue={issue}
-                    columnId={column.id}
                     compact={density === 'compact'}
-                    onDragStart={handleDragStart}
-                    destinations={columns.filter((candidate) =>
-                      transitionAllowed(issue.status_id, candidate.id),
-                    )}
-                    onMove={moveIssue}
-                    isMoving={move.isPending}
+                    move={{
+                      columnId: column.id,
+                      onDragStart: handleDragStart,
+                      destinations: columns.filter((candidate) =>
+                        transitionAllowed(issue.status_id, candidate.id),
+                      ),
+                      onMove: moveIssue,
+                      isMoving: move.isPending,
+                    }}
                   />
                 ))}
                 {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
@@ -348,6 +430,8 @@ export function ProjectBoardPage() {
           )
         })}
       </div>
+        </>
+      )}
     </div>
   )
 }

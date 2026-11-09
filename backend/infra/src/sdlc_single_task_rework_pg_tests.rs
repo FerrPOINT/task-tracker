@@ -284,6 +284,15 @@ impl ReworkFixture {
         assert_eq!(canonical.root_task_id, self.task);
         assert_eq!(canonical.stage, expected.task.stage.canonical());
         assert_eq!(canonical.status, Some(expected.task.status));
+        let board = self
+            .repo
+            .board_tasks(canonical.project_id, &[self.task])
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(board.len(), 1);
+        assert_eq!(board[0].stage, expected.task.stage);
+        assert_eq!(board[0].status, Some(expected.task.status));
         assert_eq!(
             canonical.retained_fields["lifecycle"],
             serde_json::to_value(&expected.task).unwrap()

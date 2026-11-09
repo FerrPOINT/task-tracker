@@ -972,6 +972,54 @@ impl SdlcRepository for PostgresSdlcRepository {
         self.configured_completion_commit(task, actor, command, receipt)
             .await
     }
+    async fn board_tasks(
+        &self,
+        project: Uuid,
+        issues: &[Uuid],
+    ) -> Result<Option<Vec<domain::sdlc_lifecycle::SdlcBoardTask>>, AppError> {
+        use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+
+        let rows = self
+            .db
+            .query_all(statement(
+                "SELECT task_id, state->'stage' AS stage, state->'status' AS status
+                 FROM sdlc_tasks
+                 WHERE project_id = $1 AND tracker_instance_id = $2 AND task_id = ANY($3)",
+                vec![
+                    project.into(),
+                    self.config.instance_id.clone().into(),
+                    Value::Array(
+                        sea_orm::sea_query::ArrayType::Uuid,
+                        Some(Box::new(issues.iter().copied().map(Value::from).collect())),
+                    ),
+                ],
+            ))
+            .await
+            .map_err(map_db)?;
+        if rows.is_empty() && !self.config.single_task_project_ids.contains(&project) {
+            return Ok(None);
+        }
+        rows.into_iter()
+            .map(|row| {
+                let stage: Stage =
+                    serde_json::from_value(row.try_get::<Json>("", "stage").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
+                let status = row
+                    .try_get::<Option<Json>>("", "status")
+                    .map_err(map_db)?
+                    .map(serde_json::from_value::<LifecycleStatus>)
+                    .transpose()
+                    .map_err(AppError::internal)?;
+                Ok(SdlcBoardTask {
+                    issue_id: row.try_get("", "task_id").map_err(map_db)?,
+                    stage: LifecycleStage::from_legacy(stage),
+                    status,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
     fn source_repository(&self) -> Option<&dyn domain::sdlc_source::TaskSourceRepository> {
         Some(self)
     }
