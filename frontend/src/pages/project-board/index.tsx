@@ -293,153 +293,160 @@ export function ProjectBoardPage() {
     setSearchParams(next, { replace: true })
   }
 
-  return (
-    <div className="min-w-0">
-      <div className="mb-4">
-        <PageHeader
-          title={t('board.title', {
-            projectName: key,
-            sprintName: sprint?.name ?? t('board.backlog'),
-          })}
-          leading={<ProjectAvatar projectKey={key ?? ''} />}
-          context={t('board.subtitle', {
-            backlog: board.backlog_total,
-            remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
-          })}
-          actions={
-            <>
-              <div className="hidden md:block">
-                <RadioGroup
-                  appearance="segmented"
-                  label={t('board.density')}
-                  value={density}
-                  onValueChange={(value) => setDensity(value as 'comfortable' | 'compact')}
-                  options={(['comfortable', 'compact'] as const).map((value) => ({
-                    value,
-                    label: t(`board.density${value === 'compact' ? 'Compact' : 'Comfortable'}`),
-                  }))}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                asChild
-                aria-label={t('board.backlog')}
-              >
-                <Link to={`/projects/${key}/backlog`}>
-                  <List className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('board.backlog')}</span>
-                </Link>
-              </Button>
-            </>
-          }
-        />
-      </div>
-      {board.sdlc ? (
+  const header = (
+    <div className="mb-4">
+      <PageHeader
+        title={t('board.title', {
+          projectName: key,
+          sprintName: sprint?.name ?? t('board.backlog'),
+        })}
+        leading={<ProjectAvatar projectKey={key ?? ''} />}
+        context={t('board.subtitle', {
+          backlog: board.backlog_total,
+          remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
+        })}
+        actions={
+          <>
+            <div className="hidden md:block">
+              <RadioGroup
+                appearance="segmented"
+                label={t('board.density')}
+                value={density}
+                onValueChange={(value) => setDensity(value as 'comfortable' | 'compact')}
+                options={(['comfortable', 'compact'] as const).map((value) => ({
+                  value,
+                  label: t(`board.density${value === 'compact' ? 'Compact' : 'Comfortable'}`),
+                }))}
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              asChild
+              aria-label={t('board.backlog')}
+            >
+              <Link to={`/projects/${key}/backlog`}>
+                <List className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('board.backlog')}</span>
+              </Link>
+            </Button>
+          </>
+        }
+      />
+    </div>
+  )
+
+  if (board.sdlc) {
+    return (
+      <div className="min-w-0">
+        {header}
         <SdlcBoard
           projectKey={key}
           sdlc={board.sdlc}
           issues={issues}
           compact={density === 'compact'}
         />
-      ) : (
-        <>
-          <div className="mb-3 md:hidden">
-            <RadioGroup
-              appearance="segmented"
-              className="w-full"
-              label="Статус задач"
-              value={activeColumnId}
-              onValueChange={(value) => {
-                const next = new URLSearchParams(searchParams)
-                next.set('status', value)
-                setSearchParams(next, { replace: true })
-              }}
-              options={columns.map((column) => ({
-                value: column.id,
-                label: statusLabel(column.name, t),
-              }))}
-            />
-          </div>
+      </div>
+    )
+  }
 
-          <div
-            role="region"
-            aria-label={t('board.columns')}
-            tabIndex={0}
-            className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
-              density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
-            }`}
-          >
-            {columns.map((column) => {
-              const wipLimit = column.wip_limit ?? null
-              const colIssues = issuesByColumn(column.id)
-              const overLimit = wipLimit !== null && colIssues.length >= wipLimit
-              const isDropTarget = dropTarget === column.id && drag.dragging
-              return (
-                <Card
-                  key={column.id}
-                  highlighted={isDropTarget}
-                  onDragOver={(e) => handleDragOver(e, column.id)}
-                  onDrop={(e) => handleDrop(e, column.id)}
-                  onDragLeave={handleDragLeave}
-                  className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
-                >
-                  <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">
-                        {statusLabel(column.name, t)}
-                      </div>
-                      <div className="text-xs text-text-muted">
-                        {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                        {overLimit && (
-                          <Badge appearance="inline" tone="danger" className="ml-1">
-                            {t('board.wipWarning')}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
+  return (
+    <div className="min-w-0">
+      {header}
+      <div className="mb-3 md:hidden">
+        <RadioGroup
+          appearance="segmented"
+          className="w-full"
+          label="Статус задач"
+          value={activeColumnId}
+          onValueChange={(value) => {
+            const next = new URLSearchParams(searchParams)
+            next.set('status', value)
+            setSearchParams(next, { replace: true })
+          }}
+          options={columns.map((column) => ({
+            value: column.id,
+            label: statusLabel(column.name, t),
+          }))}
+        />
+      </div>
 
-                  <CardContent
-                    density="compact"
-                    className={`min-h-24 flex-1 ${
-                      density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-2'
-                    }`}
-                  >
-                    {colIssues.map((issue) => (
-                      <IssueCard
-                        key={issue.id}
-                        issue={issue}
-                        compact={density === 'compact'}
-                        move={{
-                          columnId: column.id,
-                          onDragStart: handleDragStart,
-                          destinations: columns.filter((candidate) =>
-                            transitionAllowed(issue.status_id, candidate.id),
-                          ),
-                          onMove: moveIssue,
-                          isMoving: move.isPending,
-                        }}
-                      />
-                    ))}
-                    {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
-                  </CardContent>
+      <div
+        role="region"
+        aria-label={t('board.columns')}
+        tabIndex={0}
+        className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
+          density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
+        }`}
+      >
+        {columns.map((column) => {
+          const wipLimit = column.wip_limit ?? null
+          const colIssues = issuesByColumn(column.id)
+          const overLimit = wipLimit !== null && colIssues.length >= wipLimit
+          const isDropTarget = dropTarget === column.id && drag.dragging
+          return (
+            <Card
+              key={column.id}
+              highlighted={isDropTarget}
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDrop={(e) => handleDrop(e, column.id)}
+              onDragLeave={handleDragLeave}
+              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
+            >
+              <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">
+                    {statusLabel(column.name, t)}
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
+                    {overLimit && (
+                      <Badge appearance="inline" tone="danger" className="ml-1">
+                        {t('board.wipWarning')}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
 
-                  <CreateTaskAction
-                    projectKey={key}
-                    aria-label={t('board.create')}
-                    variant="dashed"
-                    className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
-                  >
-                    {t('board.create')}
-                  </CreateTaskAction>
-                </Card>
-              )
-            })}
-          </div>
-        </>
-      )}
+              <CardContent
+                density="compact"
+                className={`min-h-24 flex-1 ${
+                  density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-2'
+                }`}
+              >
+                {colIssues.map((issue) => (
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    compact={density === 'compact'}
+                    move={{
+                      columnId: column.id,
+                      onDragStart: handleDragStart,
+                      destinations: columns.filter((candidate) =>
+                        transitionAllowed(issue.status_id, candidate.id),
+                      ),
+                      onMove: moveIssue,
+                      isMoving: move.isPending,
+                    }}
+                  />
+                ))}
+                {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
+              </CardContent>
+
+              <CreateTaskAction
+                projectKey={key}
+                aria-label={t('board.create')}
+                variant="dashed"
+                className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
+              >
+                {t('board.create')}
+              </CreateTaskAction>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }
