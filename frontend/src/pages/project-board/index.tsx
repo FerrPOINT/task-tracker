@@ -81,31 +81,34 @@ function IssueCard({
               </Link>
             </TextLink>
             {move && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0"
-                  aria-label={`Изменить статус ${issue.key}`}
-                  disabled={move.isMoving}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {move.destinations.length > 0 ? (
-                  move.destinations.map((status) => (
-                    <DropdownMenuItem key={status.id} onClick={() => move.onMove(issue.id, status.id)}>
-                      {t('board.moveTo', { status: statusLabel(status.name, t) })}
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    aria-label={`Изменить статус ${issue.key}`}
+                    disabled={move.isMoving}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  {move.destinations.length > 0 ? (
+                    move.destinations.map((status) => (
+                      <DropdownMenuItem
+                        key={status.id}
+                        onClick={() => move.onMove(issue.id, status.id)}
+                      >
+                        {t('board.moveTo', { status: statusLabel(status.name, t) })}
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
           <div className="flex items-center justify-between">
@@ -334,102 +337,107 @@ export function ProjectBoardPage() {
         />
       </div>
       {board.sdlc ? (
-        <SdlcBoard projectKey={key} sdlc={board.sdlc} issues={issues} compact={density === 'compact'} />
+        <SdlcBoard
+          projectKey={key}
+          sdlc={board.sdlc}
+          issues={issues}
+          compact={density === 'compact'}
+        />
       ) : (
         <>
-      <div className="mb-3 md:hidden">
-        <RadioGroup
-          appearance="segmented"
-          className="w-full"
-          label="Статус задач"
-          value={activeColumnId}
-          onValueChange={(value) => {
-            const next = new URLSearchParams(searchParams)
-            next.set('status', value)
-            setSearchParams(next, { replace: true })
-          }}
-          options={columns.map((column) => ({
-            value: column.id,
-            label: statusLabel(column.name, t),
-          }))}
-        />
-      </div>
+          <div className="mb-3 md:hidden">
+            <RadioGroup
+              appearance="segmented"
+              className="w-full"
+              label="Статус задач"
+              value={activeColumnId}
+              onValueChange={(value) => {
+                const next = new URLSearchParams(searchParams)
+                next.set('status', value)
+                setSearchParams(next, { replace: true })
+              }}
+              options={columns.map((column) => ({
+                value: column.id,
+                label: statusLabel(column.name, t),
+              }))}
+            />
+          </div>
 
-      <div
-        role="region"
-        aria-label={t('board.columns')}
-        tabIndex={0}
-        className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
-          density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
-        }`}
-      >
-        {columns.map((column) => {
-          const wipLimit = column.wip_limit ?? null
-          const colIssues = issuesByColumn(column.id)
-          const overLimit = wipLimit !== null && colIssues.length >= wipLimit
-          const isDropTarget = dropTarget === column.id && drag.dragging
-          return (
-            <Card
-              key={column.id}
-              highlighted={isDropTarget}
-              onDragOver={(e) => handleDragOver(e, column.id)}
-              onDrop={(e) => handleDrop(e, column.id)}
-              onDragLeave={handleDragLeave}
-              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
-            >
-              <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">
-                    {statusLabel(column.name, t)}
-                  </div>
-                  <div className="text-xs text-text-muted">
-                    {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                    {overLimit && (
-                      <Badge appearance="inline" tone="danger" className="ml-1">
-                        {t('board.wipWarning')}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
+          <div
+            role="region"
+            aria-label={t('board.columns')}
+            tabIndex={0}
+            className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
+              density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
+            }`}
+          >
+            {columns.map((column) => {
+              const wipLimit = column.wip_limit ?? null
+              const colIssues = issuesByColumn(column.id)
+              const overLimit = wipLimit !== null && colIssues.length >= wipLimit
+              const isDropTarget = dropTarget === column.id && drag.dragging
+              return (
+                <Card
+                  key={column.id}
+                  highlighted={isDropTarget}
+                  onDragOver={(e) => handleDragOver(e, column.id)}
+                  onDrop={(e) => handleDrop(e, column.id)}
+                  onDragLeave={handleDragLeave}
+                  className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col md:flex`}
+                >
+                  <CardHeader density={density === 'compact' ? 'compact' : 'default'}>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">
+                        {statusLabel(column.name, t)}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
+                        {overLimit && (
+                          <Badge appearance="inline" tone="danger" className="ml-1">
+                            {t('board.wipWarning')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
 
-              <CardContent
-                density="compact"
-                className={`min-h-24 flex-1 ${
-                  density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-2'
-                }`}
-              >
-                {colIssues.map((issue) => (
-                  <IssueCard
-                    key={issue.id}
-                    issue={issue}
-                    compact={density === 'compact'}
-                    move={{
-                      columnId: column.id,
-                      onDragStart: handleDragStart,
-                      destinations: columns.filter((candidate) =>
-                        transitionAllowed(issue.status_id, candidate.id),
-                      ),
-                      onMove: moveIssue,
-                      isMoving: move.isPending,
-                    }}
-                  />
-                ))}
-                {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
-              </CardContent>
+                  <CardContent
+                    density="compact"
+                    className={`min-h-24 flex-1 ${
+                      density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-2'
+                    }`}
+                  >
+                    {colIssues.map((issue) => (
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        compact={density === 'compact'}
+                        move={{
+                          columnId: column.id,
+                          onDragStart: handleDragStart,
+                          destinations: columns.filter((candidate) =>
+                            transitionAllowed(issue.status_id, candidate.id),
+                          ),
+                          onMove: moveIssue,
+                          isMoving: move.isPending,
+                        }}
+                      />
+                    ))}
+                    {colIssues.length === 0 && <EmptyState message={t('board.emptyStatus')} />}
+                  </CardContent>
 
-              <CreateTaskAction
-                projectKey={key}
-                aria-label={t('board.create')}
-                variant="dashed"
-                className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
-              >
-                {t('board.create')}
-              </CreateTaskAction>
-            </Card>
-          )
-        })}
-      </div>
+                  <CreateTaskAction
+                    projectKey={key}
+                    aria-label={t('board.create')}
+                    variant="dashed"
+                    className={density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'}
+                  >
+                    {t('board.create')}
+                  </CreateTaskAction>
+                </Card>
+              )
+            })}
+          </div>
         </>
       )}
     </div>
