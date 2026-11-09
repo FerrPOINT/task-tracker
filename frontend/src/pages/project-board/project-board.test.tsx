@@ -8,13 +8,21 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   ...(await original<object>()),
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
-import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
+import type { components } from '@/api/generated'
+
+const fixture = vi.hoisted(() => ({
+  sdlc: undefined as components['schemas']['SdlcBoardResponse'] | undefined,
+}))
+afterEach(() => {
+  fixture.sdlc = undefined
+})
 
 const navigateToFleet = vi.hoisted(() => vi.fn())
 const boardHooks = vi.hoisted(() => ({
@@ -44,6 +52,7 @@ vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
     data: {
       project_key: 'TT',
+      sdlc: fixture.sdlc,
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
       columns: [
         { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
@@ -59,6 +68,27 @@ vi.mock('@/shared/api/hooks', () => ({
           status_id: 'todo',
           assignee_name: 'me',
         },
+        ...(fixture.sdlc
+          ? [
+              {
+                id: 'i2',
+                key: 'TT-2',
+                summary: 'Review work',
+                priority: 'High',
+                issue_type: 'Task',
+                status_id: 'todo',
+              },
+              {
+                id: 'i3',
+                key: 'TT-3',
+                summary: 'Ordinary work',
+                priority: 'High',
+                issue_type: 'Task',
+                status_id: 'todo',
+                status: 'To Do',
+              },
+            ]
+          : []),
       ],
     },
     isLoading: false,
@@ -140,6 +170,38 @@ describe('ProjectBoardPage', () => {
     expect(within(group).getByRole('radio', { name: /Готово|Done/i })).toBeChecked()
     expect(navigateToFleet).not.toHaveBeenCalled()
   })
+
+  it('groups the same issue status into separate SDLC stages and preserves ordinary cards', () => {
+    fixture.sdlc = {
+      stages: [
+        'Draft',
+        'Backlog',
+        'Analysis',
+        'Architecture',
+        'Development',
+        'Review',
+        'Testing',
+        'Rework',
+        'Deployment',
+      ],
+      tasks: [
+        { issue_id: 'i1', stage: 'Development', status: 'Ready' },
+        { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+      ],
+    }
+    render(wrapper(<ProjectBoardPage />))
+    for (const [stage, card] of [
+      ['Разработка', 'Do work'],
+      ['Ревью', 'Review work'],
+      ['Обычные задачи', 'Ordinary work'],
+    ] as const) {
+      const section = screen.getByRole('heading', { name: stage }).closest('section')
+      expect(section).toHaveTextContent(card)
+      expect(screen.getByText(card).closest('article')).toHaveAttribute('draggable', 'false')
+    }
+    expect(screen.getByRole('heading', { name: 'На доработке' })).toBeInTheDocument()
+  })
+
   it('opens empty PM chat with the same immutable project from every board column', async () => {
     navigateToFleet.mockClear()
     const user = userEvent.setup()
