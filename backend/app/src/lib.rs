@@ -2,6 +2,8 @@ pub mod attachment_artifacts;
 pub mod attachment_pm_review;
 pub mod auth;
 pub mod authz;
+pub mod background;
+pub mod background_intake;
 pub mod commands;
 pub mod context;
 pub mod dto;

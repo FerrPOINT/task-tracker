@@ -13,6 +13,8 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "sdlc_background_intake.rs"]
+mod background_intake;
 #[path = "sdlc_commands.rs"]
 mod commands;
 #[path = "sdlc_configured_cli.rs"]
@@ -492,7 +494,36 @@ impl PostgresSdlcRepository {
         let intent: AnalysisIntent =
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
                 .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
-        let mut expected = if state.configured_cli() {
+        let initial_finding = state
+            .retained_fields
+            .contains_key("finding_intake_operation")
+            && row
+                .try_get::<Option<i64>>("", "routing_generation")
+                .map_err(map_db)?
+                == Some(1);
+        let mut expected = if initial_finding {
+            let operation = state.retained_fields["finding_intake_operation"]
+                .as_str()
+                .ok_or_else(|| AppError::conflict("finding intake identity invalid"))?;
+            let proof=tx.query_one(statement("SELECT o.result FROM sdlc_delivery_operations o
+                JOIN sdlc_draft_creations c ON c.task_id=o.task_id
+                WHERE o.task_id=$1 AND o.actor_subject=$2 AND o.command->>'operation'='start_finding_analysis'
+                AND o.command->>'intake_operation_id'=$3 AND c.finding_intake_result->>'operation_id'=$3
+                AND c.intake_transaction_id=o.transaction_id AND sdlc_finding_intake_origin(o.task_id,$4)",
+                vec![state.task_id.into(),state.owner_subject.clone().into(),operation.into(),json_value(state)?]))
+                .await.map_err(map_db)?.ok_or_else(||AppError::conflict("human finding start absent"))?;
+            let started: domain::sdlc_lifecycle::LifecycleReceipt =
+                serde_json::from_value(proof.try_get::<Json>("", "result").map_err(map_db)?)
+                    .map_err(AppError::internal)?;
+            if Some(started.task.routing.snapshot_id)
+                != row
+                    .try_get::<Option<Uuid>>("", "routing_id")
+                    .map_err(map_db)?
+            {
+                return Err(AppError::conflict("human finding routing differs"));
+            }
+            app::background_intake::analysis_intent(state, confirmation, intent.intent_id)?
+        } else if state.configured_cli() {
             let completed = Self::configured_saved(tx, state, None)
                 .await?
                 .ok_or_else(|| AppError::conflict("saved PM completion absent"))?;
@@ -1430,198 +1461,44 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: CreateDraftCommand,
     ) -> Result<(CreatedDraft, bool), AppError> {
-        app::sdlc::validate_draft(actor, &command)?;
-        let hash =
-            app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":command}))?;
-        let lock = json!([
-            "sdlc.draft.create:v1",
-            project,
-            actor.subject,
-            command.idempotency_key
-        ])
-        .to_string();
-        // Same numeric suffix allocation and bounded key-conflict retries as ordinary issues.
-        for _ in 0..5 {
-            let tx = self.db.begin().await.map_err(map_db)?;
-            exec(
-                &tx,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
-                vec![lock.clone().into()],
-            )
+        self.create_draft_inner(project, actor, command, None).await
+    }
+
+    async fn intake_finding(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        operation: Uuid,
+        command: domain::background_intake::FindingIntake,
+    ) -> Result<(domain::background_intake::FindingIntakeReceipt, bool), AppError> {
+        let draft = app::background_intake::draft_command(actor, operation, &command)?;
+        let (created, replayed) = self
+            .create_draft_inner(project, actor, draft, Some((operation, command.clone())))
             .await?;
-            let (user, project_key) = Self::project_access(&tx, project, actor).await?;
-            let replay = tx
-                .query_one(statement(
-                    "SELECT task_id,payload_hash,result FROM sdlc_draft_creations
-                 WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
-                    vec![
-                        project.into(),
-                        actor.subject.clone().into(),
-                        command.idempotency_key.clone().into(),
-                    ],
-                ))
-                .await
-                .map_err(map_db)?;
-            if let Some(row) = replay {
-                if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
-                    return Err(AppError::conflict(
-                        "idempotency key reused with changed payload",
-                    ));
-                }
-                let task: Uuid = row.try_get("", "task_id").map_err(map_db)?;
-                let result: CreatedDraft =
-                    serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
-                        .map_err(AppError::internal)?;
-                let issue = tx.query_one(statement(
-                    "SELECT project_id,reporter_id,key FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
-                    vec![task.into()],
-                )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("issue", task))?;
-                let state = self.load(&tx, task, actor).await?;
-                if issue.try_get::<Uuid>("", "project_id").map_err(map_db)? != project
-                    || issue.try_get::<Uuid>("", "reporter_id").map_err(map_db)? != user
-                    || issue.try_get::<String>("", "key").map_err(map_db)? != result.task_key
-                    || state.owner_subject != actor.subject
-                    || state.root_task_id != task
-                    || state.task_id != task
-                    || state.project_id != project
-                    || (state.draft_flow()? != command.flow
-                        && !(result.interaction_protocol.is_none() && state.configured_cli()))
-                    || result.task_id != task
-                    || result.root_task_id != task
-                    || result.project_id != project
-                    || result.owner_subject != actor.subject
-                    || result.tracker_instance_id != self.config.instance_id
-                {
-                    return Err(AppError::conflict(
-                        "draft creation ownership/binding mismatch",
-                    ));
-                }
-                tx.commit().await.map_err(map_db)?;
-                return Ok((result, true));
-            }
-            if command.flow != Some(domain::sdlc::DraftFlow::SingleTaskV1)
-                || command.interaction_protocol
-                    != Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1)
-            {
-                return Err(AppError::invalid_input(
-                    "New drafts require single-task-v1 and configured-cli-v1",
-                ));
-            }
-            self.single_task_policy(&tx, project).await?;
-            let row = tx
-                .query_one(statement(
-                    "SELECT allocate_project_issue_number($1) AS number",
-                    vec![project.into()],
-                ))
-                .await
-                .map_err(map_db)?
-                .ok_or_else(|| AppError::internal("issue number missing"))?;
-            let number: u32 = row
-                .try_get::<i64>("", "number")
-                .map_err(map_db)?
-                .try_into()
-                .ok()
-                .ok_or_else(|| AppError::validation("issue number overflow"))?;
-            let task = Uuid::now_v7();
-            let key = format!("{project_key}-{number}");
-            let ready = domain::sdlc_lifecycle::LifecycleStatus::Ready;
-            let status = Some(ready);
-            let initial_status = lifecycle::mapped_issue_status(&tx, Stage::Draft, ready).await?;
-            let inserted = tx.execute(statement(
-                "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,
-                 priority,labels,position,time_spent_seconds)
-                 VALUES($1,$2,$3,'task',$7,
-                 $4,$5,$6,'medium','[]',0,0)",
-                vec![task.into(), project.into(), key.clone().into(), command.title.clone().into(),
-                    command.description.clone().into(), user.into(), initial_status.into()],
-            )).await;
-            if let Err(error) = inserted {
-                let key_conflict = matches!(error.sql_err(),
-                    Some(sea_orm::SqlErr::UniqueConstraintViolation(message))
-                        if message.contains("\"issues_key_key\""));
-                tx.rollback().await.map_err(map_db)?;
-                if key_conflict {
-                    // A legacy writer may have committed the candidate key
-                    // outside the allocator. The rolled-back allocation must
-                    // not retry that same number indefinitely. Advance only
-                    // from the now-visible conflicting issue, retaining the
-                    // permanent counter rather than recomputing MAX + 1.
-                    exec(
-                        &self.db,
-                        "INSERT INTO project_issue_counters(project_id,high_water_mark)
-                         SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM issues WHERE project_id=$1 AND key=$3)
-                         ON CONFLICT(project_id) DO UPDATE SET high_water_mark=GREATEST(project_issue_counters.high_water_mark,EXCLUDED.high_water_mark)",
-                        vec![project.into(), i64::from(number).into(), key.into()],
-                    )
-                    .await?;
-                    continue;
-                }
-                return Err(map_db(error));
-            }
-            let mut retained_fields = serde_json::Map::new();
-            if let Some(protocol) = command.interaction_protocol {
-                retained_fields.insert("interaction_protocol".into(), json!(protocol));
-            }
-            if let Some(flow) = command.flow {
-                retained_fields.insert(
-                    "flow".into(),
-                    serde_json::to_value(flow).map_err(AppError::internal)?,
-                );
-            }
-            let state = TaskState {
-                status,
-                retained_fields,
-                draft_submode: Some(DraftSubmode::Brainstorming),
-                tracker_instance_id: self.config.instance_id.clone(),
-                project_id: project,
-                task_id: task,
-                root_task_id: task,
-                owner_subject: actor.subject.clone(),
-                stage: Stage::Draft,
-                confirmation_revision: None,
-                assignment: None,
-                questions: vec![],
-                revisions: vec![],
-                confirmations: vec![],
-                evidence: vec![],
-            };
-            exec(&tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id)
-                SELECT $1,id,NULL,status_id,$2 FROM issues WHERE id=$3",
-                vec![Uuid::now_v7().into(), user.into(), task.into()]).await?;
-            exec(&tx, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
-                VALUES($1,$2,$3,$1,$4,$5)",
-                vec![task.into(), self.config.instance_id.clone().into(), project.into(),
-                    actor.subject.clone().into(), json_value(&state)?]).await?;
-            self.select_task_source(&tx, &state, user).await?;
-            let result = CreatedDraft {
-                interaction_protocol: command.interaction_protocol,
-                tracker_instance_id: self.config.instance_id.clone(),
-                project_id: project,
-                task_id: task,
-                root_task_id: task,
-                task_key: key,
-                owner_subject: actor.subject.clone(),
-                stage: DraftStage::Draft,
-            };
-            let input_hash = app::sdlc::pm_draft_input_hash(&command.title, &command.description)?;
-            exec(&tx, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,
-                input_snapshot_ref,input_title,input_description,input_sha256)
-                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-                vec![project.into(), actor.subject.clone().into(), command.idempotency_key.clone().into(),
-                    hash.clone().into(), task.into(), json_value(&result)?, Uuid::now_v7().into(),
-                    command.title.clone().into(), command.description.clone().into(), input_hash.into()]).await?;
-            exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'task.created',$3)",
-                vec![Uuid::now_v7().into(), task.into(),
-                    json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
-                        "project_id":project,"task_id":task,"root_task_id":task,
-                        "owner_subject":actor.subject,"stage":"Draft",
-                        "requirement_revision":null,"result":result}).into()]).await?;
-            tx.commit().await.map_err(map_db)?;
-            return Ok((result, false));
-        }
-        Err(AppError::conflict(
-            "could not allocate a unique issue key, try again",
+        // After COMMIT, only construct the already-journaled receipt. A new
+        // authorization/readback failure must not turn a committed creation
+        // into a validation rejection that a client could retry with a new key.
+        Ok((
+            domain::background_intake::FindingIntakeReceipt {
+                operation_id: operation,
+                tracker_instance_id: created.tracker_instance_id,
+                project_id: created.project_id,
+                task_id: created.task_id,
+                task_key: created.task_key,
+                destination: command.destination,
+                request: command,
+            },
+            replayed,
         ))
+    }
+
+    async fn finding_intake_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        operation: Uuid,
+    ) -> Result<domain::background_intake::FindingIntakeReceipt, AppError> {
+        self.read_finding_intake(project, actor, operation).await
     }
 
     async fn draft_creation_operation(
@@ -2000,5 +1877,270 @@ impl SdlcRepository for PostgresSdlcRepository {
         }
         tx.commit().await.map_err(map_db)?;
         Ok(candidates)
+    }
+}
+
+impl PostgresSdlcRepository {
+    async fn create_draft_inner(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: CreateDraftCommand,
+        intake: Option<(Uuid, domain::background_intake::FindingIntake)>,
+    ) -> Result<(CreatedDraft, bool), AppError> {
+        app::sdlc::validate_draft(actor, &command)?;
+        let hash = match &intake {
+            Some((operation, finding)) => app::sdlc::canonical_hash(&json!({
+                "operation":"finding_intake", "operation_id":operation, "payload":finding}))?,
+            None => {
+                app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":command}))?
+            }
+        };
+        let lock = json!([
+            "sdlc.draft.create:v1",
+            project,
+            actor.subject,
+            command.idempotency_key
+        ])
+        .to_string();
+        // Same numeric suffix allocation and bounded key-conflict retries as ordinary issues.
+        for _ in 0..5 {
+            let tx = self.db.begin().await.map_err(map_db)?;
+            exec(
+                &tx,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                vec![lock.clone().into()],
+            )
+            .await?;
+            let (user, project_key) = Self::project_access(&tx, project, actor).await?;
+            let replay = tx
+                .query_one(statement(
+                    "SELECT task_id,payload_hash,result FROM sdlc_draft_creations
+                 WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+                    vec![
+                        project.into(),
+                        actor.subject.clone().into(),
+                        command.idempotency_key.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(map_db)?;
+            if let Some(row) = replay {
+                if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
+                    return Err(AppError::conflict(
+                        "idempotency key reused with changed payload",
+                    ));
+                }
+                let task: Uuid = row.try_get("", "task_id").map_err(map_db)?;
+                let result: CreatedDraft =
+                    serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
+                let issue = tx.query_one(statement(
+                    "SELECT project_id,reporter_id,key FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+                    vec![task.into()],
+                )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("issue", task))?;
+                let state = self.load(&tx, task, actor).await?;
+                if issue.try_get::<Uuid>("", "project_id").map_err(map_db)? != project
+                    || issue.try_get::<Uuid>("", "reporter_id").map_err(map_db)? != user
+                    || issue.try_get::<String>("", "key").map_err(map_db)? != result.task_key
+                    || state.owner_subject != actor.subject
+                    || state.root_task_id != task
+                    || state.task_id != task
+                    || state.project_id != project
+                    || (state.draft_flow()? != command.flow
+                        && !(result.interaction_protocol.is_none() && state.configured_cli()))
+                    || result.task_id != task
+                    || result.root_task_id != task
+                    || result.project_id != project
+                    || result.owner_subject != actor.subject
+                    || result.tracker_instance_id != self.config.instance_id
+                {
+                    return Err(AppError::conflict(
+                        "draft creation ownership/binding mismatch",
+                    ));
+                }
+                tx.commit().await.map_err(map_db)?;
+                return Ok((result, true));
+            }
+            let custom_values = match &intake {
+                Some((_, finding)) => Self::finding_custom_values(&tx, project, finding).await?,
+                None => vec![],
+            };
+            if command.flow != Some(domain::sdlc::DraftFlow::SingleTaskV1)
+                || command.interaction_protocol
+                    != Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1)
+            {
+                return Err(AppError::invalid_input(
+                    "New drafts require single-task-v1 and configured-cli-v1",
+                ));
+            }
+            self.single_task_policy(&tx, project).await?;
+            let row = tx
+                .query_one(statement(
+                    "SELECT allocate_project_issue_number($1) AS number",
+                    vec![project.into()],
+                ))
+                .await
+                .map_err(map_db)?
+                .ok_or_else(|| AppError::internal("issue number missing"))?;
+            let number: u32 = row
+                .try_get::<i64>("", "number")
+                .map_err(map_db)?
+                .try_into()
+                .ok()
+                .ok_or_else(|| AppError::validation("issue number overflow"))?;
+            let task = Uuid::now_v7();
+            let key = format!("{project_key}-{number}");
+            let ready = domain::sdlc_lifecycle::LifecycleStatus::Ready;
+            let status = Some(ready);
+            let initial_status = lifecycle::mapped_issue_status(&tx, Stage::Draft, ready).await?;
+            let inserted = tx.execute(statement(
+                "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,
+                 priority,labels,position,time_spent_seconds)
+                 VALUES($1,$2,$3,$8,$7,
+                 $4,$5,$6,'medium','[]',0,0)",
+                vec![task.into(), project.into(), key.clone().into(), command.title.clone().into(),
+                    command.description.clone().into(), user.into(), initial_status.into(), intake.as_ref().map(|(_,c)| match c.kind {
+                        domain::background_intake::FindingKind::Bug => "bug",
+                        domain::background_intake::FindingKind::Refactoring => "task",
+                    }).unwrap_or("task").into()],
+            )).await;
+            if let Err(error) = inserted {
+                let key_conflict = matches!(error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(message))
+                        if message.contains("\"issues_key_key\""));
+                tx.rollback().await.map_err(map_db)?;
+                if key_conflict {
+                    // A legacy writer may have committed the candidate key
+                    // outside the allocator. The rolled-back allocation must
+                    // not retry that same number indefinitely. Advance only
+                    // from the now-visible conflicting issue, retaining the
+                    // permanent counter rather than recomputing MAX + 1.
+                    exec(
+                        &self.db,
+                        "INSERT INTO project_issue_counters(project_id,high_water_mark)
+                         SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM issues WHERE project_id=$1 AND key=$3)
+                         ON CONFLICT(project_id) DO UPDATE SET high_water_mark=GREATEST(project_issue_counters.high_water_mark,EXCLUDED.high_water_mark)",
+                        vec![project.into(), i64::from(number).into(), key.into()],
+                    )
+                    .await?;
+                    continue;
+                }
+                return Err(map_db(error));
+            }
+            for (field, value) in custom_values {
+                exec(&tx, "INSERT INTO issue_custom_field_values(issue_id,field_id,value) VALUES($1,$2,$3)",
+                    vec![task.into(),field.as_uuid().into(),value.into()]).await?;
+            }
+            let mut retained_fields = serde_json::Map::new();
+            if let Some(protocol) = command.interaction_protocol {
+                retained_fields.insert("interaction_protocol".into(), json!(protocol));
+            }
+            if let Some(flow) = command.flow {
+                retained_fields.insert(
+                    "flow".into(),
+                    serde_json::to_value(flow).map_err(AppError::internal)?,
+                );
+            }
+            let state = TaskState {
+                status,
+                retained_fields,
+                draft_submode: Some(DraftSubmode::Brainstorming),
+                tracker_instance_id: self.config.instance_id.clone(),
+                project_id: project,
+                task_id: task,
+                root_task_id: task,
+                owner_subject: actor.subject.clone(),
+                stage: Stage::Draft,
+                confirmation_revision: None,
+                assignment: None,
+                questions: vec![],
+                revisions: vec![],
+                confirmations: vec![],
+                evidence: vec![],
+            };
+            exec(&tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id)
+                SELECT $1,id,NULL,status_id,$2 FROM issues WHERE id=$3",
+                vec![Uuid::now_v7().into(), user.into(), task.into()]).await?;
+            exec(&tx, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
+                VALUES($1,$2,$3,$1,$4,$5)",
+                vec![task.into(), self.config.instance_id.clone().into(), project.into(),
+                    actor.subject.clone().into(), json_value(&state)?]).await?;
+            self.select_task_source(&tx, &state, user).await?;
+            let result = CreatedDraft {
+                interaction_protocol: command.interaction_protocol,
+                tracker_instance_id: self.config.instance_id.clone(),
+                project_id: project,
+                task_id: task,
+                root_task_id: task,
+                task_key: key,
+                owner_subject: actor.subject.clone(),
+                stage: DraftStage::Draft,
+            };
+            let input_hash = app::sdlc::pm_draft_input_hash(&command.title, &command.description)?;
+            // The existing platform sequence also serves genuine delivery execution
+            // references. Allocate a business key, never a synthetic PM execution.
+            let finding_ordinal: Option<i64> = if intake.as_ref().is_some_and(|(_, c)| {
+                c.destination == domain::background_intake::FindingDestination::Backlog
+            }) {
+                Some(tx.query_one(statement("SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",vec![]))
+                    .await.map_err(map_db)?.ok_or_else(||AppError::internal("business ordinal missing"))?
+                    .try_get("","ordinal").map_err(map_db)?)
+            } else {
+                None
+            };
+            let mut values = vec![
+                project.into(),
+                actor.subject.clone().into(),
+                command.idempotency_key.clone().into(),
+                hash.clone().into(),
+                task.into(),
+                json_value(&result)?,
+                Uuid::now_v7().into(),
+                command.title.clone().into(),
+                command.description.clone().into(),
+                input_hash.into(),
+            ];
+            let sql = if let Some((operation, finding)) = &intake {
+                values.extend([
+                    json_value(finding)?,
+                    json_value(&domain::background_intake::FindingIntakeReceipt {
+                        operation_id: *operation,
+                        tracker_instance_id: self.config.instance_id.clone(),
+                        project_id: project,
+                        task_id: task,
+                        task_key: result.task_key.clone(),
+                        destination: finding.destination,
+                        request: finding.clone(),
+                    })?,
+                    finding_ordinal.into(),
+                ]);
+                "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,
+                    input_snapshot_ref,input_title,input_description,input_sha256,finding_intake,finding_intake_result,intake_transaction_id,finding_workflow_ordinal)
+                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,pg_current_xact_id(),$13)"
+            } else {
+                "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,
+                    input_snapshot_ref,input_title,input_description,input_sha256)
+                    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)"
+            };
+            exec(&tx, sql, values).await?;
+            if let Some((operation, finding)) = &intake {
+                if finding.destination == domain::background_intake::FindingDestination::Backlog {
+                    self.queue_finding_analysis(&tx, &state, actor, *operation, finding)
+                        .await?;
+                }
+            }
+            exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'task.created',$3)",
+                vec![Uuid::now_v7().into(), task.into(),
+                    json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+                        "project_id":project,"task_id":task,"root_task_id":task,
+                        "owner_subject":actor.subject,"stage":"Draft",
+                        "requirement_revision":null,"result":result}).into()]).await?;
+            tx.commit().await.map_err(map_db)?;
+            return Ok((result, false));
+        }
+        Err(AppError::conflict(
+            "could not allocate a unique issue key, try again",
+        ))
     }
 }

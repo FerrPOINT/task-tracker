@@ -26,14 +26,39 @@ pub fn authorize(actor: &Principal, config: &SdlcConfig) -> Result<(), AppError>
 }
 
 /// Routing/revision/SQL owner predicates are checked by the repository in the same read.
+pub enum CandidateOrigin {
+    Pm {
+        completed: bool,
+        configured_started: bool,
+    },
+    HumanFinding,
+}
+
 pub fn candidate(
     state: &TaskState,
     current: Option<&LifecycleReceipt>,
-    pm_completed: bool,
-    configured_started: bool,
+    origin: CandidateOrigin,
 ) -> Result<Option<DeliveryCandidate>, AppError> {
+    let (pm_completed, admitted) = match origin {
+        CandidateOrigin::Pm {
+            completed,
+            configured_started,
+        } => (completed, completed && configured_started),
+        CandidateOrigin::HumanFinding => {
+            let finding = state
+                .retained_fields
+                .get("finding_intake_operation")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| value.parse::<uuid::Uuid>().ok())
+                .is_some_and(|id| !id.is_nil());
+            if !state.configured_cli() || !finding {
+                return Ok(None);
+            }
+            (false, true)
+        }
+    };
     if state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
-        || (state.configured_cli() && (!configured_started || !pm_completed || current.is_none()))
+        || (state.configured_cli() && (!admitted || current.is_none()))
     {
         return Ok(None);
     }

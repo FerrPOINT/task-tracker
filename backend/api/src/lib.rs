@@ -135,6 +135,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_reservation::pm_completion_operation,
         routes::sdlc::project_access,
         routes::sdlc::project_directory,
+        routes::sdlc::intake_finding,
+        routes::sdlc::finding_intake_operation,
         routes::sdlc::create_draft,
         routes::sdlc::draft_creation_operation,
         routes::sdlc::context,
@@ -190,6 +192,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::auth::oidc_callback,
         routes::auth::logout_openapi,
         routes::projects::list_projects,
+        routes::background::list,
+        routes::background::get,
+        routes::background::intake_fields,
+        routes::background::task_states,
         routes::projects::create_project,
         routes::project_spaces::create,
         routes::project_catalog::visible,
@@ -562,6 +568,19 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
         )
+        .route("/background/projects", get(routes::background::list))
+        .route(
+            "/background/projects/{project_id}/task-states",
+            get(routes::background::task_states),
+        )
+        .route(
+            "/background/projects/{project_id}/intake-fields",
+            get(routes::background::intake_fields),
+        )
+        .route(
+            "/background/projects/{project_id}",
+            get(routes::background::get),
+        )
         .route(
             "/projects/{project_key}",
             get(routes::projects::get_project)
@@ -884,6 +903,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .nest("/api/v1", events_router)
         .merge(routes::identity_deletion::router())
+        .merge(routes::background_source::router())
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()));
 
     if ctx.config.metrics.public {

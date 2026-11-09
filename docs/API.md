@@ -2416,3 +2416,21 @@ authorization and `{source, receipt}` envelope. Delivery receipts additionally
 expose required nullable `previous_result_id` from the original assignment that
 produced that accepted result. The legacy analysis variant and mutation receipts
 retain their original shapes. Stored history is not rewritten by this read.
+
+
+## Человеческий intake находки Fleet
+
+Кандидат: `PUT/GET /api/v1/projects/{project_id}/sdlc/finding-intakes/{operation_id}`.
+Точный FindingIntake/Receipt определяет Rust OpenAPI. Требуются человеческий
+доступ и права редактирования проекта, обязательные поля и неизменный ключ/материал.
+Bug → Bug, refactoring → Task; Draft остаётся для PM, Backlog поступает в настоящую
+очередь Analysis по человеческому подтверждению переданного материала. Поддельных
+PM completion, назначений и терминальных квитанций нет. GET возвращает ту же
+созданную задачу после потерянного ответа. Источник создания и исходный материал
+остаются в immutable creation ledger.
+
+`GET /api/v1/background/projects/{project_id}/intake-fields` возвращает реальные
+поля проекта для формы человека. `GET .../task-states?tasks=<UUIDs>` возвращает
+завершение только перечисленных задач этого проекта с origin и observed_at;
+промежуточный SDLC Completed не означает завершения всей задачи.
+[Контракт и фактическая готовность](BACKGROUND_FINDING_INTAKE.md).
