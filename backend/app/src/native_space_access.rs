@@ -181,6 +181,40 @@ async fn owner_client() -> Result<&'static ApplicationAccessClient, AppError> {
         })
         .await
 }
+
+/// Fresh read-only owner proof for the separately registered Fleet background
+/// reader. This creates no human request scope or task execution authority.
+pub async fn background_owner_access(
+    owner: uuid::Uuid,
+    issuer: &str,
+) -> Result<VerifiedApplicationAccess, AppError> {
+    if owner.is_nil() || !application_policy_required().await? {
+        return Err(AppError::Unavailable(
+            "background owner policy not configured".into(),
+        ));
+    }
+    let mut decisions =
+        owner_client()
+            .await?
+            .resolve(&[owner])
+            .await
+            .map_err(|error| match error {
+                ApplicationAccessError::Forbidden => AppError::Forbidden,
+                _ => AppError::Unavailable("background owner access unavailable".into()),
+            })?;
+    let proof = decisions.remove(&owner).ok_or(AppError::Forbidden)?;
+    if !proof.decision.enforced
+        || proof.decision.issuer != issuer
+        || proof.decision.subject != owner.to_string()
+        || !proof.permits(
+            &["fleet-control", "task-tracker", "project-workflow", "ci-cd"],
+            false,
+        )
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(proof)
+}
 tokio::task_local! { static CURRENT:Arc<NativeRequest>; }
 pub async fn with_request<T>(
     scope: NativeRequest,

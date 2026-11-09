@@ -388,6 +388,67 @@ fn complete() -> LifecycleCommand {
 }
 
 #[test]
+fn background_finding_completion_requires_settled_deployment_and_tracks_reopening() {
+    let mut delivery = LifecycleReceipt {
+        task: task(),
+        assignment: None,
+        lease: None,
+        binding: None,
+        result: None,
+    };
+    let mut state:domain::sdlc::TaskState=serde_json::from_value(serde_json::json!({
+        "tracker_instance_id":"fixture","project_id":Uuid::new_v4(),"task_id":delivery.task.task_id,
+        "root_task_id":delivery.task.task_id,"owner_subject":"fixture-owner","stage":"Analysis","status":"Completed",
+        "confirmation_revision":null,"assignment":null,"questions":[],"revisions":[],"confirmations":[],"evidence":[]
+    })).unwrap();
+    assert!(crate::background_intake::task_completed(None, None, true));
+    assert!(!crate::background_intake::task_completed(
+        Some(&state),
+        Some(&delivery),
+        true
+    ));
+    state.stage = Stage::Deployment;
+    delivery.task.stage = LifecycleStage::Deployment;
+    delivery.task.status = LifecycleStatus::Completed;
+    delivery.task.runtime = RuntimeState::Running;
+    assert!(!crate::background_intake::task_completed(
+        Some(&state),
+        Some(&delivery),
+        true
+    ));
+    let LifecycleCommand::Complete { terminal, .. } = complete() else {
+        unreachable!()
+    };
+    delivery.task.runtime = RuntimeState::Terminal;
+    delivery.result = Some(AcceptedDeliveryResult {
+        result_id: Uuid::new_v4(),
+        assignment_id: Uuid::new_v4(),
+        task_id: state.task_id,
+        terminal,
+        output: DeliveryResult::DevOps {
+            deployment: artifact("deploy"),
+            verification: artifact("verify"),
+        },
+        previous_stage: LifecycleStage::Deployment,
+        next_stage: LifecycleStage::Deployment,
+        next_status: LifecycleStatus::Completed,
+        cycle: 0,
+        created_at: Utc::now(),
+    });
+    assert!(crate::background_intake::task_completed(
+        Some(&state),
+        Some(&delivery),
+        true
+    ));
+    state.status = Some(LifecycleStatus::Ready);
+    assert!(!crate::background_intake::task_completed(
+        Some(&state),
+        Some(&delivery),
+        true
+    ));
+}
+
+#[test]
 fn terminal_output_requires_actual_identifiers_hashes_commit_and_executed_checks() {
     validate_command(&complete()).unwrap();
     for variant in 0..5 {

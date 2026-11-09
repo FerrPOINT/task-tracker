@@ -4,6 +4,8 @@ use super::*;
 mod agent_stage_status_tests;
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
+#[path = "sdlc_background_intake_pg_tests.rs"]
+mod background_finding_tests;
 #[path = "sdlc_configured_cli_pg_tests.rs"]
 mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]

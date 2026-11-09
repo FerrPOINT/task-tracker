@@ -276,41 +276,7 @@ impl IssueServiceImpl {
         values: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<Vec<(shared::CustomFieldId, serde_json::Value)>, AppError> {
         let fields = self.custom_fields.list_by_project(project_id).await?;
-        let mut provided = HashSet::new();
-        let mut normalized_values = Vec::new();
-
-        for (raw_field_id, value) in values {
-            let field_id = raw_field_id
-                .parse::<shared::CustomFieldId>()
-                .map_err(|_| AppError::invalid_input("custom_fields key"))?;
-            let field = fields
-                .iter()
-                .find(|field| field.id == field_id)
-                .ok_or_else(|| AppError::invalid_input("custom field"))?;
-            if super::custom_field::is_empty_custom_field_value(value) {
-                if field.is_required {
-                    return Err(AppError::validation(format!(
-                        "required custom field {} cannot be empty",
-                        field.name.as_ref()
-                    )));
-                }
-                continue;
-            }
-            let normalized = super::custom_field::normalize_custom_field_value(field, value)?;
-            provided.insert(field_id);
-            normalized_values.push((field_id, normalized));
-        }
-
-        for field in fields.iter().filter(|field| field.is_required) {
-            if !provided.contains(&field.id) {
-                return Err(AppError::validation(format!(
-                    "required custom field {} is missing",
-                    field.name.as_ref()
-                )));
-            }
-        }
-
-        Ok(normalized_values)
+        super::custom_field::normalize_create_values(&fields, values)
     }
 }
 

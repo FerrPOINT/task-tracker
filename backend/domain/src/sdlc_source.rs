@@ -154,6 +154,26 @@ pub struct DraftSourceEnrollmentReceipt {
 
 #[async_trait::async_trait]
 pub trait TaskSourceRepository: Send + Sync {
+    /// Caller must authorize the exact project; this returns no task content.
+    async fn background_task_states(
+        &self,
+        _project: Uuid,
+        _tasks: &[Uuid],
+    ) -> Result<BackgroundTaskStates, AppError> {
+        Err(AppError::Unavailable(
+            "background task state reader unavailable".into(),
+        ))
+    }
+    /// Only the dedicated background owner reader may expose this current policy.
+    /// It does not enroll a task, create a workspace, or grant Git write access.
+    async fn background_source_policy(
+        &self,
+        _project: Uuid,
+    ) -> Result<ProjectSourcePolicy, AppError> {
+        Err(AppError::Unavailable(
+            "background source policy reader unavailable".into(),
+        ))
+    }
     async fn draft_source_preflight(
         &self,
         task: Uuid,
@@ -194,4 +214,19 @@ pub trait TaskSourceRepository: Send + Sync {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskSourceReadback, AppError>;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BackgroundTaskStates {
+    pub project_id: Uuid,
+    pub tracker_instance_id: String,
+    pub observed_at: DateTime<Utc>,
+    pub tasks: Vec<BackgroundTaskState>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BackgroundTaskState {
+    pub task_id: Uuid,
+    pub completed: bool,
 }

@@ -144,6 +144,10 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         )
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route(
+            "/projects/{project_id}/sdlc/finding-intakes/{operation_id}",
+            get(finding_intake_operation).put(intake_finding),
+        )
+        .route(
             "/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}",
             get(draft_creation_operation),
         )
@@ -266,6 +270,53 @@ pub async fn create_draft(
             axum::http::StatusCode::CREATED
         },
         Json(draft),
+    ))
+}
+
+#[utoipa::path(put,path="/api/v1/projects/{project_id}/sdlc/finding-intakes/{operation_id}",tag="sdlc",
+    params(("project_id"=Uuid,Path),("operation_id"=Uuid,Path)),
+    request_body=domain::background_intake::FindingIntake,
+    responses((status=201,body=domain::background_intake::FindingIntakeReceipt),
+        (status=200,body=domain::background_intake::FindingIntakeReceipt),(status=401),(status=403),
+        (status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn intake_finding(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((project, operation)): Path<(Uuid, Uuid)>,
+    Json(command): Json<domain::background_intake::FindingIntake>,
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<domain::background_intake::FindingIntakeReceipt>,
+    ),
+    AppError,
+> {
+    let (receipt, replayed) = service(&ctx)?
+        .intake_finding(project, &actor, operation, command)
+        .await?;
+    Ok((
+        if replayed {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::CREATED
+        },
+        Json(receipt),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/finding-intakes/{operation_id}",tag="sdlc",
+    params(("project_id"=Uuid,Path),("operation_id"=Uuid,Path)),
+    responses((status=200,body=domain::background_intake::FindingIntakeReceipt),(status=401),(status=403),
+        (status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn finding_intake_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((project, operation)): Path<(Uuid, Uuid)>,
+) -> Result<Json<domain::background_intake::FindingIntakeReceipt>, AppError> {
+    Ok(Json(
+        service(&ctx)?
+            .finding_intake_operation(project, &actor, operation)
+            .await?,
     ))
 }
 

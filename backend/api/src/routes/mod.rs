@@ -1,4 +1,6 @@
 pub mod auth;
+pub mod background;
+pub mod background_source;
 pub mod board;
 pub mod comments;
 pub mod components_versions;

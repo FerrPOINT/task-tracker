@@ -55,6 +55,8 @@ mod m20261021_0000101_native_sdlc_spaces;
 mod m20261022_0000102_request_commit_clock;
 mod m20261022_0000103_identity_deletion;
 
+mod m20261109_0000116_background_finding_intake;
+
 pub struct Migrator;
 struct PublishedMigrator;
 struct ProjectRepositoryMigrator;
@@ -160,6 +162,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261104_0000113_native_task_artifacts::Migration),
             Box::new(m20261106_0000114_native_read_scope_attenuation::Migration),
             Box::new(m20261107_0000115_agent_stage_status::Migration),
+            Box::new(m20261109_0000116_background_finding_intake::Migration),
         ]
     }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use domain::sdlc_source::{BackgroundTaskState, BackgroundTaskStates};
 
 /// Synthetic observation for disposable PostgreSQL tests; never native Forge evidence.
 #[cfg(test)]
@@ -255,6 +256,70 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl TaskSourceRepository for PostgresSdlcRepository {
+    async fn background_task_states(
+        &self,
+        project: Uuid,
+        tasks: &[Uuid],
+    ) -> Result<BackgroundTaskStates, AppError> {
+        if tasks.is_empty()
+            || tasks.len() > 100
+            || tasks.iter().any(Uuid::is_nil)
+            || tasks.iter().collect::<std::collections::HashSet<_>>().len() != tasks.len()
+        {
+            return Err(AppError::validation(
+                "expected 1..100 distinct task identifiers",
+            ));
+        }
+        // One statement supplies a single MVCC snapshot and database observation time.
+        let rows=self.db.query_all(statement("SELECT i.id,s.is_closed,t.state,d.receipt,statement_timestamp() AS observed_at
+            FROM issues i JOIN statuses s ON s.id=i.status_id
+            LEFT JOIN sdlc_tasks t ON t.task_id=i.id LEFT JOIN sdlc_delivery_tasks d ON d.task_id=i.id
+            WHERE i.project_id=$1 AND i.deleted_at IS NULL AND i.id IN
+                (SELECT value::uuid FROM jsonb_array_elements_text($2)) ORDER BY i.id",
+            vec![project.into(),serde_json::json!(tasks).into()])).await.map_err(map_db)?;
+        if rows.len() != tasks.len() {
+            return Err(AppError::NotFound("background linked task".into()));
+        }
+        let observed_at = rows[0].try_get("", "observed_at").map_err(map_db)?;
+        let mut result = Vec::with_capacity(rows.len());
+        for row in rows {
+            let state: Option<TaskState> = row
+                .try_get::<Option<Json>>("", "state")
+                .map_err(map_db)?
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(AppError::internal)?;
+            let delivery: Option<domain::sdlc_lifecycle::LifecycleReceipt> = row
+                .try_get::<Option<Json>>("", "receipt")
+                .map_err(map_db)?
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(AppError::internal)?;
+            result.push(BackgroundTaskState {
+                task_id: row.try_get("", "id").map_err(map_db)?,
+                completed: app::background_intake::task_completed(
+                    state.as_ref(),
+                    delivery.as_ref(),
+                    row.try_get("", "is_closed").map_err(map_db)?,
+                ),
+            });
+        }
+        Ok(BackgroundTaskStates {
+            project_id: project,
+            tracker_instance_id: self.config.instance_id.clone(),
+            observed_at,
+            tasks: result,
+        })
+    }
+    async fn background_source_policy(
+        &self,
+        project: Uuid,
+    ) -> Result<ProjectSourcePolicy, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let policy = Self::retained_source_policy(&tx, project, None).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(policy)
+    }
     async fn draft_source_preflight(
         &self,
         task: Uuid,
@@ -483,7 +548,9 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             && let Some(assignment) = current.receipt.assignment.as_ref()
         {
             *workspace_preparation_commit = match assignment.stage {
-                domain::sdlc_lifecycle::LifecycleStage::Development => Some(binding.base_commit.clone()),
+                domain::sdlc_lifecycle::LifecycleStage::Development => {
+                    Some(binding.base_commit.clone())
+                }
                 domain::sdlc_lifecycle::LifecycleStage::Rework => {
                     // Follow the immutable accepted predecessor chain from the
                     // finding, rather than trusting the current Git branch head.
