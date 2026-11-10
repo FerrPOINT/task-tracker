@@ -1,5 +1,16 @@
 # Архитектура Task Tracker
 
+## Current Delivery Binding Без Периодов Владения
+
+Canonical lifecycle использует собственный `DeliveryBinding`, не изменяя retained
+PM `ExecutionLease`. Текущие права определяются assignment/holder/version, routing,
+ACL и атомарным fence; часы не меняют владельца и не создают RuntimeState::Unknown.
+Heartbeat writer отсутствует. Genuine Unknown и требование actual terminal proof
+для освобождения hold сохраняются. Fresh current GET является снимком для последующего
+серверного CAS, а historical operation GET возвращает только исходный результат.
+Forward116 не переписывает сохранённые операции и не добавляет таблицы/маршруты.
+Поставка согласуется с Fleet consumer; установка и live acceptance — отдельные действия.
+
 ## Встроенная Декомпозиция
 
 [Управление встроенной декомпозицией](contracts/task-decomposition.md) реализовано

@@ -88,7 +88,6 @@ pub fn prepare_stage_start(
                 || assignment.lease_id != fence.lease_id
                 || lease.lease_id != fence.lease_id
                 || lease.version != fence.expected_lease_version
-                || lease.expires_at <= observed_at
                 || binding.machine_subject != actor.subject
                 || assignment.machine_subject.as_deref() != Some(actor.subject.as_str())
                 || actor.subject == state.owner_subject

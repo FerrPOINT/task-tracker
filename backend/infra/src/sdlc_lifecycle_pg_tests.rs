@@ -255,7 +255,7 @@ async fn legacy_analysis_ordinal_head(db: &DatabaseConnection) -> (i64, bool) {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay() {
+async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_replay() {
     let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").expect("isolated database required");
     let db = Database::connect(&url).await.unwrap();
     let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
@@ -707,72 +707,50 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         analysis: artifact("analysis"),
     };
     start_delivery(&repo, task, &producer, &bound, &output, "start-analysis-0").await;
-    let heartbeat = LifecycleCommand::Heartbeat {
-        fence: stale.clone(),
-        idempotency_key: "heartbeat-0".into(),
-    };
-    let outbox_before_heartbeat = count(&db, "sdlc_outbox").await;
-    let operations_before_heartbeat = count(&db, "sdlc_delivery_operations").await;
-    let mirror_source_before_heartbeat: Vec<Json> = repo
+    let outbox_before_read = count(&db, "sdlc_outbox").await;
+    let operations_before_read = count(&db, "sdlc_delivery_operations").await;
+    let mirror_source_before_read: Vec<Json> = repo
         .metadata_outbox(task, &owner, 0, 100)
         .await
         .unwrap()
         .into_iter()
         .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
         .collect();
-    let (renewed, _) = repo
-        .lifecycle_command(task, &scheduler, heartbeat.clone())
-        .await
-        .unwrap();
-    assert_eq!(renewed.lease.as_ref().unwrap().version, 2);
-    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat);
+    let current = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+    assert_eq!(current.lease.as_ref().unwrap().version, 1);
+    assert!(current.lease.as_ref().unwrap().heartbeat_at.is_none());
+    assert!(current.lease.as_ref().unwrap().expires_at.is_none());
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read);
     assert_eq!(
         count(&db, "sdlc_delivery_operations").await,
-        operations_before_heartbeat + 1
+        operations_before_read
     );
-    let mirror_source_after_heartbeat: Vec<Json> = repo
+    let mirror_source_after_read: Vec<Json> = repo
         .metadata_outbox(task, &owner, 0, 100)
         .await
         .unwrap()
         .into_iter()
         .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
         .collect();
-    assert_eq!(
-        mirror_source_after_heartbeat,
-        mirror_source_before_heartbeat
-    );
-    let heartbeat_audit = db.query_one(statement(
-        "SELECT event_id,result FROM sdlc_delivery_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key='heartbeat-0'",
-        vec![task.into(),scheduler.subject.clone().into()],
-    )).await.unwrap().unwrap();
-    assert!(
-        heartbeat_audit
-            .try_get::<Option<Uuid>>("", "event_id")
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(
-        heartbeat_audit.try_get::<Json>("", "result").unwrap(),
-        serde_json::to_value(&renewed).unwrap()
-    );
-    let fresh_after_heartbeat = repo.lifecycle_read(task, &reader).await.unwrap();
-    assert_eq!(
-        serde_json::to_value(&fresh_after_heartbeat.receipt).unwrap(),
-        serde_json::to_value(&renewed).unwrap()
-    );
-    assert!(fresh_after_heartbeat.observed_at >= renewed.lease.as_ref().unwrap().heartbeat_at);
-    assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at);
+    assert_eq!(mirror_source_after_read, mirror_source_before_read);
+    let mut future_fence = stale.clone();
+    future_fence.expected_lease_version += 1;
     assert!(
         repo.lifecycle_command(
             task,
             &scheduler,
-            LifecycleCommand::Heartbeat {
-                fence: stale.clone(),
-                idempotency_key: "stale-heartbeat".into()
+            LifecycleCommand::BindRun {
+                fence: future_fence,
+                binding: binding.clone(),
+                idempotency_key: "wrong-version".into(),
             }
         )
         .await
         .is_err()
+    );
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+        current
     );
     let proposal_command = SubmitDeliveryProposal {
         fence: stale.clone(),
@@ -788,64 +766,53 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         "analysis:final-comment",
     )
     .await;
-    let (concurrent_heartbeat, concurrent_proposal) = tokio::join!(
-        repo.lifecycle_command(
-            task,
-            &scheduler,
-            LifecycleCommand::Heartbeat {
-                fence: delivery_fence(&renewed),
-                idempotency_key: "concurrent-heartbeat".into(),
-            }
-        ),
+    let (concurrent_replay, concurrent_proposal) = tokio::join!(
+        repo.submit_delivery_proposal(task, &producer, proposal_command.clone()),
         repo.submit_delivery_proposal(task, &producer, proposal_command.clone())
     );
+    let (proposal, replayed) = concurrent_proposal.unwrap();
+    let (same, other_replayed) = concurrent_replay.unwrap();
     assert_eq!(
-        concurrent_heartbeat
-            .unwrap()
-            .0
-            .lease
-            .as_ref()
-            .unwrap()
-            .version,
-        3
+        serde_json::to_value(&proposal).unwrap(),
+        serde_json::to_value(&same).unwrap()
     );
-    let (proposal, _) = concurrent_proposal.unwrap();
+    assert_ne!(replayed, other_replayed);
     let after_proposal = repo.lifecycle_read(task, &producer).await.unwrap().receipt;
     assert_eq!(after_proposal.task.stage, LifecycleStage::Analysis);
     assert_eq!(after_proposal.task.status, LifecycleStatus::Completed);
     assert_eq!(after_proposal.task.runtime, RuntimeState::Running);
     assert_eq!(after_proposal.assignment, reserved.assignment);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
-    // The concurrent proposal remains a business event; the second heartbeat does not.
-    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
+    // Duplicate delivery produces one business event and no ownership renewal.
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read + 1);
     let operations_after_race = count(&db, "sdlc_delivery_operations").await;
-    let original_heartbeat = repo
-        .lifecycle_command(task, &scheduler, heartbeat)
+    let original_reserve = repo
+        .lifecycle_command(task, &scheduler, reserve.clone())
         .await
         .unwrap();
-    assert!(original_heartbeat.1);
-    assert_eq!(original_heartbeat.0.lease.as_ref().unwrap().version, 2);
+    assert!(original_reserve.1);
+    assert_eq!(original_reserve.0.lease.as_ref().unwrap().version, 1);
     assert_eq!(
-        serde_json::to_value(&original_heartbeat.0).unwrap(),
-        serde_json::to_value(&renewed).unwrap()
+        serde_json::to_value(&original_reserve.0).unwrap(),
+        serde_json::to_value(&reserved).unwrap()
     );
     assert_eq!(
         count(&db, "sdlc_delivery_operations").await,
         operations_after_race
     );
-    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read + 1);
     assert_eq!(
-        repo.lifecycle_operation(task, &reader, "heartbeat-0")
+        repo.lifecycle_operation(task, &reader, "reserve-0")
             .await
             .unwrap()
             .lease
             .as_ref()
             .unwrap()
             .version,
-        2
+        1
     );
     assert!(
-        repo.lifecycle_operation(task, &scheduler, "heartbeat-0")
+        repo.lifecycle_operation(task, &scheduler, "reserve-0")
             .await
             .is_err()
     );
@@ -858,7 +825,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .as_ref()
             .unwrap()
             .version,
-        3
+        1
     );
     assert_eq!(
         proposal.output_sha256,
@@ -875,7 +842,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .await
             .is_err()
     );
-    // Exercise actual server-clock expiry without disabling guards or mutating protected ledgers.
+    // Crossing the old heartbeat window must not change current custody or runtime state.
     db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
     let lease_operations_before_receipt = count(&db, "sdlc_pm_lease_operations").await;
     let outbox_before_receipt = count(&db, "sdlc_outbox").await;
@@ -889,8 +856,16 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     );
     assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_receipt);
     let fresh = repo.lifecycle_read(task, &reader).await.unwrap();
-    assert_eq!(fresh.runtime_state, RuntimeState::Unknown);
+    assert_eq!(fresh.runtime_state, RuntimeState::Running);
     assert_eq!(fresh.receipt.task.runtime, RuntimeState::Running);
+    assert_eq!(fresh.receipt, after_proposal);
+    let mut uncertain = fresh.receipt.task.clone();
+    uncertain.runtime = RuntimeState::Unknown;
+    let before_unknown = uncertain.clone();
+    app::sdlc_lifecycle::ensure_queued(&mut uncertain).unwrap();
+    assert_eq!(uncertain, before_unknown);
+    let mut bad_completion_fence = stale.clone();
+    bad_completion_fence.expected_lease_version += 1;
     let terminal = TerminalReceipt {
         chat_id: binding.chat_id,
         run_id: binding.run_id,
@@ -898,20 +873,26 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         workflow_receipt: proposal.workflow_receipt,
         output_sha256: proposal.output_sha256,
     };
-    assert!(
+    assert!(matches!(
         repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::Complete {
-                fence: stale.clone(),
+                fence: bad_completion_fence,
                 terminal,
                 result: output,
-                idempotency_key: "expired-complete".into()
+                idempotency_key: "bad-fence-complete".into()
             }
         )
-        .await
-        .is_err()
+        .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+        fresh.receipt
     );
+    assert_eq!(count(&db, "sdlc_delivery_results").await, 0);
+    assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
     let reconcile = LifecycleCommand::Reconcile {
         fence: stale,
         terminal: RuntimeTerminalObservation {
@@ -1104,16 +1085,10 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         Err(AppError::Unavailable(_))
     ));
     repo.lifecycle_read(task, &reader).await.unwrap();
-    repo.lifecycle_command(
-        task,
-        &scheduler,
-        LifecycleCommand::Heartbeat {
-            fence: delivery_fence(&retry),
-            idempotency_key: "disabled-heartbeat".into(),
-        },
-    )
-    .await
-    .unwrap();
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+        retry
+    );
     let mut cursor = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     let mut ready_ids = Vec::new();
     let mut execution_keys = std::collections::HashSet::new();
@@ -1191,6 +1166,20 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             &format!("role-{i}-start"),
         )
         .await;
+        let result = if matches!(result, DeliveryResult::Architect { .. }) {
+            DeliveryResult::Architect {
+                design: crate::sdlc::configured_test_support::save_architect_plan(
+                    &repo,
+                    task,
+                    &role_producer,
+                    &started,
+                    &format!("role-{i}-plan"),
+                )
+                .await,
+            }
+        } else {
+            result
+        };
         if let Some(expected) = &previous_accepted {
             assert_eq!(assignment.previous_result_id, Some(expected.result_id));
             assert!(
@@ -1318,6 +1307,12 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         assert_eq!(proposed.assignment, started.assignment);
         assert_eq!(proposed.binding, started.binding);
         assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
+        if i == 0 {
+            db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
+            let late = repo.lifecycle_read(task, &reader).await.unwrap();
+            assert_eq!(late.runtime_state, RuntimeState::Running);
+            assert_eq!(late.receipt, proposed);
+        }
         cursor = repo
             .lifecycle_command(
                 task,

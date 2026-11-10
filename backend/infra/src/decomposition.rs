@@ -18,19 +18,6 @@ impl PostgresSdlcRepository {
         let domain::sdlc_lifecycle::DeliveryResult::Architect { design } = result else {
             return Ok(());
         };
-        let has_plan = tx
-            .query_one(statement(
-                "SELECT EXISTS(SELECT 1 FROM issue_plan_revisions WHERE issue_id=$1) AS present",
-                vec![state.task_id.into()],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or_else(|| AppError::internal("plan presence unavailable"))?
-            .try_get::<bool>("", "present")
-            .map_err(map_db)?;
-        if !has_plan && !design.reference.contains("/decomposition/revisions/") {
-            return Ok(()); // Existing text artifacts remain readable and usable for legacy tasks.
-        }
         let revision = app::decomposition::design_revision(state.task_id, &design.reference)?;
         let row = tx
             .query_one(statement(
