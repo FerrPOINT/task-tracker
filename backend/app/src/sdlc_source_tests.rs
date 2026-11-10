@@ -115,7 +115,7 @@ fn current(binding: &TaskSourceBinding, routing: &TaskRoutingSnapshot) -> Lifecy
 }
 
 #[test]
-fn only_the_current_unexpired_developer_reservation_allows_workspace_preparation() {
+fn only_the_current_developer_assignment_allows_workspace_preparation_without_renewal() {
     let (state, confirmation, routing, mut policy) = fixture();
     let workspace = Uuid::new_v4();
     policy.source.development_workspace_id = Some(workspace);
@@ -146,16 +146,13 @@ fn only_the_current_unexpired_developer_reservation_allows_workspace_preparation
         machine_subject: "test-developer".into(),
     });
     let source = readback(Some(binding.clone()), Some(reserved.clone())).unwrap();
-    assert_eq!(
-        workspace_preparation_expires_at(&source, &execution),
-        Some(reserved.receipt.lease.as_ref().unwrap().expires_at)
-    );
+    assert!(workspace_preparation_allowed(&source, &execution));
     execution.assignment.as_mut().unwrap().version += 1;
-    assert_eq!(workspace_preparation_expires_at(&source, &execution), None);
+    assert!(!workspace_preparation_allowed(&source, &execution));
     execution.assignment.as_mut().unwrap().version -= 1;
     reserved.observed_at += chrono::Duration::seconds(31);
     let expired = readback(Some(binding), Some(reserved)).unwrap();
-    assert_eq!(workspace_preparation_expires_at(&expired, &execution), None);
+    assert!(workspace_preparation_allowed(&expired, &execution));
 }
 
 #[test]
@@ -322,10 +319,7 @@ fn missing_legacy_binding_and_inactive_context_are_typed_blocks() {
     changed.observed_at += chrono::Duration::seconds(31);
     assert!(matches!(
         readback(Some(binding.clone()), Some(changed)).unwrap(),
-        TaskSourceReadback::Blocked {
-            reason: SourceBlockReason::LeaseExpired,
-            ..
-        }
+        TaskSourceReadback::Bound { .. }
     ));
     changed = original;
     changed.receipt.task.routing.requirement_revision += 1;

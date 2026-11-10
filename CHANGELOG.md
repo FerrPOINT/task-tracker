@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-10: Untimed Delivery Binding — Source Candidate
+
+- Canonical delivery retains assignment/holder/version fencing without heartbeat
+  or expiry authority. Current projection omits archival dates; historical
+  operation results and PM execution leases remain unchanged.
+- Forward116 preserves existing rows, explicit terminal settlement, capacity and
+  current routing/identity guards. New commands require an exact binding version.
+- Source candidate only: focused qualification, coordinated Fleet consumer,
+  generated OpenAPI, installation and live continuation remain separate gates.
+
 ## 2026-11-07: Agent Stage Status: Source Qualified, Not Installed
 
 - Agents explicitly Start the current assignment as InProgress and finish it as

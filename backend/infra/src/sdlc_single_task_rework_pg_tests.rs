@@ -4,6 +4,8 @@
 use super::*;
 #[path = "decomposition_architect_pg_tests.rs"]
 mod decomposition_tests;
+#[path = "untimed_delivery_binding_pg_tests.rs"]
+mod untimed_binding_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -107,6 +109,16 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
+        Self::with_schema_tail(source, document, owner_subject, scheduler_subject, None).await
+    }
+
+    async fn with_schema_tail(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+        scheduler_subject: &str,
+        tail: Option<&str>,
+    ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
@@ -120,7 +132,11 @@ impl ReworkFixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        migration::Migrator::up(&db, None).await.unwrap();
+        let steps = tail.map(|name| {
+            let registered = migration::Migrator::migrations();
+            u32::try_from(registered.iter().position(|m| m.name() == name).unwrap() + 1).unwrap()
+        });
+        migration::Migrator::up(&db, steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [

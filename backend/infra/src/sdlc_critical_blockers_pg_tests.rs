@@ -507,21 +507,9 @@ async fn critical_pg_scenario() {
     eprintln!("critical_pg.phase.hold.begin");
     let (one, actual) = Box::pin(async {
     let frozen_body = body.clone();
-    // Fleet heartbeat advances the SERVER lease; the caller's startup fence stays untouched.
-    r.head = f
-        .repo
-        .lifecycle_command(
-            r.task,
-            &f.writer,
-            LifecycleCommand::Heartbeat {
-                fence: fence(&r.head),
-                idempotency_key: "before-critical-heartbeat".into(),
-            },
-        )
-        .await
-        .unwrap()
-        .0;
-    assert!(body.fence.expected_lease_version < r.head.lease.as_ref().unwrap().version);
+    // Fresh reads do not mutate assignment custody or its version.
+    r.head = f.repo.lifecycle_read(r.task, &f.reader).await.unwrap().receipt;
+    assert_eq!(body.fence.expected_lease_version, r.head.lease.as_ref().unwrap().version);
     let before = snapshot(&f, r.task).await;
     let initial_routing = r.head.task.routing.clone();
     // The database itself rejects a proposal-only commit, not just an application error path.
@@ -732,27 +720,19 @@ async fn critical_pg_scenario() {
 
     eprintln!("critical_pg.phase.progress.begin");
     Box::pin(async {
-        // Existing Heartbeat remains usable and does not change the original Held receipt.
-        let heartbeat = f
+        r.head = f
             .repo
-            .lifecycle_command(
-                r.task,
-                &f.writer,
-                LifecycleCommand::Heartbeat {
-                    fence: fence(&actual),
-                    idempotency_key: "held-heartbeat".into(),
-                },
-            )
+            .lifecycle_read(r.task, &f.reader)
             .await
             .unwrap()
-            .0;
-        r.head = heartbeat;
-        let replay_after_heartbeat = f
+            .receipt;
+        assert_eq!(r.head, actual);
+        let replay_after_read = f
             .repo
             .submit_critical_blocker_with_storage(r.task, &r.producer, body.clone(), &CorruptBytes)
             .await
             .unwrap();
-        assert_eq!(replay_after_heartbeat, (one.clone(), true));
+        assert_eq!(replay_after_read, (one.clone(), true));
         assert_eq!(
             f.repo
                 .critical_blocker_operation(r.task, &r.producer, &body.idempotency_key)
@@ -973,7 +953,7 @@ async fn return_held_to_pm(
             ));
             assert_eq!(snapshot(f, r.task).await, before);
         }
-        // Caller must preserve the body but refresh ALL current CAS fields after heartbeat.
+        // Every current CAS component remains exact without an ownership clock.
         for mismatch in 0..10 {
             let mut invalid = command.clone();
             match mismatch {

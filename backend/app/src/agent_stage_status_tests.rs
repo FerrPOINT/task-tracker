@@ -1,6 +1,5 @@
 use super::*;
 use crate::sdlc_lifecycle::accept_result;
-use chrono::Duration;
 use domain::sdlc::{MachineFence, PmAssignment};
 use domain::sdlc_lifecycle::*;
 use serde_json::json;
@@ -116,13 +115,13 @@ fn delivery(stage: LifecycleStage) -> (TaskState, Principal, StartStage, Lifecyc
             resume_chat_id: None,
         },
         assignment: Some(assignment),
-        lease: Some(domain::sdlc_execution_lease::ExecutionLease {
+        lease: Some(DeliveryBinding {
             lease_id: fence.lease_id,
             version: fence.expected_lease_version,
             holder_subject: "scheduler".into(),
             claimed_at: now(),
-            heartbeat_at: now(),
-            expires_at: now() + Duration::seconds(30),
+            heartbeat_at: None,
+            expires_at: None,
         }),
         binding: Some(RunBinding {
             chat_id: Uuid::new_v4(),
@@ -338,7 +337,28 @@ fn delivery_start_refuses_every_stale_fence_component() {
 }
 
 #[test]
-fn delivery_start_requires_live_exact_custody_and_native_binding() {
+fn delivery_start_uses_current_fence_not_archival_dates_or_elapsed_time() {
+    let (state, actor, command, mut custody) = delivery(LifecycleStage::Analysis);
+    assert!(prepare_stage_start(&state, &actor, &command, Some(&custody), now()).is_ok());
+    let binding = custody.lease.as_mut().unwrap();
+    binding.heartbeat_at = Some(binding.claimed_at);
+    binding.expires_at = Some(binding.claimed_at + chrono::Duration::seconds(30));
+    assert!(
+        prepare_stage_start(
+            &state,
+            &actor,
+            &command,
+            Some(&custody),
+            now() + chrono::Duration::days(1)
+        )
+        .is_ok()
+    );
+    custody.task.runtime = RuntimeState::Unknown;
+    assert!(prepare_stage_start(&state, &actor, &command, Some(&custody), now()).is_err());
+}
+
+#[test]
+fn delivery_start_requires_exact_custody_and_native_binding() {
     for case in 0..23 {
         let (state, actor, command, mut custody) = delivery(LifecycleStage::Analysis);
         match case {
@@ -349,8 +369,8 @@ fn delivery_start_requires_live_exact_custody_and_native_binding() {
             4 => custody.assignment = None,
             5 => custody.lease = None,
             6 => custody.binding = None,
-            7 => custody.lease.as_mut().unwrap().expires_at = now(),
-            8 => custody.lease.as_mut().unwrap().expires_at = now() - Duration::seconds(1),
+            7 => custody.lease.as_mut().unwrap().version += 1,
+            8 => custody.lease.as_mut().unwrap().version = 0,
             9 => custody.binding.as_mut().unwrap().machine_subject = Uuid::new_v4().to_string(),
             10 => custody.assignment.as_mut().unwrap().machine_subject = None,
             11 => custody.binding.as_mut().unwrap().run_id = Uuid::nil(),

@@ -320,13 +320,6 @@ membership/disabled holder, wrong subject/stale grant, no broadened human-key
 read, expiry and historical receipt equality without side effects. Not executed
 by this worker; parent retains Cargo/PG/live qualification.
 
-The legacy application helper `pm_feedback_resume_contract(state,feedback,checkpoint,lease)` remains unchanged:
-exact task/project/root/owner/instance, assignment fence, actual prior terminal,
-checkpoint UUID/version and server-observed live lease produce the existing resume
-identity `pm-feedback:{message_id}`. It does not dispatch or renew a lease.
-Its old checkpoint/feedback wire and stable `pm-feedback:{message_id}` identity are
-preserved for compatibility. It does not grant expired-lease renewal or generic rebind.
-
 New typed source methods are `SdlcService::resume_pm_execution_lease(task,actor,command)`
 returning `(ExecutionLeaseReceipt,replayed)` and `pm_resume_operation(task,actor,key)`
 returning `ExecutionLeaseOperation`. Parent registers POST
