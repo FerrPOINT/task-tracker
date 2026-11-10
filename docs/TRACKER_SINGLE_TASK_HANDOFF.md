@@ -204,6 +204,11 @@ Parent registration in the existing controller:
 
 Proposal contains `fence`, `workflow_receipt:{reference,sha256}`, typed `result`,
 `idempotency_key`. It does not contain a Fleet terminal receipt.
+For `configured-cli-v1`, new proposals use `delivery-result:<assignment_id>`.
+The configured CLI derives this key from `fence.assignment_id` when omitted
+and rejects a different supplied key. The server enforces the same key on new
+proposals. Readback and exact replay of historical proposals retain their
+original keys.
 The CLI source implements the actual HTTP producer/readback calls:
 
 ```text
