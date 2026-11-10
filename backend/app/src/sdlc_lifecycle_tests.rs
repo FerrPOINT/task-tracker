@@ -216,7 +216,7 @@ fn proposed(task: &mut LifecycleTask) {
 }
 
 #[test]
-fn review_records_both_verdicts_without_handoff_or_rework_cycle() {
+fn review_preserves_both_verdicts_and_queues_testing_without_rework() {
     for verdict in [ReviewVerdict::Approved, ReviewVerdict::Rework] {
         for cycle in [0, 1, MAX_REWORK_CYCLES] {
             let mut state = task();
@@ -232,10 +232,13 @@ fn review_records_both_verdicts_without_handoff_or_rework_cycle() {
                 },
             )
             .unwrap();
-            assert_eq!(state.stage, LifecycleStage::Review);
-            assert_eq!(state.status, LifecycleStatus::Completed);
-            assert_eq!(state.runtime, RuntimeState::Terminal);
-            assert_eq!(state.waiting_reason.as_deref(), Some("review_completed"));
+            assert_eq!(state.stage, LifecycleStage::Testing);
+            assert_eq!(state.status, LifecycleStatus::Ready);
+            assert_eq!(state.runtime, RuntimeState::Queued);
+            assert_eq!(
+                state.waiting_reason.as_deref(),
+                Some("queued_for_assignment")
+            );
             assert_eq!(state.cycle, cycle);
             assert_eq!(state.routing, routing);
         }
@@ -286,29 +289,31 @@ fn other_roles_preserve_their_existing_handoff() {
 }
 
 #[test]
-fn existing_tester_rework_limit_is_preserved() {
-    let mut state = task();
-    state.stage = LifecycleStage::Testing;
-    let result = DeliveryResult::Tester {
-        verdict: TestVerdict::Rework,
-        report: artifact("test"),
-    };
-    for cycle in 1..=MAX_REWORK_CYCLES {
-        state.stage = LifecycleStage::Testing;
-        proposed(&mut state);
-        accept_result(&mut state, &result).unwrap();
-        assert_eq!(state.stage, LifecycleStage::Rework);
-        assert_eq!(state.cycle, cycle);
+fn testing_preserves_both_verdicts_and_queues_devops_without_rework() {
+    for verdict in [TestVerdict::Passed, TestVerdict::Rework] {
+        for cycle in [0, 1, MAX_REWORK_CYCLES] {
+            let mut state = task();
+            state.stage = LifecycleStage::Testing;
+            state.cycle = cycle;
+            proposed(&mut state);
+            accept_result(
+                &mut state,
+                &DeliveryResult::Tester {
+                    verdict,
+                    report: artifact("test"),
+                },
+            )
+            .unwrap();
+            assert_eq!(state.stage, LifecycleStage::Deployment);
+            assert_eq!(state.status, LifecycleStatus::Ready);
+            assert_eq!(state.runtime, RuntimeState::Queued);
+            assert_eq!(
+                state.waiting_reason.as_deref(),
+                Some("queued_for_assignment")
+            );
+            assert_eq!(state.cycle, cycle);
+        }
     }
-    state.stage = LifecycleStage::Testing;
-    proposed(&mut state);
-    accept_result(&mut state, &result).unwrap();
-    assert_eq!(state.stage, LifecycleStage::Testing);
-    assert_eq!(state.runtime, RuntimeState::Terminal);
-    assert_eq!(
-        state.waiting_reason.as_deref(),
-        Some("rework_limit_reached")
-    );
 }
 
 #[test]

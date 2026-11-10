@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-10: Линейное Завершение Ролей Без Rework
+
+- Reviewer передаёт работу Tester при approved и rework; Tester передаёт DevOps
+  при passed и rework. Реальные findings и typed verdict сохраняются, cycle не
+  увеличивается. После DevOps сохраняется финальный Deployment/Completed.
+- Агентские Start/InProgress и proposal/Completed, настоящий Fleet terminal,
+  освобождение ресурсов и исходные operation receipts сохраняются. Forward117
+  обновляет SQL guard будущих переходов без изменения старой истории.
+
 ## 2026-11-07: Agent Stage Status: Source Qualified, Not Installed
 
 - Agents explicitly Start the current assignment as InProgress and finish it as

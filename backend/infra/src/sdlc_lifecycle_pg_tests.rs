@@ -1339,10 +1339,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
-        if matches!(
-            started.task.stage,
-            LifecycleStage::Review | LifecycleStage::Deployment
-        ) {
+        if matches!(started.task.stage, LifecycleStage::Deployment) {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
         } else {
@@ -1398,7 +1395,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
     assert_ne!(ready_ids[0].0, ready_ids[1].0);
     assert_eq!(ready_ids[0].1, ready_ids[1].1);
-    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+    assert_eq!(cursor.task.stage, LifecycleStage::Testing);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
     assert_eq!(count(&db, "sdlc_delivery_results").await, 4);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     for candidate in repo.metadata_outbox(task, &owner, 0, 100).await.unwrap() {

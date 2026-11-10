@@ -335,8 +335,9 @@ Root завершает собственный Deployment + acceptance, не rol
 ## Целевые terminal transitions
 
 Ниже сохранена target-модель прежнего протокола. Для нового Reviewer Complete
-текущий source-контракт — Review/Completed/Terminal с review_completed, без
-Testing/Rework handoff; см. раздел Reviewer terminal в конце документа.
+и остальных single-task ролей текущий source-контракт — линейная передача без
+Rework; см. раздел «Линейная Передача Ролей Без Rework» в конце документа.
+Эта историческая таблица не задаёт текущую политику исполнения.
 
 `completeAssignedStage(sessionId, runId, expectedTaskRevision, outcome,
 findings?, operationKey)` — название target capability, не CLI-команда.
@@ -386,25 +387,30 @@ findings empty/late; retry vs cycle; cycle limit; insufficient capacity; TTL с
 Текущие generic CRUD/status/links переиспользуются; новые guarded lifecycle команды
 не заменять автоматизацией UI или обычным issue transition.
 
-## Reviewer terminal без автоматического handoff (source 2026-11-08)
+## Линейная Передача Ролей Без Rework (source 2026-11-10)
 
-Для нового Complete роли Reviewer оба typed verdict approved/rework сохраняются
-прежней транзакцией результатов. Task остаётся Review/Completed, runtime Terminal,
-waiting_reason=review_completed, cycle не изменяется. Assignment/lease/binding
-освобождаются; delivery.queued для следующей роли не создаётся. Повтор исходного
-proposal/Complete возвращает сохранённую операцию, restart читает то же состояние.
-Новый Reserve после завершения отклоняется. Найденные дефекты не делают выполненное
-ревью незавершённым; Completed не означает одобрения кода.
+Агент первой фазой вызывает guarded Start и проверяет InProgress. Последней,
+после принятого финального отчёта Workflow, сохраняет обычную сводку Task и сам
+завершает текущее назначение с проверкой Completed. При complete=false он продолжает
+следующую фазу. Workflow complete=true сам по себе не меняет статус Tracker.
+
+После настоящего native terminal Tracker передаёт задачу Analysis → Architecture
+→ Development → Review → Testing → Deployment, сбрасывая статус в Ready для
+следующего агента. Reviewer сохраняет approved/rework и PR comments, Tester —
+passed/rework и фактические проверки; оба исхода передают работу дальше. Стадия
+Rework автоматически не выбирается, cycle не увеличивается. Completed означает
+выполненную работу роли, а не отсутствие дефектов. После DevOps остаются
+Deployment/Completed и runtime Terminal; следующего назначения нет.
 
 Сводка принятого Workflow отчёта публикуется обычным комментарием Task в существующем
 доступе назначения. Новые API доступа к задаче не нужны. Fleet выполняет прежний
 native terminal/Complete; агент не получает scheduler credentials. Старые принятые
-результаты и переходы не переписываются. Автоматический возврат Reviewer в Rework
-и переход в Testing — будущий этап циклов Developer ↔ Reviewer ↔ Tester; сейчас
-они не выполняются. Остальные существующие правила ролей сохраняются.
+результаты и переходы не переписываются. Возврат на исправление и повторные циклы
+Developer ↔ Reviewer ↔ Tester остаются следующим этапом. Дефекты не снимают
+авторизацию, обязательные входы или проверки допустимости реального deployment.
 
-Миграция 0116 обновляет только назначение следующей стадии в существующем
-`sdlc_delivery_result_gate`: Reviewer сохраняет Review/Completed и прежний cycle.
+Forward-миграция 0117 меняет только будущие назначения следующей стадии в
+`sdlc_delivery_result_gate`; ранее применённая 0116 и её результаты сохраняются.
 Проверки producer, живого назначения/lease, proposal и terminal receipt остаются.
 Прежние миграции и строки истории не изменяются; откат нового контракта — только
 новой согласованной миграцией, без удаления принятых результатов.
