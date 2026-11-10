@@ -74,15 +74,7 @@ function useCurrentProjectKey() {
   const location = useLocation()
   const match = location.pathname.match(projectKeyPattern)
   const issueMatch = location.pathname.match(issuePattern)
-  const isCreateIssueRoute = location.pathname === '/issues/create'
-  const issueId = isCreateIssueRoute ? undefined : issueMatch?.[1]
-  const createIssueProjectKey = isCreateIssueRoute
-    ? (new URLSearchParams(location.search).get('project_key') ??
-      (!new URLSearchParams(location.search).has('namespace_id') &&
-      !new URLSearchParams(location.search).has('registry_instance_id')
-        ? (location.state as { project_key?: string } | null)?.project_key
-        : undefined))
-    : undefined
+  const issueId = issueMatch?.[1]
   const reportsProjectKey =
     location.pathname === '/reports'
       ? new URLSearchParams(location.search).get('project_key')
@@ -91,7 +83,7 @@ function useCurrentProjectKey() {
   // the loaded issue so sidebar Board/Backlog/Trash keep their context.
   const issue = useIssue(issueId ?? '')
   return {
-    key: match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue.data?.project_key,
+    key: match?.[1] ?? reportsProjectKey ?? issue.data?.project_key,
     pending: Boolean(issueId && issue.isPending),
     unavailable: Boolean(
       issueId && !issue.isPending && (issue.isError || !issue.data?.project_key),
@@ -301,7 +293,6 @@ export function AppShell() {
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
   const pageLayout =
-    location.pathname === '/issues/create' ||
     /\/projects\/[^/]+\/settings(?:\/|$)/.test(location.pathname)
       ? 'reading'
       : /^\/issues\/[^/]+$/.test(location.pathname)

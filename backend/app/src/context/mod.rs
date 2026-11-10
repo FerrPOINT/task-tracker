@@ -161,15 +161,11 @@ impl AppContext {
             authz.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
-            repos.boards.clone(),
             repos.issues.clone(),
             repos.sprints.clone(),
             repos.users.clone(),
             repos.labels.clone(),
-            repos.statuses.clone(),
-            repos.transitions.clone(),
             repos.projects.clone(),
-            events.clone(),
             authz.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(

@@ -1326,42 +1326,6 @@
             "bearer": []
           }
         ]
-      },
-      "post": {
-        "tags": [
-          "routes::issues"
-        ],
-        "operationId": "create_issue",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateIssueRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Issue created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IssueResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Required custom field is missing or empty"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
       }
     },
     "/api/v1/issues/{id}": {
@@ -5129,61 +5093,6 @@
         ]
       }
     },
-    "/api/v1/issues/{id}/transition": {
-      "post": {
-        "tags": [
-          "issues"
-        ],
-        "operationId": "transition_issue",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Issue UUID or key (PROJ-1)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TransitionIssueRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Issue transitioned",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IssueResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Issue not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/issues/{id}/trash": {
       "delete": {
         "tags": [
@@ -7833,52 +7742,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BoardResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/projects/{project_key}/board/move": {
-      "post": {
-        "tags": [
-          "routes::board"
-        ],
-        "operationId": "move_issue",
-        "parameters": [
-          {
-            "name": "project_key",
-            "in": "path",
-            "description": "Project key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MoveIssueRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "description": "",
@@ -11866,57 +11729,21 @@
         },
         "additionalProperties": false
       },
-      "BoardColumnResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "issue_ids"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "issue_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "name": {
-            "type": "string"
-          },
-          "wip_limit": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
       "BoardResponse": {
         "type": "object",
         "required": [
           "project_id",
           "project_key",
-          "columns",
           "issues",
           "sprint",
-          "backlog_total"
+          "backlog_total",
+          "sdlc"
         ],
         "properties": {
           "backlog_total": {
             "type": "integer",
             "description": "Total number of backlog (unscheduled) issues for the project.",
             "minimum": 0
-          },
-          "columns": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BoardColumnResponse"
-            }
           },
           "issues": {
             "type": "array",
@@ -11931,14 +11758,7 @@
             "type": "string"
           },
           "sdlc": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SdlcBoardResponse"
-              }
-            ]
+            "$ref": "#/components/schemas/SdlcBoardResponse"
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
@@ -12678,60 +12498,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "CreateIssueRequest": {
-        "type": "object",
-        "required": [
-          "project_key",
-          "issue_type",
-          "summary",
-          "priority"
-        ],
-        "properties": {
-          "assignee_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "custom_fields": {
-            "type": "object",
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "issue_type": {
-            "type": "string"
-          },
-          "priority": {
-            "type": "string"
-          },
-          "project_key": {
-            "type": "string"
-          },
-          "reporter_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "summary": {
-            "type": "string"
-          }
-        }
       },
       "CreateLabelRequest": {
         "type": "object",
@@ -18037,21 +17803,6 @@
           "metadata_v1"
         ]
       },
-      "MoveIssueRequest": {
-        "type": "object",
-        "required": [
-          "issue_id",
-          "status_id"
-        ],
-        "properties": {
-          "issue_id": {
-            "type": "string"
-          },
-          "status_id": {
-            "type": "string"
-          }
-        }
-      },
       "MoveIssueToSprintRequest": {
         "type": "object",
         "required": [
@@ -22628,6 +22379,12 @@
                 "enum": [
                   "blocked"
                 ]
+              },
+              "workspace_preparation_commit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
@@ -22765,17 +22522,6 @@
           }
         }
       },
-      "TransitionIssueRequest": {
-        "type": "object",
-        "required": [
-          "target_status_id"
-        ],
-        "properties": {
-          "target_status_id": {
-            "type": "string"
-          }
-        }
-      },
       "TransitionResponse": {
         "type": "object",
         "required": [
@@ -22879,19 +22625,14 @@
               "null"
             ]
           },
-          "status_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "summary": {
             "type": [
               "string",
               "null"
             ]
           }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateLabelRequest": {
         "type": "object",

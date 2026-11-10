@@ -93,7 +93,6 @@ fn context() -> Arc<app::AppContext> {
             orchestrator_subject: "pm-fixture".into(),
             verifier_subject: "verifier-fixture".into(),
             reservation_scheduler_subject: "scheduler-fixture".into(),
-            single_task_project_ids: Default::default(),
         }),
     );
     Arc::new(ctx)

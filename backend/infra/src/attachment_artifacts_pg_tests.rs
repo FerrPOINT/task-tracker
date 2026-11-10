@@ -412,15 +412,13 @@ async fn prepare_standalone_analyst_tool_fixture() {
         )
         .await;
         // The historical PM receipt is explicitly synthetic, as in existing PG fixtures.
-        let mut no_automatic = f.repo.config.clone();
-        no_automatic.single_task_project_ids.remove(&f.project);
         let repo = PostgresSdlcRepository {
             db: crate::guarded_db::GuardedDb::new(
                 Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
                     .await
                     .unwrap(),
             ),
-            config: no_automatic,
+            config: f.repo.config.clone(),
             file_storage: None,
         };
         let pm_actor = actor(
@@ -607,10 +605,6 @@ async fn prepare_standalone_analyst_tool_fixture() {
     )
     .await
     .unwrap();
-    f.repo
-        .config
-        .single_task_project_ids
-        .insert(foreign_project);
     crate::sdlc::source::configure_test_source(&f.repo, foreign_project, &f.owner).await;
     f.repo
         .set_routing_policy(

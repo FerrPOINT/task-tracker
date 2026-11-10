@@ -145,7 +145,6 @@ impl ReworkFixture {
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
                 reservation_scheduler_subject: scheduler_subject.into(),
-                single_task_project_ids: [project].into_iter().collect(),
             },
         )
         .await
@@ -288,7 +287,6 @@ impl ReworkFixture {
             .repo
             .board_tasks(canonical.project_id, &[self.task])
             .await
-            .unwrap()
             .unwrap();
         assert_eq!(board.len(), 1);
         assert_eq!(board[0].stage, expected.task.stage);

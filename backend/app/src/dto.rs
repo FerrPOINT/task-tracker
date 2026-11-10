@@ -147,14 +147,6 @@ impl IssueDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoardColumnDto {
-    pub id: String,
-    pub name: String,
-    pub wip_limit: Option<i64>,
-    pub issue_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SprintDto {
     pub id: String,
     pub project_id: String,
@@ -197,25 +189,58 @@ impl SprintDto {
 pub struct BoardDto {
     pub project_id: String,
     pub project_key: String,
-    pub columns: Vec<BoardColumnDto>,
     pub issues: Vec<IssueDto>,
     pub sprint: SprintDto,
-    /// Total number of backlog (unscheduled) issues for the project.
-    pub backlog_total: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BacklogDto {
+pub struct SdlcBoard {
     pub project_id: String,
     pub project_key: String,
-    /// Total number of backlog issues before paging.
-    pub backlog_total: usize,
-    /// Applied page offset and page size make the next page deterministic.
-    pub backlog_offset: usize,
-    pub backlog_limit: usize,
     pub sprint: SprintDto,
-    pub sprint_issues: Vec<IssueDto>,
-    pub backlog_issues: Vec<IssueDto>,
+    pub cards: Vec<(IssueDto, domain::sdlc_lifecycle::SdlcBoardTask)>,
+}
+
+impl BoardDto {
+    pub async fn into_sdlc(
+        self,
+        repository: &dyn domain::sdlc::SdlcRepository,
+    ) -> Result<SdlcBoard, shared::AppError> {
+        let project = self
+            .project_id
+            .parse()
+            .map_err(shared::AppError::internal)?;
+        let ids = self
+            .issues
+            .iter()
+            .map(|issue| issue.id.parse())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(shared::AppError::internal)?;
+        let mut tasks: std::collections::HashMap<_, _> = repository
+            .board_tasks(project, &ids)
+            .await?
+            .into_iter()
+            .map(|task| (task.issue_id.to_string(), task))
+            .collect();
+        let mut sprint = self.sprint;
+        sprint.issue_ids.retain(|id| tasks.contains_key(id));
+        let cards = self
+            .issues
+            .into_iter()
+            .filter_map(|issue| tasks.remove(&issue.id).map(|task| (issue, task)))
+            .collect();
+        Ok(SdlcBoard {
+            project_id: self.project_id,
+            project_key: self.project_key,
+            sprint,
+            cards,
+        })
+    }
+}
+
+impl SdlcBoard {
+    pub fn backlog(issue: &IssueDto, task: &domain::sdlc_lifecycle::SdlcBoardTask) -> bool {
+        issue.sprint_id.is_none() && task.stage == domain::sdlc_lifecycle::LifecycleStage::Backlog
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

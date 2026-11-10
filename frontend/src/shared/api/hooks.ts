@@ -20,10 +20,9 @@ import {
   deleteProject,
   type Project,
 } from '@/api/project'
-import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
+import { getBoard, getBacklog } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
-import { createIssue } from '@/api/issue-create'
 import {
   updateIssue,
   deleteIssue,
@@ -479,108 +478,6 @@ export function useRegister() {
         email: data.email,
       })
       qc.invalidateQueries({ queryKey: ['me'] })
-    },
-  })
-}
-
-export function useCreateIssue() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: createIssue,
-    retry: false,
-    onSuccess: (data) => {
-      qc.setQueryData(['issue', data.id], data)
-      invalidateIssueCaches(qc, data.project_key, data.id)
-    },
-  })
-}
-
-export function useMoveIssue(projectKey: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: MoveIssueInput) => moveIssue(projectKey, input),
-    onSuccess: (data, input) => {
-      invalidateIssueCaches(qc, data.project_key || projectKey, input.issue_id)
-    },
-  })
-}
-
-export function useUsers() {
-  const token = useAuthStore((s) => s.token)
-  return useQuery({
-    queryKey: ['users'],
-    queryFn: listUsers,
-    enabled: !!token,
-  })
-}
-
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: ['me'],
-    queryFn: getCurrentUser,
-    staleTime: 5 * 60 * 1000,
-  })
-}
-
-export function useLogout() {
-  return useIdentityMutation({
-    mutationFn: async () => {},
-    onSuccess: () => {
-      endSso(ssoConfig)
-    },
-  })
-}
-
-export function useCreateProject(options: { navigateOnSuccess?: boolean } = {}) {
-  const qc = useQueryClient()
-  const navigate = useNavigate()
-  return useMutation({
-    mutationFn: createProject,
-    onSuccess: (data) => {
-      if (options.navigateOnSuccess === false) {
-        qc.setQueryData<Project[]>([...projectKeys.all, 0, 100], (projects) =>
-          [data, ...(projects ?? []).filter((project) => project.id !== data.id)].slice(0, 100),
-        )
-      }
-      qc.invalidateQueries({ queryKey: projectKeys.all })
-      if (options.navigateOnSuccess !== false) navigate(`/projects/${data.key}/board`)
-    },
-  })
-}
-
-export function useUpdateProject(key: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: Parameters<typeof updateProject>[1]) => updateProject(key, input),
-    onSuccess: (saved) => {
-      qc.setQueriesData({ queryKey: projectKeys.info(key) }, saved)
-      qc.invalidateQueries({ queryKey: projectKeys.info(key) })
-      qc.invalidateQueries({ queryKey: ['namespace-contexts', 'task-tracker'] })
-      qc.invalidateQueries({ queryKey: ['namespace-context'] })
-      qc.invalidateQueries({ queryKey: projectKeys.all })
-      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
-    },
-  })
-}
-
-export function useDeleteProject() {
-  const qc = useQueryClient()
-  const navigate = useNavigate()
-  return useMutation({
-    mutationFn: deleteProject,
-    onSuccess: (_data, key) => {
-      qc.invalidateQueries({ queryKey: projectKeys.all })
-      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
-      qc.invalidateQueries({ queryKey: projectKeys.sprints(key) })
-      qc.invalidateQueries({ queryKey: ['project-members', key] })
-      qc.invalidateQueries({ queryKey: ['labels', key] })
-      qc.invalidateQueries({ queryKey: ['custom-fields', key] })
-      qc.invalidateQueries({ queryKey: ['backlog', key] })
-      qc.invalidateQueries({ queryKey: ['trash', key] })
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
-      qc.invalidateQueries({ queryKey: ['search'] })
-      qc.invalidateQueries({ queryKey: ['reports'] })
-      navigate('/projects')
     },
   })
 }

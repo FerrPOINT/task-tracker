@@ -7,9 +7,7 @@ use crate::commands::{
     UpdateIssueCommand, UpdateNotificationSettingsCommand, UpdateProjectCommand,
     UpdateWorklogCommand,
 };
-use crate::dto::{
-    AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
-};
+use crate::dto::{AuthDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto};
 use shared::{
     AppError, AttachmentId, CommentId, IssueId, IssueLinkId, LabelId, ProjectKey, StatusId, UserId,
     WorklogId,
@@ -262,20 +260,6 @@ pub trait BoardService: Send + Sync {
     async fn get_board(
         &self,
         project_key: &ProjectKey,
-        requester: UserId,
-    ) -> Result<BoardDto, AppError>;
-    async fn get_backlog(
-        &self,
-        project_key: &ProjectKey,
-        requester: UserId,
-        offset: u32,
-        limit: u32,
-    ) -> Result<BacklogDto, AppError>;
-    async fn move_issue(
-        &self,
-        project_key: &ProjectKey,
-        issue_id: IssueId,
-        status_id: StatusId,
         requester: UserId,
     ) -> Result<BoardDto, AppError>;
 }

@@ -162,12 +162,6 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>, selector: Uu
         ],
     );
 
-    unsafe {
-        std::env::set_var(
-            "TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS",
-            f.project.to_string(),
-        );
-    }
     let (base, stop, handle) = start(config.clone()).await;
     let creation_key = "creation/readback-\u{043a}\u{043b}\u{044e}\u{0447}";
     let creation_url = creation_endpoint(&base, f.project, creation_key);

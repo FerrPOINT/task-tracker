@@ -1042,12 +1042,6 @@ async fn start_refuses_nonowners_no_opt_in_missing_consent_stale_and_foreign_rec
                 Err(AppError::Forbidden)
             ));
         }
-        f.repo.config.single_task_project_ids.clear();
-        assert!(matches!(
-            f.repo.lifecycle_command(task, &f.owner, cmd.clone()).await,
-            Err(AppError::Unavailable(_))
-        ));
-        f.repo.config.single_task_project_ids.insert(f.project);
         let wrong = LifecycleCommand::StartAnalysis {
             pm_completion_id: Uuid::new_v4(),
             idempotency_key: "wrong-receipt".into(),
@@ -1060,7 +1054,6 @@ async fn start_refuses_nonowners_no_opt_in_missing_consent_stale_and_foreign_rec
         let unconfirmed = f.draft("no-consent", Some(DraftFlow::SingleTaskV1)).await;
         let original_project = f.project;
         f.project = Uuid::new_v4();
-        f.repo.config.single_task_project_ids.insert(f.project);
         exec(&f.db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) SELECT $1,'OTHER','Other synthetic project',owner_id,$2 FROM projects WHERE id=$3",
             vec![f.project.into(),Uuid::new_v4().into(),original_project.into()]).await.unwrap();
         exec(&f.db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Other','[]' FROM projects WHERE id=$1",vec![f.project.into()]).await.unwrap();

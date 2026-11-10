@@ -5,103 +5,12 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::dto::{
-    CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, TrashQuery,
-    UpdateIssueRequest,
-};
+use crate::dto::{IssueListResponse, IssueResponse, SearchQuery, TrashQuery, UpdateIssueRequest};
 use app::auth::UserClaims;
-use app::commands::{CreateIssueCommand, UpdateIssueCommand};
+use app::commands::UpdateIssueCommand;
 use axum::Extension;
 use shared::{AppError, IssueId, ProjectKey, UserId};
 use std::str::FromStr;
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/issues",
-    request_body = CreateIssueRequest,
-    responses(
-        (status = 201, description = "Issue created", body = IssueResponse),
-        (status = 422, description = "Required custom field is missing or empty")
-    ),
-    security(("bearer" = []))
-)]
-pub async fn create_issue(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(claims): Extension<UserClaims>,
-    headers: HeaderMap,
-    Json(req): Json<CreateIssueRequest>,
-) -> Result<(StatusCode, Json<IssueResponse>), AppError> {
-    let actor_id = shared::UserId::from_uuid(
-        uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
-    );
-    let project_key = ProjectKey::from_str(&req.project_key)
-        .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let status_id = match req.status_id {
-        Some(status_id) => status_id,
-        None => ctx
-            .services
-            .status
-            .get_default_status()
-            .await?
-            .id
-            .to_string(),
-    };
-    let explicit_reporter = req.reporter_id.is_some();
-    let mut reporter_id = req
-        .reporter_id
-        .map(|reporter_id| {
-            reporter_id
-                .parse()
-                .map(shared::UserId::from_uuid)
-                .map_err(|_| AppError::invalid_input("reporter_id"))
-        })
-        .transpose()?
-        .unwrap_or(actor_id);
-    let mut assignee_id = req
-        .assignee_id
-        .map(|id| {
-            id.parse::<UserId>()
-                .map_err(|_| AppError::invalid_input("assignee_id"))
-        })
-        .transpose()?;
-    let mut references = Vec::new();
-    if explicit_reporter {
-        references.push(reporter_id);
-    }
-    references.extend(assignee_id);
-    let resolved = super::users::resolve_directory_references(&ctx, &headers, &references).await?;
-    if explicit_reporter {
-        reporter_id = resolved[&reporter_id];
-    }
-    assignee_id = assignee_id.map(|id| resolved[&id]);
-    let cmd = CreateIssueCommand {
-        operation_id: headers
-            .get("Idempotency-Key")
-            .map(|value| {
-                value
-                    .to_str()
-                    .ok()
-                    .and_then(|v| uuid::Uuid::parse_str(v).ok())
-                    .filter(|v| !v.is_nil())
-                    .ok_or_else(|| AppError::invalid_input("invalid Idempotency-Key"))
-            })
-            .transpose()?,
-        project_key,
-        issue_type: shared::IssueType::from_str(&req.issue_type)
-            .map_err(|_| AppError::invalid_input("issue_type"))?,
-        summary: req.summary,
-        description: req.description,
-        priority: shared::Priority::from_str(&req.priority)
-            .map_err(|_| AppError::invalid_input("priority"))?,
-        status_id,
-        assignee_id,
-        reporter_id,
-        actor_id,
-        custom_fields: req.custom_fields,
-    };
-    let i = ctx.services.issue.create(cmd, actor_id).await?;
-    Ok((StatusCode::CREATED, Json(map_issue(i))))
-}
 
 #[utoipa::path(
     patch,
@@ -129,7 +38,7 @@ pub async fn update_issue(
             .map(|s| shared::Priority::from_str(s.as_str()))
             .transpose()
             .map_err(|_| AppError::invalid_input("priority"))?,
-        status_id: req.status_id,
+        status_id: None,
         assignee_id: match req.assignee_id {
             None => None,
             Some(None) => Some(None),

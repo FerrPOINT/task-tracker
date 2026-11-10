@@ -138,10 +138,6 @@ impl PostgresSdlcRepository {
         )?;
         if state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
             || state.stage != Stage::Draft
-            || !self
-                .config
-                .single_task_project_ids
-                .contains(&state.project_id)
             || blocker.state != CriticalBlockerState::InPmReview
             || blocker.resolution.is_some()
             || state.assignment.as_ref() != Some(&saved.reservation.assignment)

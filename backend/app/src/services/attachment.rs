@@ -374,7 +374,6 @@ mod tests {
             orchestrator_subject: "pm".into(),
             verifier_subject: "verifier".into(),
             reservation_scheduler_subject: "scheduler".into(),
-            single_task_project_ids: Default::default(),
         });
         let actor = domain::sdlc::Principal {
             subject: uuid::Uuid::new_v4().to_string(),
@@ -433,7 +432,6 @@ mod tests {
             orchestrator_subject: "pm".into(),
             verifier_subject: "verifier".into(),
             reservation_scheduler_subject: "scheduler".into(),
-            single_task_project_ids: Default::default(),
         });
         service
             .authorize_artifact_route(&scheduler, "GET", &download)

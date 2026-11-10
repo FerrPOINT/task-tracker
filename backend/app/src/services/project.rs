@@ -83,7 +83,7 @@ impl ProjectServiceImpl {
             id: board_id,
             project_id: project.id,
             name: "Board".into(),
-            columns: super::helpers::default_board_columns(),
+            columns: vec![],
         };
         // Project + default board must land atomically: a project whose
         // default_board_id points at a nonexistent board breaks board reads

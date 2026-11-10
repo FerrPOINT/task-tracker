@@ -1,5 +1,5 @@
-use app::auth::UserClaims;
 use app::services::board::backlog;
+use app::{auth::UserClaims, dto::SdlcBoard};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -7,7 +7,7 @@ use axum::{
 use shared::AppError;
 use std::sync::Arc;
 
-use crate::dto::{BoardResponse, MoveIssueRequest, SdlcBoardResponse};
+use crate::dto::{BoardResponse, SdlcBoardResponse};
 use domain::sdlc_lifecycle::LifecycleStage;
 use std::str::FromStr;
 
@@ -23,11 +23,28 @@ pub async fn get_board(
     Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<BoardResponse>, AppError> {
-    let key = shared::ProjectKey::from_str(&project_key)
-        .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let requester = parse_user_id(&claims)?;
-    let b = ctx.services.board.get_board(&key, requester).await?;
-    Ok(Json(board_response(&ctx, b).await?))
+    let board = read_board(&ctx, &claims, &project_key).await?;
+    let backlog_total = board
+        .cards
+        .iter()
+        .filter(|(issue, task)| SdlcBoard::backlog(issue, task))
+        .count();
+    let (issues, tasks) = board
+        .cards
+        .into_iter()
+        .map(|(issue, task)| (map_issue(issue), task))
+        .unzip();
+    Ok(Json(BoardResponse {
+        project_id: board.project_id,
+        project_key: board.project_key,
+        issues,
+        sprint: map_sprint(board.sprint),
+        backlog_total,
+        sdlc: SdlcBoardResponse {
+            stages: LifecycleStage::BOARD_ORDER.to_vec(),
+            tasks,
+        },
+    }))
 }
 
 /// Query parameters for backlog paging. Defaults: offset 0, limit 100
@@ -54,133 +71,73 @@ pub async fn get_backlog(
     Path(project_key): Path<String>,
     axum::extract::Query(pagination): axum::extract::Query<BacklogQuery>,
 ) -> Result<Json<crate::dto::BacklogResponse>, AppError> {
-    let key = shared::ProjectKey::from_str(&project_key)
-        .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let requester = parse_user_id(&claims)?;
-    let b = ctx
-        .services
-        .board
-        .get_backlog(
-            &key,
-            requester,
-            pagination.offset.unwrap_or(0),
-            pagination
-                .limit
-                .unwrap_or(backlog::BACKLOG_PAGE_LIMIT as u32),
-        )
-        .await?;
-    Ok(Json(map_backlog(b)))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/projects/{project_key}/board/move",
-    params(("project_key" = String, Path, description = "Project key")),
-    request_body = MoveIssueRequest,
-    responses((status = 200, body = BoardResponse)),
-    security(("bearer" = []))
-)]
-pub async fn move_issue(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(claims): Extension<UserClaims>,
-    Path(project_key): Path<String>,
-    Json(req): Json<MoveIssueRequest>,
-) -> Result<Json<BoardResponse>, AppError> {
-    let key = shared::ProjectKey::from_str(&project_key)
-        .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let issue_id = req
-        .issue_id
-        .parse()
-        .ok()
-        .map(shared::IssueId::from_uuid)
-        .ok_or(AppError::invalid_input("issue_id"))?;
-    let status_id = req
-        .status_id
-        .parse()
-        .ok()
-        .map(shared::StatusId::from_uuid)
-        .ok_or(AppError::invalid_input("status_id"))?;
-    let b = ctx
-        .services
-        .board
-        .move_issue(&key, issue_id, status_id, parse_user_id(&claims)?)
-        .await?;
-    Ok(Json(board_response(&ctx, b).await?))
-}
-
-async fn board_response(
-    ctx: &app::AppContext,
-    b: app::dto::BoardDto,
-) -> Result<BoardResponse, AppError> {
-    let sdlc = if let Some(service) = &ctx.sdlc {
-        let project = b.project_id.parse().map_err(AppError::internal)?;
-        let issues = b
-            .issues
-            .iter()
-            .map(|issue| issue.id.parse())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::internal)?;
-        service
-            .repository
-            .board_tasks(project, &issues)
-            .await?
-            .map(|tasks| SdlcBoardResponse {
-                stages: LifecycleStage::BOARD_ORDER.to_vec(),
-                tasks,
-            })
-    } else {
-        None
-    };
-    Ok(BoardResponse {
-        project_id: b.project_id,
-        project_key: b.project_key,
-        columns: b
-            .columns
+    let board = read_board(&ctx, &claims, &project_key).await?;
+    let mut sprint_issues = Vec::new();
+    let mut backlog_issues = Vec::new();
+    for (issue, task) in board.cards {
+        if issue.sprint_id.is_some() {
+            sprint_issues.push(map_issue(issue));
+        } else if SdlcBoard::backlog(&issue, &task) {
+            backlog_issues.push(map_issue(issue));
+        }
+    }
+    backlog_issues.sort_unstable_by(|a, b| {
+        b.created_at
+            .cmp(&a.created_at)
+            .then_with(|| b.id.cmp(&a.id))
+    });
+    let backlog_total = backlog_issues.len();
+    let backlog_offset = pagination.offset.unwrap_or(0) as usize;
+    let backlog_limit = (pagination
+        .limit
+        .unwrap_or(backlog::BACKLOG_PAGE_LIMIT as u32) as usize)
+        .clamp(1, backlog::BACKLOG_MAX_PAGE_SIZE);
+    Ok(Json(crate::dto::BacklogResponse {
+        project_id: board.project_id,
+        project_key: board.project_key,
+        backlog_total,
+        backlog_offset,
+        backlog_limit,
+        sprint: map_sprint(board.sprint),
+        sprint_issues,
+        backlog_issues: backlog_issues
             .into_iter()
-            .map(|c| crate::dto::BoardColumnResponse {
-                id: c.id,
-                name: c.name,
-                wip_limit: c.wip_limit.map(|v| v as u32),
-                issue_ids: c.issue_ids,
-            })
+            .skip(backlog_offset)
+            .take(backlog_limit)
             .collect(),
-        issues: b.issues.into_iter().map(map_issue).collect(),
-        sprint: crate::dto::SprintResponse {
-            id: b.sprint.id,
-            name: b.sprint.name,
-            goal: b.sprint.goal,
-            state: b.sprint.state,
-            velocity: b.sprint.velocity,
-            remaining_days: b.sprint.remaining_days,
-            issue_ids: b.sprint.issue_ids,
-            start_date: b.sprint.start_date,
-            end_date: b.sprint.end_date,
-        },
-        backlog_total: b.backlog_total,
-        sdlc,
-    })
+    }))
 }
 
-fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
-    crate::dto::BacklogResponse {
-        project_id: b.project_id,
-        project_key: b.project_key,
-        backlog_total: b.backlog_total,
-        backlog_offset: b.backlog_offset,
-        backlog_limit: b.backlog_limit,
-        sprint: crate::dto::SprintResponse {
-            id: b.sprint.id,
-            name: b.sprint.name,
-            goal: b.sprint.goal,
-            state: b.sprint.state,
-            velocity: b.sprint.velocity,
-            remaining_days: b.sprint.remaining_days,
-            issue_ids: b.sprint.issue_ids,
-            start_date: b.sprint.start_date,
-            end_date: b.sprint.end_date,
-        },
-        sprint_issues: b.sprint_issues.into_iter().map(map_issue).collect(),
-        backlog_issues: b.backlog_issues.into_iter().map(map_issue).collect(),
+async fn read_board(
+    ctx: &app::AppContext,
+    claims: &UserClaims,
+    project_key: &str,
+) -> Result<SdlcBoard, AppError> {
+    let key = shared::ProjectKey::from_str(project_key)
+        .map_err(|e| AppError::invalid_input(e.to_string()))?;
+    let board = ctx
+        .services
+        .board
+        .get_board(&key, parse_user_id(claims)?)
+        .await?;
+    let service = ctx
+        .sdlc
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("SDLC unavailable".into()))?;
+    board.into_sdlc(service.repository.as_ref()).await
+}
+
+fn map_sprint(sprint: app::dto::SprintDto) -> crate::dto::SprintResponse {
+    crate::dto::SprintResponse {
+        id: sprint.id,
+        name: sprint.name,
+        goal: sprint.goal,
+        state: sprint.state,
+        velocity: sprint.velocity,
+        remaining_days: sprint.remaining_days,
+        issue_ids: sprint.issue_ids,
+        start_date: sprint.start_date,
+        end_date: sprint.end_date,
     }
 }
 

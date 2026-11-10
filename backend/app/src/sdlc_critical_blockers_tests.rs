@@ -185,7 +185,6 @@ impl Fixture {
                 result: None,
             },
             config: SdlcConfig {
-                single_task_project_ids: [project_id].into(),
                 reservation_scheduler_subject: "scheduler".into(),
                 instance_id: "synthetic-tracker".into(),
                 orchestrator_subject: "pm".into(),
@@ -493,7 +492,7 @@ fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runt
             0 => f.proposal.requirement_revision += 1,
             1 => f.proposal.content_hash = "f".repeat(64),
             2 => f.current.task.routing.root_task_id = Uuid::new_v4(),
-            3 => f.config.single_task_project_ids.clear(),
+            3 => f.current.task.routing.policy.project_id = Uuid::new_v4(),
             4 => f.config.instance_id = "foreign".into(),
             5 => f.current.task.owner_subject = "another-owner".into(),
             6 => f.current.task.runtime = RuntimeState::Unknown,

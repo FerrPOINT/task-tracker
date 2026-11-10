@@ -72,7 +72,6 @@ fn verify_source(
     if state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
         || state.project_id.is_nil()
         || state.owner_subject.trim().is_empty()
-        || !config.single_task_project_ids.contains(&state.project_id)
         || state.tracker_instance_id != config.instance_id
         || state.stage != Stage::Draft
         || state.status != Some(LifecycleStatus::Ready)
@@ -665,7 +664,6 @@ mod tests {
                 "runtime_state":"terminal","lifecycle":lifecycle.task});
             let state = serde_json::from_value(raw).unwrap();
             let config = SdlcConfig {
-                single_task_project_ids: [project].into(),
                 reservation_scheduler_subject: "scheduler".into(),
                 instance_id: input.tracker_instance_id.clone(),
                 orchestrator_subject: "pm".into(),

@@ -254,7 +254,6 @@
     "noMatches": "No projects match your search."
   },
   "board": {
-    "ordinaryIssues": "Regular issues",
     "sdlcStage": {
       "Draft": "Draft",
       "Backlog": "Backlog",
