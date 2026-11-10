@@ -1133,14 +1133,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             verdict: ReviewVerdict::Approved,
             report: artifact("review"),
         },
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Passed,
-            report: artifact("tests"),
-        },
-        DeliveryResult::DevOps {
-            deployment: artifact("deployment"),
-            verification: artifact("verification"),
-        },
     ];
     let mut previous_accepted: Option<AcceptedDeliveryResult> = None;
     let mut previous_producer: Option<Principal> = None;
@@ -1347,7 +1339,10 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
-        if started.task.stage == LifecycleStage::Deployment {
+        if matches!(
+            started.task.stage,
+            LifecycleStage::Review | LifecycleStage::Deployment
+        ) {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
         } else {
@@ -1382,7 +1377,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         assert_eq!(canonical.task_id, task);
         assert_eq!(canonical.stage, cursor.task.stage.canonical());
         assert_eq!(canonical.status, Some(cursor.task.status));
-        if matches!(canonical.stage, Stage::Development | Stage::Review) {
+        if matches!(canonical.stage, Stage::Development | Stage::Review)
+            && canonical.status == Some(LifecycleStatus::Ready)
+        {
             let id: Uuid = db
                 .query_one(statement(
                     "SELECT status_id FROM issues WHERE id=$1",
@@ -1397,12 +1394,12 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         }
     }
     assert_eq!(ready_ids.len(), 2);
-    assert_eq!(execution_keys.len(), 6);
+    assert_eq!(execution_keys.len(), 4);
     assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
     assert_ne!(ready_ids[0].0, ready_ids[1].0);
     assert_eq!(ready_ids[0].1, ready_ids[1].1);
     assert_eq!(cursor.task.status, LifecycleStatus::Completed);
-    assert_eq!(count(&db, "sdlc_delivery_results").await, 6);
+    assert_eq!(count(&db, "sdlc_delivery_results").await, 4);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     for candidate in repo.metadata_outbox(task, &owner, 0, 100).await.unwrap() {
         let event = candidate

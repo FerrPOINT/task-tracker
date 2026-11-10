@@ -75,6 +75,7 @@
       "unknown": "Результат SDLC запроса не получен; требуется обновление"
     },
     "reasons": {
+      "review_completed": "Ревью завершено; результат сохранён, следующий этап автоматически не запускается",
       "waiting_for_pm": "Ожидается PM",
       "waiting_for_owner_answers": "Ожидаются ответы владельца",
       "waiting_for_requirements_or_evidence": "Ожидаются требования или evidence",

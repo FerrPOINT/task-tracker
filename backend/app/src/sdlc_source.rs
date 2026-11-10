@@ -256,7 +256,7 @@ pub fn workspace_preparation_expires_at(
         && lease.heartbeat_at <= current.observed_at
         && current.observed_at < lease.expires_at
         && lease.expires_at - lease.heartbeat_at <= chrono::Duration::seconds(30))
-        .then_some(lease.expires_at)
+    .then_some(lease.expires_at)
 }
 
 pub fn readback(
