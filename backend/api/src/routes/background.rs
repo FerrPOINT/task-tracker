@@ -81,7 +81,12 @@ fn permitted(result: Result<(), AppError>) -> Result<bool, AppError> {
     match result {
         Ok(()) => Ok(true),
         Err(AppError::Forbidden) => Ok(false),
-        Err(AppError::Conflict(reason)) if reason == "project_archived_read_only" => Ok(false),
+        Err(AppError::Conflict(reason))
+            if reason == "project_archived_read_only"
+                || reason == "namespace_resource_read_only" =>
+        {
+            Ok(false)
+        }
         Err(error) => Err(error),
     }
 }
@@ -91,8 +96,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn archived_projects_remain_readable_without_hiding_storage_failures() {
-        assert!(!permitted(Err(AppError::conflict("project_archived_read_only"))).unwrap());
+    fn read_only_projects_remain_readable_without_hiding_storage_failures() {
+        assert!(permitted(Ok(())).unwrap());
+        for reason in ["project_archived_read_only", "namespace_resource_read_only"] {
+            let writable = permitted(Err(AppError::conflict(reason))).unwrap();
+            assert!(!writable);
+            assert_eq!(
+                app::background::permissions(true, None, true, writable),
+                (false, false)
+            );
+        }
         assert!(!permitted(Err(AppError::Forbidden)).unwrap());
         assert!(permitted(Err(AppError::conflict("unexpected_conflict"))).is_err());
         assert!(permitted(Err(AppError::Unavailable("storage".into()))).is_err());
