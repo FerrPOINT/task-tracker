@@ -13,9 +13,23 @@ async fn retained_rows(f: &ReworkFixture) -> Json {
     )).await.unwrap().unwrap().try_get("", "value").unwrap()
 }
 
-#[tokio::test]
-#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn forward_116_preserves_expired_binding_history_and_binds_without_renewal() {
+const REVIEWER_116: &str = "m20261108_0000116_reviewer_terminal";
+const UNTIMED_116: &str = "m20261110_0000116_untimed_delivery_binding";
+
+struct Released116<const REVIEWER: bool>;
+
+#[async_trait::async_trait]
+impl<const REVIEWER: bool> MigratorTrait for Released116<REVIEWER> {
+    fn migrations() -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+        let absent = if REVIEWER { UNTIMED_116 } else { REVIEWER_116 };
+        migration::Migrator::migrations()
+            .into_iter()
+            .filter(|item| item.name() != absent)
+            .collect()
+    }
+}
+
+async fn assert_binding_upgrade(reviewer_history: Option<bool>) {
     let (f, queued) = ReworkFixture::with_schema_tail(
         None,
         None,
@@ -56,6 +70,11 @@ async fn forward_116_preserves_expired_binding_history_and_binds_without_renewal
         VALUES($1,$2,$3,$4,$5,NULL)", vec![f.task.into(),f.scheduler.subject.clone().into(),command.key().into(),
         app::sdlc::canonical_hash(&command).unwrap().into(),serde_json::to_value(&saved).unwrap().into()]).await.unwrap();
     tx.commit().await.unwrap();
+    match reviewer_history {
+        Some(true) => Released116::<true>::up(&f.db, None).await.unwrap(),
+        Some(false) => Released116::<false>::up(&f.db, None).await.unwrap(),
+        None => {}
+    }
     let before = retained_rows(&f).await;
     let ledger: Vec<(String, i64)> =
         f.db.query_all(statement(
@@ -75,6 +94,20 @@ async fn forward_116_preserves_expired_binding_history_and_binds_without_renewal
 
     migration::Migrator::up(&f.db, None).await.unwrap();
     assert_eq!(retained_rows(&f).await, before);
+    let added =
+        f.db.query_all(statement(
+            "SELECT version FROM seaql_migrations WHERE version IN ($1,$2) ORDER BY version",
+            vec![REVIEWER_116.into(), UNTIMED_116.into()],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        added
+            .into_iter()
+            .map(|row| row.try_get::<String>("", "version").unwrap())
+            .collect::<Vec<_>>(),
+        vec![REVIEWER_116, UNTIMED_116],
+    );
     for (name, at) in &ledger {
         let row =
             f.db.query_one(statement(
@@ -182,4 +215,22 @@ async fn forward_116_preserves_expired_binding_history_and_binds_without_renewal
     assert_eq!(running.receipt.task.status, LifecycleStatus::InProgress);
     assert_eq!(running.receipt.lease, fresh.receipt.lease);
     assert!(migration::Migrator::down(&f.db, Some(1)).await.is_err());
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn forward_116_preserves_expired_binding_history_and_binds_without_renewal() {
+    assert_binding_upgrade(None).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn reviewer_116_history_accepts_untimed_binding_without_rewriting_rows_or_ledger() {
+    assert_binding_upgrade(Some(true)).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn untimed_116_history_accepts_reviewer_without_rewriting_rows_or_ledger() {
+    assert_binding_upgrade(Some(false)).await;
 }

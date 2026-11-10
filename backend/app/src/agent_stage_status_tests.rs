@@ -180,7 +180,7 @@ fn results() -> Vec<(LifecycleStage, DeliveryResult, LifecycleStage)> {
                 verdict: ReviewVerdict::Approved,
                 report: artifact("review"),
             },
-            LifecycleStage::Testing,
+            LifecycleStage::Review,
         ),
         (
             LifecycleStage::Testing,
@@ -490,10 +490,17 @@ fn completed_delivery_handoff_resets_ready_but_final_devops_remains_completed() 
         assert_eq!(custody.task.task_id, before.task_id);
         assert_eq!(custody.task.owner_subject, before.owner_subject);
         assert_eq!(custody.task.routing, before.routing);
-        if stage == LifecycleStage::Deployment {
+        if matches!(stage, LifecycleStage::Deployment | LifecycleStage::Review) {
             assert_eq!(custody.task.status, LifecycleStatus::Completed);
             assert_eq!(custody.task.runtime, RuntimeState::Terminal);
-            assert_eq!(custody.task.waiting_reason, None);
+            assert_eq!(
+                custody.task.waiting_reason.as_deref(),
+                if stage == LifecycleStage::Review {
+                    Some("review_completed")
+                } else {
+                    None
+                }
+            );
         } else {
             assert_eq!(custody.task.status, LifecycleStatus::Ready);
             assert_eq!(custody.task.runtime, RuntimeState::Queued);
@@ -509,42 +516,30 @@ fn completed_delivery_handoff_resets_ready_but_final_devops_remains_completed() 
 }
 
 #[test]
-fn review_and_test_rework_handoff_reset_ready_for_the_developer() {
-    for (stage, output) in [
-        (
-            LifecycleStage::Review,
-            DeliveryResult::Reviewer {
-                verdict: ReviewVerdict::Rework,
-                report: artifact("review"),
-            },
-        ),
-        (
-            LifecycleStage::Testing,
-            DeliveryResult::Tester {
-                verdict: TestVerdict::Rework,
-                report: artifact("tests"),
-            },
-        ),
-    ] {
-        let (_, _, _, mut custody) = delivery(stage);
-        custody.task.status = LifecycleStatus::Completed;
-        accept_result(&mut custody.task, &output).unwrap();
-        assert_eq!(custody.task.stage, LifecycleStage::Rework);
-        assert_eq!(custody.task.status, LifecycleStatus::Ready);
-        assert_eq!(custody.task.cycle, 1);
-        assert_eq!(custody.task.runtime, RuntimeState::Queued);
-        let (_, _, _, mut limited) = delivery(stage);
-        limited.task.status = LifecycleStatus::Completed;
-        limited.task.cycle = MAX_REWORK_CYCLES;
-        accept_result(&mut limited.task, &output).unwrap();
-        assert_eq!(limited.task.stage, stage);
-        assert_eq!(limited.task.status, LifecycleStatus::Completed);
-        assert_eq!(limited.task.runtime, RuntimeState::Terminal);
-        assert_eq!(
-            limited.task.waiting_reason.as_deref(),
-            Some("rework_limit_reached")
-        );
-    }
+fn test_rework_handoff_resets_ready_for_the_developer() {
+    let stage = LifecycleStage::Testing;
+    let output = DeliveryResult::Tester {
+        verdict: TestVerdict::Rework,
+        report: artifact("tests"),
+    };
+    let (_, _, _, mut custody) = delivery(stage);
+    custody.task.status = LifecycleStatus::Completed;
+    accept_result(&mut custody.task, &output).unwrap();
+    assert_eq!(custody.task.stage, LifecycleStage::Rework);
+    assert_eq!(custody.task.status, LifecycleStatus::Ready);
+    assert_eq!(custody.task.cycle, 1);
+    assert_eq!(custody.task.runtime, RuntimeState::Queued);
+    let (_, _, _, mut limited) = delivery(stage);
+    limited.task.status = LifecycleStatus::Completed;
+    limited.task.cycle = MAX_REWORK_CYCLES;
+    accept_result(&mut limited.task, &output).unwrap();
+    assert_eq!(limited.task.stage, stage);
+    assert_eq!(limited.task.status, LifecycleStatus::Completed);
+    assert_eq!(limited.task.runtime, RuntimeState::Terminal);
+    assert_eq!(
+        limited.task.waiting_reason.as_deref(),
+        Some("rework_limit_reached")
+    );
 }
 
 #[test]

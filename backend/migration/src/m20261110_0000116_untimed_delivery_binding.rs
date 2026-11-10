@@ -40,6 +40,10 @@ mod tests {
             );
             assert_eq!(
                 migrations[migrations.len() - 2].name(),
+                "m20261108_0000116_reviewer_terminal"
+            );
+            assert_eq!(
+                migrations[migrations.len() - 3].name(),
                 "m20261107_0000115_agent_stage_status"
             );
         }

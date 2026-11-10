@@ -84,6 +84,12 @@ impl crate::sdlc::SdlcService {
         }
         let state = self.repository.read(task, actor).await?;
         if state.configured_cli() {
+            let operation_key = format!("delivery-result:{}", command.fence.assignment_id);
+            if command.idempotency_key != operation_key {
+                return Err(AppError::validation(format!(
+                    "configured delivery result requires idempotency_key {operation_key}"
+                )));
+            }
             let lifecycle = self
                 .lifecycle_repository()?
                 .lifecycle_read(task, actor)
@@ -682,19 +688,12 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
         DeliveryResult::Analyst { .. } => LifecycleStage::Architecture,
         DeliveryResult::Architect { .. } => LifecycleStage::Development,
         DeliveryResult::Developer { .. } => LifecycleStage::Review,
-        DeliveryResult::Reviewer {
-            verdict: ReviewVerdict::Approved,
-            ..
-        } => LifecycleStage::Testing,
+        DeliveryResult::Reviewer { .. } => LifecycleStage::Review,
         DeliveryResult::Tester {
             verdict: TestVerdict::Passed,
             ..
         } => LifecycleStage::Deployment,
-        DeliveryResult::Reviewer {
-            verdict: ReviewVerdict::Rework,
-            ..
-        }
-        | DeliveryResult::Tester {
+        DeliveryResult::Tester {
             verdict: TestVerdict::Rework,
             ..
         } => LifecycleStage::Rework,
@@ -709,6 +708,11 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
     task.resume_chat_id = None;
+    if matches!(result, DeliveryResult::Reviewer { .. }) {
+        // Record the actual verdict without enabling the future cross-role cycle.
+        task.waiting_reason = Some("review_completed".into());
+        return Ok(());
+    }
     if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
         // Work is completed, not approved; no handoff means no reset to Ready.
         task.status = LifecycleStatus::Completed;

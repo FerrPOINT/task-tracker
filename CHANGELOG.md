@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
+
+- Обе опубликованные миграции116 зарегистрированы под исходными полными именами.
+  Reviewer завершает Review без автоматического назначения следующей роли;
+  текущий delivery binding сохраняет точные identity/holder/version без сроков.
+- Обновление из каждой истории сохраняет строки и прежние записи ledger.
+  Применённые SQL и receipts неизменны; новой convergence migration или
+  ветки исполнения по времени нет.
+
 ## 2026-11-10: Untimed Delivery Binding — Source Candidate
 
 - Canonical delivery retains assignment/holder/version fencing without heartbeat

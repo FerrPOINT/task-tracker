@@ -2,6 +2,10 @@
 
 ## Untimed Delivery Binding
 
+Обе опубликованные миграции116 сохраняют полные имена: Reviewer terminal и
+untimed delivery binding. Независимые патчи функций допускают оба порядка
+обновления без переписывания применённой миграции, строки или receipt.
+
 Forward116 меняет только current projection и действующие SQL guards. Binding
 остаётся в `sdlc_delivery_heads.execution`; `sdlc_delivery_tasks` — существующий view.
 Current view исключает архивные heartbeat/expiry, сохраняя assignment, holder,
