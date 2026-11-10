@@ -69,6 +69,9 @@ pub enum DeliveryResultCommand {
         result: Uuid,
     },
     /// Set Completed with Workflow evidence; application waits for native terminal before handoff
+    #[command(
+        after_long_help = "Configured agents can omit idempotency_key. The CLI derives delivery-result:<assignment_id> from the proposal fence. Read the operation using that same key."
+    )]
     Propose {
         #[arg(long)]
         task: Uuid,
@@ -91,9 +94,14 @@ pub async fn delivery_result(api: &Api, command: DeliveryResultCommand) -> Resul
                 .await
         }
         DeliveryResultCommand::Propose { task, from_file } => {
+            let input = json_input(&from_file)?;
             api.post(
                 &sdlc_path(task, "/delivery-proposals"),
-                json_input(&from_file)?,
+                if api.configured_cli {
+                    configured_delivery_proposal(input)?
+                } else {
+                    input
+                },
             )
             .await
         }
@@ -105,6 +113,42 @@ pub async fn delivery_result(api: &Api, command: DeliveryResultCommand) -> Resul
             .await
         }
     }
+}
+
+fn configured_delivery_proposal(mut input: Value) -> Result<Value> {
+    let assignment = input["fence"]["assignment_id"]
+        .as_str()
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| {
+            anyhow::anyhow!("configured delivery result requires fence.assignment_id")
+        })?;
+    let key = format!("delivery-result:{assignment}");
+    if let Some(supplied) = input.get("idempotency_key") {
+        anyhow::ensure!(
+            supplied.as_str() == Some(key.as_str()),
+            "configured delivery result requires idempotency_key {key}; omit it to use this key"
+        );
+    }
+    input["idempotency_key"] = Value::String(key);
+    Ok(input)
+}
+
+#[cfg(test)]
+#[test]
+fn configured_delivery_proposal_derives_and_checks_the_operation_key() {
+    let assignment = "9cc367a0-620b-4f6e-afba-d204a35f0161";
+    let mut input = serde_json::json!({"fence":{"assignment_id":assignment}});
+    let canonical = format!("delivery-result:{assignment}");
+    assert_eq!(
+        configured_delivery_proposal(input.clone()).unwrap()["idempotency_key"].as_str(),
+        Some(canonical.as_str())
+    );
+    input["idempotency_key"] = Value::String(canonical);
+    assert_eq!(configured_delivery_proposal(input.clone()).unwrap(), input);
+    input["idempotency_key"] = Value::String(format!("developer-result:{assignment}"));
+    assert!(configured_delivery_proposal(input).is_err());
+    assert!(configured_delivery_proposal(serde_json::json!({})).is_err());
 }
 
 pub async fn routing(api: &Api, command: RoutingCommand) -> Result<Value> {

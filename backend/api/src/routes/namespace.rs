@@ -378,7 +378,8 @@ pub async fn task_context(
             app::sdlc_source::workspace_preparation_expires_at(&source, &execution);
         let workspace_preparation_commit = match &source {
             domain::sdlc_source::TaskSourceReadback::Blocked {
-                workspace_preparation_commit, ..
+                workspace_preparation_commit,
+                ..
             } if workspace_preparation_expires_at.is_some() => workspace_preparation_commit.clone(),
             _ => None,
         };
