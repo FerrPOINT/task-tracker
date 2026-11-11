@@ -798,10 +798,11 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
     api_server.abort();
     let _ = api_server.await;
     server.abort();
+    let _ = server.await;
     drop(ctx);
     repo_pool.close().await;
     db.close().await.unwrap();
-    root.execute_unprepared("DROP DATABASE notification_pdlc4_space_test")
+    root.execute_unprepared("DROP DATABASE notification_pdlc4_space_test WITH (FORCE)")
         .await
         .unwrap();
     root.close().await.unwrap();

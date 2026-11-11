@@ -44,7 +44,9 @@ Stage и status — разные поля. Целевые переходы: аг
 Новый PM receipt относится к Draft/Completed; приложение сохраняет отдельную
 Analysis/Ready queue. Assignment/lease/binding нового delivery до резервирования
 отсутствуют; старый PM receipt не становится текущим назначением Analyst.
-Rework limit без handoff и финальный DevOps сохраняют Completed.
+Текущая линейная передача не выбирает Rework и не увеличивает cycle. Reviewer
+и Tester передают работу дальше при обоих verdict; финальный DevOps сохраняет
+Deployment/Completed. Старые cycle и принятые результаты остаются в истории.
 
 Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
 Его forward112 связывает autoqueue с completion-транзакцией; сохранённые

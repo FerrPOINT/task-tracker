@@ -7,11 +7,11 @@ reservation/retry, absent delivery authority before reservation, preserved PM
 history, and safe typed Start/proposal errors. Agent Start, Completed and
 application-owned next-stage/Ready are different actions.
 
-Real PostgreSQL selectors in the existing lifecycle fixture cover shared
-Reviewer/Tester rework cycles, Tester cap, Review -> Testing -> Deployment,
-and both archived Review verdicts after117. The registered migration tests
-exercise Published and ProjectRepository predecessors116, preserve ledger
-timestamps, normalize CRLF function definitions and prove repeated up is inert.
+Current PostgreSQL selectors cover the merged main linear policy:
+Review -> Testing -> Deployment for both verdicts, without a new Rework cycle,
+and both archived Review verdicts. Plan authorization118 follows main linear117
+in both registered lineages. Upgrade fixtures preserve prior ledger timestamps;
+archive readback does not manufacture a new transition.
 Each ignored selector requires its own fresh *_lifecycle_test or
 *_pdlc4_compat_test database and a verified nonzero test count.
 
@@ -19,6 +19,8 @@ Archive readback must not run the current transition policy again or create
 another assignment. New completion still requires exact current proof and
 must not accept an archived terminal Review shape. Model/Advisor inputs and
 criteria are unchanged; these mechanical checks are not live-agent acceptance.
+
+### Earlier Policy Checkpoint
 
 The earlier frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passed all12 selected
 local source gates:841 backend native tests, eight exact PostgreSQL scenarios,
@@ -54,7 +56,10 @@ Receipt `tracker217-playwright-eed2fa640d3c/result.json` records format, lint,
 fixture typecheck/build, six executed tests, screenshots at375/1920/2560,
 unchanged source inputs, closed preview port and verified scratch cleanup.
 This is synthetic browser qualification, not live Auth/backend acceptance.
-### Final Composite Qualification
+### Pre-Integration Composite Qualification
+
+This checkpoint precedes the merged main linear policy. It is retained evidence,
+not proof of the later integrated candidate.
 
 Frozen tree `5cd1a8629b50422039fe7d8c9280fcaadf6fa42e` combines 842 native
 backend passes, 64 CLI passes and 114 distinct PostgreSQL passes. The 112 unchanged
@@ -106,7 +111,9 @@ source results above are not evidence for118.
 Source qualification covers explicit agent Start/InProgress, recorded Completed
 and application-owned next-stage/Ready. PM Draft/Completed hands off through the
 existing atomic Analysis queue; delivery requires native terminal verification.
-Final DevOps and rework-limit outcomes without handoff retain Completed. Owner
+The current linear flow advances Reviewer to Tester and Tester to DevOps for
+either verdict, without entering Rework or incrementing the cycle. Final DevOps
+retains Deployment/Completed. Owner
 consent, assignment/fence checks, exact replay and preserved history remain gates.
 There is no new autoAdvance flag or Analyst-disable requirement for acceptance;
 Analysis/Ready is the normal handoff and the Analyst may subsequently run.

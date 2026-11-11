@@ -8,13 +8,14 @@
   Both upgrade lineages preserve function identity and the prior migration ledger.
 - Delivery context exposes the reserved execution key, never the retained PM key;
   an unassigned stage exposes no delivery key. Historical PM data stays unchanged.
-- Reviewer approved advances atomically to Testing/Ready; rework advances to
-  Rework/Ready under the existing three-cycle limit. Forward117 changes future
-  result guards in both lineages; archived operations do not trigger new work.
+- Keep the merged main policy: both Reviewer verdicts advance to Testing/Ready,
+  both Tester verdicts to Deployment/Ready. Findings remain in the result;
+  archived operations do not trigger new work. No alternate routing policy.
 - Start/proposal JSON rejection uses the existing safe error envelope with the
   expected contract, preserving HTTP status and hiding untrusted body contents.
-- Composite source qualification: 842 native backend, 64 CLI and 114 distinct
-  PostgreSQL scenarios PASS, including both117/118 upgrade lineages and archives.
+- Pre-integration composite qualification: 842 native backend, 64 CLI and114
+  distinct PostgreSQL scenarios PASS; these results precede the later linear
+  policy integration and are not its qualification.
   Coverage passes at 90.40% lines, 88.20% regions and 75.85% functions. Strict Clippy
   and Rustfmt pass; fresh Rust OpenAPI generation matches the tracked schema.
   Unchanged results are reused only with compiler-input proof;
@@ -27,6 +28,19 @@
   accessible controls. All six Chromium scenarios pass without retries; format,
   lint, typecheck and build pass. No product Auth or business assertion changes.
 
+## 2026-11-11: Корректное Повторное Использование Cargo Target
+
+- Umbrella Dockerfile обновляет времена исходников перед сборкой, чтобы смена
+  SDK не использовала устаревшие артефакты из общего target-кэша.
+
+## 2026-11-10: Линейное Завершение Ролей Без Rework
+
+- Reviewer передаёт работу Tester при approved и rework; Tester передаёт DevOps
+  при passed и rework. Реальные findings и typed verdict сохраняются, cycle не
+  увеличивается. После DevOps сохраняется финальный Deployment/Completed.
+- Агентские Start/InProgress и proposal/Completed, настоящий Fleet terminal,
+  освобождение ресурсов и исходные operation receipts сохраняются. Forward117
+  обновляет SQL guard будущих переходов без изменения старой истории.
 ## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
 
 - Обе опубликованные миграции116 зарегистрированы под исходными полными именами.

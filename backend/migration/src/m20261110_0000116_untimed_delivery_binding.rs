@@ -36,7 +36,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 migrations[index + 1].name(),
-                "m20261111_0000117_reviewer_handoff"
+                "m20261110_0000117_linear_delivery"
             );
             assert_eq!(
                 migrations

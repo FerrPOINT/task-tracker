@@ -1377,7 +1377,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
-        if started.task.stage == LifecycleStage::Deployment {
+        if matches!(started.task.stage, LifecycleStage::Deployment) {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
         } else {
@@ -1436,10 +1436,6 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     assert_eq!(cursor.task.stage, LifecycleStage::Testing);
     assert_eq!(cursor.task.status, LifecycleStatus::Ready);
     assert_eq!(cursor.task.runtime, RuntimeState::Queued);
-    assert_eq!(
-        cursor.task.waiting_reason.as_deref(),
-        Some("queued_for_assignment")
-    );
     assert_eq!(count(&db, "sdlc_delivery_results").await, 4);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     for candidate in repo.metadata_outbox(task, &owner, 0, 100).await.unwrap() {

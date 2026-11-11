@@ -509,7 +509,7 @@ fn completed_delivery_handoff_resets_ready_but_final_devops_remains_completed() 
 }
 
 #[test]
-fn test_rework_handoff_resets_ready_for_the_developer() {
+fn testing_findings_handoff_resets_ready_for_devops_without_rework() {
     let stage = LifecycleStage::Testing;
     let output = DeliveryResult::Tester {
         verdict: TestVerdict::Rework,
@@ -518,20 +518,21 @@ fn test_rework_handoff_resets_ready_for_the_developer() {
     let (_, _, _, mut custody) = delivery(stage);
     custody.task.status = LifecycleStatus::Completed;
     accept_result(&mut custody.task, &output).unwrap();
-    assert_eq!(custody.task.stage, LifecycleStage::Rework);
+    assert_eq!(custody.task.stage, LifecycleStage::Deployment);
     assert_eq!(custody.task.status, LifecycleStatus::Ready);
-    assert_eq!(custody.task.cycle, 1);
+    assert_eq!(custody.task.cycle, 0);
     assert_eq!(custody.task.runtime, RuntimeState::Queued);
     let (_, _, _, mut limited) = delivery(stage);
     limited.task.status = LifecycleStatus::Completed;
     limited.task.cycle = MAX_REWORK_CYCLES;
     accept_result(&mut limited.task, &output).unwrap();
-    assert_eq!(limited.task.stage, stage);
-    assert_eq!(limited.task.status, LifecycleStatus::Completed);
-    assert_eq!(limited.task.runtime, RuntimeState::Terminal);
+    assert_eq!(limited.task.stage, LifecycleStage::Deployment);
+    assert_eq!(limited.task.status, LifecycleStatus::Ready);
+    assert_eq!(limited.task.runtime, RuntimeState::Queued);
+    assert_eq!(limited.task.cycle, MAX_REWORK_CYCLES);
     assert_eq!(
         limited.task.waiting_reason.as_deref(),
-        Some("rework_limit_reached")
+        Some("queued_for_assignment")
     );
 }
 

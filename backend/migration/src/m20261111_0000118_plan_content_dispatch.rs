@@ -26,7 +26,7 @@ mod tests {
     use sea_orm::{Database, DatabaseConnection, DbBackend, Statement};
 
     #[test]
-    fn plan_dispatch_follows_reviewer_handoff_in_both_lineages() {
+    fn plan_dispatch_follows_linear_delivery_in_both_lineages() {
         for migrations in [
             crate::PublishedMigrator::migrations(),
             crate::ProjectRepositoryMigrator::migrations(),
@@ -43,7 +43,7 @@ mod tests {
                     .count(),
                 1
             );
-            assert_eq!(names[index - 1], "m20261111_0000117_reviewer_handoff");
+            assert_eq!(names[index - 1], "m20261110_0000117_linear_delivery");
         }
     }
 
@@ -101,6 +101,10 @@ mod tests {
             .iter()
             .position(|m| m.name() == Migration.name())
             .unwrap();
+        assert_eq!(
+            M::migrations()[before - 1].name(),
+            "m20261110_0000117_linear_delivery"
+        );
         M::up(
             &db,
             Some(<u32 as std::convert::TryFrom<usize>>::try_from(before).unwrap()),
