@@ -53,14 +53,25 @@ async fn verify(db: &Arc<DatabaseConnection>) {
     ))
     .await
     .unwrap();
+    let registry: Uuid = std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE tracker_namespace_bindings SET registry_instance_id=$1",
+        [registry.into()],
+    ))
+    .await
+    .unwrap();
     db.execute_unprepared("ALTER TABLE projects ADD COLUMN key text NOT NULL DEFAULT 'NEW'; ALTER TABLE projects ADD COLUMN name text NOT NULL DEFAULT 'Same display name';UPDATE projects SET key=CASE WHEN id='00000000-0000-4000-8000-000000000001' THEN 'QA1' ELSE 'QA2' END").await.unwrap();
     db.execute_unprepared(include_str!("../../migration/src/unified_spaces.sql"))
         .await
         .unwrap();
-    db.execute_unprepared("UPDATE tracker_space_catalog SET admin_revision=10; INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000012'); UPDATE tracker_space_admission_state SET active=true").await.unwrap();
+    db.execute_unprepared("UPDATE tracker_space_catalog SET admin_revision=10; INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) SELECT '00000000-0000-4000-8000-000000000001',registry_instance_id,space_id FROM tracker_space_catalog WHERE space_id='00000000-0000-4000-8000-000000000012'; UPDATE tracker_space_admission_state SET active=true").await.unwrap();
 
     let a = SpaceRef {
-        registry_instance_id: id("10"),
+        registry_instance_id: registry,
         space_id: id("11"),
     };
     let b = SpaceRef {
@@ -455,7 +466,7 @@ async fn verify(db: &Arc<DatabaseConnection>) {
         .unwrap();
     assert_eq!(final_links.revision, result.revision);
     assert_eq!(final_links.spaces, vec![b]);
-    owner_v2::verify(db.as_ref()).await;
+    owner_v2::verify(db.as_ref(), registry, tracker).await;
 }
 
 #[tokio::test]

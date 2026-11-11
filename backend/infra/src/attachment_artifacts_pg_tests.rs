@@ -4,6 +4,7 @@ use super::*;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
 use domain::sdlc_source::TaskSourceRepository;
+use domain::sdlc_stage_status::{StageStartFence, StartStage};
 
 const PRODUCER: &str = "88888888-8888-4888-8888-888888888888";
 const CONSUMER: &str = "99999999-9999-4999-8999-999999999999";
@@ -176,6 +177,7 @@ async fn native_artifact_content_port_is_exact_and_rechecked_at_commit() {
     .unwrap();
     let task = f.queued_analysis("native-artifact", true).await;
     let head = bind(&f, task, "native-artifact").await;
+    let head = start_delivery(&f, task, &head, "native-artifact").await;
     let assignment = head.assignment.as_ref().unwrap();
     let seal = Seal::new(
         task,
@@ -246,6 +248,33 @@ async fn native_artifact_content_port_is_exact_and_rechecked_at_commit() {
             ))
             .await
             .unwrap();
+        }
+        for table in ["issue_plan_revisions", "issue_plan_operations"] {
+            tx.execute_unprepared("SAVEPOINT plan_authorization")
+                .await
+                .unwrap();
+            let plan = json!({"issue_id":desired["issue_id"],"author_id":desired["author_id"]});
+            let authorized = tx
+                .execute(statement(
+                    "SELECT tracker_authorize_project_content($1,'INSERT',NULL,$2)",
+                    vec![table.into(), plan.into()],
+                ))
+                .await;
+            if matches!(variation, "foreign-task" | "foreign-author" | "read-only") {
+                let error = authorized.unwrap_err().to_string();
+                assert!(
+                    error.contains("native_comment_"),
+                    "{table}/{variation}: {error}"
+                );
+                tx.execute_unprepared("ROLLBACK TO SAVEPOINT plan_authorization")
+                    .await
+                    .unwrap();
+            } else {
+                authorized.unwrap();
+            }
+            tx.execute_unprepared("RELEASE SAVEPOINT plan_authorization")
+                .await
+                .unwrap();
         }
         let inserted = tx.execute(statement("INSERT INTO attachments(id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,created_at) SELECT id,issue_id,author_id,file_name,content_type,size_bytes,storage_key,now() FROM jsonb_populate_record(NULL::attachments,$1)",vec![desired.into()])).await;
         if variation == "valid" || variation == "expired-commit" {
@@ -411,24 +440,13 @@ async fn prepare_standalone_analyst_tool_fixture() {
             false,
         )
         .await;
-        // The historical PM receipt is explicitly synthetic, as in existing PG fixtures.
-        let mut no_automatic = f.repo.config.clone();
-        no_automatic.single_task_project_ids.remove(&f.project);
-        let repo = PostgresSdlcRepository {
-            db: crate::guarded_db::GuardedDb::new(
-                Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
-                    .await
-                    .unwrap(),
-            ),
-            config: no_automatic,
-            file_storage: None,
-        };
+        // Synthetic PM terminal evidence still uses the enabled completion-owned handoff.
         let pm_actor = actor(
             &pm.assignment.machine_subject,
             false,
             &["task-tracker:read", "task-tracker:write"],
         );
-        crate::sdlc::configured_test_support::complete_pm(&repo, task, &f.owner, &pm_actor, &pm)
+        crate::sdlc::configured_test_support::complete_pm(&f.repo, task, &f.owner, &pm_actor, &pm)
             .await;
         seed_analysis_fixture(&f.db, task, &f.owner).await;
         let receipt = f
@@ -471,6 +489,7 @@ async fn prepare_standalone_analyst_tool_fixture() {
             )
             .await
             .unwrap();
+        let bound = start_delivery(&f, task, &bound, &format!("standalone:{label}")).await;
 
         if historical {
             // Historical input is prepared by the repository fixture only. No real
@@ -679,6 +698,7 @@ async fn analyst_tool_proposal_is_replayed_bound_and_comment_checked_without_com
     .unwrap();
     let task = f.queued_analysis("proposal-tools", true).await;
     let bound = bind(&f, task, "proposal-tools").await;
+    let bound = start_delivery(&f, task, &bound, "proposal-tools").await;
     let producer = actor(
         PRODUCER,
         false,
@@ -837,15 +857,67 @@ async fn analyst_tool_proposal_is_replayed_bound_and_comment_checked_without_com
         .unwrap()
         .receipt;
     assert_eq!(current.task.stage, LifecycleStage::Analysis);
-    assert_eq!(current.task.status, LifecycleStatus::InProgress);
+    assert_eq!(current.task.status, LifecycleStatus::Completed);
+    assert_eq!(current.task.runtime, RuntimeState::Running);
+    assert_eq!(current.task.version, bound.task.version + 1);
+    assert_eq!(current.task.cycle, bound.task.cycle);
+    assert_eq!(
+        current.task.previous_result_id,
+        bound.task.previous_result_id
+    );
     assert_eq!(
         current.assignment.as_ref().unwrap().assignment_id,
         assignment.assignment_id
     );
+    assert_eq!(current.assignment, bound.assignment);
+    assert_eq!(current.lease, bound.lease);
+    assert_eq!(current.binding, bound.binding);
     assert_eq!(
         serde_json::to_value(current.result).unwrap(),
         serde_json::to_value(bound.result).unwrap()
     );
+}
+
+async fn start_delivery(
+    f: &Fixture,
+    task: Uuid,
+    bound: &LifecycleReceipt,
+    key: &str,
+) -> LifecycleReceipt {
+    assert_eq!(bound.task.status, LifecycleStatus::Ready);
+    assert_eq!(bound.task.runtime, RuntimeState::Running);
+    let producer = actor(
+        &bound.binding.as_ref().unwrap().machine_subject,
+        false,
+        &["task-tracker:read", "task-tracker:write"],
+    );
+    let (saved, replay) = f
+        .repo
+        .start_stage(
+            task,
+            &producer,
+            StartStage {
+                fence: StageStartFence::Delivery(delivery_fence(bound)),
+                idempotency_key: format!("start-{key}"),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!replay);
+    assert_eq!(saved.status, LifecycleStatus::InProgress);
+    let started = f
+        .repo
+        .lifecycle_read(task, &producer)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(started.task.status, LifecycleStatus::InProgress);
+    assert_eq!(started.task.runtime, RuntimeState::Running);
+    assert_eq!(started.task.version, bound.task.version + 1);
+    assert_eq!(started.assignment, bound.assignment);
+    assert_eq!(started.lease, bound.lease);
+    assert_eq!(started.binding, bound.binding);
+    started
 }
 
 async fn bind(f: &Fixture, task: Uuid, key: &str) -> LifecycleReceipt {
@@ -937,6 +1009,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         .await
         .unwrap();
     let bound = bind(&f, task, "analyst").await;
+    let bound = start_delivery(&f, task, &bound, "analyst").await;
     assert_eq!(bound.lease.as_ref().unwrap().holder_subject, "scheduler");
     let assignment = bound.assignment.as_ref().unwrap();
     let producer = actor(
@@ -1258,22 +1331,58 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         .await
         .is_err()
     );
-    // Actual database clock, no trigger disabling or protected ledger edits.
-    f.db.execute_unprepared("SELECT pg_sleep(31)")
-        .await
-        .unwrap();
+    assert_eq!(architect.task.status, LifecycleStatus::Ready);
+    assert_eq!(architect.task.runtime, RuntimeState::Running);
     assert!(matches!(
         artifacts::publish(
             &f.db,
             config,
             &consumer,
             issue,
-            upload(b"{}", "expired.json"),
+            upload(b"{}", "architecture-note.json"),
             &storage
         )
         .await,
-        Err(AppError::Conflict(_))
+        Err(AppError::Conflict(message))
+            if message == "artifact publisher not running or binding invalid"
     ));
+    let architect = start_delivery(&f, task, &architect, "architect").await;
+    // Cross the former 30-second expiry without changing current custody.
+    f.db.execute_unprepared("SELECT pg_sleep(31)")
+        .await
+        .unwrap();
+    let note = artifacts::publish(
+        &f.db,
+        config,
+        &consumer,
+        issue,
+        upload(b"{}", "architecture-note.json"),
+        &storage,
+    )
+    .await
+    .unwrap();
+    assert_eq!(note.author_id.as_uuid(), service_users[CONSUMER]);
+    assert_eq!(
+        artifacts::download(&f.db, config, &consumer, note.id, &storage)
+            .await
+            .unwrap()
+            .1,
+        b"{}"
+    );
+    let after = f
+        .repo
+        .lifecycle_read(task, &consumer)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(after.task, architect.task);
+    assert_eq!(after.assignment, architect.assignment);
+    assert_eq!(after.lease, architect.lease);
+    assert_eq!(after.binding, architect.binding);
+    assert_eq!(
+        serde_json::to_value(after.result).unwrap(),
+        serde_json::to_value(architect.result).unwrap()
+    );
     exec(
         &f.db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",

@@ -114,7 +114,36 @@ pub(super) async fn before(
     post(client, &url, operator, &invalid, 422).await;
     invalid["routes"]["analyst"]["agent_id"] = json!(Uuid::new_v4());
     invalid["routes"]["analyst"]["runtime_ready"] = json!(true);
-    post(client, &url, operator, &invalid, 422).await;
+    let tables = [
+        "sdlc_project_routing_revisions",
+        "sdlc_project_routing_heads",
+        "sdlc_project_routing_operations",
+        "sdlc_task_routing_snapshots",
+        "sdlc_outbox",
+    ];
+    let mut before = Vec::new();
+    for table in tables {
+        before.push(count(db, table).await);
+    }
+    // Unknown fields are rejected by Axum's Json extractor, not a JSON AppError.
+    let response = client
+        .post(&url)
+        .bearer_auth(operator)
+        .json(&invalid)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let response_text = response.text().await.unwrap();
+    assert_eq!(status, 422, "{url}: {response_text}");
+    for (table, expected) in tables.into_iter().zip(before) {
+        assert_eq!(
+            count(db, table).await,
+            expected,
+            "rejection mutated {table}"
+        );
+    }
+    assert_eq!(initial, read(client, &url, operator, 200).await);
     let mut left = body.clone();
     left["expected_version"] = json!(1);
     left["idempotency_key"] = json!("left-update");

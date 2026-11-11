@@ -39,8 +39,12 @@ mod tests {
                     .count(),
                 1
             );
+            let index = names
+                .iter()
+                .position(|name| *name == Migration.name())
+                .unwrap();
             assert_eq!(
-                &names[names.len() - 3..],
+                &names[index - 2..=index],
                 &[
                     "m20261108_0000116_reviewer_terminal",
                     "m20261110_0000116_untimed_delivery_binding",
