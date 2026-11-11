@@ -39,13 +39,18 @@ pub fn human_route_machine(subject: &str) -> bool {
         .any(|key| std::env::var(key).is_ok_and(|value| !value.is_empty() && value == subject))
 }
 
-pub async fn owner_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
-    machine_auth(req, next, "TT_NAMESPACE__OWNER_SUBJECTS").await
+pub async fn binding_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let subjects = if req.method() == axum::http::Method::GET {
+        &["TT_NAMESPACE__OWNER_SUBJECTS", "TT_NAMESPACE__READER_SUBJECTS"][..]
+    } else {
+        &["TT_NAMESPACE__OWNER_SUBJECTS"][..]
+    };
+    machine_auth(req, next, subjects).await
 }
 pub async fn reader_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
-    machine_auth(req, next, "TT_NAMESPACE__READER_SUBJECTS").await
+    machine_auth(req, next, &["TT_NAMESPACE__READER_SUBJECTS"]).await
 }
-async fn machine_auth(mut req: Request, next: Next, key: &str) -> Result<Response, StatusCode> {
+async fn machine_auth(mut req: Request, next: Next, keys: &[&str]) -> Result<Response, StatusCode> {
     let token = req
         .headers()
         .get("authorization")
@@ -64,7 +69,7 @@ async fn machine_auth(mut req: Request, next: Next, key: &str) -> Result<Respons
     };
     if ctx.session_id.is_some()
         || !ctx.allows_service("task-tracker", req.method().as_str())
-        || !subjects(key).contains(&ctx.user_id)
+        || !keys.iter().any(|key| subjects(key).contains(&ctx.user_id))
     {
         return Err(StatusCode::FORBIDDEN);
     }
