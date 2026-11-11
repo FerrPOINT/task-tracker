@@ -350,6 +350,49 @@ mod tests {
     use super::*;
     use utoipa::OpenApi;
 
+    #[test]
+    fn lifecycle_schema_has_untimed_binding_and_no_heartbeat_command() {
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let schemas = &spec["components"]["schemas"];
+        let binding = &schemas["DeliveryBinding"];
+        assert_eq!(binding["additionalProperties"], false);
+        let required = binding["required"].as_array().unwrap();
+        for field in ["lease_id", "version", "holder_subject", "claimed_at"] {
+            assert!(required.contains(&serde_json::json!(field)));
+        }
+        for field in ["heartbeat_at", "expires_at"] {
+            assert!(!required.contains(&serde_json::json!(field)));
+        }
+        let variants = schemas["LifecycleCommand"]["oneOf"].as_array().unwrap();
+        let operations: std::collections::BTreeSet<_> = variants
+            .iter()
+            .map(|v| {
+                v["properties"]["operation"]["enum"].as_array().unwrap()[0]
+                    .as_str()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            operations,
+            [
+                "start_analysis",
+                "reconcile",
+                "ensure_queued",
+                "reserve",
+                "bind_run",
+                "complete"
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert!(
+            serde_json::from_value::<LifecycleCommand>(serde_json::json!({
+                "operation":"heartbeat", "idempotency_key":"retired"
+            }))
+            .is_err()
+        );
+    }
+
     fn stage_start_bodies() -> [serde_json::Value; 2] {
         use serde_json::json;
         [

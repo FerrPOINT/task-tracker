@@ -8,6 +8,24 @@
 - Агентские Start/InProgress и proposal/Completed, настоящий Fleet terminal,
   освобождение ресурсов и исходные operation receipts сохраняются. Forward117
   обновляет SQL guard будущих переходов без изменения старой истории.
+## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
+
+- Обе опубликованные миграции116 зарегистрированы под исходными полными именами.
+  Reviewer завершает Review без автоматического назначения следующей роли;
+  текущий delivery binding сохраняет точные identity/holder/version без сроков.
+- Обновление из каждой истории сохраняет строки и прежние записи ledger.
+  Применённые SQL и receipts неизменны; новой convergence migration или
+  ветки исполнения по времени нет.
+
+## 2026-11-10: Untimed Delivery Binding — Source Candidate
+
+- Canonical delivery retains assignment/holder/version fencing without heartbeat
+  or expiry authority. Current projection omits archival dates; historical
+  operation results and PM execution leases remain unchanged.
+- Forward116 preserves existing rows, explicit terminal settlement, capacity and
+  current routing/identity guards. New commands require an exact binding version.
+- Source candidate only: focused qualification, coordinated Fleet consumer,
+  generated OpenAPI, installation and live continuation remain separate gates.
 
 ## 2026-11-07: Agent Stage Status: Source Qualified, Not Installed
 

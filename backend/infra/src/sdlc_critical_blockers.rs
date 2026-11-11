@@ -133,8 +133,7 @@ async fn current_pm_reader(
                 .ok_or(AppError::Forbidden)?,
         )
     };
-    // lease_current validates the retained operation/fence, row columns, holder and TTL.
-    let now = super::execution_lease::clock(tx).await?;
+    // Validate the retained operation/fence, row columns, holder and historical packet shape.
     app::sdlc_critical_blockers::authorize_critical_pm_blocker_read(
         state,
         actor,
@@ -142,7 +141,6 @@ async fn current_pm_reader(
         &review,
         &current,
         lease.as_ref(),
-        now,
     )
 }
 

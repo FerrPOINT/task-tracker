@@ -132,7 +132,6 @@ impl ReadFixture {
             } else {
                 Some(&self.lease)
             },
-            self.now,
         )
     }
 }
@@ -169,7 +168,6 @@ fn configured_pm_reads_only_the_selected_current_blocker_without_native_authorit
                 &f.review,
                 &f.review.reservation,
                 None,
-                f.now,
             )
             .is_err()
         );
@@ -182,7 +180,6 @@ fn configured_pm_reads_only_the_selected_current_blocker_without_native_authorit
             &f.review,
             &f.review.reservation,
             Some(&f.lease),
-            f.now,
         )
         .is_err()
     );
@@ -256,22 +253,42 @@ fn held_returned_resolved_foreign_and_unlinked_review_context_are_denied() {
 }
 
 #[test]
-fn lease_expiry_future_time_wrong_holder_owner_and_every_fence_component_deny() {
-    for mismatch in 0..12 {
+fn same_current_review_remains_readable_after_long_idle_without_mutating_history() {
+    let mut f = ReadFixture::new();
+    for offset in [-10, -1, 1] {
+        let heartbeat = f.now + Duration::days(offset);
+        f.lease.lease.claimed_at = heartbeat - Duration::seconds(10);
+        f.lease.lease.heartbeat_at = heartbeat;
+        f.lease.lease.expires_at = heartbeat + Duration::seconds(30);
+        if offset < 0 {
+            assert!(f.lease.lease.expires_at < f.now);
+        } else {
+            assert!(f.lease.lease.heartbeat_at > f.now);
+        }
+        let before = json!({"state":f.state,"blocker":f.blocker,"review":f.review,"lease":f.lease});
+        f.allowed().unwrap();
+        assert_eq!(
+            json!({"state":f.state,"blocker":f.blocker,"review":f.review,"lease":f.lease}),
+            before
+        );
+    }
+}
+
+#[test]
+fn wrong_lease_holder_owner_and_every_fence_component_deny() {
+    for mismatch in 0..10 {
         let mut f = ReadFixture::new();
         match mismatch {
-            0 => f.now = f.lease.lease.expires_at,
-            1 => f.now = f.lease.lease.heartbeat_at - Duration::nanoseconds(1),
-            2 => f.lease.lease.holder_subject = "old-pm".into(),
-            3 => f.lease.owner_version -= 1,
-            4 => f.lease.fence.assignment_id = Uuid::new_v4(),
-            5 => f.lease.fence.execution_id = Uuid::new_v4(),
-            6 => f.lease.fence.agent_id = Uuid::new_v4(),
-            7 => f.lease.fence.assignment_version -= 1,
-            8 => f.lease.binding.owner_subject = "foreign-owner".into(),
-            9 => f.lease.lease.lease_id = Uuid::nil(),
-            10 => f.lease.lease.version = 0,
-            _ => f.lease.lease.claimed_at = f.now + Duration::seconds(1),
+            0 => f.lease.lease.holder_subject = "old-pm".into(),
+            1 => f.lease.owner_version -= 1,
+            2 => f.lease.fence.assignment_id = Uuid::new_v4(),
+            3 => f.lease.fence.execution_id = Uuid::new_v4(),
+            4 => f.lease.fence.agent_id = Uuid::new_v4(),
+            5 => f.lease.fence.assignment_version -= 1,
+            6 => f.lease.binding.owner_subject = "foreign-owner".into(),
+            7 => f.lease.lease.lease_id = Uuid::nil(),
+            8 => f.lease.lease.version = 0,
+            _ => f.lease.lease.claimed_at = f.lease.lease.heartbeat_at + Duration::seconds(1),
         }
         assert!(f.allowed().is_err());
     }
@@ -286,7 +303,6 @@ fn lease_expiry_future_time_wrong_holder_owner_and_every_fence_component_deny() 
             &f.review,
             &changed,
             Some(&f.lease),
-            f.now
         )
         .is_err()
     );

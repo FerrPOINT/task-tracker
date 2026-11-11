@@ -123,7 +123,7 @@ impl PostgresSdlcRepository {
         let at = execution_lease::clock(&tx).await?;
         if let (Some(current), StageStartFence::Delivery(fence)) = (&delivery, &command.fence) {
             lifecycle::exact_revision(&state, current)?;
-            lifecycle::exact_fence(current, fence, at, false)?;
+            lifecycle::exact_fence(current, fence)?;
             super::critical_blockers::ensure_progress_allowed(&tx, current).await?;
             lifecycle::producer_grant(&tx, &state, actor, true).await?;
         }

@@ -11,6 +11,12 @@ Workflow proof, fencing, readback и защита повторов сохран�
 Workflow done не подменяют действия со статусом. До приёмки это целевой контракт,
 не описание установленного b54; детали и разрывы — docs/ARCHITECTURE.md.
 
+Текущее delivery assignment не требует heartbeat и не теряет владельца по времени.
+Authority определяется текущими assignment/holder/version, scope и атомарным fence;
+смена назначения и освобождение capacity требуют явного принятого результата либо
+подтверждённого terminal reconciliation. Архивные даты и receipts сохраняются без
+переписывания, но не дают текущих прав; настоящий native Unknown остаётся Unknown.
+
 ## Docker и Kubernetes
 
 Поддерживаются обычный Docker/Compose без Kubernetes и Kubernetes. Общие API,

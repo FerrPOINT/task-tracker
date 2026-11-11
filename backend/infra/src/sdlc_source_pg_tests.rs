@@ -28,7 +28,13 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             .ends_with("_source_test")
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
-    let previous = migration::Migrator::migrations().len() as u32 - 1;
+    let previous = u32::try_from(
+        migration::Migrator::migrations()
+            .iter()
+            .position(|m| m.name() == "m20261107_0000115_agent_stage_status")
+            .expect("source fixture requires the original pre-status schema"),
+    )
+    .unwrap();
     migration::Migrator::up(&db, Some(previous)).await.unwrap();
     let owner_id = Uuid::new_v4();
     let member_id = Uuid::new_v4();
@@ -325,6 +331,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
+    crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &fence).await;
     let document: RequirementsDocument = serde_json::from_value(json!({"goal":"Synthetic source test",
         "scope":["One root"],"exclusions":[],"scenarios":["Source freeze"],"acceptance_criteria":["Exact binding"],
         "constraints":[],"dependencies":[],"assumptions":[],"checklist":["source-check"],"prerequisites":["source-prerequisite"]})).unwrap();
@@ -507,6 +514,7 @@ async fn explicit_unconfigured_draft_fixture(
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
+    crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &fence).await;
     let confirm = prepare_enrollment_confirmation(&repo, task, &reservation, &pm, &fence).await;
     let old_state = serde_json::to_value(repo.read(task, owner).await.unwrap()).unwrap();
     let old_assignment = serde_json::to_value(&reservation).unwrap();

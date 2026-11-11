@@ -4,6 +4,8 @@
 use super::*;
 #[path = "decomposition_architect_pg_tests.rs"]
 mod decomposition_tests;
+#[path = "untimed_delivery_binding_pg_tests.rs"]
+mod untimed_binding_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -107,6 +109,16 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
+        Self::with_schema_tail(source, document, owner_subject, scheduler_subject, None).await
+    }
+
+    async fn with_schema_tail(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+        scheduler_subject: &str,
+        tail: Option<&str>,
+    ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
         let db = Database::connect(&url).await.unwrap();
@@ -120,10 +132,14 @@ impl ReworkFixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        let before_linear = migration::Migrator::migrations().len() - 1;
-        migration::Migrator::up(&db, Some(before_linear as u32))
-            .await
-            .unwrap();
+        let steps = tail
+            .or(Some("m20261108_0000116_reviewer_terminal"))
+            .map(|name| {
+                let registered = migration::Migrator::migrations();
+                u32::try_from(registered.iter().position(|m| m.name() == name).unwrap() + 1)
+                    .unwrap()
+            });
+        migration::Migrator::up(&db, steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
@@ -415,6 +431,20 @@ impl ReworkFixture {
         )
         .await;
         self.assert_current(&started).await;
+        let output = if matches!(output, DeliveryResult::Architect { .. }) {
+            DeliveryResult::Architect {
+                design: crate::sdlc::configured_test_support::save_architect_plan(
+                    &self.repo,
+                    self.task,
+                    &producer,
+                    &started,
+                    &format!("rework:{index}:plan"),
+                )
+                .await,
+            }
+        } else {
+            output
+        };
         if let Some(previous) = &queued.result {
             assert_eq!(assignment.previous_result_id, Some(previous.result_id));
             let DeliveryInput::Delivery(actual) = self

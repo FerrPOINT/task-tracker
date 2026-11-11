@@ -192,6 +192,71 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
         "plan:start",
     )
     .await;
+    crate::sdlc::configured_test_support::delivery_comment(
+        &f.repo,
+        f.task,
+        architect,
+        assignment,
+        "plan:before-first-plan-comment",
+    )
+    .await;
+    let before = f.journal_snapshot().await;
+    for (index, (design, expected)) in [
+        (
+            artifact("opaque-design-without-a-plan"),
+            "Architect result must reference this task's plan revision",
+        ),
+        (
+            ArtifactReceipt {
+                reference: format!("/api/v1/issues/{}/decomposition/revisions/1", f.task),
+                sha256: "a".repeat(64),
+            },
+            "Architect plan revision is absent",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let result = DeliveryResult::Architect { design };
+        let workflow_receipt = artifact("synthetic-before-first-plan-workflow");
+        assert!(matches!(
+            f.repo.submit_delivery_proposal(
+                f.task,
+                architect,
+                SubmitDeliveryProposal {
+                    fence: delivery_fence(&running),
+                    workflow_receipt: workflow_receipt.clone(),
+                    result: result.clone(),
+                    idempotency_key: format!("plan:before-first-plan:{index}:proposal"),
+                },
+            ).await,
+            Err(AppError::Conflict(message)) if message == expected
+        ));
+        assert_eq!(f.journal_snapshot().await, before);
+        let binding = running.binding.as_ref().unwrap();
+        assert!(matches!(
+            f.repo.lifecycle_command(
+                f.task,
+                &f.scheduler,
+                LifecycleCommand::Complete {
+                    fence: delivery_fence(&running),
+                    terminal: TerminalReceipt {
+                        chat_id: binding.chat_id,
+                        run_id: binding.run_id,
+                        fleet_receipt: artifact("synthetic-before-first-plan-terminal"),
+                        workflow_receipt,
+                        output_sha256: app::sdlc::canonical_hash(&result).unwrap(),
+                    },
+                    result,
+                    idempotency_key: format!("plan:before-first-plan:{index}:complete"),
+                },
+            ).await,
+            Err(AppError::Conflict(message)) if message == expected
+        ));
+        assert_eq!(f.journal_snapshot().await, before);
+        assert_eq!(count(&f.db, "issue_plan_revisions").await, 0);
+        assert_eq!(count(&f.db, "issue_plan_operations").await, 0);
+    }
     assert!(
         f.repo
             .save_plan(f.task, &f.owner, command.clone())

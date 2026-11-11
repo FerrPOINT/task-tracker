@@ -3,7 +3,7 @@ use axum::{
     Extension, Json, Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
-    routing::{get, post},
+    routing::get,
 };
 use domain::sdlc_configured_cli::*;
 use domain::{sdlc::Principal, sdlc_reservation::*};
@@ -13,23 +13,15 @@ use uuid::Uuid;
 
 pub(super) fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
-        .route(
-            "/issues/{id}/sdlc/analysis-reservation",
-            get(current).post(reserve),
-        )
+        .route("/issues/{id}/sdlc/analysis-reservation", get(current))
         .route(
             "/issues/{id}/sdlc/analysis-reservation/configuration-preflight",
             get(configuration_preflight),
         )
         .route(
-            "/issues/{id}/sdlc/analysis-reservation/heartbeat",
-            post(heartbeat),
-        )
-        .route(
             "/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
             get(operation),
         )
-        .route("/issues/{id}/sdlc/analysis-result", post(submit_result))
         .route(
             "/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
             get(result_operation),
@@ -69,48 +61,6 @@ pub async fn configuration_preflight(
         ),
     ))
 }
-#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/analysis-reservation",operation_id="reserve_analysis_reservation",tag="sdlc",params(("id"=Uuid,Path)),request_body=ReserveAnalysis,
-    responses((status=201,body=AnalysisReservationReceipt),(status=200,body=AnalysisReservationReceipt,description="Original durable replay; no renewal"),(status=401),(status=403),(status=404),(status=409,description="PM quiescence unknown, stale intent/CAS or held capacity"),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn reserve(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(task): Path<Uuid>,
-    Json(command): Json<ReserveAnalysis>,
-) -> Result<(StatusCode, HeaderMap, Json<AnalysisReservationReceipt>), AppError> {
-    let (receipt, replay) = service(&ctx)?
-        .reserve_analysis(task, &actor, command)
-        .await?;
-    Ok((
-        if replay {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        },
-        no_store(),
-        Json(receipt),
-    ))
-}
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/analysis-reservation/heartbeat",operation_id="heartbeat_analysis_reservation",tag="sdlc",params(("id"=Uuid,Path)),request_body=HeartbeatAnalysis,
-    responses((status=201,body=AnalysisReservationReceipt),(status=200,body=AnalysisReservationReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn heartbeat(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(task): Path<Uuid>,
-    Json(command): Json<HeartbeatAnalysis>,
-) -> Result<(StatusCode, HeaderMap, Json<AnalysisReservationReceipt>), AppError> {
-    let (receipt, replay) = service(&ctx)?
-        .heartbeat_analysis(task, &actor, command)
-        .await?;
-    Ok((
-        if replay {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        },
-        no_store(),
-        Json(receipt),
-    ))
-}
 #[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-reservation",operation_id="read_analysis_reservation",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=AnalysisReservationReadback),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
 pub async fn current(
     State(ctx): State<Arc<app::AppContext>>,
@@ -135,27 +85,6 @@ pub async fn operation(
                 .analysis_reservation_operation(task, &actor, &key)
                 .await?,
         ),
-    ))
-}
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/analysis-result",operation_id="submit_analysis_result",tag="sdlc",params(("id"=Uuid,Path)),request_body=SubmitAnalysisResult,
-    responses((status=201,body=AnalysisResultReceipt),(status=200,body=AnalysisResultReceipt,description="Original durable replay; no duplicate transition"),(status=401),(status=403),(status=404),(status=409,description="Stale lease/fence, released capacity or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
-pub async fn submit_result(
-    State(ctx): State<Arc<app::AppContext>>,
-    Extension(actor): Extension<Principal>,
-    Path(task): Path<Uuid>,
-    Json(command): Json<SubmitAnalysisResult>,
-) -> Result<(StatusCode, HeaderMap, Json<AnalysisResultReceipt>), AppError> {
-    let (receipt, replay) = service(&ctx)?
-        .submit_analysis_result(task, &actor, command)
-        .await?;
-    Ok((
-        if replay {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        },
-        no_store(),
-        Json(receipt),
     ))
 }
 #[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",operation_id="read_analysis_result_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=AnalysisResultOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
@@ -244,7 +173,103 @@ pub async fn pm_completion_operation(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
     use utoipa::OpenApi;
+
+    #[tokio::test]
+    async fn retired_analysis_writers_are_not_registered_and_current_routes_remain() {
+        let mut config = shared::AppConfig::default();
+        config.auth.jwt_secret = "synthetic-routing-test".into();
+        let ctx = Arc::new(app::AppContext::new(
+            Arc::new(config),
+            Arc::new(domain::Repositories::default()),
+            Arc::new(domain::InMemoryStorage::default()),
+        ));
+        // No SDLC service: retained GETs must reach its fail-closed unavailable boundary.
+        assert!(ctx.sdlc.is_none());
+        let routes = router()
+            .merge(super::super::sdlc_delivery::router())
+            .layer(Extension(Principal {
+                subject: Uuid::new_v4().to_string(),
+                human_session: false,
+                trusted_human: false,
+                scopes: Default::default(),
+            }))
+            .with_state(ctx);
+        let task = Uuid::new_v4();
+        for (method, suffix, expected) in [
+            (
+                "POST",
+                "analysis-reservation",
+                StatusCode::METHOD_NOT_ALLOWED,
+            ),
+            (
+                "POST",
+                "analysis-reservation/heartbeat",
+                StatusCode::NOT_FOUND,
+            ),
+            ("POST", "analysis-result", StatusCode::NOT_FOUND),
+            (
+                "GET",
+                "analysis-reservation",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "analysis-reservation/configuration-preflight",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "analysis-reservation/operations/original-key",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "analysis-result/operations/original-key",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "pm-draft-completion",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "pm-draft-completion/operations/original-key",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            ("GET", "lifecycle", StatusCode::SERVICE_UNAVAILABLE),
+            (
+                "GET",
+                "lifecycle/operations/original-key",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "POST",
+                "pm-draft-completion",
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            ("POST", "lifecycle", StatusCode::UNPROCESSABLE_ENTITY),
+        ] {
+            let response = routes
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(format!("/issues/{task}/sdlc/{suffix}"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from("{}"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "{method} {suffix}");
+        }
+    }
+
     #[test]
     fn reservation_schema_is_prepared_only_with_strict_commands_and_readback() {
         let s = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
@@ -258,12 +283,9 @@ mod tests {
         }
         for name in [
             "AnalysisConfigurationPreflight",
-            "ReserveAnalysis",
-            "HeartbeatAnalysis",
             "PreparedAnalysisAssignment",
             "AnalysisReservationReceipt",
             "AnalysisReservationReadback",
-            "SubmitAnalysisResult",
             "AnalysisResultReceipt",
             "AnalysisResultOperation",
             "CompleteConfiguredPm",
@@ -285,16 +307,17 @@ mod tests {
         ] {
             assert!(s["paths"][path]["get"]["security"].is_array());
         }
-        assert!(
-            s["paths"]["/api/v1/issues/{id}/sdlc/analysis-result"]["post"]["security"].is_array()
-        );
+        for path in [
+            "/api/v1/issues/{id}/sdlc/analysis-reservation",
+            "/api/v1/issues/{id}/sdlc/analysis-reservation/heartbeat",
+            "/api/v1/issues/{id}/sdlc/analysis-result",
+        ] {
+            assert!(s["paths"][path].get("post").is_none(), "{path}");
+        }
+        assert!(s["paths"]["/api/v1/issues/{id}/sdlc/lifecycle"]["post"]["security"].is_array());
         assert!(
             s["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-completion"]["post"]["security"]
                 .is_array()
-        );
-        assert_eq!(
-            s["components"]["schemas"]["SubmitAnalysisResult"]["properties"]["contract_version"]["maximum"],
-            serde_json::json!(1)
         );
         assert_eq!(
             s["components"]["schemas"]["AnalysisResultReceipt"]["properties"]["next_stage"]["$ref"],
