@@ -17,6 +17,9 @@
   [verification scope](docs/TESTING.md#current-execution-and-reviewer-handoff).
 - Source qualified, not installed. Hosted Actions and live-agent acceptance remain
   separate; publication does not activate retained operator-owned snapshots.
+- Browser fixtures follow the pinned SSO/application-access contract and current
+  accessible controls. All six Chromium scenarios pass without retries; format,
+  lint, typecheck and build pass. No product Auth or business assertion changes.
 
 ## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
 

@@ -41,6 +41,20 @@ and pins qualified in [PR214](https://github.com/FerrPOINT/task-tracker/pull/214
 They are not new UI or live checks. Hosted Actions, installation and seven-agent
 runtime acceptance have not been performed for this candidate.
 
+The browser fixture is separately qualified on tree
+`c36ef772ce1b778c15e58ed58d8d5f2bd57bd6e0`: all six Chromium smoke cases pass
+with one worker and zero retries. The SSO fixture supplies separate signed
+access/ID tokens and the pinned UI's typed application-access decision; project
+administration cases use a consistent administrative actor. Selectors follow
+the actual accessible controls. Product authorization and all six scenarios'
+business assertions are unchanged.
+
+Receipt `tracker217-playwright-eed2fa640d3c/result.json` records format, lint,
+fixture typecheck/build, six executed tests, screenshots at375/1920/2560,
+unchanged source inputs, closed preview port and verified scratch cleanup.
+This is synthetic browser qualification, not live Auth/backend acceptance.
+The complete instrumented PostgreSQL/coverage gate remains separate.
+
 ## Agent Stage Status: 2026-11-07
 
 Source qualification covers explicit agent Start/InProgress, recorded Completed
