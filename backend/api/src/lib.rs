@@ -789,7 +789,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/namespace-resources/tracker_project/{id}",
             get(routes::namespace::readback).put(routes::namespace::apply),
         )
-        .route_layer(axum::middleware::from_fn(routes::namespace::owner_auth))
+        .route_layer(axum::middleware::from_fn(routes::namespace::binding_auth))
         .merge(
             Router::new()
                 .route(

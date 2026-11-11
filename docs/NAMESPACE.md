@@ -7,7 +7,10 @@ outage; новые bindings требуют Admin. Потерянная projectio
 
 ## API и данные
 
-Machine owner API: `GET/PUT /api/v1/namespace-resources/tracker_project/{id}`.
+`GET /api/v1/namespace-resources/tracker_project/{id}` возвращает точную
+привязку зарегистрированным учёткам владельца и читателя. `PUT` на том же
+пути требует учётку владельца. Fleet использует `GET` для сверки Namespace
+по подтверждённому UUID проекта.
 Human contexts/catalog/stats: `/api/v1/namespace-contexts`,
 `/namespace-available-resources`, `/namespace-stats/{registry}/{namespace}`.
 Human Project directory использует shared-trusted policy и bounded pagination;
