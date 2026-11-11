@@ -25,8 +25,11 @@ COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
 ARG CARGO_BUILD_JOBS=1
+# Refresh local inputs before reusing target artifacts from another SDK revision.
 RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
     --mount=type=cache,id=task-tracker-cargo-target-rust-1.88,target=/cargo-target,sharing=locked \
+    find /app /services-base -type f -exec touch {} + \
+    && \
     CARGO_TARGET_DIR=/cargo-target cargo build --locked --release --bin server \
     && install -m 0755 /cargo-target/release/server /app/task-tracker-server
 
