@@ -20,7 +20,7 @@ another assignment. New completion still requires exact current proof and
 must not accept an archived terminal Review shape. Model/Advisor inputs and
 criteria are unchanged; these mechanical checks are not live-agent acceptance.
 
-Frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passes all12 selected
+The earlier frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passed all12 selected
 local source gates:841 backend native tests, eight exact PostgreSQL scenarios,
 strict workspace/all-target backend Clippy, Rustfmt and actual Rust OpenAPI
 generation. The native run has112 ignored tests, not counted as passes; each
@@ -31,7 +31,8 @@ Receipt: `sdlc-qa-tracker-status-b2467d46d8ef-result.json`, `passed=true`,
 `cleanup_verified=true`, journal `cleaned`. Backend SDK is `ed61ec63`; independent
 CLI supplier is `5f5bcb5e`. QA uses Rust1.88.0, debug0/incremental0 and that
 toolchain's bundled LLD; production profiles and dependencies are unchanged.
-Publication changes only qualification documentation after this frozen run.
+Those results precede forward118 and its fixture regressions; they do not
+qualify the later SQL change. Current qualification is recorded separately below.
 
 The generated572588-byte OpenAPI matches the frozen tracked blob and checkout
 byte-for-byte: SHA256
@@ -53,7 +54,52 @@ Receipt `tracker217-playwright-eed2fa640d3c/result.json` records format, lint,
 fixture typecheck/build, six executed tests, screenshots at375/1920/2560,
 unchanged source inputs, closed preview port and verified scratch cleanup.
 This is synthetic browser qualification, not live Auth/backend acceptance.
-The complete instrumented PostgreSQL/coverage gate remains separate.
+### Final Composite Qualification
+
+Frozen tree `5cd1a8629b50422039fe7d8c9280fcaadf6fa42e` combines 842 native
+backend passes, 64 CLI passes and 114 distinct PostgreSQL passes. The 112 unchanged
+PG cases retain their executed evidence; notification and the updated HTTP SDLC
+case each have a new exact pass. This is a composite qualification, not a claim
+that an earlier failed full command passed. Both118 upgrade lineages are included.
+
+Only four server-test files changed after the instrumented baseline. Compiler
+dependency metadata and 214 unchanged ELF checksums prove the reuse boundary.
+Superseded test objects and raw profiles were removed by LLVM binary identity
+before rebuilding the changed case. Its settled historical fixture preserves
+GET 200/ACL/no-write/restart coverage without restoring retired HTTP writers;
+ledger and receipt timestamps use the same exact PostgreSQL clock value.
+
+Standard LLVM coverage is 61950/68525 lines (90.40496%), 91717/103990 regions
+(88.19790%) and 4564/6017 functions (75.85175%), above the existing 75/65/60 gates.
+The original five exclusions remain; only the external `/src/services-base/`
+supplier prefix is additionally excluded. No Tracker source is newly excluded.
+Strict workspace/all-target backend Clippy and Rustfmt pass.
+Fresh Rust OpenAPI generation matches the tracked 572588 bytes exactly, SHA256
+`ad30dd5f67443b342f7031f0f94361cd0a5d64dac159407095f9985b88291902`.
+
+Receipt: `tracker217-final-5cd1a8629b50-qualified-result.json`. Earlier failures
+remain separate evidence. No model calls, runtime installation or live-agent
+acceptance are claimed by these source checks.
+
+### Plan Content Authorization
+
+Forward118 restores the plan-table dispatch overwritten by native-artifacts113.
+The existing `content_writes_require_current_actor_role_and_active_admitted_space_through_commit`
+case is the ordinary repository regression: valid active-space writes must pass
+without admitting a foreign actor or an archived-only space. Do not change the
+fixture's role to bypass a dispatch error.
+
+`native_artifact_content_port_is_exact_and_rechecked_at_commit` exercises both
+plan tables under active admission and the existing native scope, including
+foreign-task/author and read-only refusals. Its sealed attachment INSERT and
+deferred commit checks remain separate. These direct SQL-port assertions do not
+claim a complete live Architect run.
+
+The two118 upgrade cases require separate fresh owned *_pdlc4_compat_test
+databases. Both registered lineages must preserve the function OID and previous
+ledger entries and make a repeated up inert. Historical migration SQL is not
+rewritten. The newly changed SQL requires fresh qualification; the earlier841/8
+source results above are not evidence for118.
 
 ## Agent Stage Status: 2026-11-07
 
@@ -552,7 +598,10 @@ HTTP fixture дополнительно проверяет 409 для созда
 связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
 после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.
 
-## Initial PM Stops At Backlog (21 October 2026)
+## Historical: Initial PM Stops At Backlog (21 October 2026)
+
+Superseded by the explicit agent status and system-owned handoff contract above.
+The following records the earlier source qualification, not current routing.
 
 New source policy: exact owner confirmation publishes Backlog/Ready; accepted PM
 completion separately retains the current terminal/Workflow/lease receipt.

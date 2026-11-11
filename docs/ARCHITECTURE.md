@@ -42,6 +42,15 @@ Forward116 не переписывает сохранённые операции
 с неизменяемой редакцией плана без второй копии в Workflow. Проверка установленного
 агента инструментами и производственный handoff остаются отдельной приёмкой.
 
+SQL-авторизация имеет один текущий dispatch `tracker_authorize_project_content`.
+Обе plan-таблицы используют существующую comments policy; native INSERT comments
+и attachments сохраняет отдельные точные task/author/scope и seal-проверки.
+Forward118 восстанавливает plan-dispatch, потерянный при замене функции в113,
+без изменения применённых SQL, строк истории, API или полномочий. Замена этого
+dispatch требует регрессий обычной записи плана при active admission и native
+SQL-портов, включая чужие task/author и read-only scope. Ошибку маршрута проверки
+нельзя компенсировать повышением роли или отключением admission.
+
 ## Целевой Контракт Статуса И Стадии
 
 Один порядок для PM, Analyst, Architect, Developer, Reviewer, Tester и DevOps:
