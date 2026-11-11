@@ -20,6 +20,41 @@ another assignment. New completion still requires exact current proof and
 must not accept an archived terminal Review shape. Model/Advisor inputs and
 criteria are unchanged; these mechanical checks are not live-agent acceptance.
 
+### Integrated Main Qualification
+
+Frozen tree `896e986cf6aa834beeafe019a0ae03ae672cd375` preserves main's linear
+Reviewer -> Testing -> Deployment policy and adds no alternate transition mode.
+The unpublished duplicate Reviewer migration is withdrawn; plan authorization118
+follows the existing main linear117 in both lineages. Explicit predecessor test
+tails remain old until their tested upgrade, without changing applied SQL.
+
+Current functional checks pass: 841 backend native tests, 64 CLI tests and 36
+distinct PostgreSQL scenarios. The compiled ignored inventory is 111, not 111 new
+passes. The 26 addressed scenarios are supplemented by ten existing configured
+Start/CLI, authorization, idempotency and predecessor-history cases. They close
+the initially unexercised configured-start scope; expectations are unchanged.
+This is not a rerun of the earlier 114-case qualification under the old policy.
+
+Standard LLVM coverage is 53282/68369 lines (77.93298%), 77405/103841 regions
+(74.54185%) and 4225/6017 functions (70.21772%), above the unchanged 75/65/60 gates.
+The original five exclusions and external Base supplier exclusion remain the
+same; no Tracker file or test is newly excluded. The initial 74.24417% line result
+remains separate evidence, not relabelled as passing.
+
+The notification fixture awaits its own server shutdown and removes only its
+successfully created disposable database after both pools close. PostgreSQL's
+disconnect acknowledgement race is handled by its native DROP WITH FORCE, not
+by retries, sleeps or production changes. The other 25 PG results and unchanged
+objects remain applicable; the corrected exact notification case passes once.
+
+Terminal receipt: `tracker217-integrated-896e986cf6aa-final-qualification.json`.
+Owned helper cleanup is verified; no task containers, networks, volumes or active
+execution sessions remain. Earlier failed and intermediate receipts are unchanged.
+Strict workspace/all-target backend Clippy and Rustfmt also pass on this tree.
+Source DTOs, API registration, tracked OpenAPI and frontend inputs are unchanged;
+the previous actual Rust schema generation and six Chromium checks retain their
+scope. These local source checks do not claim installation or live-agent acceptance.
+
 ### Earlier Policy Checkpoint
 
 The earlier frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passed all12 selected

@@ -13,6 +13,13 @@
   archived operations do not trigger new work. No alternate routing policy.
 - Start/proposal JSON rejection uses the existing safe error envelope with the
   expected contract, preserving HTTP status and hiding untrusted body contents.
+- Integrated main functional qualification: 841 backend native, 64 CLI and 36
+  PostgreSQL scenarios pass; coverage is 77.93% lines, 74.54% regions and 70.22%
+  functions, above the existing gates. Current Start/ACL/replay and both histories
+  are tested without restoring the unpublished duplicate Reviewer policy.
+  Strict all-target backend Clippy and Rustfmt pass on the integrated source.
+  The remaining notification cleanup correction is test-only; production
+  behavior and original expectations are unchanged.
 - Pre-integration composite qualification: 842 native backend, 64 CLI and114
   distinct PostgreSQL scenarios PASS; these results precede the later linear
   policy integration and are not its qualification.
