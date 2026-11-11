@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-11: Корректное Повторное Использование Cargo Target
+
+- Umbrella Dockerfile обновляет времена исходников перед сборкой, чтобы смена
+  SDK не использовала устаревшие артефакты из общего target-кэша.
+
+## 2026-11-10: Линейное Завершение Ролей Без Rework
+
+- Reviewer передаёт работу Tester при approved и rework; Tester передаёт DevOps
+  при passed и rework. Реальные findings и typed verdict сохраняются, cycle не
+  увеличивается. После DevOps сохраняется финальный Deployment/Completed.
+- Агентские Start/InProgress и proposal/Completed, настоящий Fleet terminal,
+  освобождение ресурсов и исходные operation receipts сохраняются. Forward117
+  обновляет SQL guard будущих переходов без изменения старой истории.
 ## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
 
 - Обе опубликованные миграции116 зарегистрированы под исходными полными именами.

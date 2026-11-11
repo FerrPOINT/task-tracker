@@ -688,15 +688,8 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
         DeliveryResult::Analyst { .. } => LifecycleStage::Architecture,
         DeliveryResult::Architect { .. } => LifecycleStage::Development,
         DeliveryResult::Developer { .. } => LifecycleStage::Review,
-        DeliveryResult::Reviewer { .. } => LifecycleStage::Review,
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Passed,
-            ..
-        } => LifecycleStage::Deployment,
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Rework,
-            ..
-        } => LifecycleStage::Rework,
+        DeliveryResult::Reviewer { .. } => LifecycleStage::Testing,
+        DeliveryResult::Tester { .. } => LifecycleStage::Deployment,
         DeliveryResult::DevOps { .. } => LifecycleStage::Deployment,
     };
     let version = task
@@ -708,20 +701,6 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
     task.resume_chat_id = None;
-    if matches!(result, DeliveryResult::Reviewer { .. }) {
-        // Record the actual verdict without enabling the future cross-role cycle.
-        task.waiting_reason = Some("review_completed".into());
-        return Ok(());
-    }
-    if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
-        // Work is completed, not approved; no handoff means no reset to Ready.
-        task.status = LifecycleStatus::Completed;
-        task.waiting_reason = Some("rework_limit_reached".into());
-        return Ok(());
-    }
-    if next == LifecycleStage::Rework {
-        task.cycle += 1;
-    }
     task.stage = next;
     if matches!(result, DeliveryResult::DevOps { .. }) {
         task.status = LifecycleStatus::Completed;

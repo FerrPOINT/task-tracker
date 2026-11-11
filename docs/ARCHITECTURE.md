@@ -1,5 +1,12 @@
 # Архитектура Task Tracker
 
+## Кэш Контейнерной Сборки
+
+Umbrella-сборка использует SDK из выбранного чистого checkout Base. Перед
+повторным использованием Cargo target обновляются времена локальных исходников:
+старые времена файлов из кэшированного COPY иначе позволяют Cargo принять
+артефакты другой версии SDK. Общий target сохраняется; API и SDK pin не меняются.
+
 ## Current Delivery Binding Без Периодов Владения
 
 Canonical lifecycle использует собственный `DeliveryBinding`, не изменяя retained
@@ -50,7 +57,9 @@ keyword-проверок или скрытого fallback. Активация д
 completion-транзакцией; прежние Backlog/Ready receipts остаются неизменными.
 Новый status-пакет должен использовать один этот handoff после Draft/Completed,
 не создавать второй intent/queue и не подменять агентский Start/InProgress.
-На rework limit без передачи и после финального DevOps сохраняется Completed.
+В текущем линейном процессе Reviewer передаёт работу Tester при любом verdict,
+Tester — DevOps при любом verdict. Автоматический Rework отключён; после финального
+DevOps сохраняется Deployment/Completed. Исходные verdict и findings сохраняются.
 Autoqueue не вводит новый public DTO, owner confirmation или source registry.
 
 PM completion читает сохранённую операцию до нового commit. Forward114 разрешает

@@ -132,10 +132,13 @@ impl ReworkFixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        let steps = tail.map(|name| {
-            let registered = migration::Migrator::migrations();
-            u32::try_from(registered.iter().position(|m| m.name() == name).unwrap() + 1).unwrap()
-        });
+        let steps = tail
+            .or(Some("m20261108_0000116_reviewer_terminal"))
+            .map(|name| {
+                let registered = migration::Migrator::migrations();
+                u32::try_from(registered.iter().position(|m| m.name() == name).unwrap() + 1)
+                    .unwrap()
+            });
         migration::Migrator::up(&db, steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
@@ -254,6 +257,9 @@ impl ReworkFixture {
                 .len(),
             1
         );
+        // Upgrade populated PM/history/routing data, without rewriting old receipts.
+        migration::Migrator::up(&db, None).await.unwrap();
+        assert_eq!(self::pm_history(&db, task).await, pm_history);
         let mut producers = std::collections::HashMap::new();
         for role in [
             "analyst",
@@ -523,7 +529,7 @@ impl ReworkFixture {
             let LifecycleCommand::Complete { terminal, .. } = &complete else {
                 unreachable!()
             };
-            for next in ["Testing", "Rework"] {
+            for next in ["Review", "Rework"] {
                 let result_id = Uuid::new_v4();
                 let invalid = json!({"result_id":result_id,"assignment_id":assignment.assignment_id,
                     "task_id":self.task,"terminal":terminal,"output":output,
@@ -732,7 +738,7 @@ fn reviewer(verdict: ReviewVerdict) -> DeliveryResult {
     }
 }
 
-async fn assert_review_terminal(verdict: ReviewVerdict) {
+async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
     let (fixture, mut cursor) = ReworkFixture::new().await;
     let mut originals = Vec::new();
     for (index, output) in [
@@ -759,13 +765,47 @@ async fn assert_review_terminal(verdict: ReviewVerdict) {
     let original = fixture.step(&cursor, reviewer(verdict), 3).await;
     cursor = original.completed.clone();
     originals.push(original);
-    assert_eq!(cursor.task.stage, LifecycleStage::Review);
-    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
-    assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
+    assert_eq!(cursor.task.stage, LifecycleStage::Testing);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
     assert_eq!(
         cursor.task.waiting_reason.as_deref(),
-        Some("review_completed")
+        Some("queued_for_assignment")
     );
+    assert_eq!(cursor.task.cycle, 0);
+    assert!(cursor.assignment.is_none() && cursor.lease.is_none() && cursor.binding.is_none());
+    let tested = fixture
+        .step(
+            &cursor,
+            DeliveryResult::Tester {
+                verdict: testing,
+                report: artifact("linear-test-report"),
+            },
+            4,
+        )
+        .await;
+    cursor = tested.completed.clone();
+    originals.push(tested);
+    assert_eq!(cursor.task.stage, LifecycleStage::Deployment);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+    assert_eq!(cursor.task.cycle, 0);
+    let deployed = fixture
+        .step(
+            &cursor,
+            DeliveryResult::DevOps {
+                deployment: artifact("linear-deployment"),
+                verification: artifact("linear-verification"),
+            },
+            5,
+        )
+        .await;
+    cursor = deployed.completed.clone();
+    originals.push(deployed);
+    assert_eq!(cursor.task.stage, LifecycleStage::Deployment);
+    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+    assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
+    assert_eq!(cursor.task.waiting_reason, None);
     assert_eq!(cursor.task.cycle, 0);
     assert!(cursor.assignment.is_none() && cursor.lease.is_none() && cursor.binding.is_none());
     let queued_after: i64 = fixture.db.query_one(statement(
@@ -773,6 +813,11 @@ async fn assert_review_terminal(verdict: ReviewVerdict) {
         vec![fixture.task.into()],
     )).await.unwrap().unwrap().try_get("", "n").unwrap();
     assert_eq!(queued_after, queued_before);
+    let accepted_events: i64 = fixture.db.query_one(statement(
+        "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.result_accepted'",
+        vec![fixture.task.into()],
+    )).await.unwrap().unwrap().try_get("", "n").unwrap();
+    assert_eq!(accepted_events, i64::try_from(originals.len()).unwrap());
     let settled = fixture.journal_snapshot().await;
     // A fresh repository instance reads durable state and replays the original operation.
     let restarted = PostgresSdlcRepository::connect(
@@ -792,7 +837,7 @@ async fn assert_review_terminal(verdict: ReviewVerdict) {
     for original in &originals {
         fixture.assert_original_replays(original).await;
     }
-    for role in ["reviewer", "developer", "tester"] {
+    for role in ["reviewer", "developer", "tester", "devops"] {
         assert!(matches!(
             restarted
                 .lifecycle_command(
@@ -814,12 +859,12 @@ async fn assert_review_terminal(verdict: ReviewVerdict) {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn reviewer_findings_complete_and_release_without_handoff_or_queue() {
-    assert_review_terminal(ReviewVerdict::Rework).await;
+async fn review_and_test_findings_advance_to_devops_without_rework() {
+    assert_linear_delivery(ReviewVerdict::Rework, TestVerdict::Rework).await;
 }
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn reviewer_approval_completes_and_replays_without_starting_tester() {
-    assert_review_terminal(ReviewVerdict::Approved).await;
+async fn approved_review_and_passed_testing_finish_after_devops_and_replay() {
+    assert_linear_delivery(ReviewVerdict::Approved, TestVerdict::Passed).await;
 }

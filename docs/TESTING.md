@@ -5,7 +5,9 @@
 Source qualification covers explicit agent Start/InProgress, recorded Completed
 and application-owned next-stage/Ready. PM Draft/Completed hands off through the
 existing atomic Analysis queue; delivery requires native terminal verification.
-Final DevOps and rework-limit outcomes without handoff retain Completed. Owner
+The current linear flow advances Reviewer to Tester and Tester to DevOps for
+either verdict, without entering Rework or incrementing the cycle. Final DevOps
+retains Deployment/Completed. Owner
 consent, assignment/fence checks, exact replay and preserved history remain gates.
 There is no new autoAdvance flag or Analyst-disable requirement for acceptance;
 Analysis/Ready is the normal handoff and the Analyst may subsequently run.
