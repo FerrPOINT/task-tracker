@@ -49,6 +49,9 @@ Authority определяется текущими assignment/holder/version, s
 - Все публичные API покрыты OpenAPI через `utoipa-axum`.
 - Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
 - Все endpoint тестируются интеграционно через testcontainers.
+- При замене SQL-dispatch авторизации сохранять все действующие порты. Проверять
+  обычную запись плана при active admission и native task/author/read-only guards;
+  повышение роли в fixture не исправляет потерянную ветвь dispatch.
 - Frontend: публичные компоненты `@pdlc/ui` + Tailwind; предметные композиции остаются в продукте.
 - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
 - Формы — `react-hook-form` + `zod`.

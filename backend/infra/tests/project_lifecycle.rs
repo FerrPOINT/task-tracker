@@ -74,18 +74,19 @@ async fn project_archive_is_independent_replay_safe_and_serializes_content_write
     let repo_pool = repo_db.get_postgres_connection_pool().clone();
     let repos = Arc::new(to_domain_repositories(SeaOrmRepositories::new(repo_db)));
     let owner_subject = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+         VALUES($1,'owner@example.test','owner','Owner','!',$2,true)",
+        [owner_subject.into(), owner_subject.to_string().into()],
+    ))
+    .await
+    .unwrap();
     let owner = repos
         .users
         .find_or_create_central_user(&owner_subject.to_string(), "owner@example.test", "Owner")
         .await
         .unwrap();
-    db.execute(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "UPDATE users SET central_sub=$1 WHERE id=$2",
-        [owner.id.to_string().into(), owner.id.as_uuid().into()],
-    ))
-    .await
-    .unwrap();
     let auth = write_context::Fixture::start().await;
     let mut options = sea_orm::ConnectOptions::new(url.to_string());
     options.max_connections(1).min_connections(1);

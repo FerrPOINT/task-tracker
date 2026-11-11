@@ -218,7 +218,7 @@ fn proposed(task: &mut LifecycleTask) {
 #[test]
 fn review_preserves_both_verdicts_and_queues_testing_without_rework() {
     for verdict in [ReviewVerdict::Approved, ReviewVerdict::Rework] {
-        for cycle in [0, 1, MAX_REWORK_CYCLES] {
+        for cycle in 0..=MAX_REWORK_CYCLES {
             let mut state = task();
             state.stage = LifecycleStage::Review;
             state.cycle = cycle;
@@ -241,6 +241,18 @@ fn review_preserves_both_verdicts_and_queues_testing_without_rework() {
             );
             assert_eq!(state.cycle, cycle);
             assert_eq!(state.routing, routing);
+            let settled = serde_json::to_value(&state).unwrap();
+            assert!(
+                accept_result(
+                    &mut state,
+                    &DeliveryResult::Reviewer {
+                        verdict,
+                        report: artifact("review")
+                    },
+                )
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&state).unwrap(), settled);
         }
     }
 }

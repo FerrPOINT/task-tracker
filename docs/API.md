@@ -1,5 +1,19 @@
 # API v1 Specification — Task Tracker
 
+## SDLC JSON Rejections And Current Execution
+
+The existing stage-starts and delivery-proposals POST routes preserve extractor
+HTTP statuses (422 for an invalid DTO, 400 for syntax, 415 for content type).
+They return the existing error.code/message JSON envelope and Cache-Control:
+no-store instead of an unstructured extractor body. Messages describe the known
+request contract without echoing arbitrary field names, values or documents.
+They do not repair or resubmit the request.
+
+Configured delivery context.workflow_task_key identifies the current reserved
+assignment.execution.key; it is absent while no delivery assignment exists.
+The retained PM key and historical operation responses are unchanged. No new
+route, request/response field or database column is introduced.
+
 ## Untimed Delivery Binding (Source Candidate)
 
 The existing lifecycle routes and fence fields are unchanged. Current `receipt.lease`

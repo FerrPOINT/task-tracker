@@ -1,7 +1,7 @@
 use super::sdlc::service;
 use axum::{
     Extension, Json, Router,
-    extract::{Path, State},
+    extract::{Path, State, rejection::JsonRejection},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -70,6 +70,24 @@ fn no_store() -> HeaderMap {
     headers
 }
 
+const START_SHAPE: &str = "Invalid StartStage JSON: expected fence (kind=pm or delivery, with the corresponding assignment fields) and idempotency_key. Read the current assignment before constructing the request.";
+const PROPOSAL_SHAPE: &str = "Invalid SubmitDeliveryProposal JSON: expected fence, workflow_receipt, idempotency_key and result. result is a flat object with role and the corresponding fields: analyst (analysis), architect (design), developer (commit_sha, changes, checks), reviewer (verdict, report), tester (verdict, report), or devops (deployment, verification). Artifact receipts contain reference and sha256.";
+
+fn request_json_error(error: JsonRejection, shape: &'static str) -> (HeaderMap, Response) {
+    let status = error.status();
+    let message = match error {
+        JsonRejection::JsonDataError(_) => shape,
+        JsonRejection::JsonSyntaxError(_) => {
+            "Invalid JSON syntax: serialize the request with a JSON library."
+        }
+        JsonRejection::MissingJsonContentType(_) => "Expected Content-Type: application/json.",
+        _ => "Unable to read the JSON request body.",
+    };
+    let mut response = AppError::validation(message).into_response();
+    *response.status_mut() = status;
+    (no_store(), response)
+}
+
 fn written<T>(result: (T, bool)) -> (StatusCode, HeaderMap, Json<T>) {
     (
         if result.1 {
@@ -89,10 +107,15 @@ pub async fn start_stage(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(task): Path<Uuid>,
-    Json(input): Json<StartStage>,
-) -> Result<(StatusCode, HeaderMap, Json<StageStartReceipt>), AppError> {
+    input: Result<Json<StartStage>, JsonRejection>,
+) -> Result<(StatusCode, HeaderMap, Json<StageStartReceipt>), (HeaderMap, Response)> {
+    let Json(input) = input.map_err(|error| request_json_error(error, START_SHAPE))?;
     Ok(written(
-        service(&ctx)?.start_stage(task, &actor, input).await?,
+        service(&ctx)
+            .map_err(|error| (no_store(), error.into_response()))?
+            .start_stage(task, &actor, input)
+            .await
+            .map_err(|error| (no_store(), error.into_response()))?,
     ))
 }
 
@@ -265,12 +288,15 @@ pub async fn propose(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(task): Path<Uuid>,
-    Json(input): Json<SubmitDeliveryProposal>,
-) -> Result<(StatusCode, HeaderMap, Json<DeliveryProposalReceipt>), AppError> {
+    input: Result<Json<SubmitDeliveryProposal>, JsonRejection>,
+) -> Result<(StatusCode, HeaderMap, Json<DeliveryProposalReceipt>), (HeaderMap, Response)> {
+    let Json(input) = input.map_err(|error| request_json_error(error, PROPOSAL_SHAPE))?;
     Ok(written(
-        service(&ctx)?
+        service(&ctx)
+            .map_err(|error| (no_store(), error.into_response()))?
             .submit_delivery_proposal(task, &actor, input)
-            .await?,
+            .await
+            .map_err(|error| (no_store(), error.into_response()))?,
     ))
 }
 
@@ -543,6 +569,80 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn stage_start_and_proposal_json_errors_preserve_status_and_hide_untrusted_data() {
+        use axum::extract::FromRequest;
+        for (body, content_type, status, expected) in [
+            (
+                r#"{"assignment_id":"secret-value","secret-field":"private-document"}"#,
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                START_SHAPE,
+            ),
+            (
+                r#"{"fence":{"kind":"secret-value"},"idempotency_key":"private-document"}"#,
+                true,
+                StatusCode::UNPROCESSABLE_ENTITY,
+                START_SHAPE,
+            ),
+            (
+                r#"{"fence":"#,
+                true,
+                StatusCode::BAD_REQUEST,
+                "Invalid JSON syntax: serialize the request with a JSON library.",
+            ),
+            (
+                "private-document",
+                false,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Expected Content-Type: application/json.",
+            ),
+        ] {
+            let mut builder = axum::http::Request::builder().method("POST");
+            if content_type {
+                builder = builder.header(header::CONTENT_TYPE, "application/json");
+            }
+            let request = builder.body(axum::body::Body::from(body)).unwrap();
+            let error = Json::<StartStage>::from_request(request, &())
+                .await
+                .unwrap_err();
+            let (headers, response) = request_json_error(error, START_SHAPE);
+            assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+            assert_eq!(response.status(), status);
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(
+                value,
+                serde_json::json!({"error":{"code":"VALIDATION_ERROR","message":expected}})
+            );
+            let public = String::from_utf8(bytes.to_vec()).unwrap();
+            for private in ["secret-value", "secret-field", "private-document"] {
+                assert!(!public.contains(private));
+            }
+        }
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(r#"{"result":{"role":"analyst","artifact":{"reference":"private-document","sha256":"secret-value"}}}"#))
+            .unwrap();
+        let error = Json::<SubmitDeliveryProposal>::from_request(request, &())
+            .await
+            .unwrap_err();
+        let (_, response) = request_json_error(error, PROPOSAL_SHAPE);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["error"]["message"], PROPOSAL_SHAPE);
+        assert!(PROPOSAL_SHAPE.contains("workflow_receipt"));
+        assert!(PROPOSAL_SHAPE.contains("flat object with role"));
+        assert!(PROPOSAL_SHAPE.contains("analyst (analysis)"));
     }
 
     #[test]

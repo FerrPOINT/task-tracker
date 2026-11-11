@@ -30,7 +30,14 @@ mod tests {
             crate::PublishedMigrator::migrations(),
             crate::ProjectRepositoryMigrator::migrations(),
         ] {
-            assert_eq!(migrations[migrations.len() - 2].name(), Migration.name());
+            let index = migrations
+                .iter()
+                .position(|m| m.name() == Migration.name())
+                .unwrap();
+            assert_eq!(
+                migrations[index + 1].name(),
+                "m20261110_0000117_linear_delivery"
+            );
             assert_eq!(
                 migrations
                     .iter()
@@ -39,11 +46,11 @@ mod tests {
                 1
             );
             assert_eq!(
-                migrations[migrations.len() - 3].name(),
+                migrations[index - 1].name(),
                 "m20261108_0000116_reviewer_terminal"
             );
             assert_eq!(
-                migrations[migrations.len() - 4].name(),
+                migrations[index - 2].name(),
                 "m20261107_0000115_agent_stage_status"
             );
         }

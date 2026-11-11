@@ -4,6 +4,8 @@
 use super::*;
 #[path = "decomposition_architect_pg_tests.rs"]
 mod decomposition_tests;
+#[path = "reviewer_handoff_pg_tests.rs"]
+mod reviewer_handoff_tests;
 #[path = "untimed_delivery_binding_pg_tests.rs"]
 mod untimed_binding_tests;
 
@@ -258,7 +260,9 @@ impl ReworkFixture {
             1
         );
         // Upgrade populated PM/history/routing data, without rewriting old receipts.
-        migration::Migrator::up(&db, None).await.unwrap();
+        if tail.is_none() {
+            migration::Migrator::up(&db, None).await.unwrap();
+        }
         assert_eq!(self::pm_history(&db, task).await, pm_history);
         let mut producers = std::collections::HashMap::new();
         for role in [
@@ -337,6 +341,17 @@ impl ReworkFixture {
         queued: &LifecycleReceipt,
         output: DeliveryResult,
         index: usize,
+    ) -> OriginalStep {
+        self.step_with_released_review(queued, output, index, false)
+            .await
+    }
+
+    async fn step_with_released_review(
+        &self,
+        queued: &LifecycleReceipt,
+        output: DeliveryResult,
+        index: usize,
+        released_review: bool,
     ) -> OriginalStep {
         assert_eq!(queued.task.status, LifecycleStatus::Ready);
         assert_eq!(queued.task.runtime, RuntimeState::Queued);
@@ -552,11 +567,17 @@ impl ReworkFixture {
                 .await,
             Err(AppError::Forbidden)
         ));
-        let (completed, replayed) = self
-            .repo
-            .lifecycle_command(self.task, &self.scheduler, complete.clone())
-            .await
-            .unwrap_or_else(|error| panic!("Complete step {index} failed: {error}"));
+        let (completed, replayed) = if released_review {
+            (
+                reviewer_handoff_tests::complete_released_review(self, &proposed, &complete).await,
+                false,
+            )
+        } else {
+            self.repo
+                .lifecycle_command(self.task, &self.scheduler, complete.clone())
+                .await
+                .unwrap_or_else(|error| panic!("Complete step {index} failed: {error}"))
+        };
         assert!(!replayed);
         assert_eq!(completed.task.version, proposed.task.version + 1);
         assert_eq!(completed.task.routing, self.frozen);
@@ -738,8 +759,10 @@ fn reviewer(verdict: ReviewVerdict) -> DeliveryResult {
     }
 }
 
-async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
-    let (fixture, mut cursor) = ReworkFixture::new().await;
+async fn through_review(
+    fixture: &ReworkFixture,
+    mut cursor: LifecycleReceipt,
+) -> (LifecycleReceipt, Vec<OriginalStep>) {
     let mut originals = Vec::new();
     for (index, output) in [
         DeliveryResult::Analyst {
@@ -758,6 +781,12 @@ async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
         originals.push(original);
     }
     assert_eq!(cursor.task.stage, LifecycleStage::Review);
+    (cursor, originals)
+}
+
+async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
+    let (fixture, queued) = ReworkFixture::new().await;
+    let (mut cursor, mut originals) = through_review(&fixture, queued).await;
     let queued_before: i64 = fixture.db.query_one(statement(
         "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.queued'",
         vec![fixture.task.into()],
@@ -818,6 +847,14 @@ async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
         vec![fixture.task.into()],
     )).await.unwrap().unwrap().try_get("", "n").unwrap();
     assert_eq!(accepted_events, i64::try_from(originals.len()).unwrap());
+    assert_settled_replays(&fixture, &cursor, &originals).await;
+}
+
+async fn assert_settled_replays(
+    fixture: &ReworkFixture,
+    cursor: &LifecycleReceipt,
+    originals: &[OriginalStep],
+) {
     let settled = fixture.journal_snapshot().await;
     // A fresh repository instance reads durable state and replays the original operation.
     let restarted = PostgresSdlcRepository::connect(
@@ -832,9 +869,9 @@ async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
             .await
             .unwrap()
             .receipt,
-        cursor
+        *cursor
     );
-    for original in &originals {
+    for original in originals {
         fixture.assert_original_replays(original).await;
     }
     for role in ["reviewer", "developer", "tester", "devops"] {
@@ -854,7 +891,7 @@ async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
         ));
     }
     assert_eq!(fixture.journal_snapshot().await, settled);
-    fixture.assert_current(&cursor).await;
+    fixture.assert_current(cursor).await;
 }
 
 #[tokio::test]
