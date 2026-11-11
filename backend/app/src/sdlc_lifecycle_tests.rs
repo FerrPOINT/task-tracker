@@ -216,9 +216,9 @@ fn proposed(task: &mut LifecycleTask) {
 }
 
 #[test]
-fn review_records_both_verdicts_without_handoff_or_rework_cycle() {
+fn review_hands_off_by_verdict_and_preserves_the_rework_limit() {
     for verdict in [ReviewVerdict::Approved, ReviewVerdict::Rework] {
-        for cycle in [0, 1, MAX_REWORK_CYCLES] {
+        for cycle in 0..=MAX_REWORK_CYCLES {
             let mut state = task();
             state.stage = LifecycleStage::Review;
             state.cycle = cycle;
@@ -232,12 +232,46 @@ fn review_records_both_verdicts_without_handoff_or_rework_cycle() {
                 },
             )
             .unwrap();
-            assert_eq!(state.stage, LifecycleStage::Review);
-            assert_eq!(state.status, LifecycleStatus::Completed);
-            assert_eq!(state.runtime, RuntimeState::Terminal);
-            assert_eq!(state.waiting_reason.as_deref(), Some("review_completed"));
-            assert_eq!(state.cycle, cycle);
+            if verdict == ReviewVerdict::Rework && cycle == MAX_REWORK_CYCLES {
+                assert_eq!(state.stage, LifecycleStage::Review);
+                assert_eq!(state.status, LifecycleStatus::Completed);
+                assert_eq!(state.runtime, RuntimeState::Terminal);
+                assert_eq!(
+                    state.waiting_reason.as_deref(),
+                    Some("rework_limit_reached")
+                );
+                assert_eq!(state.cycle, cycle);
+            } else {
+                let rework = verdict == ReviewVerdict::Rework;
+                assert_eq!(
+                    state.stage,
+                    if rework {
+                        LifecycleStage::Rework
+                    } else {
+                        LifecycleStage::Testing
+                    }
+                );
+                assert_eq!(state.status, LifecycleStatus::Ready);
+                assert_eq!(state.runtime, RuntimeState::Queued);
+                assert_eq!(
+                    state.waiting_reason.as_deref(),
+                    Some("queued_for_assignment")
+                );
+                assert_eq!(state.cycle, cycle + u8::from(rework));
+            }
             assert_eq!(state.routing, routing);
+            let settled = serde_json::to_value(&state).unwrap();
+            assert!(
+                accept_result(
+                    &mut state,
+                    &DeliveryResult::Reviewer {
+                        verdict,
+                        report: artifact("review")
+                    },
+                )
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&state).unwrap(), settled);
         }
     }
 }

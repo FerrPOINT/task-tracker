@@ -180,7 +180,7 @@ fn results() -> Vec<(LifecycleStage, DeliveryResult, LifecycleStage)> {
                 verdict: ReviewVerdict::Approved,
                 report: artifact("review"),
             },
-            LifecycleStage::Review,
+            LifecycleStage::Testing,
         ),
         (
             LifecycleStage::Testing,
@@ -490,17 +490,10 @@ fn completed_delivery_handoff_resets_ready_but_final_devops_remains_completed() 
         assert_eq!(custody.task.task_id, before.task_id);
         assert_eq!(custody.task.owner_subject, before.owner_subject);
         assert_eq!(custody.task.routing, before.routing);
-        if matches!(stage, LifecycleStage::Deployment | LifecycleStage::Review) {
+        if stage == LifecycleStage::Deployment {
             assert_eq!(custody.task.status, LifecycleStatus::Completed);
             assert_eq!(custody.task.runtime, RuntimeState::Terminal);
-            assert_eq!(
-                custody.task.waiting_reason.as_deref(),
-                if stage == LifecycleStage::Review {
-                    Some("review_completed")
-                } else {
-                    None
-                }
-            );
+            assert_eq!(custody.task.waiting_reason, None);
         } else {
             assert_eq!(custody.task.status, LifecycleStatus::Ready);
             assert_eq!(custody.task.runtime, RuntimeState::Queued);
@@ -558,6 +551,29 @@ fn completed_wrong_role_unknown_runtime_and_exhausted_version_cannot_handoff() {
             accept_result(&mut custody.task, &output).is_err(),
             "case {case}"
         );
+        assert_eq!(json!(custody.task), before);
+    }
+}
+
+#[test]
+fn archived_completed_review_cannot_be_applied_or_queued_again() {
+    for verdict in [ReviewVerdict::Approved, ReviewVerdict::Rework] {
+        let (_, _, _, mut custody) = delivery(LifecycleStage::Review);
+        custody.task.status = LifecycleStatus::Completed;
+        custody.task.runtime = RuntimeState::Terminal;
+        custody.task.waiting_reason = Some("review_completed".into());
+        let before = json!(custody.task);
+        assert!(
+            accept_result(
+                &mut custody.task,
+                &DeliveryResult::Reviewer {
+                    verdict,
+                    report: artifact("archived-review")
+                },
+            )
+            .is_err()
+        );
+        assert!(crate::sdlc_lifecycle::ensure_queued(&mut custody.task).is_err());
         assert_eq!(json!(custody.task), before);
     }
 }

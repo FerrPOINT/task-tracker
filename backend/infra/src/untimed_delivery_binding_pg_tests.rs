@@ -24,6 +24,7 @@ impl<const REVIEWER: bool> MigratorTrait for Released116<REVIEWER> {
         let absent = if REVIEWER { UNTIMED_116 } else { REVIEWER_116 };
         migration::Migrator::migrations()
             .into_iter()
+            .take_while(|item| item.name() != "m20261111_0000117_reviewer_handoff")
             .filter(|item| item.name() != absent)
             .collect()
     }

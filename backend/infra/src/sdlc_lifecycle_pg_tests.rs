@@ -361,6 +361,14 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
     crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &pm_fence).await;
+    assert_eq!(
+        repo.context(task, &pm)
+            .await
+            .unwrap()
+            .workflow_task_key
+            .as_deref(),
+        Some(reservation.execution.key.as_str())
+    );
     repo.execute(
         task,
         &pm,
@@ -436,6 +444,9 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     assert_eq!(after_pm.status, Some(LifecycleStatus::Ready));
     assert_eq!(after_pm.owner_subject, owner.subject);
     assert_eq!(after_pm.root_task_id, task);
+    let queued_context = repo.context(task, &owner).await.unwrap();
+    assert!(queued_context.assignment.is_none());
+    assert!(queued_context.workflow_task_key.is_none());
     let automatic = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     assert_eq!(automatic.task.stage, LifecycleStage::Analysis);
     assert_eq!(automatic.task.status, LifecycleStatus::Ready);
@@ -585,6 +596,19 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     let expected_ordinals: std::collections::HashSet<_> = [gap + 1, gap + 2].into_iter().collect();
     assert_eq!(allocated_ordinals, expected_ordinals);
     assert_ne!(allocated.key, other_pm.execution.key);
+    let delivery_context = repo.context(task, &producer).await.unwrap();
+    assert_eq!(
+        delivery_context.workflow_task_key.as_deref(),
+        Some(allocated.key.as_str())
+    );
+    assert_eq!(
+        delivery_context.assignment.as_ref().unwrap().execution_id,
+        reserved.assignment.as_ref().unwrap().execution_id
+    );
+    assert_eq!(
+        repo.read(task, &owner).await.unwrap().retained_fields["workflow_task_key"],
+        after_pm.retained_fields["workflow_task_key"]
+    );
     let allocation_head = gap + 2;
     assert_eq!(pm_ordinal_head(&db).await, allocation_head);
     let changed = LifecycleCommand::Reserve {
@@ -940,6 +964,25 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
         .await
         .unwrap();
     assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
+    let retry_context = repo.context(task, &producer).await.unwrap();
+    assert_eq!(
+        retry_context.workflow_task_key.as_deref(),
+        Some(
+            retry
+                .assignment
+                .as_ref()
+                .unwrap()
+                .execution
+                .as_ref()
+                .unwrap()
+                .key
+                .as_str()
+        )
+    );
+    assert_ne!(
+        retry_context.workflow_task_key,
+        delivery_context.workflow_task_key
+    );
     assert_ne!(
         retry.assignment.as_ref().unwrap().execution,
         reserved.assignment.as_ref().unwrap().execution
@@ -1334,10 +1377,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
-        if matches!(
-            started.task.stage,
-            LifecycleStage::Review | LifecycleStage::Deployment
-        ) {
+        if started.task.stage == LifecycleStage::Deployment {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
         } else {
@@ -1393,7 +1433,13 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
     assert_ne!(ready_ids[0].0, ready_ids[1].0);
     assert_eq!(ready_ids[0].1, ready_ids[1].1);
-    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+    assert_eq!(cursor.task.stage, LifecycleStage::Testing);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+    assert_eq!(
+        cursor.task.waiting_reason.as_deref(),
+        Some("queued_for_assignment")
+    );
     assert_eq!(count(&db, "sdlc_delivery_results").await, 4);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     for candidate in repo.metadata_outbox(task, &owner, 0, 100).await.unwrap() {

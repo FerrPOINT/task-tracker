@@ -1,5 +1,46 @@
 # Стратегия тестирования Task Tracker
 
+## Current Execution And Reviewer Handoff
+
+The 2026-11-11 source regressions cover the current delivery execution key after
+reservation/retry, absent delivery authority before reservation, preserved PM
+history, and safe typed Start/proposal errors. Agent Start, Completed and
+application-owned next-stage/Ready are different actions.
+
+Real PostgreSQL selectors in the existing lifecycle fixture cover shared
+Reviewer/Tester rework cycles, Tester cap, Review -> Testing -> Deployment,
+and both archived Review verdicts after117. The registered migration tests
+exercise Published and ProjectRepository predecessors116, preserve ledger
+timestamps, normalize CRLF function definitions and prove repeated up is inert.
+Each ignored selector requires its own fresh *_lifecycle_test or
+*_pdlc4_compat_test database and a verified nonzero test count.
+
+Archive readback must not run the current transition policy again or create
+another assignment. New completion still requires exact current proof and
+must not accept an archived terminal Review shape. Model/Advisor inputs and
+criteria are unchanged; these mechanical checks are not live-agent acceptance.
+
+Frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passes all12 selected
+local source gates:841 backend native tests, eight exact PostgreSQL scenarios,
+strict workspace/all-target backend Clippy, Rustfmt and actual Rust OpenAPI
+generation. The native run has112 ignored tests, not counted as passes; each
+selected PostgreSQL gate separately reports exactly one pass. API72 includes
+all three `stage_start_*` regressions.
+
+Receipt: `sdlc-qa-tracker-status-b2467d46d8ef-result.json`, `passed=true`,
+`cleanup_verified=true`, journal `cleaned`. Backend SDK is `ed61ec63`; independent
+CLI supplier is `5f5bcb5e`. QA uses Rust1.88.0, debug0/incremental0 and that
+toolchain's bundled LLD; production profiles and dependencies are unchanged.
+Publication changes only qualification documentation after this frozen run.
+
+The generated572588-byte OpenAPI matches the frozen tracked blob and checkout
+byte-for-byte: SHA256
+`ad30dd5f67443b342f7031f0f94361cd0a5d64dac159407095f9985b88291902`.
+CLI64 and frontend897, typecheck/lint/build are reused from unchanged sources
+and pins qualified in [PR214](https://github.com/FerrPOINT/task-tracker/pull/214).
+They are not new UI or live checks. Hosted Actions, installation and seven-agent
+runtime acceptance have not been performed for this candidate.
+
 ## Agent Stage Status: 2026-11-07
 
 Source qualification covers explicit agent Start/InProgress, recorded Completed

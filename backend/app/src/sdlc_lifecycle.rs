@@ -688,7 +688,14 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
         DeliveryResult::Analyst { .. } => LifecycleStage::Architecture,
         DeliveryResult::Architect { .. } => LifecycleStage::Development,
         DeliveryResult::Developer { .. } => LifecycleStage::Review,
-        DeliveryResult::Reviewer { .. } => LifecycleStage::Review,
+        DeliveryResult::Reviewer {
+            verdict: ReviewVerdict::Approved,
+            ..
+        } => LifecycleStage::Testing,
+        DeliveryResult::Reviewer {
+            verdict: ReviewVerdict::Rework,
+            ..
+        } => LifecycleStage::Rework,
         DeliveryResult::Tester {
             verdict: TestVerdict::Passed,
             ..
@@ -708,11 +715,6 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
     task.resume_chat_id = None;
-    if matches!(result, DeliveryResult::Reviewer { .. }) {
-        // Record the actual verdict without enabling the future cross-role cycle.
-        task.waiting_reason = Some("review_completed".into());
-        return Ok(());
-    }
     if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
         // Work is completed, not approved; no handoff means no reset to Ready.
         task.status = LifecycleStatus::Completed;
