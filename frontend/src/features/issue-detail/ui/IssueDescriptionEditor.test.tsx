@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
@@ -96,8 +96,11 @@ describe('IssueDescriptionEditor', () => {
     fireEvent.change(summary, { target: { value: 'Unsent summary' } })
     rerender(view(true))
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
-    fireEvent.submit(summary.closest('form')!)
-    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).toBeDisabled())
+    await act(async () => {
+      fireEvent.submit(summary.closest('form')!)
+    })
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeEnabled()
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: /summary/i })).toBe(summary)
     expect(summary).toHaveValue('Unsent summary')
