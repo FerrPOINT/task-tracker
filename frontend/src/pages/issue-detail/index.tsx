@@ -366,7 +366,20 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
                     (decompositionPanel ?? <DecompositionPanel issueId={issue.id} />)}
                 </TabsContent>
                 <TabsContent value="sdlc" style={issueTabPanelStyle}>
-                  <SdlcPanel key={issue.id} issueId={issue.id} />
+                  <SdlcPanel
+                    key={issue.id}
+                    issueId={issue.id}
+                    materials={
+                      import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+                        <ActionGroup>
+                          <TextLink href="#task-documents">Документы задачи</TextLink>
+                          <TextLink href="#task-repositories">
+                            Пуллреквесты, коммиты и проверки
+                          </TextLink>
+                        </ActionGroup>
+                      ) : undefined
+                    }
+                  />
                 </TabsContent>
               </Tabs>
             </div>
@@ -387,10 +400,14 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
                 <CardContent className="grid gap-4">
                   <LinkEditor issueId={issue.id} currentKey={issue.key} />
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                    <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                    <div id="task-documents" tabIndex={-1}>
+                      <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                    </div>
                   )}
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                    <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                    <div id="task-repositories" tabIndex={-1}>
+                      <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                    </div>
                   )}
                 </CardContent>
               </Card>
