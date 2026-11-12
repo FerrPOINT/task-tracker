@@ -55,7 +55,7 @@ async fn board_reader_batches_only_authorized_issue_ids_in_project_and_instance(
     // No synthesized stage or status for an ordinary issue absent from the SDLC table.
     assert!(!tasks.iter().any(|task| task.issue_id == ordinary));
     assert_eq!(
-        repo.db.raw().into_transaction_log(),
+        repo.db.raw().as_mock_connection().drain_transaction_log(),
         vec![Transaction::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT task_id, state->'stage' AS stage,

@@ -102,20 +102,14 @@ export function ProjectBoardPage() {
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
   if (!board.sdlc) return <ErrorState message={t('board.sdlcUnavailable')} />
 
-  const { issues, sprint } = board
+  const { issues, sdlc } = board
 
   const header = (
     <div className="mb-4">
       <PageHeader
-        title={t('board.title', {
-          projectName: key,
-          sprintName: sprint?.name ?? t('board.backlog'),
-        })}
+        title={t('board.title', { projectName: key })}
         leading={<ProjectAvatar projectKey={key ?? ''} />}
-        context={t('board.subtitle', {
-          backlog: board.backlog_total,
-          remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
-        })}
+        context={t('board.subtitle', { count: sdlc.tasks.length })}
         actions={
           <>
             <Button
