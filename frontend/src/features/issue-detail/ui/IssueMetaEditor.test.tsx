@@ -6,7 +6,6 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { IssueMetaEditor } from './IssueMetaEditor'
 import type { Issue } from '@/api/issue'
-import type { Board } from '@/api/board'
 
 beforeAll(() => {
   i18n.changeLanguage('en')
@@ -71,16 +70,15 @@ const issue: Issue = {
   sprint_id: null,
 }
 
-const columns: Board['columns'] = [
-  { id: 's1', name: 'Open', issue_ids: [] },
-  { id: 's2', name: 'In Progress', issue_ids: [] },
-  { id: 's3', name: 'Done', issue_ids: [] },
-]
-
 describe('IssueMetaEditor', () => {
+  it('does not offer generic statuses as task stages', () => {
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
+    expect(screen.queryByLabelText(/^status$/i)).not.toBeInTheDocument()
+  })
+
   it('renders metadata select fields', async () => {
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
-    expect(screen.getByText(/status/i)).toBeInTheDocument()
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
+    expect(screen.queryByLabelText(/^status$/i)).not.toBeInTheDocument()
     expect(screen.getByText(/priority/i)).toBeInTheDocument()
     expect(screen.getByText(/assignee/i)).toBeInTheDocument()
     const options = (await choiceOptions(screen.getByLabelText(/priority/i))).map(
@@ -92,13 +90,13 @@ describe('IssueMetaEditor', () => {
 
   it('calls onChange when priority is changed', async () => {
     const onChange = vi.fn()
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
     await chooseValue(screen.getByLabelText(/priority/i), 'Low')
     expect(onChange).toHaveBeenCalledWith({ priority: 'Low' })
   })
 
   it('offers every active directory user for assignment', async () => {
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
     expect(
       (await choiceOptions(screen.getByLabelText(/assignee/i))).some(
         (option) => option.textContent === 'Charlie',
@@ -112,7 +110,7 @@ describe('IssueMetaEditor', () => {
       assignee_id: 'u4',
       assignee_name: 'Former User',
     }
-    render(wrapper(<IssueMetaEditor issue={staleIssue} columns={columns} onChange={vi.fn()} />))
+    render(wrapper(<IssueMetaEditor issue={staleIssue} onChange={vi.fn()} />))
     fireEvent.keyDown(screen.getByLabelText(/assignee/i), { key: 'Enter' })
     const option = await screen.findByRole('option', { name: 'Former User' })
     expect(option).toHaveAttribute('data-disabled')

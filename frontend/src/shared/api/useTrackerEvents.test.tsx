@@ -66,6 +66,8 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worklogs', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sdlc', 'issue-1'] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['sdlc'] })
   })
 
   it('invalidates issue collection caches when an issue SSE event arrives', () => {
@@ -90,6 +92,8 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sdlc', 'issue-1'] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['sdlc'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-labels', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })

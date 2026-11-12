@@ -15,7 +15,8 @@ import {
 } from '@/api/sdlc'
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
-import { SdlcPanel } from './SdlcPanel'
+import { SdlcPanel, TaskStage } from './SdlcPanel'
+import { useSdlcSnapshot } from '../model/use-sdlc'
 import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
@@ -121,14 +122,23 @@ const event: MetadataEvent = {
   },
 }
 
-function mount(issueId = task) {
+function mount(issueId = task, showStage = false) {
+  function TaskView() {
+    const source = useSdlcSnapshot(issueId)
+    return (
+      <>
+        {showStage && <TaskStage source={source} />}
+        <SdlcPanel source={source} />
+      </>
+    )
+  }
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const result = render(
     <ThemeProvider>
       <QueryClientProvider client={client}>
-        <SdlcPanel key={issueId} issueId={issueId} />
+        <TaskView key={issueId} />
       </QueryClientProvider>
     </ThemeProvider>,
   )
@@ -136,6 +146,42 @@ function mount(issueId = task) {
 }
 
 describe('SDLC owner panel (isolated controller fixtures, not live admission)', () => {
+  it('shares one canonical read between the right-hand stage and the SDLC tab', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: { ...initial.context, stage: 'Analysis', status: 'InProgress' },
+    })
+    mount(task, true)
+    const stage = screen.getByRole('group', { name: 'Stage' })
+    expect(await within(stage).findByText('Analysis')).toBeVisible()
+    expect(within(stage).getByText('Stage state: In progress')).toBeVisible()
+    expect(within(stage).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(getSdlcSnapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not invent Draft or Ready when the stage cannot be read', async () => {
+    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(503))
+    mount(task, true)
+    const stage = screen.getByRole('group', { name: 'Stage' })
+    await within(stage).findByText('SDLC or Central Auth is unavailable')
+    expect(within(stage).queryByText('Draft')).not.toBeInTheDocument()
+    expect(within(stage).queryByText(/Awaiting execution/)).not.toBeInTheDocument()
+  })
+
+  it('withdraws the stage on a credential change instead of reusing the previous user data', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: { ...initial.context, stage: 'Development' },
+    })
+    mount(task, true)
+    const stage = screen.getByRole('group', { name: 'Stage' })
+    await within(stage).findByText('Development')
+    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(403))
+    act(() => useAuthStore.setState({ token: 'other-credential', userId: 'other-user' }))
+    await within(stage).findByText('Access to this SDLC resource is denied')
+    expect(within(stage).queryByText('Development')).not.toBeInTheDocument()
+  })
+
   it('keeps machine references out of the ordinary reading view', async () => {
     mount()
     await screen.findByText('Exact goal shown to the owner')

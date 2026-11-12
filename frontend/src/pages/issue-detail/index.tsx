@@ -48,10 +48,11 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import { useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
-import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
+import { SdlcPanel, TaskStage } from '@/features/sdlc/ui/SdlcPanel'
+import { useSdlcSnapshot } from '@/features/sdlc/model/use-sdlc'
 
 const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
 type IssueTab = (typeof issueTabs)[number]
@@ -79,12 +80,12 @@ export function IssueDetailPage() {
     onCopied: () => toast.success(t('issue.keyCopied')),
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
-  const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
   // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
   const taskId = issueQuery.data?.id ?? ''
+  const sdlc = useSdlcSnapshot(taskId)
   const worklogsQuery = useWorklogs(taskId)
   const commentsQuery = useComments(taskId)
   const create = useCreateWorklog(taskId)
@@ -266,9 +267,9 @@ export function IssueDetailPage() {
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
+                <TaskStage source={sdlc} />
                 <IssueMetaEditor
                   issue={issue}
-                  columns={boardQuery.data?.columns ?? []}
                   sprints={sprintsQuery.data ?? []}
                   disabled={updateIssue.isPending}
                   onChange={(patch) =>
@@ -334,7 +335,7 @@ export function IssueDetailPage() {
                   <AttachmentPanel issueId={issue.id} />
                 </TabsContent>
                 <TabsContent value="sdlc">
-                  <SdlcPanel key={issue.id} issueId={issue.id} />
+                  <SdlcPanel key={issue.id} source={sdlc} />
                 </TabsContent>
               </Tabs>
 

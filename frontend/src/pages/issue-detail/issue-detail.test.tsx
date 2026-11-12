@@ -21,10 +21,32 @@ vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
   ...(await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()),
 }))
-vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
-  SdlcPanel: ({ issueId }: { issueId: string }) => (
-    <section aria-label="SDLC mount">{issueId}</section>
+vi.mock('@/features/sdlc/ui/SdlcPanel', async (original) => ({
+  ...(await original<typeof import('@/features/sdlc/ui/SdlcPanel')>()),
+  SdlcPanel: ({ source }: { source: { issueId: string } }) => (
+    <section aria-label="SDLC mount">{source.issueId}</section>
   ),
+}))
+vi.mock('@/api/sdlc', async (original) => ({
+  ...(await original<typeof import('@/api/sdlc')>()),
+  getSdlcSnapshot: vi.fn(async (id: string) => ({
+    context: {
+      contract_version: 1,
+      tracker_instance_id: 'tracker-test',
+      project_id: 'p1',
+      task_id: id,
+      root_task_id: id,
+      owner_subject: 'u1',
+      stage: 'Draft',
+      status: null,
+      requirement_revision: null,
+      waiting_reason: 'waiting_for_pm',
+      permissions: { can_answer: false, can_confirm: false },
+      assignment: null,
+    },
+    requirements: null,
+    intent: null,
+  })),
 }))
 
 const issueData = {

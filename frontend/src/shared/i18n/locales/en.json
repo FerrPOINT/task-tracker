@@ -129,7 +129,7 @@
     "eventSequence": "Journal entry number",
     "stages": {
       "Draft": "Draft",
-      "Clarification": "Requirements clarification",
+      "Clarification": "Draft · requirements clarification",
       "Backlog": "Backlog",
       "Analysis": "Analysis",
       "Architecture": "Architecture",
@@ -138,6 +138,13 @@
       "Testing": "Testing",
       "Rework": "Rework",
       "Deployment": "Deployment"
+    },
+    "stageManaged": "The application advances the stage after the accepted stage outcome.",
+    "stageState": "Stage state",
+    "stageStates": {
+      "Ready": "Awaiting execution",
+      "InProgress": "In progress",
+      "Completed": "Stage completed"
     }
   },
   "navigation": {
@@ -438,7 +445,8 @@
     "noActivity": "No activity yet",
     "summaryRequired": "Summary is required",
     "unassigned": "Unassigned",
-    "actions": "Actions"
+    "actions": "Actions",
+    "stage": "Stage"
   },
   "timeTracking": {
     "title": "Time tracking",

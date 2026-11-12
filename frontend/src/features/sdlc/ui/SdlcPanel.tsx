@@ -26,7 +26,7 @@ import {
   type ConfirmCommand,
   type RoutingPolicy,
 } from '@/api/sdlc'
-import { useSdlcTask } from '../model/use-sdlc'
+import { useSdlcTask, type SdlcSnapshotSource } from '../model/use-sdlc'
 import {
   canConfirmRequirementsContext,
   isRequirementsReviewContext,
@@ -69,12 +69,49 @@ const eventLabels = {
   'analysis.result_accepted': 'analysisResultAccepted',
 } satisfies Record<MetadataEvent['event_type'], string>
 
-export function SdlcPanel({ issueId }: { issueId: string }) {
+export function TaskStage({ source }: { source: SdlcSnapshotSource }) {
+  const { t } = useTranslation()
+  const { snapshot, authenticated } = source
+  const context = !snapshot.error ? snapshot.data?.context : undefined
+  return (
+    <div role="group" aria-label={t('issue.stage')} className="mb-4 space-y-1.5">
+      <span className="block text-text-muted">{t('issue.stage')}</span>
+      {!authenticated ? (
+        <p>{t('sdlc.errors.401')}</p>
+      ) : snapshot.isPending ? (
+        <p role="status">{t('sdlc.loading')}</p>
+      ) : snapshot.error ? (
+        <ErrorState
+          message={t(
+            `sdlc.errors.${snapshot.error instanceof SdlcRequestError ? snapshot.error.status : 'unknown'}`,
+            { defaultValue: t('sdlc.errors.unknown') },
+          )}
+          onRetry={() => void snapshot.refetch()}
+        />
+      ) : context ? (
+        <>
+          <p className="font-medium">{t(`sdlc.stages.${context.stage}`)}</p>
+          {context.status && (
+            <p>
+              {t('sdlc.stageState')}: {t(`sdlc.stageStates.${context.status}`)}
+            </p>
+          )}
+          <p className="text-text-muted">{t('sdlc.stageManaged')}</p>
+        </>
+      ) : (
+        <p>{t('sdlc.noContext')}</p>
+      )}
+    </div>
+  )
+}
+
+export function SdlcPanel({ source }: { source: SdlcSnapshotSource }) {
+  const { issueId } = source
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [cursors, setCursors] = useState(['0'])
   const after = cursors[cursors.length - 1] ?? '0'
-  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(issueId, after)
+  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(source, after)
   const [acknowledgedPin, setAcknowledgedPin] = useState<string | null>(null)
   const [publication, setPublication] = useState<{ pin: string; policy: RoutingPolicy } | null>(
     null,

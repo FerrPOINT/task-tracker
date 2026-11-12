@@ -35,6 +35,7 @@ function invalidateIssueSummaryQueries(
   invalidateIssueCollectionQueries(qc, projectKey)
   if (issueId) {
     qc.invalidateQueries({ queryKey: ['issue', issueId] })
+    qc.invalidateQueries({ queryKey: ['sdlc', issueId] })
   }
 }
 

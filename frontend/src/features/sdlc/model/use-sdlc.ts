@@ -4,7 +4,7 @@ import { getSdlcMetadata, getSdlcRoutingPolicy, getSdlcSnapshot } from '@/api/sd
 import { useAuthStore } from '@/shared/auth/store'
 import { canConfirmRequirementsContext } from './confirmation-context'
 
-export function useSdlcTask(issueId: string, after: string) {
+export function useSdlcSnapshot(issueId: string) {
   const token = useAuthStore((state) => state.token)
   // Never reuse a previous credential's scoped data or put a bearer in a query key.
   const session = useMemo(() => ({ token, cacheKey: crypto.randomUUID() }), [token])
@@ -16,6 +16,13 @@ export function useSdlcTask(issueId: string, after: string) {
     retry: false,
     gcTime: 0,
   })
+  return { issueId, snapshot, queryKey, authenticated: Boolean(session.token) }
+}
+
+export type SdlcSnapshotSource = ReturnType<typeof useSdlcSnapshot>
+
+export function useSdlcTask(source: SdlcSnapshotSource, after: string) {
+  const { issueId, snapshot, queryKey, authenticated } = source
   const forbidden =
     snapshot.error instanceof Error &&
     'status' in snapshot.error &&
@@ -23,7 +30,7 @@ export function useSdlcTask(issueId: string, after: string) {
   const metadata = useQuery({
     queryKey: [...queryKey, 'metadata', after],
     queryFn: ({ signal }) => getSdlcMetadata(issueId, after, signal),
-    enabled: Boolean(session.token && snapshot.data && !forbidden),
+    enabled: Boolean(authenticated && snapshot.data && !forbidden),
     retry: false,
     gcTime: 0,
   })
@@ -32,7 +39,7 @@ export function useSdlcTask(issueId: string, after: string) {
     queryKey: [...queryKey, 'routing-policy', context?.project_id, context?.tracker_instance_id],
     queryFn: ({ signal }) => getSdlcRoutingPolicy(context!, signal),
     enabled: Boolean(
-      session.token &&
+      authenticated &&
       canConfirmRequirementsContext(context) &&
       !forbidden &&
       !snapshot.error &&
@@ -41,5 +48,5 @@ export function useSdlcTask(issueId: string, after: string) {
     retry: false,
     gcTime: 0,
   })
-  return { snapshot, metadata, routingPolicy, queryKey, authenticated: Boolean(session.token) }
+  return { snapshot, metadata, routingPolicy, queryKey, authenticated }
 }

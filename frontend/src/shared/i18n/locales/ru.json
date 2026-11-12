@@ -129,7 +129,7 @@
     "eventSequence": "Номер записи журнала",
     "stages": {
       "Draft": "Черновик",
-      "Clarification": "Уточнение требований",
+      "Clarification": "Черновик · уточнение требований",
       "Backlog": "Бэклог",
       "Analysis": "Анализ",
       "Architecture": "Архитектура",
@@ -138,6 +138,13 @@
       "Testing": "Тестирование",
       "Rework": "Доработка",
       "Deployment": "Поставка"
+    },
+    "stageManaged": "Стадия меняется приложением по результатам этапа.",
+    "stageState": "Состояние этапа",
+    "stageStates": {
+      "Ready": "Ожидает выполнения",
+      "InProgress": "В работе",
+      "Completed": "Этап завершён"
     }
   },
   "navigation": {
@@ -438,7 +445,8 @@
     "noActivity": "Активности пока нет",
     "summaryRequired": "Укажите тему задачи",
     "unassigned": "Не назначен",
-    "actions": "Действия"
+    "actions": "Действия",
+    "stage": "Стадия"
   },
   "timeTracking": {
     "title": "Учёт времени",
