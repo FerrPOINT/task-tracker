@@ -36,7 +36,8 @@ PAT/delegation/machine scopes дополнительно. Public/legacy URL не
    подтверждённый drain без таймера/force stop. Wiki projection только от Tracker.
 5. Scoped checks в ходе работы, один integrated gate полного compatible serving
    cohort. Backend/SDK сначала, activation/UI затем; incompatible route блокирует.
-6. Dev Firebat2 installation через PDLC4 после backup/rehearsal. Rollback только
+6. Dev Firebat2 installation через PDLC4 после адресной проверки миграций и
+   сохранности данных. Резервные копии в Firebat2 dev не создаются. Rollback только
    compatible guarded cohort с новой policy/links. Served provenance и свежая IAB
    обычным/admin со screenshots после последнего изменения.
 
