@@ -17,6 +17,10 @@ const mockIssueLinks = vi.hoisted(() => vi.fn())
 const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
 const mockUseStatuses = vi.hoisted(() => vi.fn())
+const mockTaskSnapshot = vi.hoisted(() => vi.fn())
+vi.mock('@/features/sdlc/model/use-sdlc', () => ({
+  useSdlcSnapshot: (...args: unknown[]) => mockTaskSnapshot(...args),
+}))
 
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
@@ -68,10 +72,20 @@ vi.mock('@/shared/api/hooks', () => ({
   useIssue: (...args: unknown[]) => mockUseIssue(...args),
   useBoard: () => ({
     data: {
-      columns: [
-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [] },
-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
-      ],
+      sdlc: {
+        stages: [
+          'Draft',
+          'Backlog',
+          'Analysis',
+          'Architecture',
+          'Development',
+          'Review',
+          'Testing',
+          'Rework',
+          'Deployment',
+        ],
+        tasks: [{ issue_id: issueData.id, stage: 'Development', status: 'Ready' }],
+      },
       issues: [],
       project_id: 'p1',
       project_key: 'TT',
@@ -214,6 +228,9 @@ describe('IssueDetailPage', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   beforeEach(() => {
+    mockTaskSnapshot.mockReturnValue({
+      snapshot: { data: null, isLoading: false, error: null, refetch: vi.fn() },
+    })
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
@@ -247,7 +264,6 @@ describe('IssueDetailPage', () => {
     expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
     expect(mockUseIssue).toHaveBeenCalledWith('TT-1')
     expect(mockWorklogs).toHaveBeenCalledWith('i1')
-    expect(mockComments).toHaveBeenCalledWith('i1')
     expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/TT-1?tab=sdlc')
   })
 
@@ -255,6 +271,33 @@ describe('IssueDetailPage', () => {
     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(wrapper(<IssueDetailPage />))
     expect(screen.getByRole('status', { busy: true })).toBeVisible()
+  })
+
+  it('reports unavailable current requirements instead of presenting the original input as current', async () => {
+    const refetch = vi.fn()
+    mockTaskSnapshot.mockReturnValue({
+      snapshot: { data: null, isLoading: false, error: new Error('Unavailable'), refetch },
+    })
+    render(wrapper(<IssueDetailPage />))
+    expect(screen.getByText(/не удалось загрузить актуальные требования/i)).toBeVisible()
+    expect(screen.getByText('Test issue description')).toBeVisible()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('groups mobile properties before the activity tabs and keeps them out of the worklog', async () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=worklog'))
+    const properties = screen.getByText(/^(свойства задачи|task properties)$/i).closest('details')!
+    expect(properties).not.toHaveAttribute('open')
+    fireEvent.click(properties.querySelector('summary')!)
+    expect(within(properties).getByText(/^(связи|links)$/i)).toBeVisible()
+    expect(
+      properties.compareDocumentPosition(screen.getByRole('tablist')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      within(screen.getByRole('tabpanel')).queryByText(/^(связи|links|метки|labels)$/i),
+    ).not.toBeInTheDocument()
   })
 
   it('opens the real SDLC panel boundary with a shareable tab URL', async () => {
@@ -296,7 +339,7 @@ describe('IssueDetailPage', () => {
     expect(screen.getByLabelText('current location')).toHaveTextContent('tab=decomposition')
   })
 
-  it('keeps issue details available while worklogs load', () => {
+  it('keeps the discussion available while worklogs load', () => {
     mockWorklogs.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -304,7 +347,11 @@ describe('IssueDetailPage', () => {
     })
     render(wrapper(<IssueDetailPage />))
     expect(screen.getByText('Test issue summary')).toBeInTheDocument()
-    expect(screen.getByText(/загрузка активности|loading activity/i)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /обсуждение|discussion/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    expect(screen.getByText('This is a comment')).toBeInTheDocument()
   })
 
   it('shows a retryable issue error separately from a genuine 404', async () => {
@@ -340,11 +387,8 @@ describe('IssueDetailPage', () => {
     })
     render(wrapper(<IssueDetailPage />))
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      /не удалось загрузить журнал работ|could not load worklogs/i,
-    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByText('This is a comment')).toBeInTheDocument()
-    expect(screen.queryByText(/активности пока нет|no activity yet/i)).not.toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('tab', { name: /журнал работ|worklog/i }))
     expect(screen.getByRole('alert')).toHaveTextContent(
       /не удалось загрузить журнал работ|could not load worklogs/i,
@@ -363,7 +407,7 @@ describe('IssueDetailPage', () => {
     })
     render(wrapper(<IssueDetailPage />))
 
-    await userEvent.setup().click(screen.getByRole('tab', { name: /комментарии|comments/i }))
+    await userEvent.setup().click(screen.getByRole('tab', { name: /обсуждение|discussion/i }))
     expect(screen.getByRole('alert')).toHaveTextContent(
       /не удалось загрузить комментарии|could not load comments/i,
     )
@@ -375,8 +419,8 @@ describe('IssueDetailPage', () => {
   it('places editable details between the heading and activity in document order', () => {
     render(wrapper(<IssueDetailPage />))
     const heading = screen.getByText('Test issue summary')
-    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
-    const activity = screen.getByRole('tab', { name: /активность|activity/i })
+    const details = screen.getByText(/^(детали|details)$/i)
+    const activity = screen.getByRole('tab', { name: /обсуждение|discussion/i })
     expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(
       details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -449,9 +493,11 @@ describe('IssueDetailPage', () => {
     mockUseUpdateIssue.mockReturnValue({ mutate, isPending: false })
     render(wrapper(<IssueDetailPage />))
 
-    await userEvent
-      .setup()
-      .click(screen.getByRole('button', { name: /назначить на себя|assign to me/i }))
+    await userEvent.setup().click(
+      screen.getByRole('button', {
+        name: /назначить себя ответственным|assign myself as responsible/i,
+      }),
+    )
     expect(mutate).toHaveBeenCalledWith(
       { assignee_id: 'u1' },
       expect.objectContaining({ onError: expect.any(Function) }),
@@ -513,7 +559,7 @@ describe('IssueDetailPage', () => {
     expect(within(sidebar).getByRole('region', { name: /^(детали|details)$/i })).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
-    expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()
+    expect(within(sidebar).queryByRole('tab', { name: /обсуждение|discussion/i })).toBeNull()
   })
 
   it('preserves an unsaved issue draft when crossing the desktop breakpoint', async () => {
@@ -526,7 +572,9 @@ describe('IssueDetailPage', () => {
     vi.stubGlobal('matchMedia', () => media)
     render(wrapper(<IssueDetailPage />))
 
-    await userEvent.setup().click(screen.getByRole('button', { name: /изменить|edit/i }))
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /редактировать задачу|edit issue/i }))
     fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
       target: { value: 'Unsaved draft' },
     })
@@ -557,12 +605,27 @@ describe('IssueDetailPage', () => {
     render(wrapper(<IssueDetailPage />))
     await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
     expect(screen.getByText('Test issue description')).toBeInTheDocument()
+    expect(screen.getByLabelText(/статус|status/i)).toHaveTextContent(/разработка|development/i)
+    expect(screen.getByLabelText(/ответственный|assignee \(person\)/i)).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /активность|activity/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
+    expect(screen.queryByText(/^(кастомные поля|custom fields)$/i)).not.toBeInTheDocument()
+  })
+
+  it('opens and cancels a comment composer without duplicating the discussion', async () => {
+    render(wrapper(<IssueDetailPage />))
+    expect(screen.getAllByText('This is a comment')).toHaveLength(1)
+    expect(screen.queryByRole('textbox', { name: /комментарий|comment/i })).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /добавить комментарий|add comment/i }))
+    expect(screen.getByRole('textbox', { name: /комментарий|comment/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+    expect(screen.queryByRole('textbox', { name: /комментарий|comment/i })).not.toBeInTheDocument()
   })
 
   it('renders comments', async () => {
     render(wrapper(<IssueDetailPage />))
     await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
-    // Comments are in the Activity tab (default) and Comments tab
     expect(screen.getAllByText('This is a comment').length).toBeGreaterThanOrEqual(1)
   })
 
@@ -599,18 +662,18 @@ describe('IssueDetailPage', () => {
     const user = userEvent.setup()
     render(wrapper(<IssueDetailPage />, '/issues/i1?view=full'))
 
-    await user.click(screen.getByRole('tab', { name: /вложения|attachments/i }))
-    expect(screen.getByRole('tab', { name: /вложения|attachments/i })).toHaveAttribute(
+    await user.click(screen.getByRole('tab', { name: /журнал работ|worklog/i }))
+    expect(screen.getByRole('tab', { name: /журнал работ|worklog/i })).toHaveAttribute(
       'data-state',
       'active',
     )
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
-      '/issues/i1?view=full&tab=attachments',
+      '/issues/i1?view=full&tab=worklog',
     )
 
     await user.click(screen.getByRole('button', { name: 'Back in history' }))
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
+      expect(screen.getByRole('tab', { name: /обсуждение|discussion/i })).toHaveAttribute(
         'data-state',
         'active',
       ),
@@ -623,23 +686,56 @@ describe('IssueDetailPage', () => {
   it('opens a valid tab directly from the URL', () => {
     render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments&view=full'))
 
-    expect(screen.getByRole('tab', { name: /комментарии|comments/i })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /обсуждение|discussion/i })).toHaveAttribute(
       'data-state',
       'active',
     )
   })
 
-  it('removes an invalid tab from the URL', async () => {
-    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=unknown&view=full'))
+  it.each(['unknown', 'attachments'])(
+    'removes the obsolete or invalid %s tab from the URL',
+    async (tab) => {
+      render(wrapper(<IssueDetailPage />, `/issues/i1?tab=${tab}&view=full`))
 
-    await waitFor(() =>
-      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
-        '/issues/i1?view=full',
-      ),
-    )
-    expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
-      'data-state',
-      'active',
-    )
+      await waitFor(() =>
+        expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+          '/issues/i1?view=full',
+        ),
+      )
+      expect(screen.getByRole('tab', { name: /обсуждение|discussion/i })).toHaveAttribute(
+        'data-state',
+        'active',
+      )
+    },
+  )
+
+  it('keeps attachments under the description and task properties outside every activity panel', async () => {
+    vi.stubGlobal('matchMedia', () => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    render(wrapper(<IssueDetailPage />))
+    const attachments = screen.getByRole('region', { name: /вложения|attachments/i })
+    const description = screen.getByRole('region', { name: /описание|description/i })
+    expect(
+      description.compareDocumentPosition(attachments) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      attachments.compareDocumentPosition(screen.getByRole('tablist')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /вложения|attachments/i })).not.toBeInTheDocument()
+    const user = userEvent.setup()
+    for (const name of [/журнал работ|worklog/i, /^SDLC$/, /обсуждение|discussion/i]) {
+      await user.click(screen.getByRole('tab', { name }))
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText(/^(метки|labels|связи|links)$/i)).not.toBeInTheDocument()
+      expect(within(panel).queryByTestId('attachment-panel')).not.toBeInTheDocument()
+      expect(attachments).toBeVisible()
+      const sidebar = screen.getByRole('complementary')
+      expect(within(sidebar).getByText(/^(метки|labels)$/i)).toBeVisible()
+      expect(within(sidebar).getByText(/^(связи|links)$/i)).toBeVisible()
+    }
   })
 })

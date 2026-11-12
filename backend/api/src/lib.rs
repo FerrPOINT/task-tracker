@@ -331,7 +331,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         dto::CreateIssueRequest,
         dto::UpdateIssueRequest,
         dto::MoveIssueRequest,
-        dto::BoardColumnResponse,
+        dto::BoardColumnResponse, dto::SdlcBoardResponse,
         dto::CommentResponse,
         dto::CommentListResponse,
         dto::CreateCommentRequest,

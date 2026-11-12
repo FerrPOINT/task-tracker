@@ -46,6 +46,9 @@ mod spaces;
 mod stage_status;
 #[path = "sdlc_start.rs"]
 mod start;
+#[cfg(test)]
+#[path = "sdlc_board_tests.rs"]
+mod board_tests;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,
@@ -943,6 +946,51 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Option<&dyn domain::decomposition::DecompositionRepository> {
         Some(self)
     }
+    async fn board_tasks(
+        &self,
+        project: Uuid,
+        issues: &[Uuid],
+    ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+
+        let rows = self
+            .db
+            .query_all(statement(
+                "SELECT task_id, state->'stage' AS stage,
+                        NULLIF(state->'status', 'null'::jsonb) AS status
+                 FROM sdlc_tasks
+                 WHERE project_id = $1 AND tracker_instance_id = $2 AND task_id = ANY($3)",
+                vec![
+                    project.into(),
+                    self.config.instance_id.clone().into(),
+                    Value::Array(
+                        sea_orm::sea_query::ArrayType::Uuid,
+                        Some(Box::new(issues.iter().copied().map(Value::from).collect())),
+                    ),
+                ],
+            ))
+            .await
+            .map_err(map_db)?;
+        rows.into_iter()
+            .map(|row| {
+                let stage: Stage =
+                    serde_json::from_value(row.try_get::<Json>("", "stage").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
+                let status = row
+                    .try_get::<Option<Json>>("", "status")
+                    .map_err(map_db)?
+                    .map(serde_json::from_value::<LifecycleStatus>)
+                    .transpose()
+                    .map_err(AppError::internal)?;
+                Ok(SdlcBoardTask {
+                    issue_id: row.try_get("", "task_id").map_err(map_db)?,
+                    stage: LifecycleStage::from_legacy(stage),
+                    status,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
+
     fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
         Some(self)
     }

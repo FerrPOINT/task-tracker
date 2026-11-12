@@ -80,7 +80,8 @@
       "waiting_for_owner_answers": "Waiting for owner answers",
       "waiting_for_requirements_or_evidence": "Waiting for requirements or evidence",
       "waiting_for_owner_confirmation": "Waiting for owner confirmation",
-      "queued_for_analysis": "Queued, awaiting Analysis admission"
+      "queued_for_analysis": "Queued, awaiting Analysis admission",
+      "queued_for_assignment": "Awaiting agent assignment"
     },
     "document": {
       "goal": "Goal",
@@ -117,7 +118,11 @@
       "intentQueued": "Analysis intent queued",
       "assignmentPrepared": "Analysis assignment prepared, awaiting admission",
       "analysisResultAccepted": "Analysis result accepted"
-    }
+    },
+    "technicalDetails": "Technical details",
+    "revisionDetails": "Revision details",
+    "reasonCode": "Waiting reason code",
+    "unknownReason": "Unrecognized waiting reason; see technical details for the code."
   },
   "navigation": {
     "projects": "Projects",
@@ -232,7 +237,6 @@
     "done": "Done",
     "lead": "Lead",
     "createProject": "Create project",
-    "archived": "Archived",
     "manage": "Manage project",
     "managementUnavailable": "Project management is unavailable",
     "deleteDescription": "The project “{{name}}” and all its issues will be permanently deleted.",
@@ -255,13 +259,11 @@
     "noMatches": "No projects match your search."
   },
   "board": {
+    "sdlcUnavailable": "Agent board is unavailable: SDLC is not configured",
     "columns": "Board columns",
-    "density": "Board density",
-    "densityComfortable": "Comfortable",
-    "densityCompact": "Compact",
     "filters": "Filters",
     "addColumn": "Column",
-    "create": "Create",
+    "create": "New task",
     "wip": "WIP",
     "wipWarning": "⚠️",
     "backlog": "Backlog",
@@ -275,7 +277,24 @@
     "noTransitions": "No available transitions",
     "statusChanged": "Issue status changed",
     "emptyStatus": "No issues in this status",
-    "notAvailable": "not available"
+    "notAvailable": "not available",
+    "sdlcStage": {
+      "Draft": "Draft",
+      "Backlog": "Backlog",
+      "Analysis": "Analysis",
+      "Architecture": "Architecture",
+      "Development": "Development",
+      "Review": "Review",
+      "Testing": "Testing",
+      "Rework": "Rework",
+      "Deployment": "Deployment",
+      "Clarification": "Clarification"
+    },
+    "sdlcStatus": {
+      "Ready": "Awaiting execution",
+      "InProgress": "In progress",
+      "Completed": "Stage completed"
+    }
   },
   "backlog": {
     "createSprint": "Create sprint",
@@ -406,8 +425,6 @@
     "keyCopied": "Key copied.",
     "copyFailed": "Could not copy the key. Please try again.",
     "noDescription": "No description.",
-    "showMoreDescription": "Show full description",
-    "showLessDescription": "Collapse description",
     "loading": "Loading...",
     "loadingActivity": "Loading activity…",
     "loadError": "Could not load issue.",
@@ -422,7 +439,14 @@
     "noActivity": "No activity yet",
     "summaryRequired": "Summary is required",
     "unassigned": "Unassigned",
-    "actions": "Actions"
+    "actions": "Actions",
+    "editTitle": "Edit title",
+    "properties": "Task properties",
+    "requirementsLoadError": "Could not load the current task requirements.",
+    "discussion": "Discussion",
+    "responsible": "Assignee (person)",
+    "assignResponsibility": "Assign myself as responsible",
+    "editDescription": "Edit issue"
   },
   "timeTracking": {
     "title": "Time tracking",
@@ -460,7 +484,8 @@
       "remaining": "Remaining",
       "comment": "Comment",
       "actions": "Actions"
-    }
+    },
+    "noEstimate": "No estimate set"
   },
   "common": {
     "saved": "Saved",
@@ -716,7 +741,7 @@
     "configuredTitle": "Configured fields",
     "noFields": "No custom fields configured.",
     "loading": "Loading...",
-    "loadError": "Could not load fields. Please try again.",
+    "loadError": "Could not load custom fields.",
     "readOnly": "The data could not be confirmed. Showing the last confirmed values; local edits are retained and saving is unavailable until a successful read.",
     "createError": "Could not add the field. Check the details and try again.",
     "created": "Field added.",

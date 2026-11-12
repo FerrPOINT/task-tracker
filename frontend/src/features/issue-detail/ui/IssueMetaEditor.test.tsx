@@ -94,8 +94,8 @@ const columns: Board['columns'] = [
 describe('IssueMetaEditor', () => {
   it('presents compact properties and opens only the requested menu without writing', async () => {
     const onChange = vi.fn()
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
-    expect(screen.getAllByRole('combobox')).toHaveLength(3)
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
+    expect(screen.getAllByRole('combobox')).toHaveLength(2)
     expect(screen.getByRole('combobox', { name: /priority.*high/i })).toBeVisible()
     expect(screen.getByRole('combobox', { name: /assignee.*unassigned/i })).toBeVisible()
     const user = userEvent.setup()
@@ -115,7 +115,7 @@ describe('IssueMetaEditor', () => {
 
   it('saves one priority change and restores keyboard focus', async () => {
     const onChange = vi.fn()
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
     const user = userEvent.setup()
     const priority = screen.getByRole('combobox', { name: /priority/i })
     priority.focus()
@@ -125,18 +125,9 @@ describe('IssueMetaEditor', () => {
     expect(priority).toHaveFocus()
   })
 
-  it('keeps the current value and respects the available status transitions', async () => {
-    const onChange = vi.fn()
-    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('combobox', { name: /status/i }))
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'Open',
-      'In Progress',
-      'Done',
-    ])
-    await user.click(screen.getByRole('option', { name: 'Open' }))
-    expect(onChange).not.toHaveBeenCalled()
+  it('does not expose a manual lifecycle status selector', () => {
+    render(wrapper(<IssueMetaEditor issue={issue} onChange={vi.fn()} />))
+    expect(screen.queryByRole('combobox', { name: /status/i })).not.toBeInTheDocument()
   })
 
   it('offers every directory user and can clear an assignment', async () => {
@@ -145,7 +136,6 @@ describe('IssueMetaEditor', () => {
       wrapper(
         <IssueMetaEditor
           issue={{ ...issue, assignee_id: 'u1', assignee_name: 'Alice' }}
-          columns={columns}
           onChange={onChange}
         />,
       ),
@@ -162,7 +152,6 @@ describe('IssueMetaEditor', () => {
       wrapper(
         <IssueMetaEditor
           issue={{ ...issue, assignee_id: 'u4', assignee_name: 'Former User' }}
-          columns={columns}
           onChange={vi.fn()}
         />,
       ),
@@ -178,9 +167,7 @@ describe('IssueMetaEditor', () => {
     const onChange = vi.fn()
     const sprints = [{ id: 'sp1', name: 'Sprint 1' } as Sprint]
     const view = render(
-      wrapper(
-        <IssueMetaEditor issue={issue} columns={columns} sprints={sprints} onChange={onChange} />,
-      ),
+      wrapper(<IssueMetaEditor issue={issue} sprints={sprints} onChange={onChange} />),
     )
     const user = userEvent.setup()
     await user.click(screen.getByRole('combobox', { name: /sprint/i }))
@@ -190,7 +177,6 @@ describe('IssueMetaEditor', () => {
       wrapper(
         <IssueMetaEditor
           issue={{ ...issue, sprint_id: 'sp1' }}
-          columns={columns}
           sprints={sprints}
           onChange={onChange}
         />,
@@ -207,7 +193,7 @@ describe('IssueMetaEditor', () => {
       directory.loading = state === 'loading'
       directory.failed = state === 'failed'
       const onChange = vi.fn()
-      render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
+      render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
       const user = userEvent.setup()
       expect(screen.getByRole('combobox', { name: /assignee/i })).toBeDisabled()
       await user.click(screen.getByRole('combobox', { name: /assignee/i }))
@@ -222,17 +208,13 @@ describe('IssueMetaEditor', () => {
 
   it('closes an open choice while saving and allows editing again after pending ends', async () => {
     const onChange = vi.fn()
-    const view = render(
-      wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />),
-    )
+    const view = render(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
     const user = userEvent.setup()
     await user.click(screen.getByRole('combobox', { name: /priority/i }))
-    view.rerender(
-      wrapper(<IssueMetaEditor issue={issue} columns={columns} disabled onChange={onChange} />),
-    )
+    view.rerender(wrapper(<IssueMetaEditor issue={issue} disabled onChange={onChange} />))
     await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument())
     expect(screen.getByRole('combobox', { name: /priority/i })).toBeDisabled()
-    view.rerender(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
+    view.rerender(wrapper(<IssueMetaEditor issue={issue} onChange={onChange} />))
     await user.click(screen.getByRole('combobox', { name: /priority/i }))
     expect(screen.getByRole('listbox')).toBeInTheDocument()
     expect(onChange).not.toHaveBeenCalled()

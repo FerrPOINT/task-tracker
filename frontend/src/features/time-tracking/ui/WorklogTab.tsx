@@ -90,7 +90,7 @@ export function WorklogTab({
       {worklogs.length === 0 ? (
         <EmptyState message={t('timeTracking.worklog.empty')} />
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-[var(--shell-page-block-gap)]">
           <Card data-testid="worklog-table" className="hidden 2xl:block">
             <Table className="min-w-[720px]">
               <TableHeader>
@@ -159,7 +159,7 @@ export function WorklogTab({
             </Table>
           </Card>
 
-          <div className="space-y-3 2xl:hidden">
+          <div className="grid gap-[var(--shell-page-block-gap)] 2xl:hidden">
             {worklogs.map((w) => (
               <Card key={w.id}>
                 <CardContent className="space-y-2">

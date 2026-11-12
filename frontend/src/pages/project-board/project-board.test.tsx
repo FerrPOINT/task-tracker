@@ -9,22 +9,30 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
 import { beforeEach, describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
+import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
+import type { components } from '@/api/generated'
 
-const navigateToFleet = vi.hoisted(() => vi.fn())
-const boardHooks = vi.hoisted(() => ({
-  move: vi.fn(),
-  transitions: [] as Array<{ from_status_id: string; to_status_id: string }>,
+const fixture = vi.hoisted(() => ({
+  empty: false,
+  status: 'Ready' as 'Ready' | 'InProgress' | 'Completed',
+  stages: [
+    'Draft',
+    'Backlog',
+    'Analysis',
+    'Architecture',
+    'Development',
+    'Review',
+    'Testing',
+    'Rework',
+    'Deployment',
+  ] as components['schemas']['SdlcBoardResponse']['stages'],
 }))
-beforeEach(() => {
-  boardHooks.move.mockReset()
-  boardHooks.transitions = []
-})
+const navigateToFleet = vi.hoisted(() => vi.fn())
 vi.mock('@pdlc/ui/platform', async (original) => ({
   ...(await original<object>()),
   platformNavigate: navigateToFleet,
@@ -44,28 +52,58 @@ vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
     data: {
       project_key: 'TT',
+      sdlc: {
+        stages: fixture.stages,
+        tasks: fixture.empty
+          ? []
+          : [
+              { issue_id: 'i1', stage: 'Development', status: fixture.status },
+              { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+            ],
+      },
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
       columns: [
         { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
         { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
       ],
-      issues: [
-        {
-          id: 'i1',
-          key: 'TT-1',
-          summary: 'Do work',
-          priority: 'High',
-          issue_type: 'Task',
-          status_id: 'todo',
-          assignee_name: 'me',
-        },
-      ],
+      issues: fixture.empty
+        ? []
+        : [
+            {
+              id: 'i1',
+              key: 'TT-1',
+              summary: 'Do work',
+              priority: 'High',
+              issue_type: 'Task',
+              status_id: 'todo',
+              assignee_name: 'me',
+            },
+            ...(!fixture.empty
+              ? [
+                  {
+                    id: 'i2',
+                    key: 'TT-2',
+                    summary: 'Review work',
+                    priority: 'High',
+                    issue_type: 'Task',
+                    status_id: 'todo',
+                  },
+                  {
+                    id: 'i3',
+                    key: 'TT-3',
+                    summary: 'Ordinary work',
+                    priority: 'High',
+                    issue_type: 'Task',
+                    status_id: 'todo',
+                    status: 'To Do',
+                  },
+                ]
+              : []),
+          ],
     },
     isLoading: false,
     error: null,
   }),
-  useMoveIssue: () => ({ mutate: boardHooks.move, isPending: false }),
-  useTransitions: () => ({ data: boardHooks.transitions, isLoading: false }),
 }))
 
 function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board') {
@@ -81,119 +119,91 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
-  it.each([false, true])(
-    'keeps one native drop and owner transition checks (allowed=%s)',
-    (allowed) => {
-      boardHooks.transitions = allowed ? [{ from_status_id: 'todo', to_status_id: 'done' }] : []
-      render(wrapper(<ProjectBoardPage />))
-      const article = screen.getByRole('article')
-      const board = screen.getByRole('region', { name: 'Колонки доски' })
-      const target = within(board)
-        .getByText(/Готово|Done/)
-        .closest('.base-card')!
-      const transfer = { effectAllowed: '', setData: vi.fn(), getData: vi.fn(() => 'i1') }
-      expect(article).toHaveAttribute('draggable', 'true')
-      expect(article).not.toHaveAttribute('data-interactive')
-      expect(boardHooks.move).not.toHaveBeenCalled()
-      fireEvent.dragStart(article, { dataTransfer: transfer })
-      expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('text/plain', 'i1')
-      fireEvent.dragOver(target, { dataTransfer: transfer })
-      expect(target).toHaveAttribute('data-highlighted', 'true')
-      expect(boardHooks.move).not.toHaveBeenCalled()
-      fireEvent.drop(target, { dataTransfer: transfer })
-      expect(target).not.toHaveAttribute('data-highlighted')
-      if (allowed)
-        expect(boardHooks.move).toHaveBeenCalledExactlyOnceWith(
-          { issue_id: 'i1', status_id: 'done' },
-          expect.any(Object),
-        )
-      else expect(boardHooks.move).not.toHaveBeenCalled()
-    },
-  )
-  it('changes the visible status through the shared group without losing URL context or starting work', async () => {
-    function Address() {
-      const location = useLocation()
-      return <output aria-label="Current URL">{location.pathname + location.search}</output>
-    }
-    navigateToFleet.mockClear()
-    const user = userEvent.setup()
-    render(
-      wrapper(
-        <>
-          <ProjectBoardPage />
-          <Address />
-        </>,
-        '/projects/TT/board?source=qa&status=todo&registry_instance_id=registry-qa&namespace_id=ns-qa',
-      ),
-    )
-    const group = screen.getByRole('radiogroup', { name: 'Статус задач' })
-    expect(within(group).getByRole('radio', { name: /К выполнению|To Do/i })).toBeChecked()
-    await user.click(within(group).getByRole('radio', { name: /Готово|Done/i }))
-    await waitFor(() =>
-      expect(screen.getByLabelText('Current URL')).toHaveTextContent('status=done'),
-    )
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent('source=qa')
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent(
-      'registry_instance_id=registry-qa',
-    )
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent('namespace_id=ns-qa')
-    expect(within(group).getByRole('radio', { name: /Готово|Done/i })).toBeChecked()
-    expect(navigateToFleet).not.toHaveBeenCalled()
+  beforeEach(() => {
+    fixture.status = 'Ready'
   })
-  it('opens empty PM chat with the same immutable project from every board column', async () => {
+
+  it('groups the same issue status into separate SDLC stages without displaying ordinary cards', () => {
+    render(wrapper(<ProjectBoardPage />))
+    for (const [stage, card] of [
+      ['Разработка', 'Do work'],
+      ['Ревью', 'Review work'],
+    ] as const) {
+      const section = screen.getByRole('heading', { name: stage }).closest('section')
+      expect(section).toHaveTextContent(card)
+      expect(screen.getByText(card).closest('article')).not.toHaveAttribute('draggable')
+    }
+    expect(screen.queryByText('Ordinary work')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Доработка' })).toBeInTheDocument()
+  })
+
+  it('opens empty PM chat with the same immutable project from the board header', async () => {
     navigateToFleet.mockClear()
     const user = userEvent.setup()
     render(wrapper(<ProjectBoardPage />))
-    const actions = screen.getAllByRole('button', { name: 'Создать' })
-    expect(actions).toHaveLength(2)
+    const actions = screen.getAllByRole('button', { name: 'Новая задача' })
+    expect(actions).toHaveLength(1)
+    expect(
+      within(screen.getByRole('region', { name: 'Колонки доски' })).queryByRole('button', {
+        name: 'Новая задача',
+      }),
+    ).not.toBeInTheDocument()
     for (const action of actions) await user.click(action)
-    await waitFor(() => expect(navigateToFleet).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(navigateToFleet).toHaveBeenCalledTimes(1))
     expect(navigateToFleet).toHaveBeenCalledWith(
       'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
     )
   })
-  it('renders board columns and issue card', async () => {
+
+  it.each([
+    ['Ready', 'Ожидает выполнения'],
+    ['InProgress', 'В работе'],
+    ['Completed', 'Этап завершён'],
+  ] as const)('shows %s as the current stage state on the linked card', (status, label) => {
+    fixture.status = status
     render(wrapper(<ProjectBoardPage />))
-    const board = screen.getByRole('region', { name: 'Колонки доски' })
-    expect(board).toHaveAttribute('tabindex', '0')
-    expect(board).toHaveClass('md:grid-cols-2', 'xl:grid-cols-4')
-    expect(board).not.toHaveClass('overflow-x-auto')
-    const columns = await screen.findAllByText(/К выполнению/i)
-    expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
-    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
-    expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
+    const card = screen.getByRole('link', { name: 'TT-1 Do work' })
+    expect(card).toHaveAttribute('href', '/issues/i1')
+    expect(within(card).getByRole('heading', { name: 'Do work' })).toBeInTheDocument()
+    expect(within(card).getByText(label)).toBeInTheDocument()
+    expect(within(card).queryByText('Готово', { exact: true })).not.toBeInTheDocument()
+    expect(within(card).queryByText('Задача', { exact: true })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('img')).not.toBeInTheDocument()
+  })
+  it('renders all nine stages on an empty project', () => {
+    fixture.empty = true
+    try {
+      render(wrapper(<ProjectBoardPage />))
+      const board = screen.getByRole('region', { name: 'Колонки доски' })
+      expect(
+        within(board)
+          .getAllByRole('heading', { level: 2 })
+          .map((heading) => heading.textContent),
+      ).toEqual([
+        'Черновик',
+        'Бэклог',
+        'Анализ',
+        'Архитектура',
+        'Разработка',
+        'Ревью',
+        'Тестирование',
+        'Доработка',
+        'Развёртывание',
+      ])
+      expect(within(board).queryByRole('article')).not.toBeInTheDocument()
+    } finally {
+      fixture.empty = false
+    }
   })
 
-  it('switches to compact density without shrinking issue actions', async () => {
-    const user = userEvent.setup()
-    render(wrapper(<ProjectBoardPage />))
-
-    const compact = screen.getByRole('radio', { name: 'Компактная' })
-    const comfortable = screen.getByRole('radio', { name: 'Обычная' })
-    const issueCard = screen.getByText('Do work').closest('article')
-
-    expect(comfortable).toBeChecked()
-    expect(issueCard?.querySelector('.base-card-content')).toHaveAttribute(
-      'data-density',
-      'default',
-    )
-
-    await user.click(compact)
-
-    expect(compact).toBeChecked()
-    expect(issueCard?.querySelector('.base-card-content')).toHaveAttribute(
-      'data-density',
-      'compact',
-    )
-    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('h-10', 'w-10')
-  })
-
-  it('restores compact density from the board URL', () => {
-    render(wrapper(<ProjectBoardPage />, '/projects/TT/board?density=compact'))
-
-    expect(screen.getByRole('radio', { name: 'Компактная' })).toBeChecked()
-    expect(
-      screen.getByText('Do work').closest('article')?.querySelector('.base-card-content'),
-    ).toHaveAttribute('data-density', 'compact')
-  })
+  it.each(['', '?density=compact', '?density=comfortable'])(
+    'always renders compact cards without a density control (%s)',
+    (search) => {
+      render(wrapper(<ProjectBoardPage />, `/projects/TT/board${search}`))
+      expect(
+        screen.getByText('Do work').closest('article')?.querySelector('.base-card-content'),
+      ).toHaveAttribute('data-density', 'compact')
+      expect(screen.queryByRole('radiogroup', { name: 'Плотность доски' })).not.toBeInTheDocument()
+    },
+  )
 })

@@ -1,12 +1,13 @@
 import {
   ActionGroup,
+  Prose,
   Input,
   Button,
   Textarea,
   Notice,
   FormField,
   PageHeader,
-  Prose,
+  SectionHeader,
 } from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,6 +16,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import type { Issue } from '@/api/issue'
+import type { RequirementsRevision } from '@/api/sdlc'
 
 const schema = z.object({
   summary: z.string().min(1),
@@ -25,22 +27,21 @@ type FormData = z.infer<typeof schema>
 
 interface IssueDescriptionEditorProps {
   issue: Issue
-  onSubmit: (patch: { summary: string; description: string | null }) => Promise<unknown>
+  onSubmit: (patch: { summary: string; description?: string | null }) => Promise<unknown>
   disabled?: boolean
+  requirements?: RequirementsRevision | null
 }
 
-export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
+export function IssueDescriptionEditor({
+  issue,
+  onSubmit,
+  disabled,
+  requirements,
+}: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
-  const [editing, setEditing] = useState(false)
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [editing, setEditing] = useState<'title' | 'issue' | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const descriptionId = useId()
-  const descriptionLines = issue.description?.split('\n') ?? []
-  const compactDescription = descriptionLines.slice(0, 3).join('\n').slice(0, 160).trimEnd()
-  const hasLongDescription =
-    issue.description != null &&
-    (issue.description.length > 280 || descriptionLines.length > 5) &&
-    compactDescription.length < issue.description.length
   const {
     register,
     handleSubmit,
@@ -57,83 +58,29 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
   const startEdit = () => {
     reset({ summary: issue.summary, description: issue.description ?? '' })
     setSaveError(null)
-    setEditing(true)
+    setEditing(requirements ? 'title' : 'issue')
   }
 
   const cancel = () => {
-    setEditing(false)
+    setEditing(null)
     reset()
   }
 
   const submit = handleSubmit(async (data) => {
     setSaveError(null)
     try {
-      await onSubmit({
-        summary: data.summary,
-        description: data.description.trim() || null,
-      })
-      setEditing(false)
+      await onSubmit(
+        editing === 'title'
+          ? { summary: data.summary }
+          : { summary: data.summary, description: data.description.trim() || null },
+      )
+      setEditing(null)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : t('common.error'))
     }
   })
 
-  if (!editing) {
-    return (
-      <div className="group min-w-0 cursor-pointer" onClick={startEdit}>
-        <div className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <PageHeader title={issue.summary} />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              startEdit()
-            }}
-            disabled={disabled}
-            aria-label={t('common.edit')}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        </div>
-        {issue.description ? (
-          hasLongDescription ? (
-            <>
-              <div id={descriptionId} className="lg:hidden">
-                {renderDescription(
-                  descriptionExpanded ? issue.description : `${compactDescription}…`,
-                )}
-              </div>
-              <div className="hidden lg:block">{renderDescription(issue.description)}</div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-1 lg:hidden"
-                aria-controls={descriptionId}
-                aria-expanded={descriptionExpanded}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setDescriptionExpanded((value) => !value)
-                }}
-              >
-                {t(descriptionExpanded ? 'issue.showLessDescription' : 'issue.showMoreDescription')}
-              </Button>
-            </>
-          ) : (
-            renderDescription(issue.description)
-          )
-        ) : (
-          <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
-        )}
-      </div>
-    )
-  }
-
-  return (
+  const editor = (
     <form onSubmit={submit} className="space-y-3">
       <FormField
         id={`${descriptionId}-summary`}
@@ -150,22 +97,24 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           />
         )}
       </FormField>
-      <FormField id={descriptionId} label={t('issueCreate.description')}>
-        {(attrs) => (
-          <Textarea
-            {...attrs}
-            {...register('description')}
-            rows={8}
-            placeholder={t('issue.descriptionPlaceholder')}
-          />
-        )}
-      </FormField>
+      {editing === 'issue' && (
+        <FormField id={descriptionId} label={t('issueCreate.description')}>
+          {(attrs) => (
+            <Textarea
+              {...attrs}
+              {...register('description')}
+              rows={8}
+              placeholder={t('issue.descriptionPlaceholder')}
+            />
+          )}
+        </FormField>
+      )}
       {saveError && (
         <Notice role="alert" tone="danger" appearance="inline">
           {saveError}
         </Notice>
       )}
-      <ActionGroup align="start">
+      <ActionGroup>
         <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
@@ -183,22 +132,85 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
       </ActionGroup>
     </form>
   )
+
+  if (editing !== 'issue') {
+    return (
+      <div className="grid min-w-0 gap-4">
+        {editing === 'title' ? (
+          editor
+        ) : (
+          <div className="flex min-w-0 items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <PageHeader title={issue.summary} />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={startEdit}
+              disabled={disabled}
+              aria-label={t(requirements ? 'issue.editTitle' : 'issue.editDescription')}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <section aria-labelledby={`${descriptionId}-heading`} className="grid min-w-0 gap-3">
+          <SectionHeader
+            level={2}
+            headingId={`${descriptionId}-heading`}
+            title={t('issueCreate.description')}
+          />
+          {requirements ? (
+            <>
+              <p className="text-sm text-text-muted">
+                {t('sdlc.requirements')} · {t('sdlc.revision')} {requirements.revision}
+              </p>
+              <p className="text-sm text-text-secondary whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {requirements.goal}
+              </p>
+              {(['scope', 'acceptance_criteria'] as const).map((field) => (
+                <div key={field} className="grid min-w-0 gap-2">
+                  <SectionHeader level={3} title={t(`sdlc.document.${field}`)} />
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-text-secondary [overflow-wrap:anywhere]">
+                    {requirements[field].map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </>
+          ) : issue.description ? (
+            renderDescription(issue.description)
+          ) : (
+            <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
+          )}
+        </section>
+      </div>
+    )
+  }
+
+  return editor
 }
 
 function renderDescription(text: string) {
   const lines = text.split('\n')
   return (
-    <Prose>
+    <Prose className="min-w-0 space-y-3 text-sm text-text-secondary [overflow-wrap:anywhere]">
       {lines.map((line, idx) => {
         if (line.startsWith('· ')) {
           return (
-            <ul key={idx}>
+            <ul key={idx} className="ml-5 list-disc">
               <li>{line.slice(2)}</li>
             </ul>
           )
         }
         if (line.startsWith('# ')) {
-          return <h3 key={idx}>{line.slice(2)}</h3>
+          return (
+            <h3 key={idx} className="text-base font-semibold text-text-primary">
+              {line.slice(2)}
+            </h3>
+          )
         }
         if (line.trim() === '') {
           return <div key={idx} className="h-2" />

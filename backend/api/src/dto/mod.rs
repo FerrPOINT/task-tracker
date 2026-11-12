@@ -158,6 +158,12 @@ pub struct BoardColumnResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SdlcBoardResponse {
+    pub stages: Vec<domain::sdlc_lifecycle::LifecycleStage>,
+    pub tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SprintResponse {
     pub id: String,
     pub name: String,
@@ -176,7 +182,10 @@ pub struct SprintResponse {
 pub struct BoardResponse {
     pub project_id: String,
     pub project_key: String,
+    /// Status-board compatibility for existing v1 clients; the agent board uses sdlc.
     pub columns: Vec<BoardColumnResponse>,
+    /// Present when the SDLC service is configured. Reader failures remain errors.
+    pub sdlc: Option<SdlcBoardResponse>,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
     /// Total number of backlog (unscheduled) issues for the project.

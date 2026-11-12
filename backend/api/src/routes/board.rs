@@ -26,7 +26,7 @@ pub async fn get_board(
         .map_err(|e| AppError::invalid_input(e.to_string()))?;
     let requester = parse_user_id(&claims)?;
     let b = ctx.services.board.get_board(&key, requester).await?;
-    Ok(Json(map_board(b)))
+    Ok(Json(map_board(&ctx, b).await?))
 }
 
 /// Query parameters for backlog paging. Defaults: offset 0, limit 100
@@ -104,11 +104,31 @@ pub async fn move_issue(
         .board
         .move_issue(&key, issue_id, status_id, parse_user_id(&claims)?)
         .await?;
-    Ok(Json(map_board(b)))
+    Ok(Json(map_board(&ctx, b).await?))
 }
 
-fn map_board(b: app::dto::BoardDto) -> BoardResponse {
-    BoardResponse {
+async fn map_board(
+    ctx: &app::AppContext,
+    b: app::dto::BoardDto,
+) -> Result<BoardResponse, AppError> {
+    use domain::sdlc_lifecycle::LifecycleStage;
+
+    let sdlc = if let Some(service) = &ctx.sdlc {
+        let project = b.project_id.parse().map_err(AppError::internal)?;
+        let ids = b
+            .issues
+            .iter()
+            .map(|issue| issue.id.parse())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::internal)?;
+        Some(crate::dto::SdlcBoardResponse {
+            stages: LifecycleStage::BOARD_ORDER.to_vec(),
+            tasks: service.repository.board_tasks(project, &ids).await?,
+        })
+    } else {
+        None
+    };
+    Ok(BoardResponse {
         project_id: b.project_id,
         project_key: b.project_key,
         columns: b
@@ -121,6 +141,7 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
                 issue_ids: c.issue_ids,
             })
             .collect(),
+        sdlc,
         issues: b.issues.into_iter().map(map_issue).collect(),
         sprint: crate::dto::SprintResponse {
             id: b.sprint.id,
@@ -134,7 +155,7 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
             end_date: b.sprint.end_date,
         },
         backlog_total: b.backlog_total,
-    }
+    })
 }
 
 fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {

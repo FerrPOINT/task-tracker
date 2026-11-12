@@ -267,7 +267,8 @@ main/PR116 и предыдущие PM foundation/B-SDLC-01/B-SDLC-05 source edit
 
 Девять стадий: Draft, Backlog, Analysis, Architecture, Development, Review,
 Testing, Rework, Deployment. Операционные статусы Ready/InProgress/Completed
-независимы от stage. В UI: Готово/В работе/Завершено. Waiting/blocked/queued —
+независимы от stage. В UI состояние текущего этапа отображается как
+«Ожидает выполнения» / «В работе» / «Этап завершён». Waiting/blocked/queued —
 derived scheduler states, не новая стадия и не четвёртый операционный статус.
 
 Target aggregates (конкретные SQL migrations — дальнейшая реализация):

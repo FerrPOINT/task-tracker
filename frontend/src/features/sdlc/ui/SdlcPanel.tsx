@@ -105,6 +105,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     },
     onSettled: async () => {
       await snapshot.refetch()
+      await refreshDescription()
       await qc.invalidateQueries({ queryKey: [...queryKey, 'metadata'] })
       for (const key of [['issue', issueId], ['project'], ['backlog']]) {
         await qc.invalidateQueries({ queryKey: key })
@@ -119,8 +120,14 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
   const accessDenied =
     snapshot.error instanceof SdlcRequestError &&
     (snapshot.error.status === 401 || snapshot.error.status === 403)
+  const refreshDescription = () =>
+    qc.invalidateQueries({
+      queryKey: ['sdlc', issueId],
+      predicate: (query) => query.queryKey[3] === 'snapshot' && query.queryKey[2] !== queryKey[2],
+    })
   const refresh = async () => {
     const result = await snapshot.refetch()
+    await refreshDescription()
     if (result.data && !result.error) {
       await metadata.refetch()
       if (canConfirmRequirementsContext(result.data.context)) await routingPolicy.refetch()
@@ -219,28 +226,37 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
         )}
         <dl className="mb-4 min-w-0">
           <DescriptionItem layout="inline" label={t('sdlc.stage')}>
-            {context.stage}
+            {t(`board.sdlcStage.${context.stage}`)}
           </DescriptionItem>
           <DescriptionItem layout="inline" label={t('sdlc.reason')}>
             {context.waiting_reason
               ? t(`sdlc.reasons.${context.waiting_reason}`, {
-                  defaultValue: context.waiting_reason,
+                  defaultValue: t('sdlc.unknownReason'),
                 })
               : t('sdlc.noReason')}
           </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.instance')}>
-            {context.tracker_instance_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.project')}>
-            {context.project_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.root')}>
-            {context.root_task_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.owner')}>
-            {context.owner_subject}
-          </DescriptionItem>
         </dl>
+        <Disclosure summary={t('sdlc.technicalDetails')}>
+          <dl className="min-w-0">
+            <DescriptionItem layout="inline" label={t('sdlc.instance')}>
+              {context.tracker_instance_id}
+            </DescriptionItem>
+            <DescriptionItem layout="inline" label={t('sdlc.project')}>
+              {context.project_id}
+            </DescriptionItem>
+            <DescriptionItem layout="inline" label={t('sdlc.root')}>
+              {context.root_task_id}
+            </DescriptionItem>
+            <DescriptionItem layout="inline" label={t('sdlc.owner')}>
+              {context.owner_subject}
+            </DescriptionItem>
+            {context.waiting_reason && (
+              <DescriptionItem layout="inline" label={t('sdlc.reasonCode')}>
+                {context.waiting_reason}
+              </DescriptionItem>
+            )}
+          </dl>
+        </Disclosure>
 
         {context.stage === 'Analysis' &&
           (intent ? (
@@ -295,11 +311,13 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               }
               className="mb-2"
             />
-            <dl className="mb-4">
-              <DescriptionItem layout="inline" label="SHA-256">
-                {requirements.content_hash}
-              </DescriptionItem>
-            </dl>
+            <Disclosure summary={t('sdlc.revisionDetails')}>
+              <dl className="mb-4">
+                <DescriptionItem layout="inline" label="SHA-256">
+                  {requirements.content_hash}
+                </DescriptionItem>
+              </dl>
+            </Disclosure>
             {documentFields.map((field) => (
               <div key={field} className="mb-4 min-w-0">
                 <SectionHeader

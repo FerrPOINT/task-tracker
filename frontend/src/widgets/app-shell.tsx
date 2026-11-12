@@ -408,11 +408,13 @@ export function AppShell() {
           leading={
             <>
               {navigationTrigger}
-              <Button asChild variant="ghost" size="icon" className="hidden md:flex">
-                <Link to="/" aria-label={t('app.name')}>
-                  <PlatformMark size="shell" withName={false} />
-                </Link>
-              </Button>
+              <div className="hidden md:block">
+                <Button asChild variant="ghost" size="icon">
+                  <Link to="/" aria-label={t('app.name')}>
+                    <PlatformMark size="shell" withName={false} />
+                  </Link>
+                </Button>
+              </div>
             </>
           }
           context={
@@ -426,43 +428,50 @@ export function AppShell() {
                 projectUnavailable={projectQuery.isError}
               />
             ) : (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    aria-label={t('navigation.projects')}
-                    title={currentProject?.name ?? t('navigation.projects')}
-                    className="hidden min-w-0 max-w-32 lg:flex xl:max-w-52"
+              <div className="hidden min-w-0 lg:block">
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      aria-label={t('navigation.projects')}
+                      title={currentProject?.name ?? t('navigation.projects')}
+                      className="min-w-0 max-w-32 xl:max-w-52"
+                    >
+                      {currentProject && (
+                        <ProjectAvatar projectKey={currentProject.key} size="xs" />
+                      )}
+                      <span className="truncate">
+                        {currentProject?.name ?? t('navigation.projects')}
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
                   >
-                    {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
-                    <span className="truncate">
-                      {currentProject?.name ?? t('navigation.projects')}
-                    </span>
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
-                >
-                  <DropdownMenuItem asChild>
-                    <Link to="/projects" className="gap-2">
-                      <FolderKanban className="h-4 w-4" />
-                      {t('navigation.allProjects')}
-                    </Link>
-                  </DropdownMenuItem>
-                  {projects.map((project) => (
-                    <DropdownMenuItem key={project.key} asChild>
-                      <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
-                        <ProjectAvatar projectKey={project.key} size="xs" />
-                        <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                        <span className="text-xs text-text-muted">{project.key}</span>
+                    <DropdownMenuItem asChild>
+                      <Link to="/projects" className="gap-2">
+                        <FolderKanban className="h-4 w-4" />
+                        {t('navigation.allProjects')}
                       </Link>
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {projects.map((project) => (
+                      <DropdownMenuItem key={project.key} asChild>
+                        <Link
+                          to={`/projects/${project.key}/board`}
+                          className="justify-between gap-2"
+                        >
+                          <ProjectAvatar projectKey={project.key} size="xs" />
+                          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                          <span className="text-xs text-text-muted">{project.key}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )
           }
           actions={

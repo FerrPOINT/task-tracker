@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 import { SdlcPanel } from './SdlcPanel'
+import { useSdlcSnapshot } from '../model/use-sdlc'
 import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
@@ -154,6 +155,36 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   afterEach(() => {
     cleanup()
     useAuthStore.getState().logout()
+  })
+
+  it('refreshes the task description reader with the SDLC panel without changing routing admission', async () => {
+    function DescriptionReadback() {
+      const { snapshot } = useSdlcSnapshot(task)
+      return <output aria-label="task brief">{snapshot.data?.requirements?.goal}</output>
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <ThemeProvider>
+        <QueryClientProvider client={client}>
+          <DescriptionReadback />
+          <SdlcPanel issueId={task} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText('task brief')).toHaveTextContent(
+        'Exact goal shown to the owner',
+      ),
+    )
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      requirements: { ...initial.requirements!, goal: 'Updated task description' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh SDLC state' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('task brief')).toHaveTextContent('Updated task description'),
+    )
+    expect(confirmRequirements).not.toHaveBeenCalled()
   })
 
   it.each([

@@ -843,6 +843,16 @@ pub trait SdlcRepository: Send + Sync {
     ) -> Option<&dyn crate::decomposition::DecompositionRepository> {
         None
     }
+    async fn board_tasks(
+        &self,
+        _project: Uuid,
+        _issues: &[Uuid],
+    ) -> Result<Vec<crate::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        Err(AppError::Unavailable(
+            "SDLC board reader is unavailable".into(),
+        ))
+    }
+
     fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
         None
     }

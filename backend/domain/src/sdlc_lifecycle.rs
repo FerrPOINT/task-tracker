@@ -34,6 +34,18 @@ pub enum LifecycleStage {
 }
 
 impl LifecycleStage {
+    pub const BOARD_ORDER: [Self; 9] = [
+        Self::Draft,
+        Self::Backlog,
+        Self::Analysis,
+        Self::Architecture,
+        Self::Development,
+        Self::Review,
+        Self::Testing,
+        Self::Rework,
+        Self::Deployment,
+    ];
+
     pub fn from_legacy(stage: Stage) -> Self {
         match stage {
             Stage::Draft | Stage::Clarification => Self::Draft,
@@ -80,6 +92,14 @@ pub enum LifecycleStatus {
     Ready,
     InProgress,
     Completed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SdlcBoardTask {
+    pub issue_id: Uuid,
+    pub stage: LifecycleStage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]

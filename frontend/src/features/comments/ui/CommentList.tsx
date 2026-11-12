@@ -161,7 +161,7 @@ export function CommentList({ comments, currentUserId, onEdit, onDelete }: Comme
     return <EmptyState message={t('comments.empty')} />
   }
   return (
-    <div className="space-y-4">
+    <div className="grid gap-[var(--shell-page-block-gap)]">
       {comments.map((comment) => (
         <CommentItem
           key={comment.id}
@@ -183,6 +183,7 @@ interface CommentsPanelProps {
 export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState<Comment | null>(null)
+  const [creating, setCreating] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -202,7 +203,10 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
     )
   }
 
-  const handleCreate = (input: CreateCommentInput) => create.mutateAsync(input)
+  const handleCreate = async (input: CreateCommentInput) => {
+    await create.mutateAsync(input)
+    setCreating(false)
+  }
 
   const handleUpdate = async (input: UpdateCommentInput) => {
     if (!editing) return
@@ -211,6 +215,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   }
 
   const handleEdit = (comment: Comment) => {
+    setCreating(false)
     setEditing(comment)
   }
 
@@ -221,7 +226,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid gap-[var(--shell-page-block-gap)]">
       {commentsQuery.error && (
         <ErrorState
           message={t('comments.loadError')}
@@ -235,8 +240,18 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
           onCancel={() => setEditing(null)}
           submitLabel={t('common.save')}
         />
+      ) : creating ? (
+        <CommentForm
+          onSubmit={handleCreate}
+          onCancel={() => setCreating(false)}
+          submitLabel={t('comments.add')}
+        />
       ) : (
-        <CommentForm onSubmit={handleCreate} submitLabel={t('comments.add')} />
+        <div className="flex justify-end">
+          <Button type="button" size="sm" onClick={() => setCreating(true)}>
+            {t('comments.add')}
+          </Button>
+        </div>
       )}
       <CommentList
         comments={comments ?? []}
