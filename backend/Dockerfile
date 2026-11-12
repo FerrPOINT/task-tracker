@@ -23,13 +23,14 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
-RUN cargo build --locked --release --bin server
+RUN cargo build --locked --release --bin server --bin migration
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r tasktracker && useradd -r -g tasktracker -d /app -s /usr/sbin/nologin tasktracker
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/task-tracker-server
+COPY --from=builder /app/target/release/migration /usr/local/bin/task-tracker-migrate
 RUN mkdir -p /var/lib/tasktracker/uploads && chown -R tasktracker:tasktracker /var/lib/tasktracker
 USER tasktracker
 ENV TASKTRACKER_UPLOADS_DIR=/var/lib/tasktracker/uploads
