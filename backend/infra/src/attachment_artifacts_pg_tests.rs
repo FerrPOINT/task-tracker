@@ -626,10 +626,6 @@ async fn prepare_standalone_analyst_tool_fixture() {
     )
     .await
     .unwrap();
-    f.repo
-        .config
-        .single_task_project_ids
-        .insert(foreign_project);
     crate::sdlc::source::configure_test_source(&f.repo, foreign_project, &f.owner).await;
     f.repo
         .set_routing_policy(

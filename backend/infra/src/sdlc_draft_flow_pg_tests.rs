@@ -28,17 +28,12 @@ pub(super) fn single_task_routes() -> RoleRoutes {
     parse(value)
 }
 
-fn config(project: Uuid, enabled: bool) -> SdlcConfig {
+fn config() -> SdlcConfig {
     SdlcConfig {
         instance_id: "draft-flow-test".into(),
         orchestrator_subject: "pm".into(),
         verifier_subject: "verifier".into(),
         reservation_scheduler_subject: "scheduler".into(),
-        single_task_project_ids: if enabled {
-            [project].into_iter().collect()
-        } else {
-            Default::default()
-        },
     }
 }
 
@@ -142,10 +137,10 @@ async fn draft_flow_seed() {
     exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'DFT','Draft flow',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
     exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Draft','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
     exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub IN ('pm','verifier','member')",vec![project.into()]).await.unwrap();
-    let repo = PostgresSdlcRepository::connect(&url, config(project, true))
+    let repo = PostgresSdlcRepository::connect(&url, config())
         .await
         .unwrap();
-    let disabled = PostgresSdlcRepository::connect(&url, config(project, false))
+    let disabled = PostgresSdlcRepository::connect(&url, config())
         .await
         .unwrap();
     let owner = actor("owner", true, vec![]);
@@ -208,10 +203,6 @@ async fn draft_flow_seed() {
     let marked = create("marked", Some(DraftFlow::SingleTaskV1));
     crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
     let before = checkpoint_counts(&db).await;
-    assert!(matches!(
-        disabled.create_draft(project, &owner, marked.clone()).await,
-        Err(AppError::Unavailable(_))
-    ));
     assert!(
         repo.create_draft(project, &owner, marked.clone())
             .await

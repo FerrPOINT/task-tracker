@@ -68,15 +68,7 @@ impl PostgresSdlcRepository {
         query.validate()?;
         let tx = self.db.begin().await.map_err(map_db)?;
         Self::project_access(&tx, query.project_id, actor).await?;
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&query.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
+        self.single_task_policy(&tx, query.project_id).await?;
         let rows = tx
             .query_all(statement(
                 CANDIDATES_SQL,

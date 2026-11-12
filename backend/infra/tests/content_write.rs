@@ -168,7 +168,6 @@ async fn content_writes_require_current_actor_role_and_active_admitted_space_thr
             orchestrator_subject: String::new(),
             verifier_subject: String::new(),
             reservation_scheduler_subject: String::new(),
-            single_task_project_ids: Default::default(),
         },
     )
     .await

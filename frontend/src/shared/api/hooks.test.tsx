@@ -208,7 +208,7 @@ describe('shared api hooks', () => {
     })
 
     await act(async () => {
-      await result.current.mutateAsync({ status_id: 'status-1' })
+      await result.current.mutateAsync({ summary: 'Updated issue' })
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })

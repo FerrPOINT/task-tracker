@@ -1129,18 +1129,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 "configured CLI PM completion does not opt in to downstream delivery",
             ));
         }
-        if matches!(
-            command,
-            LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
-        ) && !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
         let before = current(&tx, task).await?;
         let mut receipt = match before.clone() {
             Some(receipt) => receipt,

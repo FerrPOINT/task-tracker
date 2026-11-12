@@ -68,10 +68,21 @@ vi.mock('@/shared/api/hooks', () => ({
   useIssue: (...args: unknown[]) => mockUseIssue(...args),
   useBoard: () => ({
     data: {
-      columns: [
-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [] },
-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
-      ],
+      sdlc: {
+        stages: [
+          'Draft',
+          'Backlog',
+          'Analysis',
+          'Architecture',
+          'Development',
+          'Review',
+          'Testing',
+          'Rework',
+          'Deployment',
+        ],
+        tasks: [{ issue_id: 'i1', stage: 'Development', status: 'InProgress' }],
+      },
+      backlog_total: 0,
       issues: [],
       project_id: 'p1',
       project_key: 'TT',
@@ -391,18 +402,29 @@ describe('IssueDetailPage', () => {
     const summary = disclosure.querySelector('summary')!
     await userEvent.click(summary)
     expect(disclosure.open).toBe(true)
-    expect(within(details).getAllByRole('combobox')).toHaveLength(4)
+    expect(within(details).getAllByRole('combobox')).toHaveLength(3)
+    expect(
+      within(details).queryByRole('combobox', { name: /статус|status/i }),
+    ).not.toBeInTheDocument()
+    expect(within(details).getByText(/разработка|development/i)).toHaveTextContent(
+      /в работе|in progress/i,
+    )
     await userEvent.click(summary)
     expect(disclosure.open).toBe(false)
     expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
   })
 
-  it('uses the status catalog for the mobile summary when the legacy label is unknown', () => {
+  it('shows the saved lifecycle instead of an unknown legacy label or a custom status catalog', () => {
     mockUseIssue.mockReturnValue({ data: { ...issueData, status: 'Unknown' }, isLoading: false })
     mockUseStatuses.mockReturnValue({ data: [{ id: 'in-progress', name: 'SDLC Ready' }] })
     render(wrapper(<IssueDetailPage />))
-    expect(document.querySelector('details > summary')).toHaveTextContent('SDLC Ready')
-    expect(document.querySelector('details > summary')).not.toHaveTextContent('Unknown')
+    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
+    expect(within(details).getByText(/разработка|development/i)).toHaveTextContent(
+      /в работе|in progress/i,
+    )
+    expect(details).not.toHaveTextContent('SDLC Ready')
+    expect(details).not.toHaveTextContent('Unknown')
+    expect(mockUseStatuses).not.toHaveBeenCalled()
   })
 
   it('links the issue back to its project board', () => {

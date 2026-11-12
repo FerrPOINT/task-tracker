@@ -11,7 +11,6 @@ fn config() -> SdlcConfig {
         orchestrator_subject: "pm".into(),
         verifier_subject: "verifier".into(),
         reservation_scheduler_subject: "scheduler".into(),
-        single_task_project_ids: Default::default(),
     }
 }
 

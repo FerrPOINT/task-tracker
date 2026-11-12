@@ -410,9 +410,9 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
 
 async fn create_demo_issue(ctx: &AppContext, user: &User, summary: &str) -> IssueId {
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -516,9 +516,9 @@ async fn auth_expired_token_fails_verification() {
 async fn issue_service_create() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -562,12 +562,12 @@ async fn issue_service_create() {
 }
 
 #[tokio::test]
-async fn issue_service_update_and_move() {
+async fn issue_service_update() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let todo_id = board.columns[0].id.to_string();
@@ -622,132 +622,6 @@ async fn issue_service_update_and_move() {
     assert_eq!(updated.priority, "High");
     assert_eq!(updated.status, "In Progress");
     assert_eq!(updated.assignee_name, Some("Demo User".to_string()));
-
-    let board = ctx
-        .services
-        .board
-        .move_issue(
-            &project_key,
-            created.id.parse().unwrap(),
-            in_progress_id.parse().unwrap(),
-            user.id,
-        )
-        .await
-        .unwrap();
-    let col = board
-        .columns
-        .iter()
-        .find(|c| c.name == "In Progress")
-        .unwrap();
-    assert!(col.issue_ids.contains(&created.id));
-}
-
-#[tokio::test]
-async fn board_move_issue_publishes_issue_moved_event() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let project_key = ProjectKey::new("TT");
-    let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
-        .await
-        .unwrap();
-    let issue = ctx
-        .services
-        .issue
-        .create(
-            CreateIssueCommand {
-                operation_id: None,
-                project_key: project_key.clone(),
-                summary: "Move from board".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id: board.columns[0].id.to_string(),
-                reporter_id: user.id,
-                assignee_id: None,
-                actor_id: user.id,
-                custom_fields: Default::default(),
-            },
-            user.id,
-        )
-        .await
-        .unwrap();
-    let mut receiver = ctx.events.subscribe();
-    while receiver.try_recv().is_ok() {}
-
-    ctx.services
-        .board
-        .move_issue(
-            &project_key,
-            issue.id.parse().unwrap(),
-            board.columns[1].id.parse().unwrap(),
-            user.id,
-        )
-        .await
-        .unwrap();
-
-    let event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(matches!(
-        event,
-        shared::TrackerEvent::IssueMoved {
-            issue_id: ref actual_issue_id,
-            project_key: ref actual_project_key,
-        } if actual_issue_id == &issue.id && actual_project_key == "TT"
-    ));
-}
-
-#[tokio::test]
-async fn board_move_same_status_is_noop_for_history_and_events() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let project_key = ProjectKey::new("TT");
-    let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
-        .await
-        .unwrap();
-    let status_id: StatusId = board.columns[0].id.parse().unwrap();
-    let issue = ctx
-        .services
-        .issue
-        .create(
-            CreateIssueCommand {
-                operation_id: None,
-                project_key: project_key.clone(),
-                summary: "Board same status".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id: status_id.to_string(),
-                reporter_id: user.id,
-                assignee_id: None,
-                actor_id: user.id,
-                custom_fields: Default::default(),
-            },
-            user.id,
-        )
-        .await
-        .unwrap();
-
-    let mut receiver = ctx.events.subscribe();
-    ctx.services
-        .board
-        .move_issue(&project_key, issue.id.parse().unwrap(), status_id, user.id)
-        .await
-        .unwrap();
-
-    assert!(receiver.try_recv().is_err());
-    let history = ctx
-        .repos
-        .issue_status_history
-        .list_by_issue(issue.id.parse().unwrap())
-        .await
-        .unwrap();
-    assert_eq!(history.len(), 1);
 }
 
 #[tokio::test]
@@ -755,12 +629,12 @@ async fn transition_same_status_is_noop_for_history_and_events() {
     let (ctx, user) = ctx_with_demo_data().await;
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
-    let status_id: StatusId = board.columns[0].id.parse().unwrap();
+    let status_id: StatusId = board.columns[0].id;
     let issue = ctx
         .services
         .issue
@@ -813,9 +687,9 @@ async fn issue_create_rejects_non_member_assignee_and_reporter() {
     let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
     ctx.repos.users.save(&outsider).await.unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -873,9 +747,9 @@ async fn issue_update_rejects_non_member_assignee() {
     let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
     ctx.repos.users.save(&outsider).await.unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -923,13 +797,13 @@ async fn issue_update_prevalidates_assignee_before_status_transition() {
     let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
     ctx.repos.users.save(&outsider).await.unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let todo: StatusId = board.columns[0].id.parse().unwrap();
-    let done: StatusId = board.columns[3].id.parse().unwrap();
+    let todo: StatusId = board.columns[0].id;
+    let done: StatusId = board.columns[3].id;
     let issue = ctx
         .services
         .issue
@@ -986,9 +860,9 @@ async fn issue_update_prevalidates_assignee_before_status_transition() {
 async fn issue_update_distinguishes_omitted_and_null_assignee() {
     let (ctx, owner) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -1052,9 +926,9 @@ async fn issue_update_distinguishes_omitted_and_null_assignee() {
 async fn issue_update_same_status_is_noop_for_workflow_history() {
     let (ctx, owner) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let initial_status_id = board.columns[0].id.to_string();
@@ -1112,9 +986,9 @@ async fn issue_update_same_status_is_noop_for_workflow_history() {
 async fn dashboard_lists_assigned_issues() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -1155,16 +1029,16 @@ async fn dashboard_does_not_show_assigned_issues_from_inaccessible_projects() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let mut issue = Issue::create(
         &project,
         404,
         IssueType::Task,
-        board.columns[0].id.parse().unwrap(),
+        board.columns[0].id,
         "Legacy assignment",
         None,
         owner.id,
@@ -1186,9 +1060,9 @@ async fn dashboard_does_not_show_assigned_issues_from_inaccessible_projects() {
 async fn search_finds_issue() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -1232,12 +1106,12 @@ async fn issue_service_search_defaults_to_newest_first() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let status_id = board.columns[0].id.parse().unwrap();
+    let status_id = board.columns[0].id;
     let now = shared::now();
     let mut older = Issue::create(
         &project,
@@ -1531,82 +1405,6 @@ async fn project_list_skips_stale_accessible_project_id() {
 }
 
 #[tokio::test]
-async fn board_service_backlog() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
-        .await
-        .unwrap();
-    let status_id = board.columns[0].id.to_string();
-    ctx.services
-        .issue
-        .create(
-            CreateIssueCommand {
-                operation_id: None,
-                project_key: ProjectKey::new("TT"),
-                summary: "Backlog item".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id,
-                reporter_id: user.id,
-                assignee_id: None,
-                actor_id: user.id,
-                custom_fields: Default::default(),
-            },
-            user.id,
-        )
-        .await
-        .unwrap();
-    let backlog = ctx
-        .services
-        .board
-        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 100)
-        .await
-        .unwrap();
-    assert_eq!(backlog.backlog_issues.len(), 1);
-    assert_eq!(backlog.backlog_issues[0].summary, "Backlog item");
-}
-
-#[tokio::test]
-async fn board_service_backlog_uses_project_todo_before_unrelated_catalog_status() {
-    let (base, user) = ctx_with_demo_data().await;
-    let issue = create_demo_issue(&base, &user, "Project backlog item").await;
-    let mut statuses = base.repos.statuses.list_all().await.unwrap();
-    statuses.insert(
-        0,
-        Status {
-            id: StatusId::new(),
-            name: "Another workflow's Todo".into(),
-            category: StatusCategory::Todo,
-            position: 0,
-            is_default: false,
-            is_closed: false,
-        },
-    );
-    let repos = Arc::new(domain::Repositories {
-        statuses: Arc::new(domain::MemoryStatusRepository::new(statuses)),
-        ..(*base.repos).clone()
-    });
-    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
-    let key = ProjectKey::new("TT");
-    let backlog = ctx
-        .services
-        .board
-        .get_backlog(&key, user.id, 0, 100)
-        .await
-        .unwrap();
-    assert_eq!(backlog.backlog_total, 1);
-    assert_eq!(backlog.backlog_issues.len(), 1);
-    assert_eq!(backlog.backlog_issues[0].id, issue.to_string());
-    assert!(backlog.sprint_issues.is_empty());
-    let board = ctx.services.board.get_board(&key, user.id).await.unwrap();
-    assert_eq!(board.backlog_total, 1);
-}
-
-#[tokio::test]
 async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
     let (ctx, user) = ctx_with_demo_data().await;
     let project = ctx
@@ -1616,9 +1414,9 @@ async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let todo_status_id = board.columns[0].id.to_string();
@@ -1722,124 +1520,20 @@ async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
         .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
-    let backlog_view = ctx
-        .services
-        .board
-        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 100)
-        .await
-        .unwrap();
 
     assert_eq!(board_view.sprint.id, sprint.id);
-    assert_eq!(backlog_view.sprint.id, sprint.id);
     assert_eq!(board_view.sprint.issue_ids, vec![sprint_issue.id.clone()]);
-    assert_eq!(backlog_view.sprint.issue_ids, vec![sprint_issue.id.clone()]);
     assert!(!board_view.sprint.issue_ids.contains(&backlog_issue.id));
-    assert!(!backlog_view.sprint.issue_ids.contains(&non_sprint_issue.id));
-}
-
-#[tokio::test]
-async fn backlog_offset_reaches_later_items_without_duplicates() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
-        .await
-        .unwrap();
-    let status_id = board.columns[0].id.to_string();
-    for summary in ["Backlog page 1", "Backlog page 2", "Backlog page 3"] {
-        ctx.services
-            .issue
-            .create(
-                CreateIssueCommand {
-                    operation_id: None,
-                    project_key: ProjectKey::new("TT"),
-                    summary: summary.to_string(),
-                    description: None,
-                    issue_type: IssueType::Task,
-                    priority: Priority::Medium,
-                    status_id: status_id.clone(),
-                    reporter_id: user.id,
-                    assignee_id: None,
-                    actor_id: user.id,
-                    custom_fields: Default::default(),
-                },
-                user.id,
-            )
-            .await
-            .unwrap();
-    }
-    let first = ctx
-        .services
-        .board
-        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 1)
-        .await
-        .unwrap();
-    let second = ctx
-        .services
-        .board
-        .get_backlog(&ProjectKey::new("TT"), user.id, 1, 1)
-        .await
-        .unwrap();
-    assert_eq!(first.backlog_total, 3);
-    assert_eq!(first.backlog_offset, 0);
-    assert_eq!(second.backlog_offset, 1);
-    assert_eq!(first.backlog_issues.len(), 1);
-    assert_eq!(second.backlog_issues.len(), 1);
-    assert_ne!(first.backlog_issues[0].id, second.backlog_issues[0].id);
-}
-
-#[tokio::test]
-async fn backlog_offset_reaches_items_beyond_default_issue_cap() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
-        .await
-        .unwrap();
-    let status_id = board.columns[0].id.to_string();
-    for idx in 0..1005 {
-        ctx.services
-            .issue
-            .create(
-                CreateIssueCommand {
-                    operation_id: None,
-                    project_key: ProjectKey::new("TT"),
-                    summary: format!("Large backlog {idx:04}"),
-                    description: None,
-                    issue_type: IssueType::Task,
-                    priority: Priority::Medium,
-                    status_id: status_id.clone(),
-                    reporter_id: user.id,
-                    assignee_id: None,
-                    actor_id: user.id,
-                    custom_fields: Default::default(),
-                },
-                user.id,
-            )
-            .await
-            .unwrap();
-    }
-
-    let backlog = ctx
-        .services
-        .board
-        .get_backlog(&ProjectKey::new("TT"), user.id, 1000, 10)
-        .await
-        .unwrap();
-    assert_eq!(backlog.backlog_total, 1005);
-    assert_eq!(backlog.backlog_offset, 1000);
-    assert_eq!(backlog.backlog_issues.len(), 5);
+    assert!(!board_view.sprint.issue_ids.contains(&non_sprint_issue.id));
 }
 
 #[tokio::test]
 async fn project_counters_include_issues_beyond_default_issue_cap() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -1945,9 +1639,9 @@ async fn issue_service_create_fails_for_invalid_status_id() {
 async fn issue_service_update_fails_for_invalid_status_id() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let created = ctx
@@ -2015,24 +1709,6 @@ async fn issue_service_update_fails_for_missing_issue() {
                 fix_version_id: None,
                 actor_id: shared::UserId::new(),
             },
-            shared::UserId::new(),
-        )
-        .await;
-    assert!(err.is_err());
-}
-
-#[tokio::test]
-async fn board_move_issue_fails_for_missing_issue() {
-    let (ctx, _user) = ctx_with_demo_data().await;
-    let err = ctx
-        .services
-        .board
-        .move_issue(
-            &ProjectKey::new("TT"),
-            shared::IssueId::new(),
-            StatusId::from_uuid(
-                uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
-            ),
             shared::UserId::new(),
         )
         .await;
@@ -2314,6 +1990,13 @@ fn failing_context() -> AppContext {
     struct FailingBoardRepository;
     #[async_trait::async_trait]
     impl BoardRepository for FailingBoardRepository {
+        async fn sdlc_tasks(
+            &self,
+            _project: ProjectId,
+            _issues: &[IssueId],
+        ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+            Err(AppError::Internal("failing board repo".into()))
+        }
         async fn get_by_id(&self, _id: shared::BoardId) -> Result<Board, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -2442,6 +2125,105 @@ async fn board_get_propagates_repo_error() {
 }
 
 #[tokio::test]
+async fn unified_board_reads_saved_stages_without_automation_and_checks_project_access_first() {
+    use crate::context::BoardService;
+    use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SavedStage {
+        project: ProjectId,
+        task: IssueId,
+        reads: Arc<AtomicUsize>,
+    }
+    #[async_trait::async_trait]
+    impl BoardRepository for SavedStage {
+        async fn sdlc_tasks(
+            &self,
+            project: ProjectId,
+            issues: &[IssueId],
+        ) -> Result<Vec<SdlcBoardTask>, AppError> {
+            assert_eq!(project, self.project);
+            assert!(issues.contains(&self.task));
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![SdlcBoardTask {
+                issue_id: self.task.as_uuid(),
+                stage: LifecycleStage::Testing,
+                status: Some(LifecycleStatus::InProgress),
+            }])
+        }
+        async fn get_by_id(&self, id: shared::BoardId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_by_id(id).await
+        }
+        async fn get_default_by_project(&self, project: ProjectId) -> Result<Board, AppError> {
+            domain::StubBoardRepository
+                .get_default_by_project(project)
+                .await
+        }
+        async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError> {
+            domain::StubBoardRepository
+                .get_default_by_project_key(key)
+                .await
+        }
+        async fn save(&self, board: &Board) -> Result<(), AppError> {
+            domain::StubBoardRepository.save(board).await
+        }
+    }
+
+    let (ctx, user) = ctx_with_demo_data().await;
+    assert!(ctx.sdlc.is_none());
+    let legacy = create_demo_issue(&ctx, &user, "Historical card").await;
+    let tracked = create_demo_issue(&ctx, &user, "Tracked card").await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let board = super::board::BoardServiceImpl::new(
+        Arc::new(SavedStage {
+            project: project.id,
+            task: tracked,
+            reads: reads.clone(),
+        }),
+        ctx.repos.issues.clone(),
+        ctx.repos.sprints.clone(),
+        ctx.repos.users.clone(),
+        ctx.repos.labels.clone(),
+        ctx.repos.projects.clone(),
+        ctx.authz.clone(),
+    );
+    let result = board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    assert_eq!(result.cards.len(), 2);
+    let tracked = &result
+        .cards
+        .iter()
+        .find(|(issue, _)| issue.id == tracked.to_string())
+        .unwrap()
+        .1;
+    assert_eq!(tracked.stage, LifecycleStage::Testing);
+    assert_eq!(tracked.status, Some(LifecycleStatus::InProgress));
+    let legacy = &result
+        .cards
+        .iter()
+        .find(|(issue, _)| issue.id == legacy.to_string())
+        .unwrap()
+        .1;
+    assert_eq!(legacy.stage, LifecycleStage::Draft);
+    assert_eq!(legacy.status, None);
+    assert!(
+        board
+            .get_board(&ProjectKey::new("TT"), UserId::new())
+            .await
+            .is_err()
+    );
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn dashboard_get_propagates_repo_error() {
     let ctx = failing_context();
     assert_internal(ctx.services.dashboard.get_dashboard(UserId::new()).await);
@@ -2485,23 +2267,6 @@ async fn issue_get_propagates_label_lookup_error() {
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
 
     assert_internal(ctx.services.issue.get_by_id(issue_id, user.id).await);
-}
-
-#[tokio::test]
-async fn board_get_propagates_status_lookup_error() {
-    let (base_ctx, user) = ctx_with_demo_data().await;
-    let repos = Arc::new(domain::Repositories {
-        statuses: Arc::new(FailingStatusRepository),
-        ..(*base_ctx.repos).clone()
-    });
-    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
-
-    assert_internal(
-        ctx.services
-            .board
-            .get_board(&ProjectKey::new("TT"), user.id)
-            .await,
-    );
 }
 
 #[tokio::test]
@@ -2768,9 +2533,9 @@ async fn disabled_event_types_suppress_in_app_notification() {
         .unwrap();
 
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     ctx.services
@@ -2818,9 +2583,9 @@ async fn notify_own_changes_false_suppresses_self_notifications() {
     // notify_own_changes defaults to false: commenting on own issue must not
     // create a notification for the author.
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -2873,9 +2638,9 @@ async fn comment_notifications_deduplicate_recipients() {
     let (ctx, owner) = ctx_with_demo_data().await;
     let reporter = notification_recipient(&ctx).await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -2938,9 +2703,9 @@ async fn comment_create_rejects_spoofed_author_and_actor() {
     let other = test_user_with("spoofed", "spoofed@example.com", "Spoofed User");
     ctx.repos.users.save(&other).await.unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -2996,9 +2761,9 @@ async fn comment_create_rejects_spoofed_author_and_actor() {
 async fn comment_create_propagates_author_lookup_error_without_writing() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let board = base_ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = base_ctx
@@ -3062,9 +2827,9 @@ async fn comment_create_propagates_author_lookup_error_without_writing() {
 async fn comment_list_propagates_author_directory_error() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let board = base_ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = base_ctx
@@ -3122,9 +2887,9 @@ async fn comment_list_propagates_author_directory_error() {
 async fn watcher_receives_comment_notification() {
     let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3255,9 +3020,9 @@ async fn watcher_receives_comment_edit_and_delete_notifications() {
 async fn watcher_receives_issue_update_notification() {
     let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3413,9 +3178,9 @@ async fn watcher_receives_issue_link_create_and_delete_notifications() {
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let source = ctx
@@ -3505,9 +3270,9 @@ async fn watcher_receives_issue_link_create_and_delete_notifications() {
 async fn watcher_add_and_list() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3552,9 +3317,9 @@ async fn watcher_add_and_list() {
 async fn watcher_remove() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3601,9 +3366,9 @@ async fn watcher_remove() {
 async fn watcher_watch_and_unwatch_publish_issue_updated_events() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3667,9 +3432,9 @@ async fn vote_add_and_count() {
     let (ctx, user) = ctx_with_demo_data().await;
     let reporter = notification_recipient(&ctx).await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3706,9 +3471,9 @@ async fn vote_remove() {
     let (ctx, user) = ctx_with_demo_data().await;
     let reporter = notification_recipient(&ctx).await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3746,9 +3511,9 @@ async fn vote_and_unvote_publish_issue_updated_events() {
     let (ctx, user) = ctx_with_demo_data().await;
     let reporter = notification_recipient(&ctx).await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3807,9 +3572,9 @@ async fn vote_and_unvote_publish_issue_updated_events() {
 async fn vote_rejects_reporter_self_vote() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -3849,9 +3614,9 @@ async fn issue_link_create_and_delete_publish_issue_updated_events_for_both_issu
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let source = ctx
@@ -4119,9 +3884,9 @@ async fn custom_field_set_and_get_value() {
         .unwrap();
 
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -4182,9 +3947,9 @@ async fn issue_create_rejects_missing_or_empty_required_custom_fields() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let base = CreateIssueCommand {
@@ -4250,9 +4015,9 @@ async fn issue_create_persists_custom_fields_and_normalizes_dates() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let mut custom_fields = std::collections::HashMap::new();
@@ -4332,9 +4097,9 @@ async fn custom_field_null_clears_optional_and_rejects_required() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let mut custom_fields = std::collections::HashMap::new();
@@ -4420,9 +4185,9 @@ async fn custom_field_null_clears_optional_and_rejects_required() {
 async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -4478,9 +4243,9 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
 async fn attachment_delete_keeps_blob_when_metadata_delete_fails() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -4591,9 +4356,9 @@ async fn attachment_upload_and_delete_publish_issue_updated_events() {
     let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage);
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let issue = ctx
@@ -4729,9 +4494,9 @@ async fn label_attach_and_detach_publish_issue_updated_events() {
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let issue = ctx
@@ -4811,9 +4576,9 @@ async fn label_update_and_delete_publish_issue_updated_events_for_attached_issue
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let issue = ctx
@@ -4894,9 +4659,9 @@ async fn comment_update_and_delete_publish_comment_events() {
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
     let project_key = ProjectKey::new("TT");
     let board = ctx
-        .services
-        .board
-        .get_board(&project_key, user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&project_key)
         .await
         .unwrap();
     let issue = ctx
@@ -5034,9 +4799,9 @@ async fn version_create_and_list() {
 async fn issue_soft_delete_and_restore_publishes_invalidation_events() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5084,9 +4849,9 @@ async fn issue_soft_delete_and_restore_publishes_invalidation_events() {
 async fn issue_soft_delete_and_restore() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5127,9 +4892,9 @@ async fn issue_soft_delete_and_restore() {
 async fn issue_soft_delete_lists_in_trash() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5177,12 +4942,12 @@ async fn issue_trash_paginates_beyond_default_issue_cap() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let todo: StatusId = board.columns[0].id.parse().unwrap();
+    let todo: StatusId = board.columns[0].id;
 
     for number in 1..=1_005 {
         let mut issue = domain::Issue::create(
@@ -5212,9 +4977,9 @@ async fn issue_trash_paginates_beyond_default_issue_cap() {
 async fn issue_purge_from_trash() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5262,9 +5027,9 @@ async fn issue_purge_from_trash_deletes_attachment_files() {
     let storage = Arc::new(RecordingStorage::default());
     let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage.clone());
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5315,9 +5080,9 @@ async fn project_delete_deletes_issue_attachment_files() {
     let storage = Arc::new(RecordingStorage::default());
     let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage.clone());
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5379,9 +5144,9 @@ async fn worklog_create_rejects_spoofed_author() {
     );
     ctx.repos.users.save(&other).await.unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5447,9 +5212,9 @@ async fn worklog_create_rejects_spoofed_author() {
 async fn worklog_create_propagates_author_lookup_error_without_writing() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let board = base_ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = base_ctx
@@ -5516,9 +5281,9 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
 async fn worklog_list_propagates_author_directory_error() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let board = base_ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = base_ctx
@@ -5755,9 +5520,9 @@ async fn sprint_move_issue_publishes_issue_updated_event() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -5835,9 +5600,9 @@ async fn sprint_move_issue_updates_issue_timestamp() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -6043,9 +5808,9 @@ async fn notification_created_on_issue_assign() {
         .unwrap();
 
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -6090,9 +5855,9 @@ async fn issue_update_same_assignee_does_not_duplicate_assignment_notification()
     let (ctx, owner) = ctx_with_demo_data().await;
     let assignee = notification_recipient(&ctx).await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -6915,9 +6680,9 @@ async fn report_control_chart_skips_issues_without_done_transition() {
 async fn restore_non_deleted_issue_returns_error() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -6949,69 +6714,6 @@ async fn restore_non_deleted_issue_returns_error() {
 }
 
 #[tokio::test]
-async fn board_move_rejects_issue_from_other_project() {
-    let (ctx, user) = ctx_with_demo_data().await;
-    let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
-        .await
-        .unwrap();
-
-    // Create a second project with its own board.
-    let _project2 = ctx
-        .services
-        .project
-        .create(CreateProjectCommand {
-            key: ProjectKey::new("OTHER"),
-            name: "Other Project".to_string(),
-            description: None,
-            owner_id: user.id,
-        })
-        .await
-        .unwrap();
-
-    // Create issue in project OTHER.
-    let board2 = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("OTHER"), user.id)
-        .await
-        .unwrap();
-    let issue = ctx
-        .services
-        .issue
-        .create(
-            CreateIssueCommand {
-                operation_id: None,
-                project_key: ProjectKey::new("OTHER"),
-                summary: "Cross-project issue".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id: board2.columns[0].id.to_string(),
-                reporter_id: user.id,
-                assignee_id: None,
-                actor_id: user.id,
-                custom_fields: Default::default(),
-            },
-            user.id,
-        )
-        .await
-        .unwrap();
-
-    // Try to move the OTHER issue on the TT board — should fail.
-    let issue_id: IssueId = issue.id.parse().unwrap();
-    let target_status: shared::StatusId = board.columns[1].id.parse().unwrap();
-    let err = ctx
-        .services
-        .board
-        .move_issue(&ProjectKey::new("TT"), issue_id, target_status, user.id)
-        .await;
-    assert!(err.is_err());
-}
-
-#[tokio::test]
 async fn custom_field_set_value_validates_text_type() {
     let (ctx, user) = ctx_with_demo_data().await;
     let field = ctx
@@ -7028,9 +6730,9 @@ async fn custom_field_set_value_validates_text_type() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -7091,9 +6793,9 @@ async fn custom_field_set_value_validates_select_type() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -7153,9 +6855,9 @@ async fn custom_field_set_value_validates_number_type() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -7220,9 +6922,9 @@ async fn custom_field_set_value_validates_date_type() {
         .await
         .unwrap();
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), user.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx
@@ -7444,9 +7146,9 @@ async fn authz_require_project_access_denies_non_member() {
 
     // Create an issue as the owner.
     let board = ctx
-        .services
-        .board
-        .get_board(&ProjectKey::new("TT"), owner.id)
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
     let issue = ctx

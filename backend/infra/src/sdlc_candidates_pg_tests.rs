@@ -116,7 +116,6 @@ impl Fixture {
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
                 reservation_scheduler_subject: "scheduler".into(),
-                single_task_project_ids: [project].into_iter().collect(),
             },
         )
         .await
@@ -195,17 +194,13 @@ impl Fixture {
         )
         .await;
         if completed {
-            let mut config = self.repo.config.clone();
-            if !automatic {
-                config.single_task_project_ids.remove(&self.project);
-            }
             let repo = PostgresSdlcRepository {
                 db: crate::guarded_db::GuardedDb::new(
                     Database::connect(std::env::var("TT_CANDIDATES_TEST_DATABASE_URL").unwrap())
                         .await
                         .unwrap(),
                 ),
-                config,
+                config: self.repo.config.clone(),
                 file_storage: None,
             };
             let pm = actor(
@@ -402,14 +397,6 @@ async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstre
             Err(AppError::Forbidden)
         ));
     }
-    let enabled_projects = std::mem::take(&mut f.repo.config.single_task_project_ids);
-    assert!(matches!(
-        f.repo
-            .read_delivery_candidates(&f.reader, f.query(None, 50))
-            .await,
-        Err(AppError::Unavailable(_))
-    ));
-    f.repo.config.single_task_project_ids = enabled_projects;
     let task = expected[0];
     let producer = crate::sdlc::configured_test_support::service(&f.repo, f.project).await;
     let machine_subject = producer.subject;

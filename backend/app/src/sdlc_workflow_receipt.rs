@@ -70,31 +70,32 @@ impl WorkflowReceiptReader {
                 if let Ok(raw) = std::env::var("TASKTRACKER_SDLC__WORKFLOW_READ_TOKENS_JSON") {
                     let tokens: BTreeMap<String, String> =
                         serde_json::from_str(&raw).map_err(|_| unavailable())?;
-                    for (role, token) in tokens {
-                        if !matches!(
-                            role.as_str(),
-                            "analyst"
-                                | "architect"
-                                | "developer"
-                                | "reviewer"
-                                | "tester"
-                                | "devops"
-                        ) || token.is_empty()
-                            || token.len() > 4096
-                            || !token.bytes().all(|b| b.is_ascii_graphic())
-                        {
-                            return Err(unavailable());
-                        }
-                        let mut value = header::HeaderValue::from_str(&format!("Bearer {token}"))
-                            .map_err(|_| unavailable())?;
-                        value.set_sensitive(true);
-                        reader.role_authorizations.insert(role, value);
-                    }
+                    reader.configure_role_tokens(tokens)?;
                 }
                 Ok(Some(reader))
             }
             _ => Err(unavailable()),
         }
+    }
+
+    fn configure_role_tokens(&mut self, tokens: BTreeMap<String, String>) -> Result<(), AppError> {
+        for (role, token) in tokens {
+            let mut bytes = role.bytes();
+            if !(2..=32).contains(&role.len())
+                || !bytes.next().is_some_and(|b| b.is_ascii_lowercase())
+                || !bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+                || token.is_empty()
+                || token.len() > 4096
+                || !token.bytes().all(|b| b.is_ascii_graphic())
+            {
+                return Err(unavailable());
+            }
+            let mut value = header::HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|_| unavailable())?;
+            value.set_sensitive(true);
+            self.role_authorizations.insert(role, value);
+        }
+        Ok(())
     }
 
     pub async fn read(
@@ -255,4 +256,55 @@ fn decode_artifact(bytes: &[u8]) -> Result<(ConfiguredWorkflowReceipt, Artifact)
         return Err(mismatch());
     }
     Ok((receipt, response.workflow_receipt))
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_roles_receive_distinct_sensitive_readback_credentials() {
+        let mut reader = WorkflowReceiptReader::new("http://workflow:8811", "pm-fixture").unwrap();
+        reader
+            .configure_role_tokens(BTreeMap::from([
+                ("developer".into(), "developer-fixture".into()),
+                ("research_assistant".into(), "research-fixture".into()),
+            ]))
+            .unwrap();
+        assert_eq!(reader.authorization, "Bearer pm-fixture");
+        assert_eq!(
+            reader.role_authorizations["research_assistant"],
+            "Bearer research-fixture"
+        );
+        assert_eq!(
+            reader.role_authorizations["developer"],
+            "Bearer developer-fixture"
+        );
+        assert!(
+            reader
+                .role_authorizations
+                .values()
+                .all(header::HeaderValue::is_sensitive)
+        );
+        assert!(!reader.role_authorizations.contains_key("unknown"));
+    }
+
+    #[test]
+    fn invalid_role_or_header_is_rejected_before_readback() {
+        for (role, token) in [
+            ("Research", "fixture"),
+            ("../other", "fixture"),
+            ("r", "fixture"),
+            ("research", ""),
+            ("research", "bad\r\nheader"),
+        ] {
+            let mut reader =
+                WorkflowReceiptReader::new("http://workflow:8811", "pm-fixture").unwrap();
+            assert!(
+                reader
+                    .configure_role_tokens(BTreeMap::from([(role.into(), token.into())]))
+                    .is_err()
+            );
+        }
+    }
 }

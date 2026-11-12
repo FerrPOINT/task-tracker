@@ -136,28 +136,6 @@ pub struct IssueListResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateIssueRequest {
-    pub project_key: String,
-    pub issue_type: String,
-    pub summary: String,
-    pub description: Option<String>,
-    pub priority: String,
-    pub status_id: Option<String>,
-    pub assignee_id: Option<String>,
-    pub reporter_id: Option<String>,
-    #[serde(default)]
-    pub custom_fields: std::collections::HashMap<String, serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct BoardColumnResponse {
-    pub id: String,
-    pub name: String,
-    pub wip_limit: Option<u32>,
-    pub issue_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SprintResponse {
     pub id: String,
     pub name: String,
@@ -176,11 +154,17 @@ pub struct SprintResponse {
 pub struct BoardResponse {
     pub project_id: String,
     pub project_key: String,
-    pub columns: Vec<BoardColumnResponse>,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
     /// Total number of backlog (unscheduled) issues for the project.
     pub backlog_total: usize,
+    pub sdlc: SdlcBoardResponse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SdlcBoardResponse {
+    pub stages: Vec<domain::sdlc_lifecycle::LifecycleStage>,
+    pub tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -314,11 +298,6 @@ pub struct ProjectMemberListResponse {
 pub struct AddProjectMemberRequest {
     pub user_id: String,
     pub role: String,
-}
-
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct TransitionIssueRequest {
-    pub target_status_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

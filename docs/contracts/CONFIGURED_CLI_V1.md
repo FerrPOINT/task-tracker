@@ -10,7 +10,7 @@ revision guards remain mandatory. This source change does not activate a runtime
 
 ## Automatic Analyst Handoff: coordinated source change
 
-For newly accepted configured PM completions in enabled single-task projects,
+For newly accepted configured PM completions,
 Tracker atomically writes the original PM completion plus Analysis intent, queue,
 canonical issue projection and outbox. No manual stage/status change can substitute
 for exact owner consent, the saved Workflow terminal and final PM comment.
@@ -20,8 +20,10 @@ start remains available for retained Backlog tasks.
 
 The PM response/readback is the immutable historical Backlog/Ready receipt.
 Fresh context is authoritative for the current stage and may already be Analysis
-or a later accepted stage. Existing completed tasks are not backfilled. A disabled
-project retains PM-only Backlog behavior. There are no new HTTP commands or DTOs. The read-only CLI source command exposes
+or a later accepted stage. Existing completed tasks are not backfilled. Current
+creation uses the same configured flow in every project; there is no project
+enable switch. Existing routing, source-binding and access checks still apply.
+There are no new HTTP commands or DTOs. The read-only CLI source command exposes
 the existing source-binding GET.
 
 Forward migration 112 adds a nullable same-transaction witness to the existing
@@ -97,8 +99,9 @@ uses the configured Workflow selectors below rather than a native execution
 receipt. The CLI therefore no longer offers `sdlc pm lease` commands. Stored
 legacy confirmation/completion responses retain their historical form; this
 does not restore the retired writer protocol. Applied history is not rewritten.
-Only untouched Drafts are eligible for first-assignment adoption. Started legacy
-tasks require an explicit transition decision before runtime rollout.
+The current writer does not adopt retained Drafts without a protocol marker.
+Their original creation receipts remain readable; retrofitting historical tasks
+requires an explicit transition decision.
 
 Strict compatibility against the older main OpenAPI fails on these changes;
 this document records their impact and does not turn that check into a pass.
@@ -161,10 +164,10 @@ service subject and current fence. No reader registry or new permission is added
 The capability permits only the existing context, input, clarification,
 requirements, confirmation-read and completion business routes. It does not
 permit owner answers/confirmation, assignment changes, scheduler or native
-execution lease endpoints. A first owner assignment can adopt an untouched Draft
-without a protocol marker; migration 109 preserves its original creation receipt
-and input. Started legacy tasks cannot be retrofitted. Once selected, the marker
-is immutable. Configured tasks cannot acquire a native execution lease.
+execution lease endpoints. Current drafts acquire their protocol at creation;
+owner assignment does not retrofit a retained unmarked Draft. Migration 109 and
+its original creation receipts and inputs remain unchanged. Once selected, the
+marker is immutable. Configured tasks cannot acquire a native execution lease.
 Existing applied migrations are unchanged.
 
 ## Business Commands
@@ -253,12 +256,12 @@ fence/owner_version, requirement_revision/content_hash, confirmation_id, the
 verified workflow_receipt/hash, stage Backlog, status Ready, admission transition,
 idempotency_key and created_at. No lease/native receipt is synthesized. Its
 append-only ledger and admission transition commit atomically with pm.completed.
-In enabled single-task projects the same transaction then queues Analysis through
+For the configured flow the same transaction then queues Analysis through
 the existing start guards, intent, issue projection and outbox. Until that commit
 the task remains Draft, including while Workflow completes. Failed/foreign/stale
 terminal receipt leaves it Draft; consent alone cannot publish. The original
-confirmation receipt remains Draft even after publication. Disabled projects keep
-Backlog/Ready without an Analysis intent. Fleet reserves and starts the queued
+confirmation receipt remains Draft even after publication. The current flow has
+no disabled-project exception. Fleet reserves and starts the queued
 Analyst separately; no running state is inferred from publication. Legacy
 confirmation timing is unchanged.
 

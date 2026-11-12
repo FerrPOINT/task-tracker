@@ -26,6 +26,8 @@ const SCHEDULER: &str = "sdlc_pat_attachment-scheduler-fixture";
 const REVOKED: &str = "sdlc_pat_attachment-revoked-fixture";
 const UNAVAILABLE: &str = "sdlc_pat_attachment-unavailable-fixture";
 const MISSING_LIFETIME: &str = "sdlc_pat_attachment-missing-lifetime-fixture";
+const NAMESPACE_OWNER: &str = "sdlc_pat_namespace-owner-fixture";
+const NAMESPACE_READER: &str = "sdlc_pat_namespace-reader-fixture";
 
 struct Environment(Vec<(&'static str, Option<OsString>)>);
 
@@ -93,7 +95,6 @@ fn context() -> Arc<app::AppContext> {
             orchestrator_subject: "pm-fixture".into(),
             verifier_subject: "verifier-fixture".into(),
             reservation_scheduler_subject: "scheduler-fixture".into(),
-            single_task_project_ids: Default::default(),
         }),
     );
     Arc::new(ctx)
@@ -272,6 +273,8 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{origin}/oidc/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &origin);
         std::env::set_var("TT_AUTH__CENTRAL_TIMEOUT_SECS", "2");
+        std::env::set_var("TT_NAMESPACE__OWNER_SUBJECTS", "namespace-owner-fixture");
+        std::env::set_var("TT_NAMESPACE__READER_SUBJECTS", "namespace-reader-fixture");
         std::env::set_var(
             "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
             "scheduler-fixture",
@@ -297,6 +300,8 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                     PM_NO_READ => (StatusCode::OK,"pm-fixture",vec!["task-tracker:write".into(),pm_grant.clone()]),
                     PM_MIXED => (StatusCode::OK,"pm-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),pm_grant.clone(),grant.clone()]),
                     SCHEDULER => (StatusCode::OK,"scheduler-fixture",vec!["task-tracker:read".into()]),
+                    NAMESPACE_OWNER => (StatusCode::OK,"namespace-owner-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into()]),
+                    NAMESPACE_READER => (StatusCode::OK,"namespace-reader-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into()]),
                     UNAVAILABLE => (StatusCode::SERVICE_UNAVAILABLE,"",vec![]),
                     _ => (StatusCode::UNAUTHORIZED,"",vec![]),
                 };
@@ -347,6 +352,15 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
             assert_eq!(request(probe.clone(),method,&foreign,Some(DELIVERY)).await,StatusCode::FORBIDDEN);
         }
         let app=api::router(ctx.clone()).with_state(ctx);
+        let binding = format!("/api/v1/namespace-resources/tracker_project/{}", Uuid::new_v4());
+        for (method, token, expected) in [
+            ("GET", NAMESPACE_READER, StatusCode::NOT_FOUND),
+            ("GET", NAMESPACE_OWNER, StatusCode::NOT_FOUND),
+            ("GET", PM, StatusCode::FORBIDDEN),
+            ("PUT", NAMESPACE_READER, StatusCode::FORBIDDEN),
+        ] {
+            assert_eq!(request(app.clone(), method, &binding, Some(token)).await, expected);
+        }
         // Route admission is not evidence authority: the real service has no saved artifact custody.
         for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER),("GET",download.as_str(),PM),("GET",task_path.as_str(),SCHEDULER)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::SERVICE_UNAVAILABLE);

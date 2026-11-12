@@ -255,6 +255,22 @@
     "noMatches": "По вашему запросу проекты не найдены."
   },
   "board": {
+    "sdlcStage": {
+      "Draft": "Черновик",
+      "Backlog": "Бэклог",
+      "Analysis": "Анализ",
+      "Architecture": "Архитектура",
+      "Development": "Разработка",
+      "Review": "Ревью",
+      "Testing": "Тестирование",
+      "Rework": "Доработка",
+      "Deployment": "Развёртывание"
+    },
+    "sdlcStatus": {
+      "Ready": "Готово",
+      "InProgress": "В работе",
+      "Completed": "Завершено"
+    },
     "columns": "Колонки доски",
     "density": "Плотность доски",
     "densityComfortable": "Обычная",

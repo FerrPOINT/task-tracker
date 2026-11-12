@@ -195,14 +195,9 @@ pub async fn apply(
                 ));
             }
             tx.execute(statement("INSERT INTO projects(id,key,name,description,owner_id,default_board_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,now(),now())",vec![id(command.resource.resource_id),spec.key.into(),spec.name.into(),spec.description.into(),id(owner_id),id(board_id)])).await.map_err(AppError::database)?;
-            let columns = serde_json::to_value(app::services::default_board_columns().iter().map(|c| serde_json::json!({"id":c.id.as_uuid(),"name":c.name.as_ref(),"category":format!("{:?}",c.category),"wip_limit":c.wip_limit,"position":c.position})).collect::<Vec<_>>()).map_err(|e| AppError::Internal(e.to_string()))?;
             tx.execute(statement(
-                "INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Board',$3)",
-                vec![
-                    id(board_id),
-                    id(command.resource.resource_id),
-                    columns.into(),
-                ],
+                "INSERT INTO boards(id,project_id,name,columns) VALUES($1,$2,'Board','[]')",
+                vec![id(board_id), id(command.resource.resource_id)],
             ))
             .await
             .map_err(AppError::database)?;

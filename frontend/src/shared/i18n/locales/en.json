@@ -255,6 +255,22 @@
     "noMatches": "No projects match your search."
   },
   "board": {
+    "sdlcStage": {
+      "Draft": "Draft",
+      "Backlog": "Backlog",
+      "Analysis": "Analysis",
+      "Architecture": "Architecture",
+      "Development": "Development",
+      "Review": "Review",
+      "Testing": "Testing",
+      "Rework": "Rework",
+      "Deployment": "Deployment"
+    },
+    "sdlcStatus": {
+      "Ready": "Ready",
+      "InProgress": "In progress",
+      "Completed": "Completed"
+    },
     "columns": "Board columns",
     "density": "Board density",
     "densityComfortable": "Comfortable",

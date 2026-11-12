@@ -211,7 +211,6 @@ async fn draft(db: &DatabaseConnection, url: &str) -> (PostgresSdlcRepository, T
             orchestrator_subject: Uuid::new_v4().to_string(),
             verifier_subject: Uuid::new_v4().to_string(),
             reservation_scheduler_subject: Uuid::new_v4().to_string(),
-            single_task_project_ids: Default::default(),
         },
     )
     .await

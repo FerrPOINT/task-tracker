@@ -3,18 +3,16 @@ import { useMemo } from 'react'
 import { Button, Notice, ResourceListDescription, Select } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
-import type { Board } from '@/api/board'
-import { statusLabel } from '@/shared/lib/status-label'
-import { useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
+import type { components } from '@/api/generated'
+import { useUsers } from '@/shared/api/hooks'
 
 const priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
 interface IssueMetaEditorProps {
   issue: Issue
-  columns: Board['columns']
+  lifecycle?: components['schemas']['SdlcBoardTask']
   sprints?: Sprint[]
   onChange: (patch: {
-    status_id?: string
     priority?: string
     assignee_id?: string | null
     sprint_id?: string | null
@@ -64,31 +62,13 @@ function MetaChoice({
 
 export function IssueMetaEditor({
   issue,
-  columns,
+  lifecycle,
   sprints,
   onChange,
   disabled,
 }: IssueMetaEditorProps) {
   const { t } = useTranslation()
   const usersQuery = useUsers()
-  const statusesQuery = useStatuses()
-  const transitionsQuery = useTransitions()
-
-  // Available target statuses for the current status, per workflow transitions.
-  // Falls back to all statuses (minus the current one) when transitions are unavailable.
-  const statusOptions = useMemo(() => {
-    const all =
-      statusesQuery.data && statusesQuery.data.length > 0
-        ? statusesQuery.data.map((s) => ({ id: s.id, name: s.name }))
-        : columns.map((c) => ({ id: c.id, name: c.name }))
-    const fromTransitions = (transitionsQuery.data ?? [])
-      .filter((tr) => tr.from_status_id === issue.status_id)
-      .map((tr) => tr.to_status_id)
-    if (fromTransitions.length === 0) return all
-    const allowed = new Set([issue.status_id, ...fromTransitions])
-    return all.filter((s) => allowed.has(s.id))
-  }, [statusesQuery.data, transitionsQuery.data, columns, issue.status_id])
-
   const assigneeOptions = useMemo<
     Array<{ value: string; label: string; disabled?: boolean }>
   >(() => {
@@ -118,17 +98,15 @@ export function IssueMetaEditor({
       className="grid grid-cols-2 items-start gap-x-3 gap-y-1 text-sm"
       aria-label={t('issue.details')}
     >
-      <MetaChoice
-        label={t('issue.status')}
-        value={issue.status_id}
-        fallback={statusLabel(issue.status, t)}
-        disabled={disabled}
-        onChange={(status_id) => onChange({ status_id })}
-        options={statusOptions.map((status) => ({
-          value: status.id,
-          label: statusLabel(status.name, t),
-        }))}
-      />
+      {lifecycle && (
+        <div className="min-w-0">
+          <dt><ResourceListDescription>{t('issue.status')}</ResourceListDescription></dt>
+          <dd>
+            {t(`board.sdlcStage.${lifecycle.stage}`)}
+            {lifecycle.status && ` · ${t(`board.sdlcStatus.${lifecycle.status}`)}`}
+          </dd>
+        </div>
+      )}
       <MetaChoice
         label={t('issue.priority')}
         value={issue.priority}

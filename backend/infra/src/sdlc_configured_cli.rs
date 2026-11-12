@@ -148,15 +148,6 @@ impl PostgresSdlcRepository {
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         app::sdlc_configured_cli::validate_completion(&state, actor, &command)?;
         app::sdlc_configured_cli::validate_receipt(&state, &command, &receipt)?;
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
         let confirmation = state
             .current_confirmation()
             .ok_or_else(|| AppError::conflict("owner confirmation missing"))?;

@@ -150,25 +150,6 @@ enum ProjectCommands {
 
 #[derive(Subcommand)]
 enum IssueCommands {
-    /// Create a new issue
-    Create {
-        #[arg(long)]
-        project_key: String,
-        #[arg(long)]
-        summary: String,
-        #[arg(long, default_value = "task")]
-        issue_type: String,
-        #[arg(long, default_value = "medium")]
-        priority: String,
-        #[arg(long)]
-        description: Option<String>,
-        #[arg(long, conflicts_with = "description")]
-        from_file: Option<String>,
-        #[arg(long)]
-        assignee_id: Option<String>,
-        #[arg(long)]
-        status_id: Option<String>,
-    },
     /// Get issue details
     Get {
         key: String,
@@ -185,8 +166,6 @@ enum IssueCommands {
         #[arg(long)]
         priority: Option<String>,
         #[arg(long)]
-        status_id: Option<String>,
-        #[arg(long)]
         assignee_id: Option<String>,
         #[arg(long, conflicts_with = "assignee_id")]
         unassign: bool,
@@ -194,12 +173,6 @@ enum IssueCommands {
     /// Delete issue (soft-delete)
     Delete {
         key: String,
-    },
-    /// Transition issue status
-    Transition {
-        key: String,
-        #[arg(long)]
-        to: String,
     },
     Restore {
         key: String,
@@ -217,7 +190,7 @@ enum IssueCommands {
 
 #[derive(Subcommand)]
 enum BoardCommands {
-    /// Get board (kanban columns + issues)
+    /// Get the SDLC board
     Get {
         #[arg(long)]
         project_key: String,
@@ -228,15 +201,6 @@ enum BoardCommands {
         project_key: String,
         #[command(flatten)]
         page: commands::Page,
-    },
-    /// Move issue to a different column
-    Move {
-        #[arg(long)]
-        project_key: String,
-        #[arg(long)]
-        issue_id: String,
-        #[arg(long)]
-        status_id: String,
     },
 }
 
@@ -801,34 +765,6 @@ async fn run(cli: Cli) -> Result<()> {
 
         // ── Issue ──
         Commands::Issue { command } => match command {
-            IssueCommands::Create {
-                project_key,
-                summary,
-                issue_type,
-                priority,
-                description,
-                from_file,
-                assignee_id,
-                status_id,
-            } => {
-                let mut payload = json!({
-                    "project_key": project_key,
-                    "summary": summary,
-                    "issue_type": issue_type,
-                    "priority": priority,
-                });
-                if let Some(d) = support::text_input(description, from_file)? {
-                    payload["description"] = Value::String(d);
-                }
-                if let Some(a) = assignee_id {
-                    payload["assignee_id"] = Value::String(a);
-                }
-                if let Some(s) = status_id {
-                    payload["status_id"] = Value::String(s);
-                }
-                let body = api.post("/api/v1/issues", payload).await?;
-                print_output(out, &body);
-            }
             IssueCommands::Get { key } => {
                 let body = api.get(&format!("/api/v1/issues/{}", enc(&key))).await?;
                 print_output(out, &body);
@@ -839,7 +775,6 @@ async fn run(cli: Cli) -> Result<()> {
                 description,
                 from_file,
                 priority,
-                status_id,
                 assignee_id,
                 unassign,
             } => {
@@ -852,9 +787,6 @@ async fn run(cli: Cli) -> Result<()> {
                 }
                 if let Some(p) = priority {
                     payload["priority"] = Value::String(p);
-                }
-                if let Some(s) = status_id {
-                    payload["status_id"] = Value::String(s);
                 }
                 if let Some(a) = assignee_id {
                     payload["assignee_id"] = Value::String(a);
@@ -870,17 +802,6 @@ async fn run(cli: Cli) -> Result<()> {
             IssueCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/issues/{}", enc(&key))).await?;
                 print_success(out, &format!("issue {key} deleted"));
-            }
-            IssueCommands::Transition { key, to } => {
-                let body = api
-                    .post(
-                        &format!("/api/v1/issues/{}/transition", enc(&key)),
-                        json!({
-                            "target_status_id": to
-                        }),
-                    )
-                    .await?;
-                print_output(out, &body);
             }
             IssueCommands::Restore { key } => {
                 let body = api
@@ -919,22 +840,6 @@ async fn run(cli: Cli) -> Result<()> {
                         &format!("/api/v1/projects/{}/backlog", enc(&project_key)),
                         page.pairs(),
                     ))
-                    .await?;
-                print_output(out, &body);
-            }
-            BoardCommands::Move {
-                project_key,
-                issue_id,
-                status_id,
-            } => {
-                let issue_id = commands::issue_id(&api, &issue_id).await?;
-                let body = api
-                    .post(
-                        &format!("/api/v1/projects/{}/board/move", enc(&project_key)),
-                        json!({
-                            "issue_id": issue_id, "status_id": status_id
-                        }),
-                    )
                     .await?;
                 print_output(out, &body);
             }

@@ -34,9 +34,7 @@ const ProjectGeneralSettingsPage = lazy(() =>
   import('@/pages/project-settings').then((m) => ({ default: m.ProjectGeneralSettingsPage })),
 )
 const SearchPage = lazy(() => import('@/pages/search'))
-const IssueCreatePage = lazy(() =>
-  import('@/pages/issue-create').then((m) => ({ default: m.IssueCreatePage })),
-)
+
 const IssueDetailPage = lazy(async () => {
   const { IssueDetailPage } = await import('@/pages/issue-detail')
   if (import.meta.env.DEV && import.meta.env.VITE_DECOMPOSITION_DESIGN === 'true') {
@@ -102,7 +100,6 @@ export const router = createProductRouter(
                 </RequireAdministrator>,
               ),
             },
-            { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
             { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },
           ],
         },

@@ -69,7 +69,6 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
             orchestrator_subject: "source-pm".into(),
             verifier_subject: "source-verifier".into(),
             reservation_scheduler_subject: "source-scheduler".into(),
-            single_task_project_ids: [project].into_iter().collect(),
         },
     )
     .await
@@ -456,7 +455,6 @@ async fn explicit_unconfigured_draft_fixture(
             orchestrator_subject: "source-pm".into(),
             verifier_subject: "source-verifier".into(),
             reservation_scheduler_subject: "source-scheduler".into(),
-            single_task_project_ids: [project].into_iter().collect(),
         },
     )
     .await
