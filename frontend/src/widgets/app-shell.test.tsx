@@ -91,6 +91,74 @@ describe('AppShell notifications', () => {
     accessActor.role = 'user'
     accessActor.applications = ['task-tracker', 'fleet-control']
     window.localStorage.removeItem('tt-sidebar-collapsed')
+    window.localStorage.removeItem('tt-project-nav-collapsed:v1')
+  })
+
+  it.each([false, true])(
+    'shows settings only for open projects when the sidebar is compact=%s',
+    async (compact) => {
+      accessActor.role = 'admin'
+      mockHooks([])
+      useProjects.mockReturnValue({
+        data: [
+          { id: 'alpha-project', key: 'ALPHA', name: 'Альфа' },
+          { id: 'beta-project', key: 'BETA', name: 'Бета' },
+        ],
+      })
+      window.localStorage.setItem('tt-sidebar-collapsed', String(compact))
+      render(
+        <ThemeProvider>
+          <MemoryRouter>
+            <AppShell />
+          </MemoryRouter>
+        </ThemeProvider>,
+      )
+      const navigation = within(screen.getByRole('navigation', { name: 'Навигация проекта' }))
+      const alphaSettings = () =>
+        navigation.queryByRole('link', { name: 'Настройки проекта: Альфа · ALPHA' })
+      const betaSettings = () =>
+        navigation.queryByRole('link', { name: 'Настройки проекта: Бета · BETA' })
+      expect(alphaSettings()).toBeInTheDocument()
+      expect(betaSettings()).toBeInTheDocument()
+      await userEvent.click(navigation.getByRole('button', { name: 'Альфа · ALPHA' }))
+      expect(navigation.getByRole('button', { name: 'Альфа · ALPHA' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+      if (compact) expect(alphaSettings()).not.toBeInTheDocument()
+      else expect(alphaSettings()).toBeInTheDocument()
+      expect(betaSettings()).toBeInTheDocument()
+      await userEvent.click(navigation.getByRole('button', { name: 'Альфа · ALPHA' }))
+      await userEvent.click(navigation.getByRole('button', { name: 'Бета · BETA' }))
+      expect(alphaSettings()).toBeInTheDocument()
+      if (compact) expect(betaSettings()).not.toBeInTheDocument()
+      else expect(betaSettings()).toBeInTheDocument()
+    },
+  )
+
+  it('keeps collapsed project settings available in the mobile drawer despite a compact desktop preference', async () => {
+    accessActor.role = 'admin'
+    mockHooks([])
+    useProjects.mockReturnValue({ data: [{ id: 'alpha-project', key: 'ALPHA', name: 'Альфа' }] })
+    window.localStorage.setItem('tt-sidebar-collapsed', 'true')
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
+    const drawer = within(await screen.findByRole('dialog'))
+    await userEvent.click(drawer.getByRole('button', { name: 'Альфа · ALPHA' }))
+    expect(drawer.getByRole('button', { name: 'Альфа · ALPHA' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(drawer.getByRole('link', { name: 'Настройки проекта: Альфа · ALPHA' })).toHaveAttribute(
+      'href',
+      '/projects/ALPHA/settings',
+    )
   })
 
   it('uses the common header slot order and one service switcher without duplicate search', () => {
