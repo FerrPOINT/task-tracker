@@ -460,7 +460,7 @@ cd backend && ./scripts/run-e2e-tests.sh
 
 Скрипт проверяет строки ≥75%, регионы ≥65%, функции ≥60%. Эти пороги
 применяются к полному workspace, включая ignored PostgreSQL-тесты.
-GitHub Actions отключены. Backend, PostgreSQL и coverage проверяются локально;
+GitHub Actions workflows удалены. Backend, PostgreSQL и coverage проверяются локально;
 контейнерные проверки используют собственный временный Compose-проект.
 Цели по слоям ниже служат ориентиром.
 
