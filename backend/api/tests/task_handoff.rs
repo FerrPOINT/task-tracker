@@ -157,7 +157,7 @@ async fn space_decision(
         json!([])
     };
     Json(
-        json!({"schema_version":1,"identity":query["identity"],"identity_active":true,"policy_revision":s.space_revision.load(Ordering::SeqCst),"policy":{"mode":"selected","spaces":selected},"validity":{"observed_at":now,"valid_until":now+2},"spaces":spaces.iter().map(|space|json!({"space":space,"revision":1,"state":"active"})).collect::<Vec<_>>()}),
+        json!({"schema_version":1,"identity":query["identity"],"identity_active":true,"policy_revision":s.space_revision.load(Ordering::SeqCst),"policy":{"mode":"selected","spaces":selected},"validity":{"observed_at":now,"valid_until":now+if std::env::var_os("TT_HANDOFF_CONTINUATION_FIXTURE").is_some(){60}else{2}},"spaces":spaces.iter().map(|space|json!({"space":space,"revision":1,"state":"active"})).collect::<Vec<_>>()}),
     )
 }
 async fn fleet(
@@ -429,6 +429,7 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     // The manual runner starts this case in a separate process/fresh database.
     let application_policy = std::env::var_os("TT_HANDOFF_POLICY_OFF_FIXTURE").is_none();
     let catalog_source = std::env::var_os("TT_HANDOFF_CATALOG_SOURCE_FIXTURE").is_some();
+    let continuation = std::env::var_os("TT_HANDOFF_CONTINUATION_FIXTURE").is_some();
     let url = std::env::var("TT_TASK_LIFECYCLE_TEST_DATABASE_URL").unwrap();
     let db = Arc::new(Database::connect(url.as_str()).await.unwrap());
     let row = db
@@ -458,7 +459,11 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
         &url,
         SdlcConfig {
             instance_id: "40000000-0000-4000-8000-000000000001".into(),
-            single_task_project_ids: [project].into_iter().collect(),
+            single_task_project_ids: if continuation {
+                Default::default()
+            } else {
+                [project].into_iter().collect()
+            },
             reservation_scheduler_subject: "scheduler-qa".into(),
             orchestrator_subject: "orchestrator-qa".into(),
             verifier_subject: "verifier-qa".into(),
@@ -992,6 +997,19 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
             StatusCode::FORBIDDEN
         );
     }
+    if continuation {
+        for space in [project_a, project_b] {
+            db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_space_catalog(registry_instance_id,space_id,admin_revision,state,metadata) VALUES($1,$2,1,'active','{}')",vec![namespace.registry_instance_id.into(),space.into()])).await.unwrap();
+            db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES($1,$2,$3)",vec![project.into(),namespace.registry_instance_id.into(),space.into()])).await.unwrap();
+        }
+        space_access.store(true, Ordering::SeqCst);
+        space_revision.store(2, Ordering::SeqCst);
+        db.execute_unprepared(
+            "UPDATE tracker_space_admission_state SET active=true WHERE singleton",
+        )
+        .await
+        .unwrap();
+    }
     let (status, reserved) = call(
         &router,
         "POST",
@@ -1005,6 +1023,15 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     assert!(reserved["binding"].is_null() && reserved["result"].is_null());
     assert_eq!(reserved["task"]["stage"], "Review");
     assert_eq!(reserved["task"]["runtime"], "reserved");
+    if continuation {
+        qualify_current_stage_continuation(
+            &router, &db, &reserved, producer, &namespace, project_a,
+        )
+        .await;
+        stub_task.abort();
+        let _ = stub_task.await;
+        return;
+    }
     let frozen=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT origin,spaces,original_actor FROM tracker_execution_space_grants WHERE assignment_id=$1",vec![Uuid::parse_str(reserved["assignment"]["assignment_id"].as_str().unwrap()).unwrap().into()])).await.unwrap().expect("real technical assignment must freeze its archive dependencies");
     assert_eq!(frozen.try_get::<String>("", "origin").unwrap(), "delivery");
     assert_eq!(
@@ -1682,6 +1709,102 @@ async fn handoff_http_requires_current_human_access_and_replays_without_reobserv
     );
     stub_task.abort();
     let _ = stub_task.await;
+}
+
+/// Tracker-side HTTP/SDK/PG contract only. Terminal/replay-safety facts below
+/// come from isolated trusted scheduler fixtures, not a live Fleet execution.
+async fn qualify_current_stage_continuation(
+    router: &Router,
+    db: &sea_orm::DatabaseConnection,
+    reserved: &Value,
+    producer: Uuid,
+    namespace: &shared::resource_context::NamespaceRef,
+    project_a: Uuid,
+) {
+    let lifecycle = format!("/api/v1/issues/{TASK}/sdlc/lifecycle");
+    let artifact =
+        json!({"reference":"fixture://trusted-runtime-terminal","sha256":"a".repeat(64)});
+    let fence = json!({"assignment_id":reserved["assignment"]["assignment_id"],"execution_id":reserved["assignment"]["execution_id"],"lease_id":reserved["lease"]["lease_id"],"fencing_token":reserved["assignment"]["fencing_token"],"expected_lease_version":reserved["lease"]["version"]});
+    let reconcile = json!({"operation":"reconcile","fence":fence,"terminal":{"assignment_hash":reserved["assignment"]["assignment_hash"],"chat_id":Uuid::new_v4(),"run_id":Uuid::new_v4(),"state":"failed","receipt":artifact},"recovery":{"disposition":"retry_transient","replay_safety_receipt":artifact},"idempotency_key":"current-human-retry-queued"});
+    let (status, queued) = call(router, "POST", &lifecycle, Some(SCHEDULER_WRITE), reconcile).await;
+    assert_eq!(status, StatusCode::CREATED, "{queued}");
+    assert_eq!(queued["task"]["stage"], reserved["task"]["stage"]);
+    assert_eq!(queued["task"]["runtime"], "queued");
+    assert!(queued["assignment"].is_null());
+    let command = json!({"operation":"reserve","expected_task_version":queued["task"]["version"],"machine_subject":producer,"idempotency_key":"current-human-next-assignment"});
+    db.execute_unprepared("CREATE FUNCTION fixture_skip_continuation_dependency() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.origin='delivery' THEN RETURN NULL;END IF;RETURN NEW;END $$;CREATE TRIGGER fixture_skip_continuation_dependency BEFORE INSERT ON tracker_execution_space_grants FOR EACH ROW EXECUTE FUNCTION fixture_skip_continuation_dependency()").await.unwrap();
+    let (status, rejected) = call(
+        router,
+        "POST",
+        &lifecycle,
+        Some(SCHEDULER_WRITE),
+        command.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "missing dependency must reject the actual COMMIT: {rejected}"
+    );
+    let rollback=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_delivery_assignments) AS assignments,(SELECT count(*) FROM sdlc_delivery_holds) AS holds,NOT EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE idempotency_key='current-human-next-assignment') AS absent".to_owned())).await.unwrap().unwrap();
+    assert_eq!(rollback.try_get::<i64>("", "assignments").unwrap(), 1);
+    assert_eq!(rollback.try_get::<i64>("", "holds").unwrap(), 0);
+    assert!(rollback.try_get::<bool>("", "absent").unwrap());
+    db.execute_unprepared("DROP TRIGGER fixture_skip_continuation_dependency ON tracker_execution_space_grants;DROP FUNCTION fixture_skip_continuation_dependency()").await.unwrap();
+    let (status, next) = call(
+        router,
+        "POST",
+        &lifecycle,
+        Some(SCHEDULER_WRITE),
+        command.clone(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "current human origin must not require the legacy project allowlist: {next}"
+    );
+    assert_ne!(
+        next["assignment"]["assignment_id"],
+        reserved["assignment"]["assignment_id"]
+    );
+    assert_eq!(next["assignment"]["attempt"], 2);
+    assert_eq!(
+        next["assignment"]["routing"],
+        reserved["assignment"]["routing"]
+    );
+    assert_eq!(next["task"]["stage"], reserved["task"]["stage"]);
+    let id = Uuid::parse_str(next["assignment"]["assignment_id"].as_str().unwrap()).unwrap();
+    let row=db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT spaces FROM tracker_execution_space_grants WHERE assignment_id=$1 AND origin='delivery'",vec![id.into()])).await.unwrap().expect("each actual next assignment must freeze dependencies");
+    let mut expected = vec![
+        json!({"registry_instance_id":namespace.registry_instance_id,"space_id":project_a}),
+        json!({"registry_instance_id":namespace.registry_instance_id,"space_id":namespace.namespace_id}),
+    ];
+    expected.sort_by_key(|s| s["space_id"].as_str().unwrap().to_owned());
+    assert_eq!(row.try_get::<Value>("", "spaces").unwrap(), json!(expected));
+    let (status, replayed) = call(router, "POST", &lifecycle, Some(SCHEDULER_WRITE), command).await;
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed, next);
+    let (status, current) = call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{current}");
+    assert_eq!(current["receipt"]["assignment"], next["assignment"]);
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE tracker_space_catalog SET state='provisioning' WHERE registry_instance_id=$1 AND space_id=$2",vec![namespace.registry_instance_id.into(),project_a.into()])).await.unwrap();
+    let (status, denied) = call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the current assignment still depends on project A, not only source C: {denied}"
+    );
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"UPDATE tracker_space_catalog SET state='active' WHERE registry_instance_id=$1 AND space_id=$2",vec![namespace.registry_instance_id.into(),project_a.into()])).await.unwrap();
+    assert_eq!(
+        call(router, "GET", &lifecycle, Some(SCHEDULER), Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let counts=db.query_one(Statement::from_string(DbBackend::Postgres,"SELECT (SELECT count(*) FROM sdlc_pm_executions) AS pm,(SELECT count(*) FROM sdlc_delivery_holds) AS holds".to_owned())).await.unwrap().unwrap();
+    assert_eq!(counts.try_get::<i64>("", "pm").unwrap(), 0);
+    assert_eq!(counts.try_get::<i64>("", "holds").unwrap(), 1);
 }
 
 #[test]

@@ -2519,3 +2519,23 @@ verified namespace, сохранение current-stage consent/routing/source и
 Обычный case отдельно сохраняет проверку populated upgrade с113/115 и неизменность
 старых подлинных записей после119. Прямое SQL-доказательство другого repository ID
 не принимается при прежнем namespace/hash.
+
+### Зависимости последующих назначений human-origin (кандидат120)
+
+Первое принятие human handoff и каждое следующее фактическое technical assignment
+используют один `tracker_execution_space_grants`. Новый assignment получает
+собственные неизменяемые зависимости и исходный срок допуска; retry/replay не
+переписывает прежние записи. Запись выполняется с назначением, hold, проекцией,
+операцией и событием в одной транзакции. Отсутствующий grant блокирует commit.
+
+`handoff_assignment_transaction` — nullable provenance только нового Reserve в
+существующем журнале `sdlc_delivery_operations`. Старые операции не restamp-ятся.
+Прежние `command/transaction_id`, их strict start_analysis check и уникальный
+индекс сохраняют прежний смысл. Deferred grant guard сверяет текущую транзакцию,
+точный результат операции, assignment/lease, реальный hold и исходный human
+routing/source; отдельной системы состояний или нового источника полномочий нет.
+
+Native scope проверяет grant текущего hold, а не только первого assignment из
+adoption. Активация нового пути не добавляет проект в legacy allowlist и не
+отключает её для исторического PM пути. Квалификация этого продолжения ещё идёт;
+готовность живого Fleet/Workflow запуска этим описанием не подтверждается.

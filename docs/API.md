@@ -2370,3 +2370,14 @@ namespace binding. Старый путь сохраняется для прое�
 Повреждённая совпавшая запись не разрешает fallback. Предварительный выбор до
 Forge HTTP повторно проверяется в транзакции записи policy; чужой namespace в
 verified facts отклоняется. JSON-команда и старые strict envelopes не меняются.
+
+### Последующее назначение текущего human-origin этапа
+
+После принятого handoff существующий `POST .../sdlc/lifecycle` остаётся владельцем
+Reserve, Heartbeat, BindRun и восстановления. Для genuine current origin не нужен
+legacy project allowlist; сохраняются registered scheduler, текущий владелец,
+права приложений/данных, CAS, fences, slots и актуальная готовность исполнения.
+Каждый новый Reserve фиксирует собственные зависимости пространств атомарно;
+успешный original-key replay возвращает исходный результат и не создаёт новый
+assignment/hold/grant. Старый строгий JSON lifecycle command не расширяется.
+Это source-кандидат; сквозная native/Workflow приёмка остаётся отдельным gate.

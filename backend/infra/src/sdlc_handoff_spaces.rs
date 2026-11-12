@@ -170,6 +170,48 @@ impl PostgresSdlcRepository {
         proof: Option<&OwnerDataAdmission>,
         observed: &app::task_handoff_observations::MatchedHandoffInputs,
     ) -> Result<(), AppError> {
+        let until: chrono::DateTime<chrono::Utc> =
+            serde_json::from_value(observed.audit()["valid_until"].clone())
+                .map_err(AppError::internal)?;
+        Self::freeze_delivery_dependencies(
+            tx,
+            &pending.source,
+            assignment,
+            actor,
+            proof,
+            Some(until),
+        )
+        .await
+    }
+    /// A later real assignment retains the same human origin, not a new consent
+    /// or a fictitious Fleet observation. Fresh owner admission is already bound.
+    pub(super) async fn freeze_current_handoff_dependencies(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        assignment: Uuid,
+        actor: &Principal,
+        proof: Option<&OwnerDataAdmission>,
+    ) -> Result<(), AppError> {
+        let row=tx.query_one(statement("SELECT m.source_binding FROM task_handoff_materials m JOIN sdlc_tasks t USING(task_id) WHERE t.task_id=$1 AND m.handoff_id::text=t.state->>'execution_handoff_id' AND m.actor_subject=t.owner_subject AND task_handoff_current_delivery_origin(t.task_id,t.state)",vec![state.task_id.into()])).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+        let source: domain::sdlc_source::TaskSourceBinding =
+            serde_json::from_value(row.try_get::<Json>("", "source_binding").map_err(map_db)?)
+                .map_err(AppError::internal)?;
+        if source.task_id != state.task_id
+            || source.project_id != state.project_id
+            || source.owner_subject != state.owner_subject
+        {
+            return Err(AppError::Forbidden);
+        }
+        Self::freeze_delivery_dependencies(tx, &source, assignment, actor, proof, None).await
+    }
+    async fn freeze_delivery_dependencies(
+        tx: &DatabaseTransaction,
+        source: &domain::sdlc_source::TaskSourceBinding,
+        assignment: Uuid,
+        actor: &Principal,
+        proof: Option<&OwnerDataAdmission>,
+        observed_until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), AppError> {
         let Some(native) = app::native_space_access::current()? else {
             return Ok(());
         };
@@ -181,11 +223,11 @@ impl PostgresSdlcRepository {
             .transpose()?;
         tx.query_one(statement(
             "SELECT project_id FROM tracker_project_space_sets WHERE project_id=$1 FOR SHARE",
-            vec![pending.receipt.project_id.into()],
+            vec![source.project_id.into()],
         ))
         .await
         .map_err(map_db)?;
-        let rows=tx.query_all(statement("SELECT c.registry_instance_id,c.space_id,c.state FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id) WHERE l.project_id=$1 ORDER BY c.registry_instance_id,c.space_id FOR SHARE OF c",vec![pending.receipt.project_id.into()])).await.map_err(map_db)?;
+        let rows=tx.query_all(statement("SELECT c.registry_instance_id,c.space_id,c.state FROM tracker_project_spaces l JOIN tracker_space_catalog c USING(registry_instance_id,space_id) WHERE l.project_id=$1 ORDER BY c.registry_instance_id,c.space_id FOR SHARE OF c",vec![source.project_id.into()])).await.map_err(map_db)?;
         let linked = !rows.is_empty();
         let mut spaces = Vec::new();
         for row in rows {
@@ -205,22 +247,22 @@ impl PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         spaces.push(SpaceRef {
-            registry_instance_id: pending.source.namespace.registry_instance_id,
-            space_id: pending.source.namespace.namespace_id,
+            registry_instance_id: source.namespace.registry_instance_id,
+            space_id: source.namespace.namespace_id,
         });
         spaces.sort_by_key(|s| (s.registry_instance_id, s.space_id));
         spaces.dedup();
-        let until: chrono::DateTime<chrono::Utc> =
-            serde_json::from_value(observed.audit()["valid_until"].clone())
-                .map_err(AppError::internal)?;
-        let mut expiry = until.timestamp().min(native.validity()?.valid_until);
+        let mut expiry = native.validity()?.valid_until;
+        if let Some(until) = observed_until {
+            expiry = expiry.min(until.timestamp());
+        }
         if let Some(proof) = proof {
             expiry = expiry.min(proof.check(true)?);
         }
         crate::guarded_db::bind_commit_clock(tx, expiry)
             .await
             .map_err(map_db)?;
-        exec(tx,"INSERT INTO tracker_execution_space_grants(assignment_id,task_id,project_id,origin,assignment_version,spaces,required_wiki_space,original_actor,initial_valid_until) VALUES($1,$2,$3,'delivery',NULL,$4,NULL,$5,$6)",vec![assignment.into(),pending.receipt.task_id.into(),pending.receipt.project_id.into(),json_value(&spaces)?,json!({"issuer":native.identity().issuer,"subject":pending.receipt.actor_subject}).into(),expiry.into()]).await
+        exec(tx,"INSERT INTO tracker_execution_space_grants(assignment_id,task_id,project_id,origin,assignment_version,spaces,required_wiki_space,original_actor,initial_valid_until) VALUES($1,$2,$3,'delivery',NULL,$4,NULL,$5,$6)",vec![assignment.into(),source.task_id.into(),source.project_id.into(),json_value(&spaces)?,json!({"issuer":native.identity().issuer,"subject":source.owner_subject}).into(),expiry.into()]).await
     }
     pub(super) async fn bind_owner_data(
         tx: &DatabaseTransaction,

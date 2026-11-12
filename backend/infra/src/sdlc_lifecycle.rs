@@ -1193,10 +1193,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
         if matches!(
             command,
             LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
-        ) && !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
+        ) && !state.retained_fields.contains_key("execution_handoff_id")
+            && !self
+                .config
+                .single_task_project_ids
+                .contains(&state.project_id)
         {
             return Err(AppError::Unavailable(
                 "single_task_lifecycle_project_not_enabled".into(),
@@ -1291,6 +1292,17 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     None,
                 )
                 .await?;
+                if state.retained_fields.contains_key("execution_handoff_id") {
+                    let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
+                    Self::freeze_current_handoff_dependencies(
+                        &tx,
+                        &state,
+                        assignment.assignment_id,
+                        actor,
+                        owner_data.as_ref(),
+                    )
+                    .await?;
+                }
             }
             LifecycleCommand::Heartbeat {
                 fence: expected, ..
@@ -1454,9 +1466,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         let event_id = event
             .filter(|_| before.as_ref() != Some(&receipt))
             .map(|_| Uuid::now_v7());
-        exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
-            VALUES($1,$2,$3,$4,$5,$6)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
-                hash.into(),json_value(&receipt)?,event_id.into()]).await?;
+        exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id,handoff_assignment_transaction)
+            VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $7 THEN pg_current_xact_id() END)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
+                hash.into(),json_value(&receipt)?,event_id.into(),(matches!(command,LifecycleCommand::Reserve{..}) && state.retained_fields.contains_key("execution_handoff_id")).into()]).await?;
         if let (Some(event_id), Some(event)) = (event_id, event) {
             let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
                 "project_id":state.project_id,"task_id":task,"root_task_id":task,
