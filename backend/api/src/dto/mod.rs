@@ -176,7 +176,9 @@ pub struct SprintResponse {
 pub struct BoardResponse {
     pub project_id: String,
     pub project_key: String,
+    /// Retained for existing legacy clients; canonical UI uses sdlc.
     pub columns: Vec<BoardColumnResponse>,
+    pub sdlc: SdlcBoardResponse,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
     /// Total number of backlog (unscheduled) issues for the project.
@@ -395,4 +397,10 @@ pub struct AttachmentResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AttachmentListResponse {
     pub attachments: Vec<AttachmentResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SdlcBoardResponse {
+    pub stages: Vec<domain::sdlc_lifecycle::LifecycleStage>,
+    pub tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
 }

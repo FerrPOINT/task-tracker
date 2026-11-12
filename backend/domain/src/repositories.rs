@@ -675,6 +675,13 @@ impl IssueStatusHistoryRepository for StubIssueStatusHistoryRepository {
 
 #[async_trait]
 pub trait BoardRepository: Send + Sync {
+    /// Read canonical stages only for issues from an already authorized board.
+    /// This read does not depend on automation admission or enable execution.
+    async fn sdlc_tasks(
+        &self,
+        project: ProjectId,
+        issues: &[IssueId],
+    ) -> Result<Vec<crate::sdlc_lifecycle::SdlcBoardTask>, AppError>;
     async fn get_by_id(&self, id: BoardId) -> Result<Board, AppError>;
     async fn get_default_by_project(&self, project_id: ProjectId) -> Result<Board, AppError>;
     async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError>;
@@ -1163,6 +1170,13 @@ impl IssueRepository for StubIssueRepository {
 pub struct StubBoardRepository;
 #[async_trait]
 impl BoardRepository for StubBoardRepository {
+    async fn sdlc_tasks(
+        &self,
+        _project: shared::ProjectId,
+        _issues: &[shared::IssueId],
+    ) -> Result<Vec<crate::sdlc_lifecycle::SdlcBoardTask>, shared::AppError> {
+        Err(AppError::not_found("board", "stub"))
+    }
     async fn get_by_id(&self, _id: BoardId) -> Result<Board, AppError> {
         Err(AppError::not_found("board", "stub"))
     }

@@ -892,6 +892,20 @@ async fn board_success_and_move() {
     assert_eq!(board.status(), 200);
     let body: serde_json::Value = board.json().await.unwrap();
     assert!(!body["columns"].as_array().unwrap().is_empty());
+    assert_eq!(
+        body["sdlc"]["stages"],
+        serde_json::json!([
+            "Draft",
+            "Backlog",
+            "Analysis",
+            "Architecture",
+            "Development",
+            "Review",
+            "Testing",
+            "Rework",
+            "Deployment"
+        ])
+    );
 
     let created = client
         .post(format!("{url}/api/v1/issues"))
@@ -924,6 +938,14 @@ async fn board_success_and_move() {
     assert_eq!(moved.status(), 200);
     let body: serde_json::Value = moved.json().await.unwrap();
     assert!(body["issues"].as_array().is_some());
+    let projection = body["sdlc"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["issue_id"] == issue_id)
+        .unwrap();
+    assert_eq!(projection["stage"], "Draft");
+    assert!(projection.get("status").is_none());
 }
 
 #[tokio::test]

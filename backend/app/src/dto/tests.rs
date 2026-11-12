@@ -98,3 +98,53 @@ fn sprint_dto_from_sprint() {
     assert_eq!(dto.goal, "goal");
     assert_eq!(dto.project_id, project_id.to_string());
 }
+
+#[test]
+fn board_projection_preserves_native_progress_without_promoting_legacy_done() {
+    use crate::services::board::project_board_tasks;
+    use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+    let user = sample_user();
+    let project = Project {
+        id: ProjectId::new(),
+        key: ProjectKey::new("BRD"),
+        name: "Board".into(),
+        description: None,
+        owner_id: user.id,
+        default_board_id: BoardId::new(),
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+    let issues: Vec<_> = (1..=2)
+        .map(|n| {
+            IssueDto::from_issue(
+                Issue::create(
+                    &project,
+                    n,
+                    IssueType::Task,
+                    StatusId::new(),
+                    "Card",
+                    None,
+                    user.id,
+                    Priority::Medium,
+                ),
+                "Board".into(),
+                "Done".into(),
+                None,
+                None,
+            )
+        })
+        .collect();
+    let native = SdlcBoardTask {
+        issue_id: issues[0].id.parse().unwrap(),
+        stage: LifecycleStage::Review,
+        status: Some(LifecycleStatus::InProgress),
+    };
+    let projected = project_board_tasks(&issues, vec![native]).unwrap();
+    assert_eq!(projected.len(), issues.len());
+    assert_eq!(projected[0].stage, LifecycleStage::Review);
+    assert_eq!(projected[0].status, Some(LifecycleStatus::InProgress));
+    assert_eq!(projected[1].stage, LifecycleStage::Draft);
+    assert_eq!(projected[1].status, None);
+    assert!(issues.iter().all(|issue| issue.status == "Done"));
+    assert_eq!(LifecycleStage::BOARD_ORDER.len(), 9);
+}

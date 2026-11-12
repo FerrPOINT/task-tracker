@@ -2314,6 +2314,13 @@ fn failing_context() -> AppContext {
     struct FailingBoardRepository;
     #[async_trait::async_trait]
     impl BoardRepository for FailingBoardRepository {
+        async fn sdlc_tasks(
+            &self,
+            _project: shared::ProjectId,
+            _issues: &[shared::IssueId],
+        ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, shared::AppError> {
+            Err(AppError::Internal("x".into()))
+        }
         async fn get_by_id(&self, _id: shared::BoardId) -> Result<Board, AppError> {
             Err(AppError::Internal("x".into()))
         }

@@ -662,6 +662,13 @@ pub struct MemoryBoardRepository {
 
 #[async_trait]
 impl BoardRepository for MemoryBoardRepository {
+    async fn sdlc_tasks(
+        &self,
+        _project: shared::ProjectId,
+        _issues: &[shared::IssueId],
+    ) -> Result<Vec<crate::sdlc_lifecycle::SdlcBoardTask>, shared::AppError> {
+        Ok(vec![])
+    }
     async fn get_by_id(&self, id: BoardId) -> Result<Board, AppError> {
         let boards = self.boards.lock().unwrap();
         boards

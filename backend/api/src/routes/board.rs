@@ -111,6 +111,10 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
     BoardResponse {
         project_id: b.project_id,
         project_key: b.project_key,
+        sdlc: crate::dto::SdlcBoardResponse {
+            stages: domain::sdlc_lifecycle::LifecycleStage::BOARD_ORDER.to_vec(),
+            tasks: b.sdlc_tasks,
+        },
         columns: b
             .columns
             .into_iter()

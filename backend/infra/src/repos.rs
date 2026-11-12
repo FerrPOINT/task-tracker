@@ -1870,6 +1870,59 @@ struct BoardRepo {
 
 #[async_trait]
 impl BoardRepository for BoardRepo {
+    async fn sdlc_tasks(
+        &self,
+        project: ProjectId,
+        issues: &[IssueId],
+    ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        if issues.is_empty() {
+            return Ok(vec![]);
+        }
+        use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+        use sea_orm::{Value, sea_query::ArrayType};
+
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT s.task_id, s.state->'stage' AS stage, NULLIF(s.state->'status', 'null'::jsonb) AS status
+             FROM sdlc_tasks s
+             JOIN sdlc_instance owner ON owner.instance_id = s.tracker_instance_id
+             JOIN issues i ON i.id = s.task_id AND i.project_id = s.project_id
+             WHERE i.project_id = $1 AND i.id = ANY($2)",
+                [
+                    project.as_uuid().into(),
+                    Value::Array(
+                        ArrayType::Uuid,
+                        Some(Box::new(
+                            issues.iter().map(|id| Value::from(id.as_uuid())).collect(),
+                        )),
+                    ),
+                ],
+            ))
+            .await
+            .map_err(crate::db_error::map)?;
+        rows.into_iter()
+            .map(|row| {
+                let stage = serde_json::from_value::<domain::sdlc::Stage>(
+                    row.try_get::<serde_json::Value>("", "stage")
+                        .map_err(crate::db_error::map)?,
+                )
+                .map_err(AppError::internal)?;
+                let status = row
+                    .try_get::<Option<serde_json::Value>>("", "status")
+                    .map_err(crate::db_error::map)?
+                    .map(serde_json::from_value::<LifecycleStatus>)
+                    .transpose()
+                    .map_err(AppError::internal)?;
+                Ok(SdlcBoardTask {
+                    issue_id: row.try_get("", "task_id").map_err(crate::db_error::map)?,
+                    stage: LifecycleStage::from_legacy(stage),
+                    status,
+                })
+            })
+            .collect()
+    }
     async fn get_by_id(&self, id: BoardId) -> Result<Board, AppError> {
         let model = board::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)

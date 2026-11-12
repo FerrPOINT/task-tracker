@@ -55,7 +55,7 @@
             "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden — system admin required"
+            "description": "Forbidden \u2014 system admin required"
           }
         },
         "security": [
@@ -86,7 +86,7 @@
             "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden — system admin required"
+            "description": "Forbidden \u2014 system admin required"
           }
         },
         "security": [
@@ -128,7 +128,7 @@
             "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden — system admin required"
+            "description": "Forbidden \u2014 system admin required"
           }
         },
         "security": [
@@ -11573,6 +11573,7 @@
           "project_id",
           "project_key",
           "columns",
+          "sdlc",
           "issues",
           "sprint",
           "backlog_total"
@@ -11587,7 +11588,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BoardColumnResponse"
-            }
+            },
+            "description": "Retained for existing legacy clients; canonical UI uses sdlc."
           },
           "issues": {
             "type": "array",
@@ -11600,6 +11602,9 @@
           },
           "project_key": {
             "type": "string"
+          },
+          "sdlc": {
+            "$ref": "#/components/schemas/SdlcBoardResponse"
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
@@ -20422,6 +20427,53 @@
           "failed",
           "cancelled"
         ]
+      },
+      "SdlcBoardResponse": {
+        "type": "object",
+        "required": [
+          "stages",
+          "tasks"
+        ],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStage"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SdlcBoardTask"
+            }
+          }
+        }
+      },
+      "SdlcBoardTask": {
+        "type": "object",
+        "required": [
+          "issue_id",
+          "stage"
+        ],
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          }
+        }
       },
       "SdlcContext": {
         "type": "object",

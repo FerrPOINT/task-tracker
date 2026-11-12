@@ -198,6 +198,7 @@ pub struct BoardDto {
     pub project_id: String,
     pub project_key: String,
     pub columns: Vec<BoardColumnDto>,
+    pub sdlc_tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
     pub issues: Vec<IssueDto>,
     pub sprint: SprintDto,
     /// Total number of backlog (unscheduled) issues for the project.

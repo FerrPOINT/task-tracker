@@ -109,6 +109,13 @@ impl BoardServiceImpl {
             })
             .await?;
 
+        let tasks = self
+            .boards
+            .sdlc_tasks(
+                board.project_id,
+                &issues.iter().map(|issue| issue.id).collect::<Vec<_>>(),
+            )
+            .await?;
         let db_statuses = self.statuses.list_all().await?;
         let todo_status = Self::backlog_status(&board, &db_statuses);
         let backlog_total = self
@@ -189,6 +196,7 @@ impl BoardServiceImpl {
             project_id: board.project_id.to_string(),
             project_key: project_key.to_string(),
             columns,
+            sdlc_tasks: project_board_tasks(&issue_dtos, tasks)?,
             issues: issue_dtos,
             sprint: sprint_dto,
             backlog_total,
@@ -353,4 +361,29 @@ impl crate::context::BoardService for BoardServiceImpl {
         });
         self.build_board_dto(project_key).await
     }
+}
+
+/// Project authorized board cards; legacy status names are not lifecycle evidence.
+pub(crate) fn project_board_tasks(
+    issues: &[crate::dto::IssueDto],
+    tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
+) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+    use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+    let mut tasks: std::collections::HashMap<_, _> = tasks
+        .into_iter()
+        .map(|task| (task.issue_id.to_string(), task))
+        .collect();
+    issues
+        .iter()
+        .map(|issue| {
+            Ok(match tasks.remove(&issue.id) {
+                Some(task) => task,
+                None => SdlcBoardTask {
+                    issue_id: issue.id.parse().map_err(AppError::internal)?,
+                    stage: LifecycleStage::Draft,
+                    status: None,
+                },
+            })
+        })
+        .collect()
 }

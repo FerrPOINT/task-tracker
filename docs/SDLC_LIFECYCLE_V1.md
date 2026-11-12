@@ -1,5 +1,20 @@
 # Task lifecycle SDLC v1
 
+## Доска установленного dev: канонические стадии
+
+Board API публикует фиксированный LifecycleStage::BOARD_ORDER для каждого проекта,
+независимо от admission автоматизации. Пакетное чтение стадий выполняется после
+существующей проверки доступа к проекту и ограничено его выбранными issue ID.
+Данные без SDLC-записи отображаются Draft без операционного статуса: это
+read projection без enrollment, переписывания старых статусов или выдуманного
+прогресса. Legacy Done не означает Deployment/Completed.
+
+Новый UI использует только BoardResponse.sdlc, без DnD по status_id.
+Старые columns и board/move сохраняются в совместимом dev-пакете для действующих
+клиентов и отката frontend; они не являются API изменения стадии. В актуальном
+main их удаление уже принадлежит каноническому board-контракту. Этот backport
+не внедряет прочие незавершённые main migrations и не меняет схему БД.
+
 Статус: Target approved, 2026-10-02; backend B-SDLC-01 и UI B-SDLC-05 source-срезы
 добавлены 2026-10-03. Runtime admission и сквозной acceptance не реализованы.
 Общий регламент — services-base `docs/platform/SDLC.md`;
