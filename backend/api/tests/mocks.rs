@@ -11,6 +11,13 @@ pub struct FailingUserRepository;
 
 #[async_trait]
 impl UserRepository for FailingUserRepository {
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        let mut users = Vec::with_capacity(ids.len());
+        for id in ids {
+            users.push(self.get_by_id(*id).await?);
+        }
+        Ok(users)
+    }
     async fn rotate_refresh_token(
         &self,
         _user_id: shared::UserId,

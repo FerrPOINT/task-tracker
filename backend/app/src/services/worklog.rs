@@ -88,22 +88,6 @@ impl WorklogServiceImpl {
         )
         .await;
     }
-
-    async fn sync_issue_time_tracking(&self, issue: &mut domain::Issue) -> Result<(), AppError> {
-        let spent: i64 = self
-            .worklogs
-            .list_by_issue(issue.id)
-            .await?
-            .iter()
-            .map(|worklog| worklog.duration_seconds)
-            .sum();
-        issue.time_spent_seconds = spent;
-        if let Some(original) = issue.original_estimate_seconds {
-            issue.remaining_estimate_seconds = Some((original - spent).max(0));
-        }
-        issue.updated_at = shared::now();
-        self.issues.save(issue).await.map(|_| ())
-    }
 }
 
 #[async_trait]
@@ -128,10 +112,8 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             .worklogs
             .list_by_issue_page(issue_id, effective_limit as u64, offset)
             .await?;
-        let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
-        for u in self.users.list().await? {
-            names.insert(u.id, u.display_name.as_ref().to_string());
-        }
+        let author_ids: Vec<_> = worklogs.iter().map(|item| item.author_id).collect();
+        let names = super::helpers::user_name_lookup(self.users.clone(), &author_ids).await?;
         let result = worklogs
             .into_iter()
             .map(|w| {
@@ -147,7 +129,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         cmd: CreateWorklogCommand,
         requester: UserId,
     ) -> Result<WorklogDto, AppError> {
-        let mut issue = self.issues.get_by_id(cmd.issue_id).await?;
+        let issue = self.issues.get_by_id(cmd.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -172,16 +154,6 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             updated_at: shared::now(),
         };
         self.worklogs.save(&worklog).await?;
-        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
-            if let Err(rollback_err) = self.worklogs.delete(worklog.id).await {
-                tracing::warn!(
-                    error = %rollback_err,
-                    worklog_id = %worklog.id,
-                    "failed to rollback worklog create after issue time tracking sync failed"
-                );
-            }
-            return Err(err);
-        }
         self.publish_for_issue(&issue).await;
         self.notify_worklog_logged(&issue, requester, &worklog)
             .await;
@@ -198,7 +170,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         requester: UserId,
     ) -> Result<WorklogDto, AppError> {
         let mut worklog = self.worklogs.get_by_id(id).await?;
-        let mut issue = self.issues.get_by_id(worklog.issue_id).await?;
+        let issue = self.issues.get_by_id(worklog.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -209,7 +181,6 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(AppError::Forbidden);
         }
         let user = self.users.get_by_id(worklog.author_id).await?;
-        let previous = worklog.clone();
         if let Some(started_at) = cmd.started_at {
             worklog.started_at = started_at;
         }
@@ -226,16 +197,6 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         }
         worklog.updated_at = shared::now();
         self.worklogs.save(&worklog).await?;
-        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
-            if let Err(rollback_err) = self.worklogs.save(&previous).await {
-                tracing::warn!(
-                    error = %rollback_err,
-                    worklog_id = %worklog.id,
-                    "failed to rollback worklog update after issue time tracking sync failed"
-                );
-            }
-            return Err(err);
-        }
         self.publish_for_issue(&issue).await;
         Ok(WorklogDto::from_worklog(
             worklog,
@@ -245,7 +206,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
 
     async fn delete(&self, id: shared::WorklogId, requester: UserId) -> Result<(), AppError> {
         let worklog = self.worklogs.get_by_id(id).await?;
-        let mut issue = self.issues.get_by_id(worklog.issue_id).await?;
+        let issue = self.issues.get_by_id(worklog.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -256,16 +217,6 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(AppError::Forbidden);
         }
         self.worklogs.delete(id).await?;
-        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
-            if let Err(rollback_err) = self.worklogs.save(&worklog).await {
-                tracing::warn!(
-                    error = %rollback_err,
-                    worklog_id = %id,
-                    "failed to rollback worklog delete after issue time tracking sync failed"
-                );
-            }
-            return Err(err);
-        }
         self.publish_for_issue(&issue).await;
         Ok(())
     }

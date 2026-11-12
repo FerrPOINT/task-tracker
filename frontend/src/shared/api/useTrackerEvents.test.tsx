@@ -43,6 +43,26 @@ describe('useTrackerEvents', () => {
     )
   })
 
+  it('resyncs active queries on open, reconnect and a gap without resource identifiers', () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+    const options = vi.mocked(connectAuthenticatedEventStream).mock.lastCall![0]
+    expect(options.eventTypes).toContain('resync_required')
+    act(() => {
+      options.onOpen?.()
+      options.onOpen?.()
+      options.onEvent('resync_required', {})
+    })
+    expect(invalidate).toHaveBeenCalledTimes(3)
+    expect(invalidate).toHaveBeenLastCalledWith({ type: 'active' })
+  })
+
   it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {
     useAuthStore.setState({ token: 'test-token' })
     const client = new QueryClient()

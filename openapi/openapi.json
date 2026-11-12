@@ -1014,7 +1014,7 @@
         "tags": [
           "routes::events"
         ],
-        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload. Clients send Authorization: Bearer and refetch affected queries.",
+        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Changes use `tracker` events with TrackerEventPayload. A `resync_required` event with empty JSON means the subscriber missed changes and must refetch its active queries. Clients send Authorization: Bearer and refetch affected queries.",
         "operationId": "events",
         "responses": {
           "200": {

@@ -187,7 +187,7 @@ flowchart TD
 
 | Проверка | Команда |
 |---|---|
-| README contract tests | `python3 -m unittest scripts.tests.test_verify_readme -v` |
+| README contract tests | `python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_dockerfile_budget -v` |
 | README assets и anchors | `python3 scripts/verify_readme.py` |
 | Setup / dependencies | `just setup` / `just db-up` / `just db-down` |
 | Backend dev | `just backend-dev` |
