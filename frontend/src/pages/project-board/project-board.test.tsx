@@ -19,7 +19,8 @@ import type { components } from '@/api/generated'
 
 const fixture = vi.hoisted(() => ({
   empty: false,
-  status: 'Ready' as 'Ready' | 'InProgress' | 'Completed',
+  configured: true,
+  status: 'Ready' as 'Ready' | 'InProgress' | 'Completed' | undefined,
   stages: [
     'Draft',
     'Backlog',
@@ -52,15 +53,17 @@ vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
     data: {
       project_key: 'TT',
-      sdlc: {
-        stages: fixture.stages,
-        tasks: fixture.empty
-          ? []
-          : [
-              { issue_id: 'i1', stage: 'Development', status: fixture.status },
-              { issue_id: 'i2', stage: 'Review', status: 'Ready' },
-            ],
-      },
+      sdlc: fixture.configured
+        ? {
+            stages: fixture.stages,
+            tasks: fixture.empty
+              ? []
+              : [
+                  { issue_id: 'i1', stage: 'Development', status: fixture.status },
+                  { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+                ],
+          }
+        : null,
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
       columns: [
         { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
@@ -121,6 +124,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 describe('ProjectBoardPage', () => {
   beforeEach(() => {
     fixture.status = 'Ready'
+    fixture.configured = true
   })
 
   it('groups the same issue status into separate SDLC stages without displaying ordinary cards', () => {
@@ -170,6 +174,22 @@ describe('ProjectBoardPage', () => {
     expect(within(card).queryByText('Задача', { exact: true })).not.toBeInTheDocument()
     expect(within(card).queryByRole('img')).not.toBeInTheDocument()
   })
+  it('does not invent an operational status when the lifecycle has none', () => {
+    fixture.status = undefined
+    render(wrapper(<ProjectBoardPage />))
+    const card = screen.getByRole('link', { name: 'TT-1 Do work' })
+    expect(card).toBeVisible()
+    expect(within(card).queryByText('Ожидает выполнения')).not.toBeInTheDocument()
+  })
+
+  it('reports an unconfigured SDLC explicitly instead of rendering status columns', () => {
+    fixture.configured = false
+    render(wrapper(<ProjectBoardPage />))
+    expect(screen.getByRole('alert')).toHaveTextContent('SDLC не настроен')
+    expect(screen.queryByRole('region', { name: 'Колонки доски' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Ordinary work')).not.toBeInTheDocument()
+  })
+
   it('renders all nine stages on an empty project', () => {
     fixture.empty = true
     try {

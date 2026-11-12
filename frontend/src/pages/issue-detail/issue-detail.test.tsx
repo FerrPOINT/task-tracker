@@ -128,7 +128,6 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
   }),
   useUsers: () => ({ data: [], isLoading: false }),
-  useStatuses: () => mockUseStatuses(),
   useTransitions: () => ({ data: [], isLoading: false }),
   useProjectLabels: () => ({ data: [], isLoading: false }),
   useIssueLabels: () => ({ data: [], isLoading: false }),
