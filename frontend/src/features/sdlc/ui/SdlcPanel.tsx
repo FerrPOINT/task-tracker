@@ -257,27 +257,6 @@ export function SdlcPanel({ issueId, materials }: { issueId: string; materials?:
             queryKey={queryKey}
             enabled={!snapshot.error && !snapshot.isFetching}
           />
-          <Disclosure summary={t('sdlc.technicalDetails')}>
-            <dl className="min-w-0">
-              <DescriptionItem layout="inline" label={t('sdlc.instance')}>
-                {context.tracker_instance_id}
-              </DescriptionItem>
-              <DescriptionItem layout="inline" label={t('sdlc.project')}>
-                {context.project_id}
-              </DescriptionItem>
-              <DescriptionItem layout="inline" label={t('sdlc.root')}>
-                {context.root_task_id}
-              </DescriptionItem>
-              <DescriptionItem layout="inline" label={t('sdlc.owner')}>
-                {context.owner_subject}
-              </DescriptionItem>
-              {context.waiting_reason && (
-                <DescriptionItem layout="inline" label={t('sdlc.reasonCode')}>
-                  {context.waiting_reason}
-                </DescriptionItem>
-              )}
-            </dl>
-          </Disclosure>
         </section>
         <section aria-label={t('sdlc.nextStep.title')} className="mb-4">
           <SectionHeader level={3} title={t('sdlc.nextStep.title')} className="mb-2" />

@@ -12,10 +12,6 @@
     "stage": "Stage",
     "reason": "Waiting reason",
     "noReason": "No waiting reason",
-    "instance": "Tracker instance",
-    "project": "Project ref",
-    "root": "Root task ref",
-    "owner": "Owner subject",
     "intent": "Analysis request",
     "awaitingAdmission": "Analysis was queued. Execution start is not confirmed by this record.",
     "intentRef": "Intent ref",
@@ -120,7 +116,6 @@
     },
     "technicalDetails": "Technical details",
     "revisionDetails": "Revision details",
-    "reasonCode": "Waiting reason code",
     "unknownReason": "Unrecognized waiting reason; see technical details for the code.",
     "overview": {
       "title": "Development progress",

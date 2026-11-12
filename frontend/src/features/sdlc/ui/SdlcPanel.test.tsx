@@ -165,7 +165,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       'Review the requirements below. Confirmation records this version; it does not start execution.',
     )
     expect(screen.getByText(hash)).not.toBeVisible()
-    expect(screen.getByText('tracker-test')).not.toBeVisible()
+    expect(screen.queryByText('tracker-test')).not.toBeInTheDocument()
   })
 
   it('keeps queued Analysis identifiers available only in collapsed technical details', async () => {

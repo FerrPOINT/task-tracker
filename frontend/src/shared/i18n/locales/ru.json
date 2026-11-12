@@ -12,10 +12,6 @@
     "stage": "Стадия",
     "reason": "Что ожидается",
     "noReason": "Ожидание не указано",
-    "instance": "Tracker instance",
-    "project": "Project ref",
-    "root": "Root task ref",
-    "owner": "Owner subject",
     "intent": "Запрос на анализ",
     "awaitingAdmission": "Запрос на анализ принят. Начало выполнения этой записью не подтверждается.",
     "intentRef": "Intent ref",
@@ -120,7 +116,6 @@
     },
     "technicalDetails": "Технические данные",
     "revisionDetails": "Данные ревизии",
-    "reasonCode": "Код причины ожидания",
     "unknownReason": "Причина ожидания пока не описана. Её код доступен в технических сведениях.",
     "overview": {
       "title": "Ход разработки",
