@@ -257,23 +257,6 @@ export function SdlcPanel({ source }: { source: SdlcSnapshotSource }) {
             : t('sdlc.noReason')}
         </DescriptionItem>
       </dl>
-      <Disclosure summary={t('sdlc.technicalDetails')}>
-        <dl className="min-w-0">
-          <DescriptionItem layout="inline" label={t('sdlc.instance')}>
-            {context.tracker_instance_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.project')}>
-            {context.project_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.root')}>
-            {context.root_task_id}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.owner')}>
-            {context.owner_subject}
-          </DescriptionItem>
-        </dl>
-      </Disclosure>
-
       <SectionHeader level={3} title={t('sdlc.nextStep')} className="mb-2 mt-4" />
       <p className="mb-4">
         {t(

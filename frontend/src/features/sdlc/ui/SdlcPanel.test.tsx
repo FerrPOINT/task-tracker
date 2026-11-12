@@ -182,12 +182,32 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(within(stage).queryByText('Development')).not.toBeInTheDocument()
   })
 
-  it('keeps machine references out of the ordinary reading view', async () => {
+  it('omits internal task identities while retaining requirements and exact confirmation', async () => {
+    const identities = {
+      tracker_instance_id: 'installation-internal-identity',
+      project_id: 'project-internal-identity',
+      root_task_id: 'root-internal-identity',
+      owner_subject: 'owner-internal-identity',
+    }
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: { ...initial.context, ...identities },
+    })
     mount()
     await screen.findByText('Exact goal shown to the owner')
-    for (const element of screen.getAllByText(task)) expect(element).not.toBeVisible()
+    for (const identity of Object.values(identities)) {
+      expect(screen.queryByText(identity)).not.toBeInTheDocument()
+    }
+    for (const label of [
+      'Technical details',
+      'Tracker instance',
+      'Project ref',
+      'Root task ref',
+      'Owner subject',
+    ]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument()
+    }
     for (const element of screen.getAllByText(hash)) expect(element).not.toBeVisible()
-    expect(screen.getByText('Technical details')).toBeVisible()
   })
 
   it('labels technical identifiers as details instead of an event link', async () => {
