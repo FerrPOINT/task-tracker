@@ -278,9 +278,6 @@
   },
   "board": {
     "columns": "Board columns",
-    "density": "Board density",
-    "densityComfortable": "Comfortable",
-    "densityCompact": "Compact",
     "filters": "Filters",
     "addColumn": "Column",
     "create": "Create",
@@ -289,14 +286,14 @@
     "backlog": "Backlog",
     "done": "Done",
     "inProgress": "In Progress",
-    "subtitle": "Backlog: {{backlog}} · Days left: {{remainingDays}}",
-    "title": "Board · {{projectName}} — {{sprintName}}",
+    "subtitle": "Tasks: {{count}}",
+    "title": "Board · {{projectName}}",
     "todo": "To Do",
     "columnActions": "Column actions",
     "moveTo": "Move to: {{status}}",
     "noTransitions": "No available transitions",
     "statusChanged": "Issue status changed",
-    "emptyStatus": "No issues in this status",
+    "emptyStatus": "No tasks at this stage",
     "notAvailable": "not available"
   },
   "backlog": {

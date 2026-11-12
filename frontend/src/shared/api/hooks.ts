@@ -20,7 +20,7 @@ import {
   deleteProject,
   type Project,
 } from '@/api/project'
-import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
+import { getBoard, getBacklog } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
@@ -47,7 +47,7 @@ import {
   type CreateSprintRequest,
   type UpdateSprintRequest,
 } from '@/api/sprint'
-import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
+import { listStatuses, listIssueTypes } from '@/api/workflow'
 import { listProjectMembers } from '@/api/members'
 import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
 import {
@@ -176,7 +176,6 @@ export function useUpdateNotificationSettings() {
 
 const workflowKeys = {
   statuses: ['statuses'] as const,
-  transitions: ['transitions'] as const,
   issueTypes: ['issue-types'] as const,
 }
 
@@ -184,14 +183,6 @@ export function useStatuses() {
   return useQuery({
     queryKey: workflowKeys.statuses,
     queryFn: listStatuses,
-    staleTime: 5 * 60 * 1000,
-  })
-}
-
-export function useTransitions() {
-  return useQuery({
-    queryKey: workflowKeys.transitions,
-    queryFn: listTransitions,
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -477,16 +468,6 @@ export function useCreateIssue() {
     onSuccess: (data) => {
       qc.setQueryData(['issue', data.id], data)
       invalidateIssueCaches(qc, data.project_key, data.id)
-    },
-  })
-}
-
-export function useMoveIssue(projectKey: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: MoveIssueInput) => moveIssue(projectKey, input),
-    onSuccess: (data, input) => {
-      invalidateIssueCaches(qc, data.project_key || projectKey, input.issue_id)
     },
   })
 }

@@ -278,9 +278,6 @@
   },
   "board": {
     "columns": "Колонки доски",
-    "density": "Плотность доски",
-    "densityComfortable": "Обычная",
-    "densityCompact": "Компактная",
     "filters": "Фильтры",
     "addColumn": "Колонка",
     "create": "Создать",
@@ -289,14 +286,14 @@
     "backlog": "Бэклог",
     "done": "Готово",
     "inProgress": "В работе",
-    "subtitle": "Бэклог: {{backlog}} · Осталось дней: {{remainingDays}}",
-    "title": "Доска · {{projectName}} — {{sprintName}}",
+    "subtitle": "Всего задач: {{count}}",
+    "title": "Доска · {{projectName}}",
     "todo": "К выполнению",
     "columnActions": "Действия с колонкой",
     "moveTo": "Переместить: {{status}}",
     "noTransitions": "Нет доступных переходов",
     "statusChanged": "Статус задачи изменён",
-    "emptyStatus": "В этом статусе нет задач",
+    "emptyStatus": "На этой стадии пока нет задач",
     "notAvailable": "нет данных"
   },
   "backlog": {
