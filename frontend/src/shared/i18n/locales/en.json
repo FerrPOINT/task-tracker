@@ -237,6 +237,7 @@
     "done": "Done",
     "lead": "Lead",
     "createProject": "Create project",
+    "archived": "Archived",
     "manage": "Manage project",
     "managementUnavailable": "Project management is unavailable",
     "deleteDescription": "The project “{{name}}” and all its issues will be permanently deleted.",

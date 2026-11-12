@@ -1,6 +1,7 @@
 import { useClipboard, useMediaQuery } from '@pdlc/ui/lib'
 import {
   Disclosure,
+  ActionGroup,
   TextLink,
   ProjectAvatar,
   toast,
@@ -208,7 +209,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
               </p>
             )}
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ActionGroup className="ml-auto">
             <Button
               variant="secondary"
               size="sm"
@@ -259,7 +260,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </ActionGroup>
         </div>
 
         <IssueDetailLayout
@@ -325,11 +326,11 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                   <CommentsPanel issueId={issue.id} currentUserId={currentUserId ?? undefined} />
                 </TabsContent>
                 <TabsContent value="worklog" style={issueTabPanelStyle}>
-                  <div className="mb-[var(--shell-page-block-gap)] flex justify-end">
+                  <ActionGroup className="mb-[var(--shell-page-block-gap)]">
                     <Button size="sm" onClick={handleLogWork}>
                       {t('timeTracking.logWork')}
                     </Button>
-                  </div>
+                  </ActionGroup>
                   {worklogsQuery.error ? (
                     <ErrorState
                       message={t('timeTracking.worklog.loadError')}
