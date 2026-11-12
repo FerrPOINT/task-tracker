@@ -795,16 +795,18 @@ async fn critical_pg_scenario() {
             },
             LifecycleCommand::Reconcile {
                 fence: fence(&r.head),
-                terminal: native.clone(),
+                terminal: Some(native.clone()),
+                never_submitted: None,
                 recovery: RecoveryDisposition::Stop,
                 idempotency_key: "held-stop".into(),
             },
             LifecycleCommand::Reconcile {
                 fence: fence(&r.head),
-                terminal: RuntimeTerminalObservation {
+                terminal: Some(RuntimeTerminalObservation {
                     state: RuntimeTerminalState::Failed,
                     ..native
-                },
+                }),
+                never_submitted: None,
                 recovery: RecoveryDisposition::RetryTransient {
                     replay_safety_receipt: ArtifactReceipt {
                         reference: "fixture://synthetic-replay-safety".into(),

@@ -6,6 +6,40 @@ use domain::sdlc_routing::{
 };
 
 #[test]
+fn never_submitted_observation_is_exclusive_and_does_not_invent_terminal_identity() {
+    let raw = serde_json::json!({"operation":"reconcile","fence":{
+        "assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),"fencing_token":1,
+        "lease_id":Uuid::new_v4(),"expected_lease_version":1},
+        "never_submitted":{"assignment_hash":"a".repeat(64),"reservation_key":"reserve:original",
+            "reservation_payload_sha256":"b".repeat(64)},
+        "recovery":{"disposition":"retry_unsubmitted"},"idempotency_key":"recover:original"});
+    let command: LifecycleCommand = serde_json::from_value(raw.clone()).unwrap();
+    validate_command(&command).unwrap();
+    assert!(serde_json::to_value(&command).unwrap().get("terminal").is_none());
+    for field in ["never_submitted", "recovery"] {
+        let mut wrong = raw.clone();
+        wrong[field] = if field == "recovery" { serde_json::json!({"disposition":"stop"}) } else { serde_json::Value::Null };
+        let command: LifecycleCommand = serde_json::from_value(wrong).unwrap();
+        assert!(validate_command(&command).is_err());
+    }
+    let mut value = task();
+    value.status = LifecycleStatus::Ready;
+    value.runtime = RuntimeState::Reserved;
+    let routing = value.routing.clone();
+    let stage = value.stage;
+    reconcile_unsubmitted(&mut value).unwrap();
+    assert_eq!(value.runtime, RuntimeState::Queued);
+    assert_eq!(value.routing, routing);
+    assert_eq!(value.stage, stage);
+    value.runtime = RuntimeState::Running;
+    assert!(reconcile_unsubmitted(&mut value).is_err());
+    value.runtime = RuntimeState::Unknown;
+    value.transient_retries = MAX_TRANSIENT_RETRIES;
+    reconcile_unsubmitted(&mut value).unwrap();
+    assert_eq!(value.runtime, RuntimeState::Terminal);
+}
+
+#[test]
 fn explicit_start_command_is_closed_and_has_no_owner_or_dispatch_override() {
     use serde_json::json;
     let raw = json!({"operation":"start_analysis","pm_completion_id":Uuid::new_v4(),"idempotency_key":"start"});

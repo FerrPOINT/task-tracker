@@ -1,5 +1,14 @@
 # Дата-модель Task Tracker
 
+## Неотправленное delivery-назначение
+
+Forward migration 0116 расширяет CHECK и admission-trigger существующей
+`sdlc_delivery_reconciliations`. Новый `never_submitted` сверяется с исходной
+записью Reserve в `sdlc_delivery_operations` и её событием резервирования;
+назначение должно быть точным, lease истекшей, binding/proposal отсутствующими.
+История terminal reconciliation сохраняется. Новых таблиц и вымышленных
+runtime-записей нет; освобождение capacity использует существующий журнал.
+
 ## Встроенная Декомпозиция
 
 Migration 0113 добавляет `issue_plan_revisions` и `issue_plan_operations`.

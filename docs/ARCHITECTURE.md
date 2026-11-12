@@ -1,5 +1,19 @@
 # Архитектура Task Tracker
 
+## Восстановление до native dispatch
+
+Fleet доказывает отсутствие технического и configured-message native journals
+под теми же agent/root locks,
+которыми сериализованы reservation и claim. В этой транзакции Fleet сохраняет
+точную команду `reconcile` с `never_submitted` в штатном журнале команд;
+её наличие навсегда запрещает native reserve/claim исходного назначения.
+Только затем команда передаётся Tracker. Tracker сверяет свой исходный Reserve,
+assignment/hash, владельца lease, expiry и отсутствие run binding/proposal,
+сохраняет существующую reconciliation-запись и освобождает capacity.
+HTTP-неопределённость восстанавливается GET исходного ключа. Само отсутствие
+журнала вне блокировок не является доказательством. Существующая native custody,
+включая submitted без ACK, этим путём не освобождается.
+
 ## Встроенная Декомпозиция
 
 [Управление встроенной декомпозицией](contracts/task-decomposition.md) реализовано

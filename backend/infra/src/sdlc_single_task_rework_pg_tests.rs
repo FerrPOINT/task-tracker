@@ -29,6 +29,68 @@ struct OriginalStep {
     proposal: Json,
 }
 
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn expired_unsubmitted_reservation_requeues_only_with_exact_original_provenance() {
+    let (f, queued) = ReworkFixture::new().await;
+    let reserve = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsubmitted:reserve".into(),
+    };
+    let (reserved, _) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
+    let mut command = LifecycleCommand::Reconcile {
+        fence: delivery_fence(&reserved), terminal: None,
+        never_submitted: Some(NeverSubmittedObservation {
+            assignment_hash: reserved.assignment.as_ref().unwrap().assignment_hash.clone(),
+            reservation_key: reserve.key().into(),
+            reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
+        }),
+        recovery: RecoveryDisposition::RetryUnsubmitted,
+        idempotency_key: "unsubmitted:recover".into(),
+    };
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.is_err());
+    assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
+    // Real expiry, without rewriting immutable lease/native evidence.
+    f.db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
+    for case in ["key", "hash", "assignment"] {
+        let mut wrong = command.clone();
+        let LifecycleCommand::Reconcile { never_submitted: Some(observation), .. } = &mut wrong else { unreachable!() };
+        match case {
+            "key" => observation.reservation_key = "foreign-reserve".into(),
+            "hash" => observation.reservation_payload_sha256 = "e".repeat(64),
+            _ => observation.assignment_hash = "f".repeat(64),
+        }
+        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, wrong).await.is_err(), "{case}");
+    }
+    assert!(matches!(f.repo.lifecycle_command(f.task, &f.owner, command.clone()).await, Err(AppError::Forbidden)));
+    let (recovered, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.unwrap();
+    assert!(!replayed);
+    assert_eq!(recovered.task.stage, reserved.task.stage);
+    assert_eq!(recovered.task.routing, reserved.task.routing);
+    assert_eq!(recovered.task.runtime, RuntimeState::Queued);
+    assert_eq!(recovered.task.status, LifecycleStatus::Ready);
+    assert_eq!(recovered.task.transient_retries, 1);
+    assert!(recovered.assignment.is_none() && recovered.binding.is_none());
+    assert!(recovered.task.resume_chat_id.is_none());
+    assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 1);
+    assert_eq!(count(&f.db, "sdlc_delivery_run_bindings").await, 0);
+    let (replayed, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(replayed, recovered);
+    let (next, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
+        expected_task_version: recovered.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsubmitted:next".into(),
+    }).await.unwrap();
+    assert_ne!(next.assignment.as_ref().unwrap().assignment_id, reserved.assignment.as_ref().unwrap().assignment_id);
+    if let LifecycleCommand::Reconcile { idempotency_key, .. } = &mut command {
+        *idempotency_key = "unsubmitted:stale-fence".into();
+    }
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command).await.is_err());
+    f.assert_current(&next).await;
+}
+
 async fn pm_history(db: &DatabaseConnection, task: Uuid) -> Json {
     db.query_one(statement(
         "SELECT jsonb_build_object('assignment',t.state->'assignment',

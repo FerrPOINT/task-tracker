@@ -322,9 +322,25 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
         LifecycleCommand::Reconcile {
             fence,
             terminal,
+            never_submitted,
             recovery,
             ..
         } => {
+            if let Some(observation) = never_submitted {
+                if terminal.is_some()
+                    || !matches!(recovery, RecoveryDisposition::RetryUnsubmitted)
+                    || !sha256(&observation.assignment_hash)
+                    || !sha256(&observation.reservation_payload_sha256)
+                {
+                    return Err(AppError::validation("exact never-submitted reservation proof required"));
+                }
+                crate::sdlc::validate_key(&observation.reservation_key)?;
+                return validate_fence(fence);
+            }
+            let terminal = terminal.as_ref().ok_or_else(|| AppError::validation("reconciliation observation required"))?;
+            if matches!(recovery, RecoveryDisposition::RetryUnsubmitted) {
+                return Err(AppError::validation("never-submitted observation required"));
+            }
             if terminal.chat_id.is_nil()
                 || terminal.run_id.is_nil()
                 || !sha256(&terminal.assignment_hash)
@@ -766,6 +782,9 @@ pub fn reconcile_terminal(
     terminal: &RuntimeTerminalObservation,
     recovery: &RecoveryDisposition,
 ) -> Result<(), AppError> {
+    if matches!(recovery, RecoveryDisposition::RetryUnsubmitted) {
+        return Err(AppError::conflict("native terminal cannot attest never-submitted work"));
+    }
     if !matches!(
         task.runtime,
         RuntimeState::Running | RuntimeState::Reserved | RuntimeState::Unknown
@@ -801,6 +820,25 @@ pub fn reconcile_terminal(
             }
             .into(),
         );
+    }
+    Ok(())
+}
+
+/// Caller has locked and verified the exact expired, unbound original reservation.
+pub fn reconcile_unsubmitted(task: &mut LifecycleTask) -> Result<(), AppError> {
+    if !matches!(task.runtime, RuntimeState::Reserved | RuntimeState::Unknown) || task.status != LifecycleStatus::Ready {
+        return Err(AppError::conflict("expired unstarted assignment required"));
+    }
+    task.version = task.version.checked_add(1)
+        .filter(|version| *version <= MAX_SAFE_VERSION)
+        .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
+    if task.transient_retries < MAX_TRANSIENT_RETRIES {
+        task.transient_retries += 1;
+        task.runtime = RuntimeState::Queued;
+        task.waiting_reason = Some("unsubmitted_retry_queued".into());
+    } else {
+        task.runtime = RuntimeState::Terminal;
+        task.waiting_reason = Some("unsubmitted_retry_limit_reached".into());
     }
     Ok(())
 }

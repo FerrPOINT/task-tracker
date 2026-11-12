@@ -1,5 +1,16 @@
 # API v1 Specification — Task Tracker
 
+## Never-Submitted Delivery Reconciliation
+
+`POST /api/v1/issues/{id}/sdlc/lifecycle` retains the `reconcile` operation.
+Supply exactly one observation: existing `terminal`, or `never_submitted` with
+`assignment_hash`, `reservation_key` and `reservation_payload_sha256`.
+The latter requires `recovery.disposition=retry_unsubmitted`, the scheduler's
+original accepted Reserve key/hash, an expired unbound Ready assignment and no
+run binding/proposal. It uses the existing bounded retry counter and original-key
+GET recovery. It supplies no synthetic chat, run or terminal receipt.
+Existing terminal payloads and historical receipts retain their wire shape.
+
 ## Embedded Decomposition
 
 Управление планом: `GET/POST /api/v1/issues/{id}/decomposition`,

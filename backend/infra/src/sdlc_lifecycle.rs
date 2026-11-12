@@ -1173,6 +1173,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::Reconcile {
                 fence: expected,
                 terminal,
+                never_submitted,
                 recovery,
                 ..
             } => {
@@ -1187,7 +1188,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     || assignment.lease_id != expected.lease_id
                     || lease.lease_id != expected.lease_id
                     || expected.expected_lease_version > lease.version
-                    || assignment.assignment_hash != terminal.assignment_hash
+                    || terminal.as_ref().is_some_and(|terminal| assignment.assignment_hash != terminal.assignment_hash)
                     || assignment.assignment_hash
                         != app::sdlc_lifecycle::assignment_hash(assignment)?
                 {
@@ -1195,17 +1196,49 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         "reconciliation immutable identity mismatch",
                     ));
                 }
-                if receipt
+                if let Some(observation) = never_submitted {
+                    if receipt.binding.is_some()
+                        || receipt.task.status != LifecycleStatus::Ready
+                        || receipt.task.waiting_reason.as_deref() != Some("awaiting_run_binding")
+                        || lease.expires_at > now(&tx).await?
+                        || observation.assignment_hash != assignment.assignment_hash
+                    {
+                        return Err(AppError::conflict("expired unbound original assignment required"));
+                    }
+                    let original = tx.query_one(statement(
+                        "SELECT o.payload_hash,o.result FROM sdlc_delivery_operations o
+                         JOIN sdlc_outbox e ON e.event_id=o.event_id AND e.task_id=o.task_id
+                         WHERE o.task_id=$1 AND o.actor_subject=$2 AND o.idempotency_key=$3
+                           AND e.event_type='delivery.assignment_reserved'",
+                        vec![task.into(), actor.subject.clone().into(), observation.reservation_key.clone().into()],
+                    )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("original reservation operation required"))?;
+                    let hash: String = original.try_get("", "payload_hash").map_err(map_db)?;
+                    let original: LifecycleReceipt = serde_json::from_value(original.try_get::<Json>("", "result").map_err(map_db)?)
+                        .map_err(|_| corrupt())?;
+                    if hash != observation.reservation_payload_sha256
+                        || original.assignment.as_ref() != Some(assignment)
+                        || original.task.runtime != RuntimeState::Reserved
+                    {
+                        return Err(AppError::conflict("never-submitted reservation provenance changed"));
+                    }
+                }
+                if terminal.as_ref().is_some_and(|terminal| receipt
                     .binding
                     .as_ref()
-                    .is_some_and(|b| b.run_id != terminal.run_id || b.chat_id != terminal.chat_id)
+                    .is_some_and(|b| b.run_id != terminal.run_id || b.chat_id != terminal.chat_id))
                 {
                     return Err(AppError::conflict("actual terminal differs from bound run"));
                 }
                 let old_assignment = assignment.assignment_id;
                 exec(&tx,"INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
                     vec![old_assignment.into(),task.into(),json_value(&command)?]).await?;
-                app::sdlc_lifecycle::reconcile_terminal(&mut receipt.task, terminal, recovery)?;
+                if never_submitted.is_some() {
+                    app::sdlc_lifecycle::reconcile_unsubmitted(&mut receipt.task)?;
+                } else {
+                    app::sdlc_lifecycle::reconcile_terminal(
+                        &mut receipt.task, terminal.as_ref().ok_or_else(corrupt)?, recovery,
+                    )?;
+                }
                 exec(
                     &tx,
                     "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1",

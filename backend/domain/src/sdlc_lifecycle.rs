@@ -249,9 +249,18 @@ pub enum RuntimeTerminalState {
 #[serde(tag = "disposition", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecoveryDisposition {
     Stop,
+    RetryUnsubmitted,
     RetryTransient {
         replay_safety_receipt: ArtifactReceipt,
     },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NeverSubmittedObservation {
+    pub assignment_hash: String,
+    pub reservation_key: String,
+    pub reservation_payload_sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -458,7 +467,10 @@ pub enum LifecycleCommand {
     },
     Reconcile {
         fence: DeliveryFence,
-        terminal: RuntimeTerminalObservation,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        terminal: Option<RuntimeTerminalObservation>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        never_submitted: Option<NeverSubmittedObservation>,
         recovery: RecoveryDisposition,
         idempotency_key: String,
     },

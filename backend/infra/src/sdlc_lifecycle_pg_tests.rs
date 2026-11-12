@@ -914,7 +914,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     );
     let reconcile = LifecycleCommand::Reconcile {
         fence: stale,
-        terminal: RuntimeTerminalObservation {
+        terminal: Some(RuntimeTerminalObservation {
             assignment_hash: reserved
                 .assignment
                 .as_ref()
@@ -925,7 +925,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             run_id: binding.run_id,
             state: RuntimeTerminalState::Failed,
             receipt: artifact("verified-terminal"),
-        },
+        }),
+        never_submitted: None,
         recovery: RecoveryDisposition::RetryTransient {
             replay_safety_receipt: artifact("safe-replay"),
         },
@@ -1001,13 +1002,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             &scheduler,
             LifecycleCommand::Reconcile {
                 fence: delivery_fence(&retry),
-                terminal: RuntimeTerminalObservation {
+                terminal: Some(RuntimeTerminalObservation {
                     assignment_hash: retry.assignment.as_ref().unwrap().assignment_hash.clone(),
                     chat_id: binding.chat_id,
                     run_id: Uuid::new_v4(),
                     state: RuntimeTerminalState::Succeeded,
                     receipt: artifact("closed-without-result"),
-                },
+                }),
+                never_submitted: None,
                 recovery: RecoveryDisposition::Stop,
                 idempotency_key: "explicit-stop".into(),
             },
