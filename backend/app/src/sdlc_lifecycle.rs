@@ -84,6 +84,12 @@ impl crate::sdlc::SdlcService {
         }
         let state = self.repository.read(task, actor).await?;
         if state.configured_cli() {
+            let operation_key = format!("delivery-result:{}", command.fence.assignment_id);
+            if command.idempotency_key != operation_key {
+                return Err(AppError::validation(format!(
+                    "configured delivery result requires idempotency_key {operation_key}"
+                )));
+            }
             let lifecycle = self
                 .lifecycle_repository()?
                 .lifecycle_read(task, actor)

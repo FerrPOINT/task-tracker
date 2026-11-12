@@ -123,7 +123,6 @@ fn validate_source(
     let latest = state.revisions.last().ok_or_else(conflict)?;
     if !state.configured_cli()
         || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
-        || !config.single_task_project_ids.contains(&state.project_id)
         || state.tracker_instance_id != config.instance_id
         || state.owner_subject.trim().is_empty()
         || state.stage != Stage::Draft
@@ -893,7 +892,6 @@ mod tests {
                 orchestrator_subject: "pm".into(),
                 verifier_subject: "verifier".into(),
                 reservation_scheduler_subject: "scheduler".into(),
-                single_task_project_ids: [project].into(),
             };
             Self {
                 state,
@@ -1243,7 +1241,7 @@ mod tests {
                 10 => {
                     assert!(f.state.retained_fields.remove("flow").is_some());
                 }
-                _ => f.config.single_task_project_ids.clear(),
+                _ => f.state.project_id = id(999),
             }
             assert!(
                 f.command(&f.revision_command(), &f.pm(), None).is_err(),

@@ -230,42 +230,6 @@ async fn get_backlog_returns_500_when_repo_fails() {
 }
 
 #[tokio::test]
-async fn move_issue_returns_500_when_repo_fails() {
-    let (app, token) = app_with_failing_repos();
-    let status = authorized_request(
-        &app,
-        &token,
-        "POST",
-        "/api/v1/projects/KEY/board/move",
-        r#"{"issue_id":"00000000-0000-0000-0000-000000000000","status_id":"00000000-0000-0000-0000-000000000000"}"#,
-    )
-    .await;
-    assert_eq!(
-        status.as_u16(),
-        500,
-        "expected 500 for failing repo, got {status}"
-    );
-}
-
-#[tokio::test]
-async fn create_issue_returns_500_when_repo_fails() {
-    let (app, token) = app_with_failing_repos();
-    let status = authorized_request(
-        &app,
-        &token,
-        "POST",
-        "/api/v1/issues",
-        r#"{"project_key":"KEY","issue_type":"task","summary":"T","priority":"medium","status_id":"00000000-0000-0000-0000-000000000000","reporter_id":"00000000-0000-0000-0000-000000000000"}"#,
-    )
-    .await;
-    assert_eq!(
-        status.as_u16(),
-        500,
-        "expected 500 for failing repo, got {status}"
-    );
-}
-
-#[tokio::test]
 async fn search_issues_returns_500_when_repo_fails() {
     let (app, token) = app_with_failing_repos();
     let status = authorized_request(&app, &token, "GET", "/api/v1/issues?q=query", "").await;
@@ -330,64 +294,6 @@ async fn project_get_invalid_key_returns_400() {
 }
 
 #[tokio::test]
-async fn issue_create_invalid_project_key_returns_400() {
-    let (app, token) = app_with_failing_repos();
-    let req = api::dto::CreateIssueRequest {
-        project_key: "!!!".to_string(),
-        summary: "Test".to_string(),
-        description: None,
-        issue_type: "task".to_string(),
-        priority: "medium".to_string(),
-        status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
-        reporter_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
-        assignee_id: None,
-        custom_fields: Default::default(),
-    };
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/issues")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::from(serde_json::to_string(&req).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn issue_create_invalid_reporter_id_returns_400() {
-    let (app, token) = app_with_failing_repos();
-    let req = api::dto::CreateIssueRequest {
-        project_key: "KEY".to_string(),
-        summary: "Test".to_string(),
-        description: None,
-        issue_type: "task".to_string(),
-        priority: "medium".to_string(),
-        status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
-        reporter_id: Some("not-a-uuid".to_string()),
-        assignee_id: None,
-        custom_fields: Default::default(),
-    };
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/issues")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::from(serde_json::to_string(&req).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn issue_get_invalid_id_returns_400() {
     let (app, token) = app_with_failing_repos();
     let response = app
@@ -405,57 +311,12 @@ async fn issue_get_invalid_id_returns_400() {
 }
 
 #[tokio::test]
-async fn board_move_invalid_issue_id_returns_400() {
-    let (app, token) = app_with_failing_repos();
-    let req = api::dto::MoveIssueRequest {
-        issue_id: "not-a-uuid".to_string(),
-        status_id: "00000000-0000-0000-0000-000000000000".to_string(),
-    };
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/projects/KEY/board/move")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::from(serde_json::to_string(&req).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn board_move_invalid_status_id_returns_400() {
-    let (app, token) = app_with_failing_repos();
-    let req = api::dto::MoveIssueRequest {
-        issue_id: "00000000-0000-0000-0000-000000000000".to_string(),
-        status_id: "not-a-uuid".to_string(),
-    };
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/projects/KEY/board/move")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::from(serde_json::to_string(&req).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn update_issue_invalid_assignee_id_returns_400() {
     let (app, token) = app_with_failing_repos();
     let req = api::dto::UpdateIssueRequest {
         summary: None,
         description: None,
         priority: None,
-        status_id: None,
         assignee_id: Some(Some("not-a-uuid".to_string())),
         sprint_id: None,
         component_id: None,
@@ -475,4 +336,42 @@ async fn update_issue_invalid_assignee_id_returns_400() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn legacy_issue_write_routes_are_closed() {
+    for (path, expected) in [
+        ("/api/v1/issues", StatusCode::METHOD_NOT_ALLOWED),
+        ("/api/v1/projects/KEY/board/move", StatusCode::NOT_FOUND),
+        ("/api/v1/issues/TT-1/transition", StatusCode::NOT_FOUND),
+    ] {
+        let (app, token) = app_with_failing_repos();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn issue_patch_cannot_change_sdlc_status() {
+    let (app, token) = app_with_failing_repos();
+    let status = authorized_request(
+        &app,
+        &token,
+        "PATCH",
+        "/api/v1/issues/11111111-1111-4111-8111-111111111111",
+        r#"{"status_id":"22222222-2222-4222-8222-222222222222"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }

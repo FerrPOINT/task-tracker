@@ -254,7 +254,6 @@
     "noMatches": "По вашему запросу проекты не найдены."
   },
   "board": {
-    "ordinaryIssues": "Обычные задачи",
     "sdlcStage": {
       "Draft": "Черновик",
       "Backlog": "Бэклог",
@@ -263,7 +262,7 @@
       "Development": "Разработка",
       "Review": "Ревью",
       "Testing": "Тестирование",
-      "Rework": "На доработке",
+      "Rework": "Доработка",
       "Deployment": "Развёртывание"
     },
     "sdlcStatus": {

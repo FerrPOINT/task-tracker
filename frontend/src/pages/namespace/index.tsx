@@ -1,3 +1,4 @@
+import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
   PageHeader,
   ProjectAvatar,
@@ -60,16 +61,9 @@ export function NamespacePage() {
           </Link>
         </SectionNavigationItem>
         {context.binding.state === 'active' && (
-          <SectionNavigationItem asChild>
-            <Link
-              to={withNamespaceLocation(
-                `/issues/create?project_key=${encodeURIComponent(context.resource_key)}`,
-                ref,
-              )}
-            >
-              Создать задачу
-            </Link>
-          </SectionNavigationItem>
+          <CreateTaskAction projectKey={context.resource_key} variant="ghost">
+            Создать задачу
+          </CreateTaskAction>
         )}
       </SectionNavigation>
     </div>

@@ -46,7 +46,6 @@ import { CustomFieldsPanel } from '@/features/issue-detail/ui/CustomFieldsPanel'
 import { IssueEngagementPanel } from '@/features/issue-detail/ui/IssueEngagementPanel'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
-import { statusLabel } from '@/shared/lib/status-label'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import {
@@ -55,7 +54,6 @@ import {
   useDeleteIssue,
   useSprints,
   useIssue,
-  useStatuses,
 } from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
@@ -104,7 +102,6 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
   const boardQuery = useBoard(issueQuery.data?.project_key)
-  const statusesQuery = useStatuses()
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
@@ -291,7 +288,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
         </div>
 
         <IssueDetailLayout
-          detailsSummary={`${t('issue.details')} · ${statusLabel(statusesQuery.data?.find((status) => status.id === issue.status_id)?.name ?? issue.status, t)}`}
+          detailsSummary={t('issue.details')}
           description={
             <ContentSection asChild dividers="none">
               <section className="min-w-0 lg:col-start-1 lg:row-start-1">
@@ -311,7 +308,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
               <section className="min-w-0" aria-label={t('issue.details')}>
                 <IssueMetaEditor
                   issue={issue}
-                  columns={boardQuery.data?.columns ?? []}
+                  lifecycle={boardQuery.data?.sdlc?.tasks.find((task) => task.issue_id === issue.id)}
                   sprints={sprintsQuery.data ?? []}
                   disabled={updateIssue.isPending}
                   onChange={(patch) =>

@@ -13,7 +13,7 @@ import { render as renderView, screen, waitFor, within, fireEvent } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
 
 import { AppShell } from './app-shell'
@@ -289,21 +289,6 @@ describe('AppShell notifications', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('does not resolve an issue context on the create issue route', () => {
-    mockHooks([])
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/issues/create']}>
-          <AppShell />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-
-    expect(useIssue).toHaveBeenCalledWith('')
-    expect(useIssue).not.toHaveBeenCalledWith('create')
-  })
-
   it('does not drop the project while resolving an existing issue context', () => {
     mockHooks([])
     useIssue.mockReturnValue({ data: undefined, isPending: true })
@@ -315,75 +300,6 @@ describe('AppShell notifications', () => {
       </ThemeProvider>,
     )
     expect(screen.getByRole('button', { name: 'Создать' })).toBeDisabled()
-  })
-
-  it('uses the query project key for create issue navigation context', () => {
-    mockHooks([])
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/issues/create?project_key=XP']}>
-          <AppShell />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-
-    expect(useIssue).toHaveBeenCalledWith('')
-    expect(useIssue).not.toHaveBeenCalledWith('create')
-    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
-      'href',
-      '/projects/XP/backlog',
-    )
-    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
-      'href',
-      '/projects/XP/board',
-    )
-  })
-
-  it('uses the shared readable mode for issue creation', () => {
-    mockHooks([])
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/issues/create']}>
-          <Routes>
-            <Route element={<AppShell />}>
-              <Route path="*" element={<div>Create issue content</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-
-    expect(screen.getByText('Create issue content').parentElement).toHaveAttribute(
-      'data-page-layout',
-      'reading',
-    )
-  })
-
-  it('uses router state project key for create issue navigation context', () => {
-    mockHooks([])
-
-    render(
-      <ThemeProvider>
-        <MemoryRouter
-          initialEntries={[{ pathname: '/issues/create', state: { project_key: 'XP' } }]}
-        >
-          <AppShell />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-
-    expect(useIssue).toHaveBeenCalledWith('')
-    expect(useIssue).not.toHaveBeenCalledWith('create')
-    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
-      'href',
-      '/projects/XP/backlog',
-    )
-    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
-      'href',
-      '/projects/XP/board',
-    )
   })
 
   it.each([false, true])(

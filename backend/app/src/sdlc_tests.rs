@@ -290,7 +290,6 @@ fn retained_fixture() -> (
         confirmations: vec![],
     };
     let config = SdlcConfig {
-        single_task_project_ids: std::collections::HashSet::new(),
         reservation_scheduler_subject: "scheduler".into(),
         instance_id: "test-instance".into(),
         orchestrator_subject: "fleet".into(),

@@ -119,6 +119,9 @@ const backlogData = {
     start_date: null,
     end_date: null,
   },
+  backlog_total: 1,
+  backlog_offset: 0,
+  backlog_limit: 100,
   sprint_issues: [
     {
       id: 'i1',

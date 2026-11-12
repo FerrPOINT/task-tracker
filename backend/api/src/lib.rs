@@ -212,12 +212,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::members::remove_member,
         routes::board::get_board,
         routes::board::get_backlog,
-        routes::board::move_issue,
         routes::comments::list_comments,
         routes::comments::create_comment,
         routes::comments::update_comment,
         routes::comments::delete_comment,
-        routes::issues::create_issue,
         routes::issues::search_issues,
         routes::issues::get_issue,
         routes::issues::update_issue,
@@ -225,7 +223,6 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::issues::restore_issue,
         routes::issues::purge_issue,
         routes::issues::list_trash,
-        routes::transitions::transition_issue,
         routes::search::search_global,
         routes::attachments::list_attachments,
         routes::labels::list_labels,
@@ -331,10 +328,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         dto::UpdateProjectRequest,
         dto::IssueResponse,
         dto::IssueListResponse,
-        dto::CreateIssueRequest,
         dto::UpdateIssueRequest,
-        dto::MoveIssueRequest,
-        dto::BoardColumnResponse,
         dto::CommentResponse,
         dto::CommentListResponse,
         dto::CreateCommentRequest,
@@ -638,14 +632,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             get(routes::board::get_backlog),
         )
         .route("/projects/{key}/trash", get(routes::issues::list_trash))
-        .route(
-            "/projects/{project_key}/board/move",
-            post(routes::board::move_issue),
-        )
-        .route(
-            "/issues",
-            post(routes::issues::create_issue).get(routes::issues::search_issues),
-        )
+        .route("/issues", get(routes::issues::search_issues))
         .route(
             "/issues/{id}",
             get(routes::issues::get_issue)
@@ -654,10 +641,6 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route("/issues/{id}/restore", post(routes::issues::restore_issue))
         .route("/issues/{id}/trash", delete(routes::issues::purge_issue))
-        .route(
-            "/issues/{id}/transition",
-            post(routes::transitions::transition_issue),
-        )
         .route(
             "/issues/{issue_id}/comments",
             get(routes::comments::list_comments).post(routes::comments::create_comment),

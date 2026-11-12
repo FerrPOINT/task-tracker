@@ -230,9 +230,9 @@ export function ProjectBacklogPage() {
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
   const hasActiveSprint = activeSprint.id !== 'none'
-  const backlogTotal = backlog.backlog_total ?? backlog_issues.length
-  const currentOffset = backlog.backlog_offset ?? backlogOffset
-  const pageSize = backlog.backlog_limit ?? BACKLOG_PAGE_SIZE
+  const backlogTotal = backlog.backlog_total
+  const currentOffset = backlog.backlog_offset
+  const pageSize = backlog.backlog_limit
   const hasPrev = currentOffset > 0
   const hasNext = currentOffset + backlog_issues.length < backlogTotal
   const futureSprints =

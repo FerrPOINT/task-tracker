@@ -8,31 +8,23 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   ...(await original<object>()),
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
-import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
+import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import type { components } from '@/api/generated'
 
 const fixture = vi.hoisted(() => ({
-  sdlc: undefined as components['schemas']['SdlcBoardResponse'] | undefined,
+  empty: false,
+  stages: [
+    'Draft', 'Backlog', 'Analysis', 'Architecture', 'Development', 'Review',
+    'Testing', 'Rework', 'Deployment',
+  ] as components['schemas']['SdlcBoardResponse']['stages'],
 }))
-afterEach(() => {
-  fixture.sdlc = undefined
-})
-
 const navigateToFleet = vi.hoisted(() => vi.fn())
-const boardHooks = vi.hoisted(() => ({
-  move: vi.fn(),
-  transitions: [] as Array<{ from_status_id: string; to_status_id: string }>,
-}))
-beforeEach(() => {
-  boardHooks.move.mockReset()
-  boardHooks.transitions = []
-})
 vi.mock('@pdlc/ui/platform', async (original) => ({
   ...(await original<object>()),
   platformNavigate: navigateToFleet,
@@ -52,13 +44,20 @@ vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
     data: {
       project_key: 'TT',
-      sdlc: fixture.sdlc,
+      sdlc: {
+        stages: fixture.stages,
+        tasks: fixture.empty ? [] : [
+          { issue_id: 'i1', stage: 'Development', status: 'Ready' },
+          { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+          { issue_id: 'i3', stage: 'Draft' },
+        ],
+      },
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
       columns: [
         { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
         { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
       ],
-      issues: [
+      issues: fixture.empty ? [] : [
         {
           id: 'i1',
           key: 'TT-1',
@@ -68,7 +67,7 @@ vi.mock('@/shared/api/hooks', () => ({
           status_id: 'todo',
           assignee_name: 'me',
         },
-        ...(fixture.sdlc
+        ...(!fixture.empty
           ? [
               {
                 id: 'i2',
@@ -94,8 +93,6 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  useMoveIssue: () => ({ mutate: boardHooks.move, isPending: false }),
-  useTransitions: () => ({ data: boardHooks.transitions, isLoading: false }),
 }))
 
 function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board') {
@@ -111,119 +108,45 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
-  it.each([false, true])(
-    'keeps one native drop and owner transition checks (allowed=%s)',
-    (allowed) => {
-      boardHooks.transitions = allowed ? [{ from_status_id: 'todo', to_status_id: 'done' }] : []
-      render(wrapper(<ProjectBoardPage />))
-      const article = screen.getByRole('article')
-      const board = screen.getByRole('region', { name: 'Колонки доски' })
-      const target = within(board)
-        .getByText(/Готово|Done/)
-        .closest('.base-card')!
-      const transfer = { effectAllowed: '', setData: vi.fn(), getData: vi.fn(() => 'i1') }
-      expect(article).toHaveAttribute('draggable', 'true')
-      expect(article).not.toHaveAttribute('data-interactive')
-      expect(boardHooks.move).not.toHaveBeenCalled()
-      fireEvent.dragStart(article, { dataTransfer: transfer })
-      expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('text/plain', 'i1')
-      fireEvent.dragOver(target, { dataTransfer: transfer })
-      expect(target).toHaveAttribute('data-highlighted', 'true')
-      expect(boardHooks.move).not.toHaveBeenCalled()
-      fireEvent.drop(target, { dataTransfer: transfer })
-      expect(target).not.toHaveAttribute('data-highlighted')
-      if (allowed)
-        expect(boardHooks.move).toHaveBeenCalledExactlyOnceWith(
-          { issue_id: 'i1', status_id: 'done' },
-          expect.any(Object),
-        )
-      else expect(boardHooks.move).not.toHaveBeenCalled()
-    },
-  )
-  it('changes the visible status through the shared group without losing URL context or starting work', async () => {
-    function Address() {
-      const location = useLocation()
-      return <output aria-label="Current URL">{location.pathname + location.search}</output>
-    }
-    navigateToFleet.mockClear()
-    const user = userEvent.setup()
-    render(
-      wrapper(
-        <>
-          <ProjectBoardPage />
-          <Address />
-        </>,
-        '/projects/TT/board?source=qa&status=todo&registry_instance_id=registry-qa&namespace_id=ns-qa',
-      ),
-    )
-    const group = screen.getByRole('radiogroup', { name: 'Статус задач' })
-    expect(within(group).getByRole('radio', { name: /К выполнению|To Do/i })).toBeChecked()
-    await user.click(within(group).getByRole('radio', { name: /Готово|Done/i }))
-    await waitFor(() =>
-      expect(screen.getByLabelText('Current URL')).toHaveTextContent('status=done'),
-    )
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent('source=qa')
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent(
-      'registry_instance_id=registry-qa',
-    )
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent('namespace_id=ns-qa')
-    expect(within(group).getByRole('radio', { name: /Готово|Done/i })).toBeChecked()
-    expect(navigateToFleet).not.toHaveBeenCalled()
-  })
-
-  it('groups the same issue status into separate SDLC stages and preserves ordinary cards', () => {
-    fixture.sdlc = {
-      stages: [
-        'Draft',
-        'Backlog',
-        'Analysis',
-        'Architecture',
-        'Development',
-        'Review',
-        'Testing',
-        'Rework',
-        'Deployment',
-      ],
-      tasks: [
-        { issue_id: 'i1', stage: 'Development', status: 'Ready' },
-        { issue_id: 'i2', stage: 'Review', status: 'Ready' },
-      ],
-    }
+  it('keeps tracked and historical cards in the same documented stage set', () => {
     render(wrapper(<ProjectBoardPage />))
     for (const [stage, card] of [
       ['Разработка', 'Do work'],
       ['Ревью', 'Review work'],
-      ['Обычные задачи', 'Ordinary work'],
+      ['Черновик', 'Ordinary work'],
     ] as const) {
       const section = screen.getByRole('heading', { name: stage }).closest('section')
       expect(section).toHaveTextContent(card)
-      expect(screen.getByText(card).closest('article')).toHaveAttribute('draggable', 'false')
+      expect(screen.getByText(card).closest('article')).not.toHaveAttribute('draggable')
     }
-    expect(screen.getByRole('heading', { name: 'На доработке' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Обычные задачи' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Доработка' })).toBeInTheDocument()
   })
 
-  it('opens empty PM chat with the same immutable project from every board column', async () => {
+  it('opens empty PM chat with the same immutable project only from Draft', async () => {
     navigateToFleet.mockClear()
     const user = userEvent.setup()
     render(wrapper(<ProjectBoardPage />))
     const actions = screen.getAllByRole('button', { name: 'Создать' })
-    expect(actions).toHaveLength(2)
+    expect(actions).toHaveLength(1)
     for (const action of actions) await user.click(action)
-    await waitFor(() => expect(navigateToFleet).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(navigateToFleet).toHaveBeenCalledTimes(1))
     expect(navigateToFleet).toHaveBeenCalledWith(
       'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
     )
   })
-  it('renders board columns and issue card', async () => {
-    render(wrapper(<ProjectBoardPage />))
-    const board = screen.getByRole('region', { name: 'Колонки доски' })
-    expect(board).toHaveAttribute('tabindex', '0')
-    expect(board).toHaveClass('md:grid-cols-2', 'xl:grid-cols-4')
-    expect(board).not.toHaveClass('overflow-x-auto')
-    const columns = await screen.findAllByText(/К выполнению/i)
-    expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
-    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
-    expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
+  it('renders all nine stages on an empty project', () => {
+    fixture.empty = true
+    try {
+      render(wrapper(<ProjectBoardPage />))
+      const board = screen.getByRole('region', { name: 'Колонки доски' })
+      expect(within(board).getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
+        .toEqual(['Черновик', 'Бэклог', 'Анализ', 'Архитектура', 'Разработка', 'Ревью',
+          'Тестирование', 'Доработка', 'Развёртывание'])
+      expect(within(board).queryByRole('article')).not.toBeInTheDocument()
+    } finally {
+      fixture.empty = false
+    }
   })
 
   it('switches to compact density without shrinking issue actions', async () => {
@@ -247,7 +170,7 @@ describe('ProjectBoardPage', () => {
       'data-density',
       'compact',
     )
-    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('h-10', 'w-10')
+    expect(screen.queryByRole('button', { name: 'Изменить статус TT-1' })).not.toBeInTheDocument()
   })
 
   it('restores compact density from the board URL', () => {
