@@ -111,17 +111,37 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_kno
     f.assert_current(&reserved).await;
     assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
     // The same assignment can bind, start and complete after the former deadline.
-    let completed = f.finish_reserved(&queued, output, 0, reserve.clone(), reserved.clone()).await.completed;
+    let initial = f.finish_reserved(&queued, output, 0, reserve.clone(), reserved.clone()).await;
+    let completed = initial.completed.clone();
     assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
     assert_eq!(completed.task.stage, LifecycleStage::Architecture);
+    // Exercise a non-empty predecessor through real Complete and the existing
+    // public result read model, rather than only the root result's None case.
+    let architecture = f.step(&completed, DeliveryResult::Architect {
+        design: artifact("persistent-design"),
+    }, 1).await;
+    assert_eq!(architecture.reserved.assignment.as_ref().unwrap().previous_result_id,
+        Some(initial.completed.result.as_ref().unwrap().result_id));
+    let history_before_read = f.journal_snapshot().await;
+    for original in [&initial, &architecture] {
+        let assignment = original.reserved.assignment.as_ref().unwrap();
+        let accepted = original.completed.result.as_ref().unwrap();
+        assert_eq!(accepted.previous_result_id, assignment.previous_result_id);
+        let DeliveryInput::Delivery(actual) = f.repo
+            .lifecycle_result(f.task, &f.reader, accepted.result_id).await.unwrap()
+        else { panic!("expected retained delivery result"); };
+        assert_eq!(&actual, accepted);
+        assert_eq!(actual.previous_result_id, assignment.previous_result_id);
+    }
+    assert_eq!(f.journal_snapshot().await, history_before_read);
     let (next, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
-        expected_task_version: completed.task.version,
-        machine_subject: Some(f.producers["architect"].subject.clone()), idempotency_key: "persistent:next-stage".into(),
+        expected_task_version: architecture.completed.task.version,
+        machine_subject: Some(f.producers["developer"].subject.clone()), idempotency_key: "persistent:next-stage".into(),
     }).await.unwrap();
     assert_ne!(next.assignment.as_ref().unwrap().assignment_id, assignment.assignment_id);
     let binding = RunBinding {
         chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
-        machine_subject: f.producers["architect"].subject.clone(), dispatch_receipt: artifact("persistent-stop-native"),
+        machine_subject: f.producers["developer"].subject.clone(), dispatch_receipt: artifact("persistent-stop-native"),
     };
     let (running, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::BindRun {
         fence: delivery_fence(&next), binding: binding.clone(), idempotency_key: "persistent:stop-bind".into(),
