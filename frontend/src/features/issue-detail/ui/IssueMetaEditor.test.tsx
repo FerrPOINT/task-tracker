@@ -7,7 +7,6 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { IssueMetaEditor } from './IssueMetaEditor'
 import type { Issue } from '@/api/issue'
-import type { Board } from '@/api/board'
 
 beforeAll(() => {
   i18n.changeLanguage('en')
@@ -35,23 +34,6 @@ vi.mock('@/shared/api/hooks', () => ({
     isFetching: false,
     refetch: directory.retry,
     error: directory.failed ? new Error('Directory unavailable') : null,
-  }),
-  useStatuses: () => ({
-    data: [
-      { id: 's1', name: 'Open' },
-      { id: 's2', name: 'In Progress' },
-      { id: 's3', name: 'Done' },
-    ],
-    isLoading: false,
-    error: null,
-  }),
-  useTransitions: () => ({
-    data: [
-      { id: 't1', from_status_id: 's1', to_status_id: 's2' },
-      { id: 't2', from_status_id: 's1', to_status_id: 's3' },
-    ],
-    isLoading: false,
-    error: null,
   }),
 }))
 
@@ -84,12 +66,6 @@ const issue: Issue = {
   reporter_name: null,
   sprint_id: null,
 }
-
-const columns: Board['columns'] = [
-  { id: 's1', name: 'Open', issue_ids: [] },
-  { id: 's2', name: 'In Progress', issue_ids: [] },
-  { id: 's3', name: 'Done', issue_ids: [] },
-]
 
 describe('IssueMetaEditor', () => {
   it('presents compact properties and opens only the requested menu without writing', async () => {

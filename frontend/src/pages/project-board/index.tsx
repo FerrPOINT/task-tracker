@@ -50,7 +50,7 @@ function SdlcBoard({
   sdlc,
   issues,
 }: {
-  sdlc: components['schemas']['SdlcBoardResponse']
+  sdlc: NonNullable<components['schemas']['BoardResponse']['sdlc']>
   issues: Issue[]
 }) {
   const { t } = useTranslation()

@@ -16,7 +16,6 @@ const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
 const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
-const mockUseStatuses = vi.hoisted(() => vi.fn())
 const mockTaskSnapshot = vi.hoisted(() => vi.fn())
 vi.mock('@/features/sdlc/model/use-sdlc', () => ({
   useSdlcSnapshot: (...args: unknown[]) => mockTaskSnapshot(...args),
@@ -234,14 +233,7 @@ describe('IssueDetailPage', () => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
-    mockUseStatuses.mockReturnValue({ data: [], isLoading: false })
-    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
-    mockUseDeleteIssue.mockReturnValue({
-      mutate: vi.fn(),
-      reset: vi.fn(),
-      isPending: false,
-      error: null,
-    })
+
     mockComments.mockReturnValue({
       data: commentData,
       isLoading: false,
@@ -290,7 +282,7 @@ describe('IssueDetailPage', () => {
     const properties = screen.getByText(/^(свойства задачи|task properties)$/i).closest('details')!
     expect(properties).not.toHaveAttribute('open')
     fireEvent.click(properties.querySelector('summary')!)
-    expect(within(properties).getByText(/^(связи|links)$/i)).toBeVisible()
+    expect(within(properties).getByRole('heading', { name: /^(связи|links)$/i })).toBeVisible()
     expect(
       properties.compareDocumentPosition(screen.getByRole('tablist')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -429,24 +421,25 @@ describe('IssueDetailPage', () => {
 
   it('collapses mobile properties without losing their choices or changing the issue', async () => {
     render(wrapper(<IssueDetailPage />))
-    const details = screen.getByRole('region', { name: /^(детали|details)$/i })
-    const disclosure = details.closest('details')!
+    const disclosure = screen.getByText(/^(свойства задачи|task properties)$/i).closest('details')!
     expect(disclosure.open).toBe(false)
     const summary = disclosure.querySelector('summary')!
     await userEvent.click(summary)
     expect(disclosure.open).toBe(true)
-    expect(within(details).getAllByRole('combobox')).toHaveLength(4)
+    expect(within(disclosure).getAllByRole('combobox')).toHaveLength(3)
     await userEvent.click(summary)
     expect(disclosure.open).toBe(false)
     expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
   })
 
-  it('uses the status catalog for the mobile summary when the legacy label is unknown', () => {
+  it('uses the canonical lifecycle independently of an unknown workflow label', () => {
     mockUseIssue.mockReturnValue({ data: { ...issueData, status: 'Unknown' }, isLoading: false })
-    mockUseStatuses.mockReturnValue({ data: [{ id: 'in-progress', name: 'SDLC Ready' }] })
     render(wrapper(<IssueDetailPage />))
-    expect(document.querySelector('details > summary')).toHaveTextContent('SDLC Ready')
-    expect(document.querySelector('details > summary')).not.toHaveTextContent('Unknown')
+    expect(screen.getByLabelText(/^(статус|status)$/i)).toHaveTextContent(
+      'Разработка · Ожидает выполнения',
+    )
+    expect(document.querySelector('details > summary')).toHaveTextContent('Свойства задачи')
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument()
   })
 
   it('links the issue back to its project board', () => {
@@ -556,7 +549,9 @@ describe('IssueDetailPage', () => {
 
     const sidebar = screen.getByRole('complementary')
     expect(sidebar).toHaveClass('sticky')
-    expect(within(sidebar).getByRole('region', { name: /^(детали|details)$/i })).toBeInTheDocument()
+    expect(
+      within(sidebar).getByRole('heading', { name: /^(детали|details)$/i }),
+    ).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
     expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
     expect(within(sidebar).queryByRole('tab', { name: /обсуждение|discussion/i })).toBeNull()
@@ -734,8 +729,8 @@ describe('IssueDetailPage', () => {
       expect(within(panel).queryByTestId('attachment-panel')).not.toBeInTheDocument()
       expect(attachments).toBeVisible()
       const sidebar = screen.getByRole('complementary')
-      expect(within(sidebar).getByText(/^(метки|labels)$/i)).toBeVisible()
-      expect(within(sidebar).getByText(/^(связи|links)$/i)).toBeVisible()
+      expect(within(sidebar).getByRole('heading', { name: /^(метки|labels)$/i })).toBeVisible()
+      expect(within(sidebar).getByRole('heading', { name: /^(связи|links)$/i })).toBeVisible()
     }
   })
 })

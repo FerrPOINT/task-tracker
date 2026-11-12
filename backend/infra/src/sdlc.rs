@@ -13,6 +13,9 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[cfg(test)]
+#[path = "sdlc_board_tests.rs"]
+mod board_tests;
 #[path = "sdlc_commands.rs"]
 mod commands;
 #[path = "sdlc_configured_cli.rs"]
@@ -46,9 +49,6 @@ mod spaces;
 mod stage_status;
 #[path = "sdlc_start.rs"]
 mod start;
-#[cfg(test)]
-#[path = "sdlc_board_tests.rs"]
-mod board_tests;
 
 pub struct PostgresSdlcRepository {
     db: crate::guarded_db::GuardedDb,
