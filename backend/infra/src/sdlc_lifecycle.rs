@@ -11,6 +11,68 @@ fn corrupt() -> AppError {
     AppError::conflict("delivery ledger inconsistent")
 }
 
+fn original_result_assignment(
+    payload: Option<Json>,
+    task: Uuid,
+    id: Uuid,
+) -> Result<DeliveryAssignment, AppError> {
+    let assignment: DeliveryAssignment =
+        serde_json::from_value(payload.ok_or_else(corrupt)?).map_err(|_| corrupt())?;
+    if assignment.assignment_id != id
+        || assignment.task_id != task
+        || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(&assignment)?
+    {
+        return Err(corrupt());
+    }
+    Ok(assignment)
+}
+
+async fn retained_result_assignment(
+    tx: &DatabaseTransaction,
+    task: Uuid,
+    id: Uuid,
+) -> Result<DeliveryAssignment, AppError> {
+    let row = tx
+        .query_one(statement(
+            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",
+            vec![id.into(), task.into()],
+        ))
+        .await
+        .map_err(map_db)?;
+    let payload = row
+        .map(|row| row.try_get::<Json>("", "payload").map_err(map_db))
+        .transpose()?;
+    original_result_assignment(payload, task, id)
+}
+
+fn accepted_result_readback(
+    payload: &Json,
+    task: Uuid,
+    id: Uuid,
+    assignment: &DeliveryAssignment,
+) -> Result<AcceptedDeliveryResult, AppError> {
+    let declared = payload
+        .as_object()
+        .ok_or_else(corrupt)?
+        .contains_key("previous_result_id");
+    let mut result: AcceptedDeliveryResult =
+        serde_json::from_value(payload.clone()).map_err(|_| corrupt())?;
+    if result.result_id != id
+        || result.task_id != task
+        || assignment.task_id != task
+        || result.assignment_id != assignment.assignment_id
+        || result.previous_stage != assignment.stage
+        || result.output.role() != assignment.role
+        || (declared && result.previous_result_id != assignment.previous_result_id)
+    {
+        return Err(corrupt());
+    }
+    // The immutable original assignment is the only predecessor owner. Old
+    // payloads are enriched in memory; neither history nor agent reports change.
+    result.previous_result_id = assignment.previous_result_id;
+    Ok(result)
+}
+
 pub(super) async fn mapped_issue_status(
     tx: &DatabaseTransaction,
     stage: Stage,
@@ -1083,15 +1145,19 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         authorize_read(&tx, &state, actor).await?;
         let row = tx.query_one(statement(
-            "SELECT payload,false AS legacy FROM sdlc_delivery_results WHERE task_id=$1 AND result_id=$2
-             UNION ALL SELECT payload,true AS legacy FROM sdlc_analysis_results WHERE task_id=$1 AND result_id=$2",
+            "SELECT payload,false AS legacy,assignment_id FROM sdlc_delivery_results WHERE task_id=$1 AND result_id=$2
+             UNION ALL SELECT payload,true AS legacy,NULL::uuid AS assignment_id FROM sdlc_analysis_results WHERE task_id=$1 AND result_id=$2",
             vec![task.into(),result_id.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("delivery result", result_id))?;
         let payload = row.try_get::<Json>("", "payload").map_err(map_db)?;
         let result = if row.try_get::<bool>("", "legacy").map_err(map_db)? {
             DeliveryInput::LegacyAnalysis(serde_json::from_value(payload).map_err(|_| corrupt())?)
         } else {
-            DeliveryInput::Delivery(serde_json::from_value(payload).map_err(|_| corrupt())?)
+            let assignment_id = row.try_get::<Uuid>("", "assignment_id").map_err(map_db)?;
+            let assignment = retained_result_assignment(&tx, task, assignment_id).await?;
+            DeliveryInput::Delivery(accepted_result_readback(
+                &payload, task, result_id, &assignment,
+            )?)
         };
         tx.commit().await.map_err(map_db)?;
         Ok(result)
@@ -1323,12 +1389,18 @@ impl LifecycleRepository for PostgresSdlcRepository {
                             expected.execution_id,
                         )
                         .await?;
+                        let original_assignment =
+                            retained_result_assignment(&tx, task, expected.assignment_id).await?;
+                        if receipt.assignment.as_ref() != Some(&original_assignment) {
+                            return Err(corrupt());
+                        }
                         let previous_stage = receipt.task.stage;
                         app::sdlc_lifecycle::accept_result(&mut receipt.task, result)?;
                         let accepted = AcceptedDeliveryResult {
                             result_id: Uuid::now_v7(),
                             assignment_id: expected.assignment_id,
                             task_id: task,
+                            previous_result_id: original_assignment.previous_result_id,
                             terminal: terminal.clone(),
                             output: result.clone(),
                             previous_stage,

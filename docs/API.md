@@ -1,5 +1,15 @@
 # API v1 Specification — Task Tracker
 
+## Accepted Result Predecessor
+
+`GET /api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}` возвращает прежний
+`DeliveryInput` envelope. В `AcceptedDeliveryResult` добавлен optional
+`previous_result_id`; `None` не сериализуется. Источник — точное исходное immutable
+назначение результата, а не ссылка из агентского отчёта. Старый payload без поля
+обогащается при чтении без изменения истории. Несовпадение явного pointer,
+чужая association task/assignment/result или отсутствие original assignment —
+409 `delivery ledger inconsistent`. Legacy Analysis и права чтения не меняются.
+
 ## Persistent Technical Assignment Ownership
 
 `POST /api/v1/issues/{id}/sdlc/lifecycle` сохраняет Reserve/BindRun/Complete и

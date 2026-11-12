@@ -531,6 +531,8 @@ pub struct AcceptedDeliveryResult {
     pub result_id: Uuid,
     pub assignment_id: Uuid,
     pub task_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_result_id: Option<Uuid>,
     pub terminal: TerminalReceipt,
     pub output: DeliveryResult,
     pub previous_stage: LifecycleStage,

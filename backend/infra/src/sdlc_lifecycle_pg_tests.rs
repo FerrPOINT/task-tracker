@@ -75,6 +75,77 @@ fn delivery_fence(receipt: &LifecycleReceipt) -> DeliveryFence {
     }
 }
 
+fn predecessor_fixture() -> (DeliveryAssignment, AcceptedDeliveryResult) {
+    let task=Uuid::new_v4();
+    let project=Uuid::new_v4();
+    let created_at=chrono::Utc::now();
+    let routing=json!({"contract_version":1,"snapshot_id":Uuid::new_v4(),"tracker_instance_id":"fixture",
+        "project_id":project,"task_id":task,"root_task_id":task,"confirmation_id":Uuid::new_v4(),
+        "requirement_revision":1,"content_hash":"a".repeat(64),"created_at":created_at,
+        "policy":{"contract_version":1,"tracker_instance_id":"fixture","project_id":project,"version":1,
+            "routing_hash":"b".repeat(64),"routes":routes(),"verification":"declared","native_ready":false,
+            "dispatch_allowed":false,"author_subject":"owner","created_at":created_at}});
+    let mut assignment:DeliveryAssignment=parse(json!({"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
+        "task_id":task,"owner_subject":"owner","role":"tester","stage":"Testing","cycle":0,"attempt":1,
+        "agent_id":Uuid::new_v4(),"machine_subject":"tester-machine","routing":routing,
+        "previous_result_id":Uuid::new_v4(),"fencing_token":1,"lease_id":Uuid::new_v4(),"assignment_hash":""}));
+    assignment.assignment_hash=app::sdlc_lifecycle::assignment_hash(&assignment).unwrap();
+    let result=AcceptedDeliveryResult {
+        result_id:Uuid::new_v4(),assignment_id:assignment.assignment_id,task_id:task,
+        previous_result_id:assignment.previous_result_id,
+        terminal:TerminalReceipt {chat_id:Uuid::new_v4(),run_id:Uuid::new_v4(),fleet_receipt:artifact("terminal"),
+            workflow_receipt:artifact("workflow"),output_sha256:"c".repeat(64)},
+        output:DeliveryResult::Tester {verdict:TestVerdict::Passed,report:artifact("tester")},
+        previous_stage:LifecycleStage::Testing,next_stage:LifecycleStage::Deployment,
+        next_status:LifecycleStatus::Ready,cycle:0,created_at,
+    };
+    (assignment,result)
+}
+
+#[test]
+fn accepted_result_predecessor_matches_original_assignment_and_none_stays_optional() {
+    let (mut assignment,mut expected)=predecessor_fixture();
+    for predecessor in [assignment.previous_result_id,None] {
+        assignment.previous_result_id=predecessor;
+        assignment.assignment_hash=app::sdlc_lifecycle::assignment_hash(&assignment).unwrap();
+        expected.previous_result_id=predecessor;
+        let payload=serde_json::to_value(&expected).unwrap();
+        assert_eq!(payload.get("previous_result_id").is_some(),predecessor.is_some());
+        let original=original_result_assignment(Some(serde_json::to_value(&assignment).unwrap()),expected.task_id,expected.assignment_id).unwrap();
+        assert_eq!(accepted_result_readback(&payload,expected.task_id,expected.result_id,&original).unwrap(),expected);
+    }
+}
+
+#[test]
+fn historical_result_predecessor_is_enriched_without_rewriting_payload() {
+    let (assignment,expected)=predecessor_fixture();
+    let mut payload=serde_json::to_value(&expected).unwrap();
+    payload.as_object_mut().unwrap().remove("previous_result_id");
+    let before=payload.clone();
+    assert!(serde_json::from_value::<AcceptedDeliveryResult>(payload.clone()).unwrap().previous_result_id.is_none());
+    assert_eq!(accepted_result_readback(&payload,expected.task_id,expected.result_id,&assignment).unwrap(),expected);
+    assert_eq!(payload,before,"the immutable historical payload must not be rewritten");
+}
+
+#[test]
+fn accepted_result_predecessor_rejects_mismatch_foreign_or_missing_original_assignment() {
+    let (assignment,expected)=predecessor_fixture();
+    let payload=serde_json::to_value(&expected).unwrap();
+    assert!(original_result_assignment(None,expected.task_id,expected.assignment_id).is_err());
+    for value in [json!(Uuid::new_v4()),Json::Null,json!("invalid-uuid")] {
+        let mut changed=payload.clone(); changed["previous_result_id"]=value;
+        assert!(accepted_result_readback(&changed,expected.task_id,expected.result_id,&assignment).is_err());
+    }
+    for field in ["task_id","assignment_id","result_id"] {
+        let mut changed=payload.clone(); changed[field]=json!(Uuid::new_v4());
+        assert!(accepted_result_readback(&changed,expected.task_id,expected.result_id,&assignment).is_err());
+    }
+    for field in ["task_id","assignment_id","previous_result_id"] {
+        let mut foreign=serde_json::to_value(&assignment).unwrap(); foreign[field]=json!(Uuid::new_v4());
+        assert!(original_result_assignment(Some(foreign),expected.task_id,expected.assignment_id).is_err());
+    }
+}
+
 async fn start_delivery(
     repo: &PostgresSdlcRepository,
     task: Uuid,
@@ -1318,6 +1389,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         assert_eq!(proposed.assignment, started.assignment);
         assert_eq!(proposed.binding, started.binding);
         assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
+        let original_previous_result_id=assignment.previous_result_id;
+        let original_assignment_id=assignment.assignment_id;
         cursor = repo
             .lifecycle_command(
                 task,
@@ -1339,6 +1412,13 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
+        let accepted=cursor.result.as_ref().unwrap();
+        assert_eq!(accepted.previous_result_id,original_previous_result_id);
+        let persisted:Json=db.query_one(statement("SELECT payload FROM sdlc_delivery_results WHERE result_id=$1 AND assignment_id=$2 AND task_id=$3",
+            vec![accepted.result_id.into(),original_assignment_id.into(),task.into()])).await.unwrap().unwrap().try_get("","payload").unwrap();
+        assert_eq!(persisted,serde_json::to_value(accepted).unwrap());
+        assert_eq!(serde_json::to_value(repo.lifecycle_result(task,&owner,accepted.result_id).await.unwrap()).unwrap(),
+            serde_json::to_value(DeliveryInput::Delivery(accepted.clone())).unwrap());
         if started.task.stage == LifecycleStage::Deployment {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);

@@ -1,5 +1,14 @@
 # Дата-модель Task Tracker
 
+## Predecessor Принятого Delivery Result
+
+`sdlc_delivery_assignments.payload.previous_result_id` — единственный владелец
+связи с предыдущим принятым результатом. Новый Complete копирует этот pointer
+из исходной строки assignment в `sdlc_delivery_results.payload.previous_result_id`.
+Read model проверяет result/assignment/task identity, исходный assignment hash
+и объявленный pointer. Для старого payload без поля связь читается из того же
+assignment; строки истории не переписываются. Новых таблиц и миграций нет.
+
 ## Постоянное владение техническим назначением
 
 Forward117 сохраняет assignments, operation results, outbox и исторические
