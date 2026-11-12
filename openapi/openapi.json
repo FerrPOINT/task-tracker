@@ -10777,6 +10777,13 @@
           "output": {
             "$ref": "#/components/schemas/DeliveryResult"
           },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "previous_stage": {
             "$ref": "#/components/schemas/LifecycleStage"
           },
