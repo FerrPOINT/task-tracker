@@ -29,6 +29,7 @@ interface IssueDescriptionEditorProps {
   issue: Issue
   onSubmit: (patch: { summary: string; description?: string | null }) => Promise<unknown>
   disabled?: boolean
+  descriptionUnavailable?: boolean
   requirements?: RequirementsRevision | null
 }
 
@@ -37,6 +38,7 @@ export function IssueDescriptionEditor({
   onSubmit,
   disabled,
   requirements,
+  descriptionUnavailable = false,
 }: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState<'title' | 'issue' | null>(null)
@@ -56,6 +58,7 @@ export function IssueDescriptionEditor({
   })
 
   const startEdit = () => {
+    if (descriptionUnavailable || disabled) return
     reset({ summary: issue.summary, description: issue.description ?? '' })
     setSaveError(null)
     setEditing(requirements ? 'title' : 'issue')
@@ -67,6 +70,7 @@ export function IssueDescriptionEditor({
   }
 
   const submit = handleSubmit(async (data) => {
+    if (descriptionUnavailable || disabled) return
     setSaveError(null)
     try {
       await onSubmit(
@@ -115,7 +119,11 @@ export function IssueDescriptionEditor({
         </Notice>
       )}
       <ActionGroup>
-        <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={disabled || descriptionUnavailable || isSubmitting}
+        >
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
         </Button>
@@ -148,7 +156,7 @@ export function IssueDescriptionEditor({
               size="icon"
               className="shrink-0"
               onClick={startEdit}
-              disabled={disabled}
+              disabled={disabled || descriptionUnavailable}
               aria-label={t(requirements ? 'issue.editTitle' : 'issue.editDescription')}
             >
               <Pencil className="h-4 w-4" />
@@ -161,7 +169,7 @@ export function IssueDescriptionEditor({
             headingId={`${descriptionId}-heading`}
             title={t('issueCreate.description')}
           />
-          {requirements ? (
+          {descriptionUnavailable ? null : requirements ? (
             <>
               <p className="text-sm text-text-muted">
                 {t('sdlc.requirements')} · {t('sdlc.revision')} {requirements.revision}

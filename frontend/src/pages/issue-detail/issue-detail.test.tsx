@@ -299,7 +299,9 @@ describe('IssueDetailPage', () => {
     })
     render(wrapper(<IssueDetailPage />))
     expect(screen.getByText(/не удалось загрузить актуальные требования/i)).toBeVisible()
-    expect(screen.getByText('Test issue description')).toBeVisible()
+    expect(screen.queryByText('Test issue description')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Test issue summary' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /редактировать задачу|edit issue/i })).toBeDisabled()
     await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
     expect(refetch).toHaveBeenCalledOnce()
   })
@@ -609,6 +611,32 @@ describe('IssueDetailPage', () => {
     expect(screen.getByRole('complementary')).toHaveClass('sticky')
   })
 
+  it('preserves a property editor and its draft across desktop and mobile layouts', async () => {
+    const listeners = new Set<() => void>()
+    const media = {
+      matches: true,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }
+    vi.stubGlobal('matchMedia', () => media)
+    render(wrapper(<IssueDetailPage />))
+    await userEvent.click(screen.getByRole('button', { name: /новая метка|new label/i }))
+    const input = screen.getByPlaceholderText(/название метки|label name/i)
+    await userEvent.type(input, 'Unsent property draft')
+    act(() => {
+      media.matches = false
+      listeners.forEach((listener) => listener())
+    })
+    expect(screen.getByDisplayValue('Unsent property draft')).toBe(input)
+    expect(input).toBeVisible()
+    act(() => {
+      media.matches = true
+      listeners.forEach((listener) => listener())
+    })
+    expect(screen.getByDisplayValue('Unsent property draft')).toBe(input)
+    expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
+  })
+
   it('describes deletion as recoverable from the trash', async () => {
     const user = userEvent.setup()
     render(wrapper(<IssueDetailPage />))
@@ -643,6 +671,15 @@ describe('IssueDetailPage', () => {
     expect(screen.getByRole('textbox', { name: /комментарий|comment/i })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /отмена|cancel/i }))
     expect(screen.queryByRole('textbox', { name: /комментарий|comment/i })).not.toBeInTheDocument()
+  })
+
+  it('does not carry a new comment draft into an existing comment editor', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />))
+    await user.click(screen.getByRole('button', { name: /добавить комментарий|add comment/i }))
+    await user.type(screen.getByPlaceholderText(/напишите/i), 'Unsent new comment')
+    await user.click(screen.getByRole('button', { name: /^(изменить|edit)$/i }))
+    expect(screen.getByPlaceholderText(/напишите/i)).toHaveValue('This is a comment')
   })
 
   it('renders comments', async () => {

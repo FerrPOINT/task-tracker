@@ -283,7 +283,8 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
               ) : (
                 <IssueDescriptionEditor
                   issue={issue}
-                  requirements={taskSnapshot.error ? undefined : taskSnapshot.data?.requirements}
+                  requirements={taskSnapshot.data?.requirements}
+                  descriptionUnavailable={Boolean(taskSnapshot.error)}
                   disabled={updateIssue.isPending}
                   onSubmit={async (patch) => {
                     await updateIssue.mutateAsync(patch)
@@ -460,6 +461,7 @@ function IssueDetailLayout({
 }) {
   const { t } = useTranslation()
   const desktop = useMediaQuery(desktopLayoutQuery)
+  const [expanded, setExpanded] = useState(desktop)
 
   return (
     <div
@@ -470,19 +472,26 @@ function IssueDetailLayout({
       }
     >
       {description}
-      {desktop ? (
-        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 grid self-start gap-[var(--shell-page-block-gap)]">
-          {details}
-          {supplemental}
-        </aside>
-      ) : (
-        <Disclosure summary={t('issue.properties')}>
+      <aside
+        className={
+          desktop
+            ? 'sticky top-16 col-start-2 row-start-1 row-span-2 min-w-0 self-start'
+            : 'min-w-0'
+        }
+      >
+        <Disclosure
+          summary={t('issue.properties')}
+          appearance={desktop ? 'plain' : 'panel'}
+          summaryProps={{ hidden: desktop }}
+          open={desktop || expanded}
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+        >
           <div className="grid gap-[var(--shell-page-block-gap)]">
             {details}
             {supplemental}
           </div>
         </Disclosure>
-      )}
+      </aside>
       {activity}
     </div>
   )

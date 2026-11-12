@@ -80,6 +80,36 @@ describe('IssueDescriptionEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ summary: 'Updated title' }))
   })
+  it('blocks writes during a requirements read failure and preserves the editor draft for retry', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    const view = (unavailable: boolean) =>
+      wrapper(
+        <IssueDescriptionEditor
+          issue={issue}
+          onSubmit={onSubmit}
+          descriptionUnavailable={unavailable}
+        />,
+      )
+    const { rerender } = render(view(false))
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    const summary = screen.getByRole('textbox', { name: /summary/i })
+    fireEvent.change(summary, { target: { value: 'Unsent summary' } })
+    rerender(view(true))
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    fireEvent.submit(summary.closest('form')!)
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).toBeDisabled())
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: /summary/i })).toBe(summary)
+    expect(summary).toHaveValue('Unsent summary')
+    rerender(view(false))
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+        summary: 'Unsent summary',
+        description: issue.description,
+      }),
+    )
+  })
   it('shows the original description even when its text happens to be JSON', () => {
     const description = '{"reference":"original-ref","items":[1,2]}'
     render(wrapper(<IssueDescriptionEditor issue={{ ...issue, description }} onSubmit={vi.fn()} />))

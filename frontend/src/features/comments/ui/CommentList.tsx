@@ -87,7 +87,12 @@ export function CommentForm({
       )}
       <ActionGroup align="end">
         {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            disabled={form.formState.isSubmitting}
+          >
             {t('common.cancel')}
           </Button>
         )}
@@ -102,6 +107,7 @@ export function CommentForm({
 interface CommentItemProps {
   comment: Comment
   currentUserId?: string
+  disabled?: boolean
   onEdit: (comment: Comment) => void
   onDelete: (commentId: string) => void
 }
@@ -109,6 +115,7 @@ interface CommentItemProps {
 export const CommentItem = memo(function CommentItem({
   comment,
   currentUserId,
+  disabled,
   onEdit,
   onDelete,
 }: CommentItemProps) {
@@ -133,10 +140,15 @@ export const CommentItem = memo(function CommentItem({
           </div>
           {isAuthor && (
             <ActionGroup align="start">
-              <Button variant="ghost" size="sm" onClick={() => onEdit(comment)}>
+              <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onEdit(comment)}>
                 {t('common.edit')}
               </Button>
-              <Button variant="destructive-outline" size="sm" onClick={() => onDelete(comment.id)}>
+              <Button
+                variant="destructive-outline"
+                size="sm"
+                disabled={disabled}
+                onClick={() => onDelete(comment.id)}
+              >
                 {t('common.delete')}
               </Button>
             </ActionGroup>
@@ -151,11 +163,18 @@ export const CommentItem = memo(function CommentItem({
 interface CommentListProps {
   comments: Comment[]
   currentUserId?: string
+  disabled?: boolean
   onEdit: (comment: Comment) => void
   onDelete: (commentId: string) => void
 }
 
-export function CommentList({ comments, currentUserId, onEdit, onDelete }: CommentListProps) {
+export function CommentList({
+  comments,
+  currentUserId,
+  disabled,
+  onEdit,
+  onDelete,
+}: CommentListProps) {
   const { t } = useTranslation()
   if (comments.length === 0) {
     return <EmptyState message={t('comments.empty')} />
@@ -167,6 +186,7 @@ export function CommentList({ comments, currentUserId, onEdit, onDelete }: Comme
           key={comment.id}
           comment={comment}
           currentUserId={currentUserId}
+          disabled={disabled}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -215,6 +235,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   }
 
   const handleEdit = (comment: Comment) => {
+    if (create.isPending || update.isPending) return
     setCreating(false)
     setEditing(comment)
   }
@@ -235,6 +256,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
       )}
       {editing ? (
         <CommentForm
+          key={editing.id}
           initialBody={editing.body}
           onSubmit={handleUpdate}
           onCancel={() => setEditing(null)}
@@ -242,6 +264,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
         />
       ) : creating ? (
         <CommentForm
+          key="create"
           onSubmit={handleCreate}
           onCancel={() => setCreating(false)}
           submitLabel={t('comments.add')}
@@ -256,6 +279,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
       <CommentList
         comments={comments ?? []}
         currentUserId={currentUserId}
+        disabled={create.isPending || update.isPending}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
