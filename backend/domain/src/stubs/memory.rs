@@ -662,6 +662,14 @@ pub struct MemoryBoardRepository {
 
 #[async_trait]
 impl BoardRepository for MemoryBoardRepository {
+    async fn sdlc_tasks(
+        &self,
+        _project: ProjectId,
+        _issues: &[IssueId],
+    ) -> Result<Vec<crate::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        // This fixture adapter has no SDLC aggregates.
+        Ok(Vec::new())
+    }
     async fn get_by_id(&self, id: BoardId) -> Result<Board, AppError> {
         let boards = self.boards.lock().unwrap();
         boards

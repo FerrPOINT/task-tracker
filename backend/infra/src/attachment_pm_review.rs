@@ -35,10 +35,8 @@ pub(crate) async fn list_inputs(
         PostgresSdlcRepository::load_read_with_config(&tx, config, issue.as_uuid(), actor).await?;
     input_scope(&state, actor)?;
     owner_access(&tx, &state).await?;
-    if !config.single_task_project_ids.contains(&state.project_id) {
-        return Err(AppError::Unavailable(
-            "single-task artifact policy disabled".into(),
-        ));
+    if !state.configured_cli() {
+        return Err(AppError::Forbidden);
     }
     let mut items = Vec::new();
     for model in attachment::Entity::find()
@@ -77,15 +75,8 @@ async fn snapshot(
         }
     }
     let state = PostgresSdlcRepository::load_read_with_config(&tx, config, task, actor).await?;
-    if state.configured_cli() {
-        app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
-    }
+    app::sdlc_configured_cli::authorize_configured_pm(&state, actor)?;
     owner_access(&tx, &state).await?;
-    if !config.single_task_project_ids.contains(&state.project_id) {
-        return Err(AppError::Unavailable(
-            "single-task artifact policy disabled".into(),
-        ));
-    }
     let seal = Seal::parse(item.storage_key.as_ref())?;
     if seal.is_none() && state.configured_cli() {
         let input_scope = input_scope(&state, actor)?;

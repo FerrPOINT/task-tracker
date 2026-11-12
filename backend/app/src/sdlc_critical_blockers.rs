@@ -158,7 +158,6 @@ fn configured(current: &LifecycleReceipt, config: &SdlcConfig) -> Result<(), App
         || routing.snapshot_id.is_nil()
         || routing.confirmation_id.is_nil()
         || routing.tracker_instance_id != config.instance_id
-        || !config.single_task_project_ids.contains(&routing.project_id)
         || routing.contract_version != 2
         || routing.policy.contract_version != 2
         || routing.policy.project_id != routing.project_id

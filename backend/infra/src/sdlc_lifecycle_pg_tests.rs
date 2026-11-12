@@ -305,7 +305,6 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
             orchestrator_subject: "pm".into(),
             verifier_subject: "verifier".into(),
             reservation_scheduler_subject: "scheduler".into(),
-            single_task_project_ids: [project].into_iter().collect(),
         },
     )
     .await
@@ -1097,7 +1096,6 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
         .0;
     assert_eq!(retry.assignment.as_ref().unwrap().attempt, 3);
     assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
-    repo.config.single_task_project_ids.clear();
     let before_replay = pm_ordinal_head(&db).await;
     assert!(
         repo.lifecycle_command(task, &scheduler, ensure)
@@ -1162,14 +1160,6 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
                 machine_subject: Some(role_producer.subject.clone()),
                 idempotency_key: format!("role-{i}-reserve"),
             };
-            if i == 1 {
-                assert!(matches!(
-                    repo.lifecycle_command(task, &scheduler, command.clone())
-                        .await,
-                    Err(AppError::Unavailable(_))
-                ));
-                repo.config.single_task_project_ids.insert(project);
-            }
             cursor = repo
                 .lifecycle_command(task, &scheduler, command)
                 .await

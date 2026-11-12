@@ -13,7 +13,6 @@ pub mod project_spaces;
 pub mod projects;
 pub mod search;
 pub mod sprints;
-pub mod transitions;
 pub mod worklogs;
 
 pub mod admin;

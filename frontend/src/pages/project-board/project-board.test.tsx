@@ -19,7 +19,7 @@ import type { components } from '@/api/generated'
 
 const fixture = vi.hoisted(() => ({
   empty: false,
-  configured: true,
+  failed: false,
   status: 'Ready' as 'Ready' | 'InProgress' | 'Completed' | undefined,
   stages: [
     'Draft',
@@ -53,22 +53,16 @@ vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
     data: {
       project_key: 'TT',
-      sdlc: fixture.configured
-        ? {
-            stages: fixture.stages,
-            tasks: fixture.empty
-              ? []
-              : [
-                  { issue_id: 'i1', stage: 'Development', status: fixture.status },
-                  { issue_id: 'i2', stage: 'Review', status: 'Ready' },
-                ],
-          }
-        : null,
+      sdlc: {
+        stages: fixture.stages,
+        tasks: fixture.empty
+          ? []
+          : [
+              { issue_id: 'i1', stage: 'Development', status: fixture.status },
+              { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+            ],
+      },
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
-      columns: [
-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
-      ],
       issues: fixture.empty
         ? []
         : [
@@ -105,7 +99,7 @@ vi.mock('@/shared/api/hooks', () => ({
           ],
     },
     isLoading: false,
-    error: null,
+    error: fixture.failed ? new Error('Failed to load board') : null,
   }),
 }))
 
@@ -124,7 +118,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 describe('ProjectBoardPage', () => {
   beforeEach(() => {
     fixture.status = 'Ready'
-    fixture.configured = true
+    fixture.failed = false
   })
 
   it('groups the same issue status into separate SDLC stages without displaying ordinary cards', () => {
@@ -182,10 +176,10 @@ describe('ProjectBoardPage', () => {
     expect(within(card).queryByText('Ожидает выполнения')).not.toBeInTheDocument()
   })
 
-  it('reports an unconfigured SDLC explicitly instead of rendering status columns', () => {
-    fixture.configured = false
+  it('reports a board read failure without inventing status columns', () => {
+    fixture.failed = true
     render(wrapper(<ProjectBoardPage />))
-    expect(screen.getByRole('alert')).toHaveTextContent('SDLC не настроен')
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load board')
     expect(screen.queryByRole('region', { name: 'Колонки доски' })).not.toBeInTheDocument()
     expect(screen.queryByText('Ordinary work')).not.toBeInTheDocument()
   })

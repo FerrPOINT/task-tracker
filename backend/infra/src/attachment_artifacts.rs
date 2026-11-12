@@ -102,11 +102,6 @@ async fn authority(
         .try_get::<Uuid>("", "id")
         .map_err(map_db)?;
     local_access(tx, project, user).await?;
-    if !config.single_task_project_ids.contains(&project) {
-        return Err(AppError::Unavailable(
-            "single-task artifact policy disabled".into(),
-        ));
-    }
     let state: TaskState = decode(
         &tx.query_one(statement(
             "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",

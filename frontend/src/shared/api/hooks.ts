@@ -23,7 +23,6 @@ import {
 import { getBoard, getBacklog } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
-import { createIssue } from '@/api/issue-create'
 import {
   updateIssue,
   deleteIssue,
@@ -479,18 +478,6 @@ export function useRegister() {
         email: data.email,
       })
       qc.invalidateQueries({ queryKey: ['me'] })
-    },
-  })
-}
-
-export function useCreateIssue() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: createIssue,
-    retry: false,
-    onSuccess: (data) => {
-      qc.setQueryData(['issue', data.id], data)
-      invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })
 }

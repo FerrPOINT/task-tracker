@@ -147,14 +147,6 @@ impl IssueDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoardColumnDto {
-    pub id: String,
-    pub name: String,
-    pub wip_limit: Option<i64>,
-    pub issue_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SprintDto {
     pub id: String,
     pub project_id: String,
@@ -197,25 +189,60 @@ impl SprintDto {
 pub struct BoardDto {
     pub project_id: String,
     pub project_key: String,
-    pub columns: Vec<BoardColumnDto>,
     pub issues: Vec<IssueDto>,
     pub sprint: SprintDto,
-    /// Total number of backlog (unscheduled) issues for the project.
-    pub backlog_total: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BacklogDto {
+#[derive(Debug)]
+pub struct SdlcBoard {
     pub project_id: String,
     pub project_key: String,
-    /// Total number of backlog issues before paging.
-    pub backlog_total: usize,
-    /// Applied page offset and page size make the next page deterministic.
-    pub backlog_offset: usize,
-    pub backlog_limit: usize,
     pub sprint: SprintDto,
-    pub sprint_issues: Vec<IssueDto>,
-    pub backlog_issues: Vec<IssueDto>,
+    pub cards: Vec<(IssueDto, domain::sdlc_lifecycle::SdlcBoardTask)>,
+}
+
+impl BoardDto {
+    pub(crate) fn with_sdlc_tasks(
+        self,
+        tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
+    ) -> Result<SdlcBoard, shared::AppError> {
+        use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+
+        let mut tasks: std::collections::HashMap<_, _> = tasks
+            .into_iter()
+            .map(|task| (task.issue_id.to_string(), task))
+            .collect();
+        let cards = self
+            .issues
+            .into_iter()
+            .map(|issue| {
+                let task = match tasks.remove(&issue.id) {
+                    Some(task) => task,
+                    // Historical issue statuses do not prove SDLC progress.
+                    // Keep those cards visible at the initial stage without
+                    // enrolling them, changing their status or inventing a run.
+                    None => SdlcBoardTask {
+                        issue_id: issue.id.parse().map_err(shared::AppError::internal)?,
+                        stage: LifecycleStage::Draft,
+                        status: None,
+                    },
+                };
+                Ok((issue, task))
+            })
+            .collect::<Result<Vec<_>, shared::AppError>>()?;
+        Ok(SdlcBoard {
+            project_id: self.project_id,
+            project_key: self.project_key,
+            sprint: self.sprint,
+            cards,
+        })
+    }
+}
+
+impl SdlcBoard {
+    pub fn backlog(issue: &IssueDto, task: &domain::sdlc_lifecycle::SdlcBoardTask) -> bool {
+        issue.sprint_id.is_none() && task.stage == domain::sdlc_lifecycle::LifecycleStage::Backlog
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

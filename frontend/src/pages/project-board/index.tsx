@@ -50,7 +50,7 @@ function SdlcBoard({
   sdlc,
   issues,
 }: {
-  sdlc: NonNullable<components['schemas']['BoardResponse']['sdlc']>
+  sdlc: components['schemas']['SdlcBoardResponse']
   issues: Issue[]
 }) {
   const { t } = useTranslation()
@@ -100,7 +100,6 @@ export function ProjectBoardPage() {
   const { data: board, isLoading, error } = useBoard(key)
   if (isLoading) return <LoadingState message={t('issue.loading')} />
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
-  if (!board.sdlc) return <ErrorState message={t('board.sdlcUnavailable')} />
 
   const { issues, sdlc } = board
 
@@ -108,7 +107,7 @@ export function ProjectBoardPage() {
     <div className="mb-4">
       <PageHeader
         title={t('board.title', { projectName: key })}
-        leading={<ProjectAvatar projectKey={key ?? ''} />}
+        leading={<ProjectAvatar projectKey={key} />}
         context={t('board.subtitle', { count: sdlc.tasks.length })}
         actions={
           <>

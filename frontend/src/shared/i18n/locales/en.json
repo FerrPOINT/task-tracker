@@ -260,7 +260,6 @@
     "noMatches": "No projects match your search."
   },
   "board": {
-    "sdlcUnavailable": "Agent board is unavailable: SDLC is not configured",
     "columns": "Board columns",
     "filters": "Filters",
     "addColumn": "Column",

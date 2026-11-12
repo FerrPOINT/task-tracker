@@ -171,7 +171,6 @@ mod tests {
             reservation_scheduler_subject: "scheduler".into(),
             orchestrator_subject: "orchestrator".into(),
             verifier_subject: "verifier".into(),
-            single_task_project_ids: Default::default(),
             instance_id: "synthetic-tracker".into(),
         };
         for subject in ["foreign", "orchestrator", "verifier"] {

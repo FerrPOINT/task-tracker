@@ -759,30 +759,6 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
             .await
             .unwrap();
     }
-    // Disabling rollout cannot turn current completion into a historical Backlog publication.
-    f.repo.config.single_task_project_ids.remove(&f.project);
-    let before_disabled = f.snapshot().await;
-    let (left, right) = tokio::join!(
-        f.repo
-            .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
-        f.repo
-            .complete_configured_pm(task, &pm, command.clone(), receipt.clone())
-    );
-    assert!(matches!(left, Err(AppError::Unavailable(_))));
-    assert!(matches!(right, Err(AppError::Unavailable(_))));
-    assert_eq!(f.snapshot().await, before_disabled);
-    assert!(
-        f.repo
-            .configured_pm_completion(task, &pm, Some(&command.idempotency_key))
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(
-        json!(f.repo.read(task, &pm).await.unwrap()),
-        json!(confirmed)
-    );
-    f.repo.config.single_task_project_ids.insert(f.project);
     let (left, right) = tokio::join!(
         f.repo
             .complete_configured_pm(task, &pm, command.clone(), receipt.clone()),
@@ -892,7 +868,6 @@ async fn configured_cli_business_writes_need_current_assignment_but_no_native_le
         serde_json::to_value(expected).unwrap(),
         serde_json::to_value(&after).unwrap()
     );
-    assert!(f.repo.config.single_task_project_ids.contains(&f.project));
     assert!(
         f.repo
             .context(task, &f.owner)

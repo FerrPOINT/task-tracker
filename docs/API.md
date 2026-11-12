@@ -711,6 +711,12 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 > **Single source of truth:** актуальная OpenAPI-схема лежит в [`openapi/openapi.json`](../openapi/openapi.json). Backend генерирует её из `utoipa`-аннотаций Rust-хендлеров, а фронт получает из неё TypeScript-клиент. Ручная документация ниже — для контекста, но при расхождении приоритет у `openapi/openapi.json`.
 
+Доска проекта `GET /api/v1/projects/{project_key}/board` возвращает обязательную
+секцию `sdlc`. `stages` задаёт порядок колонок, а `tasks` связывает ID карточки с
+канонической стадией и операционным статусом. Историческая задача без
+операционного статуса возвращается без поля `status`. Стадии SDLC меняются
+штатными переходами Tracker; прежних workflow-колонок в ответе доски нет.
+
 ## Базовая информация
 
 - Base URL: `https://{host}:3456/api/v1`
@@ -778,7 +784,6 @@ password/register/refresh endpoints являются legacy-контрактом
 |---|---|---|
 | GET | `/projects/{project_key}/backlog` | Бэклог проекта |
 | GET | `/projects/{project_key}/board` | Девять стадий SDLC и задачи агентного цикла |
-| POST | `/projects/{project_key}/board/move` | Изменение workflow-статуса задачи с действующими проверками перехода |
 | GET, POST | `/projects/{project_key}/labels` | Метки проекта / создание |
 | GET, POST | `/projects/{project_key}/sprints` | Спринты проекта / создание |
 | GET, PATCH | `/projects/{project_key}/sprints/{sprint_id}` | Спринт: получение / PATCH / удаление |
@@ -786,16 +791,12 @@ password/register/refresh endpoints являются legacy-контрактом
 | POST | `/projects/{project_key}/sprints/{sprint_id}/issues` | Перенос задач в спринт |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/remove-issue` | Убрать задачу из спринта |
 
-Ответ доски содержит `sdlc` с `stages` и `tasks`, когда SDLC настроен. Порядок стадий
-задаёт `LifecycleStage::BOARD_ORDER`; принадлежность карточки стадии берётся из
-сохранённого агентного lifecycle. Операционный статус передаётся отдельным полем.
-Без SDLC поле равно null, UI явно сообщает о недоступности агентной доски. Ошибка
-reader не маскируется пустым результатом. Поля v1 `columns`, `issues`, `sprint` и
-`backlog_total` сохраняют прежнюю семантику для существующих API-клиентов. Tracker
-владеет их совместимостью; удалить `columns` можно при смене версии API после
-перевода внешних клиентов. Новый UI не читает эти колонки и не использует fallback.
-Доска показывает задачи агентного
-цикла, а на широких экранах число колонок определяется доступной шириной.
+Ответ доски содержит обязательный `sdlc` со стадиями и задачами канонического
+агентного цикла. Порядок стадий задаёт `LifecycleStage::BOARD_ORDER`;
+операционное состояние этапа передаётся отдельно. UI показывает компактные
+карточки, а число колонок определяется доступной шириной. Контракт доски,
+доступ и выбор задач принадлежат серверу; UI не восстанавливает прежние
+workflow-колонки или manual move.
 
 #### Backlog pagination
 

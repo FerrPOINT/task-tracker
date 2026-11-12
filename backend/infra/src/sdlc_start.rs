@@ -103,15 +103,6 @@ impl PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
         }
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
         let completed = Self::configured_saved(&tx, &state, None)
             .await?
@@ -137,15 +128,6 @@ impl PostgresSdlcRepository {
         completed: &domain::sdlc_configured_cli::ConfiguredPmCompletionReceipt,
     ) -> Result<(), AppError> {
         let state = self.load(tx, task, actor).await?;
-        if !self
-            .config
-            .single_task_project_ids
-            .contains(&state.project_id)
-        {
-            return Err(AppError::Unavailable(
-                "single_task_lifecycle_project_not_enabled".into(),
-            ));
-        }
         let command = LifecycleCommand::StartAnalysis {
             pm_completion_id: completed.completion_id,
             idempotency_key: format!("pm-analysis:{}", completed.completion_id),

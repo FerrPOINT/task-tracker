@@ -399,12 +399,10 @@ Only explicitly marked new PM Draft in an enabled project starts Ready/brainstor
 published questions/requirements wait in Ready, owner answer returns PM to InProgress,
 and confirmation queues Analysis/Ready. Waiting reason is not a status or runtime proof.
 
-Rollout depends on parent's `SdlcConfig.single_task_project_ids` HashSet, empty by default,
-from canonical CSV `TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS`. New EnsureQueued/Reserve
-checks it AFTER original replay and BEFORE effects, returning explicit Unavailable when
-disabled. Replay, reads/history, heartbeat/proposal/Complete of existing execution remain
-available after disable. New canonical PM Draft fields additionally require explicit
-creation `flow:"single-task-v1"`; omission never auto-enrolls a legacy task.
+Все проекты используют один SDLC. Для новых черновиков требуется актуальная
+политика маршрутизации проекта, `flow:"single-task-v1"` и
+`interaction_protocol:"configured-cli-v1"`. Уже принятый запуск сохраняет
+зафиксированную маршрутизацию и исходное назначение.
 
 ### Explicit Draft marker and automatic confirmation snapshot
 

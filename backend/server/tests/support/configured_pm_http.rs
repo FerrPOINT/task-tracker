@@ -63,7 +63,6 @@ pub(super) async fn prepare(db: &DatabaseConnection, project: Uuid, url: &str) -
         url,
         SdlcConfig {
             instance_id: "tracker-draft-test".into(),
-            single_task_project_ids: [project].into(),
             orchestrator_subject: String::new(),
             verifier_subject: String::new(),
             reservation_scheduler_subject: String::new(),
@@ -167,10 +166,6 @@ pub async fn verify(
         axum::serve(listener, workflow).await.unwrap();
     });
     unsafe {
-        std::env::set_var(
-            "TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS",
-            f.project.to_string(),
-        );
         std::env::set_var("TASKTRACKER_SDLC__WORKFLOW_URL", origin);
         std::env::set_var(
             "TASKTRACKER_SDLC__WORKFLOW_READ_TOKEN",
@@ -196,6 +191,57 @@ pub async fn verify(
     )
     .await;
     let task = Uuid::parse_str(created["task_id"].as_str().unwrap()).unwrap();
+    let key = created["task_key"]
+        .as_str()
+        .unwrap()
+        .rsplit_once('-')
+        .unwrap()
+        .0;
+    let board = get_json(
+        f.client,
+        &format!("{base}/api/v1/projects/{key}/board"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(
+        board["sdlc"]["stages"],
+        json!([
+            "Draft",
+            "Backlog",
+            "Analysis",
+            "Architecture",
+            "Development",
+            "Review",
+            "Testing",
+            "Rework",
+            "Deployment",
+        ])
+    );
+    assert!(
+        board["sdlc"]["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["issue_id"] == json!(task)
+                && row["stage"] == "Draft"
+                && row["status"] == "Ready")
+    );
+    let backlog = get_json(
+        f.client,
+        &format!("{base}/api/v1/projects/{key}/backlog?limit=1"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(backlog["backlog_limit"], 1);
+    assert!(
+        backlog["backlog_issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["id"] != json!(task))
+    );
     let root = format!("{base}/api/v1/issues/{task}/sdlc");
     let mut reservation = reserve("configured-http:reserve", agent);
     reservation["interaction_protocol"] = json!("configured-cli-v1");
@@ -668,7 +714,6 @@ pub async fn verify(
     workflow_handle.abort();
     unsafe {
         for key in [
-            "TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS",
             "TASKTRACKER_SDLC__WORKFLOW_URL",
             "TASKTRACKER_SDLC__WORKFLOW_READ_TOKEN",
         ] {

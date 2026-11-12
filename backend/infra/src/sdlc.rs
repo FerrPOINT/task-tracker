@@ -13,9 +13,6 @@ use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[cfg(test)]
-#[path = "sdlc_board_tests.rs"]
-mod board_tests;
 #[path = "sdlc_commands.rs"]
 mod commands;
 #[path = "sdlc_configured_cli.rs"]
@@ -946,51 +943,6 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Option<&dyn domain::decomposition::DecompositionRepository> {
         Some(self)
     }
-    async fn board_tasks(
-        &self,
-        project: Uuid,
-        issues: &[Uuid],
-    ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
-        use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
-
-        let rows = self
-            .db
-            .query_all(statement(
-                "SELECT task_id, state->'stage' AS stage,
-                        NULLIF(state->'status', 'null'::jsonb) AS status
-                 FROM sdlc_tasks
-                 WHERE project_id = $1 AND tracker_instance_id = $2 AND task_id = ANY($3)",
-                vec![
-                    project.into(),
-                    self.config.instance_id.clone().into(),
-                    Value::Array(
-                        sea_orm::sea_query::ArrayType::Uuid,
-                        Some(Box::new(issues.iter().copied().map(Value::from).collect())),
-                    ),
-                ],
-            ))
-            .await
-            .map_err(map_db)?;
-        rows.into_iter()
-            .map(|row| {
-                let stage: Stage =
-                    serde_json::from_value(row.try_get::<Json>("", "stage").map_err(map_db)?)
-                        .map_err(AppError::internal)?;
-                let status = row
-                    .try_get::<Option<Json>>("", "status")
-                    .map_err(map_db)?
-                    .map(serde_json::from_value::<LifecycleStatus>)
-                    .transpose()
-                    .map_err(AppError::internal)?;
-                Ok(SdlcBoardTask {
-                    issue_id: row.try_get("", "task_id").map_err(map_db)?,
-                    stage: LifecycleStage::from_legacy(stage),
-                    status,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()
-    }
-
     fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
         Some(self)
     }
@@ -1165,21 +1117,8 @@ impl SdlcRepository for PostgresSdlcRepository {
                 "new PM reservations require configured CLI",
             ));
         }
-        if state.interaction_protocol()?.is_none() {
-            let was_unmarked = state.draft_flow()?.is_none();
-            app::sdlc_configured_cli::adopt_unstarted_draft(&mut state)?;
-            // Forward migration guards this one-way transition against stored
-            // assignment/history too. The original creation/input stays intact.
-            exec(
-                &tx,
-                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
-                vec![task.into(), json_value(&state)?],
-            )
-            .await?;
-            if was_unmarked {
-                let (creator, _) = Self::project_access(&tx, state.project_id, actor).await?;
-                self.select_task_source(&tx, &state, creator).await?;
-            }
+        if state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
+            return Err(AppError::conflict("historical Draft is read-only"));
         }
         let protocol = state.interaction_protocol()?;
         if command.interaction_protocol != protocol {
@@ -1258,44 +1197,13 @@ impl SdlcRepository for PostgresSdlcRepository {
         }
         // A configured project default is authoritative for new reservations.
         // Replay above keeps its original agent even after the default changes.
-        if state.draft_flow()?.is_some() {
-            if !self
-                .config
-                .single_task_project_ids
-                .contains(&state.project_id)
-            {
-                return Err(AppError::Unavailable(
-                    "single_task_draft_project_not_enabled".into(),
-                ));
-            }
-            let policy = self.single_task_policy(&tx, state.project_id).await?;
-            app::sdlc_routing::validate_project_pm_default(
-                &policy,
-                state.project_id,
-                &state.tracker_instance_id,
-                command.requested_agent_id,
-            )?;
-        }
-        let default = tx
-            .query_one(statement(
-                "SELECT r.payload FROM sdlc_project_routing_heads h
-             JOIN sdlc_project_routing_revisions r USING(project_id,version)
-             WHERE h.project_id=$1",
-                vec![state.project_id.into()],
-            ))
-            .await
-            .map_err(map_db)?;
-        if let Some(row) = default {
-            let policy: domain::sdlc_routing::RoutingPolicy =
-                serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
-                    .map_err(|_| AppError::conflict("project PM default is inconsistent"))?;
-            app::sdlc_routing::validate_project_pm_default(
-                &policy,
-                state.project_id,
-                &state.tracker_instance_id,
-                command.requested_agent_id,
-            )?;
-        }
+        let policy = self.single_task_policy(&tx, state.project_id).await?;
+        app::sdlc_routing::validate_project_pm_default(
+            &policy,
+            state.project_id,
+            &state.tracker_instance_id,
+            command.requested_agent_id,
+        )?;
         if machine_subject == state.owner_subject || machine_subject == self.config.verifier_subject
         {
             return Err(AppError::conflict(
@@ -1591,15 +1499,15 @@ impl SdlcRepository for PostgresSdlcRepository {
                 tx.commit().await.map_err(map_db)?;
                 return Ok((result, true));
             }
-            let single_task = command.flow.is_some();
-            if single_task {
-                if !self.config.single_task_project_ids.contains(&project) {
-                    return Err(AppError::Unavailable(
-                        "single_task_draft_project_not_enabled".into(),
-                    ));
-                }
-                self.single_task_policy(&tx, project).await?;
+            if command.flow != Some(domain::sdlc::DraftFlow::SingleTaskV1)
+                || command.interaction_protocol
+                    != Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1)
+            {
+                return Err(AppError::invalid_input(
+                    "New drafts require single-task-v1 and configured-cli-v1",
+                ));
             }
+            self.single_task_policy(&tx, project).await?;
             let row = tx
                 .query_one(statement(
                     "SELECT allocate_project_issue_number($1) AS number",
@@ -1616,20 +1524,9 @@ impl SdlcRepository for PostgresSdlcRepository {
                 .ok_or_else(|| AppError::validation("issue number overflow"))?;
             let task = Uuid::now_v7();
             let key = format!("{project_key}-{number}");
-            let status = single_task.then_some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
-            let initial_status: Uuid = match status {
-                Some(status) => lifecycle::mapped_issue_status(&tx, Stage::Draft, status).await?,
-                None => tx
-                    .query_one(statement(
-                        "SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1",
-                        vec![],
-                    ))
-                    .await
-                    .map_err(map_db)?
-                    .ok_or_else(|| AppError::conflict("legacy Draft status missing"))?
-                    .try_get("", "id")
-                    .map_err(map_db)?,
-            };
+            let ready = domain::sdlc_lifecycle::LifecycleStatus::Ready;
+            let status = Some(ready);
+            let initial_status = lifecycle::mapped_issue_status(&tx, Stage::Draft, ready).await?;
             let inserted = tx.execute(statement(
                 "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,
                  priority,labels,position,time_spent_seconds)
@@ -1674,7 +1571,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             let state = TaskState {
                 status,
                 retained_fields,
-                draft_submode: single_task.then_some(DraftSubmode::Brainstorming),
+                draft_submode: Some(DraftSubmode::Brainstorming),
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,
                 task_id: task,
@@ -1695,9 +1592,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 VALUES($1,$2,$3,$1,$4,$5)",
                 vec![task.into(), self.config.instance_id.clone().into(), project.into(),
                     actor.subject.clone().into(), json_value(&state)?]).await?;
-            if single_task {
-                self.select_task_source(&tx, &state, user).await?;
-            }
+            self.select_task_source(&tx, &state, user).await?;
             let result = CreatedDraft {
                 interaction_protocol: command.interaction_protocol,
                 tracker_instance_id: self.config.instance_id.clone(),
