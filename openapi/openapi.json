@@ -11696,7 +11696,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BoardColumnResponse"
-            }
+            },
+            "description": "Status-board compatibility for existing v1 clients; the agent board uses sdlc."
           },
           "issues": {
             "type": "array",
@@ -11709,6 +11710,17 @@
           },
           "project_key": {
             "type": "string"
+          },
+          "sdlc": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SdlcBoardResponse",
+                "description": "Present when the SDLC service is configured. Reader failures remain errors."
+              }
+            ]
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
@@ -20910,6 +20922,53 @@
           }
         },
         "additionalProperties": false
+      },
+      "SdlcBoardResponse": {
+        "type": "object",
+        "required": [
+          "stages",
+          "tasks"
+        ],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStage"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SdlcBoardTask"
+            }
+          }
+        }
+      },
+      "SdlcBoardTask": {
+        "type": "object",
+        "required": [
+          "issue_id",
+          "stage"
+        ],
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          }
+        }
       },
       "SdlcContext": {
         "type": "object",
