@@ -189,7 +189,9 @@ function ProjectNavigation({
               compact={compact}
               open={open}
               onToggle={() => onToggle(project.id)}
-              actions={<ProjectActions project={project} onNavigate={onNavigate} />}
+              actions={
+                (!compact || open) && <ProjectActions project={project} onNavigate={onNavigate} />
+              }
             >
               {items.map((item) => {
                 const target = project.namespace
