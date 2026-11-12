@@ -71,13 +71,15 @@ const eventLabels = {
 
 export function TaskStage({ source }: { source: SdlcSnapshotSource }) {
   const { t } = useTranslation()
-  const { snapshot, authenticated } = source
+  const { snapshot, authenticated, lifecycle } = source
   const context = !snapshot.error ? snapshot.data?.context : undefined
   return (
     <div role="group" aria-label={t('issue.stage')} className="mb-4 space-y-1.5">
       <span className="block text-text-muted">{t('issue.stage')}</span>
       {!authenticated ? (
         <p>{t('sdlc.errors.401')}</p>
+      ) : lifecycle?.enrolled === false ? (
+        <p className="font-medium">{t(`sdlc.stages.${lifecycle.stage}`)}</p>
       ) : snapshot.isPending ? (
         <p role="status">{t('sdlc.loading')}</p>
       ) : snapshot.error ? (
@@ -157,6 +159,7 @@ export function SdlcPanel({ source }: { source: SdlcSnapshotSource }) {
     }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
+  if (source.lifecycle?.enrolled === false) return <EmptyState message={t('sdlc.notEnrolled')} />
   if (snapshot.isPending) return <LoadingState message={t('sdlc.loading')} />
   if (accessDenied || (snapshot.error && !snapshot.data)) {
     return (

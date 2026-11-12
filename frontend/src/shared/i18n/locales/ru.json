@@ -22,6 +22,7 @@
     "cycleAttempt": "Cycle / attempt",
     "createdAt": "Создано",
     "requirements": "Требования",
+    "notEnrolled": "Эта задача ещё не включена в цикл разработки.",
     "noContext": "SDLC context отсутствует",
     "noRequirements": "Требования ещё не опубликованы",
     "noIntent": "Analysis intent не найден; состояние очереди не подтверждено",

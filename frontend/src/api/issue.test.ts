@@ -9,10 +9,23 @@ describe('getIssue', () => {
   beforeEach(() => GET.mockReset())
 
   it('returns a loaded issue', async () => {
-    const issue = { id: 'i1', key: 'TT-1' }
+    const issue = {
+      id: 'i1',
+      key: 'TT-1',
+      lifecycle: { issue_id: 'i1', stage: 'Draft', enrolled: false },
+    }
     GET.mockResolvedValue({ data: issue, response: { status: 200 } })
 
     await expect(getIssue('i1')).resolves.toEqual(issue)
+  })
+
+  it.each([
+    undefined,
+    { issue_id: 'i1', stage: 'Draft' },
+    { issue_id: 'other', stage: 'Draft', enrolled: false },
+  ])('rejects missing or mismatched lifecycle metadata: %s', async (lifecycle) => {
+    GET.mockResolvedValue({ data: { id: 'i1', lifecycle }, response: { status: 200 } })
+    await expect(getIssue('i1')).rejects.toThrow('Invalid issue lifecycle response')
   })
 
   it('returns null for a genuinely missing issue', async () => {

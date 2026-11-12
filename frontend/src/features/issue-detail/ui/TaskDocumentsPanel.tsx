@@ -35,7 +35,7 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
     },
   })
   if (!ref) return null
-  const wiki = services.find((service) => service.key === 'wiki')?.ui_url
+  const wiki = services.find((service) => service.key === 'wiki')?.ui_url?.replace(/\/$/, '')
   return (
     <Card asChild>
       <section>

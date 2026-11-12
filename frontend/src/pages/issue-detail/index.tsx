@@ -85,7 +85,7 @@ export function IssueDetailPage() {
   const deleteIssueMutation = useDeleteIssue()
   // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
   const taskId = issueQuery.data?.id ?? ''
-  const sdlc = useSdlcSnapshot(taskId)
+  const sdlc = useSdlcSnapshot(taskId, issueQuery.data?.lifecycle)
   const worklogsQuery = useWorklogs(taskId)
   const commentsQuery = useComments(taskId)
   const create = useCreateWorklog(taskId)

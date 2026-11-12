@@ -22,6 +22,7 @@
     "cycleAttempt": "Cycle / attempt",
     "createdAt": "Created",
     "requirements": "Requirements",
+    "notEnrolled": "This task has not entered the development cycle yet.",
     "noContext": "No SDLC context",
     "noRequirements": "Requirements have not been published",
     "noIntent": "Analysis intent was not found; queue state is not verified",

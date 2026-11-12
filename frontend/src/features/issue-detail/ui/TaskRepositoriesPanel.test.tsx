@@ -3,10 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { TaskRepositoriesPanel } from './TaskRepositoriesPanel'
-const mocks = vi.hoisted(() => ({ get: vi.fn(), projectKey: 'PROJECT' }))
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  projectKey: 'PROJECT',
+  services: [] as { key: string; ui_url: string }[],
+}))
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
-  usePlatformServices: () => ({ services: [] }),
+  usePlatformServices: () => ({ services: mocks.services }),
 }))
 vi.mock('@/widgets/namespace-context', () => ({
   useNamespaceContext: () => ({
@@ -24,6 +28,7 @@ afterEach(() => {
   cleanup()
   mocks.get.mockReset()
   mocks.projectKey = 'PROJECT'
+  mocks.services = []
 })
 it.each(['first-task', 'second-task'])(
   'reads project links and retains evidence scope for %s',
@@ -162,4 +167,41 @@ it('can return to the first page when loading a later page fails', async () => {
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Предыдущие связи' }))
   await screen.findByText('repo-0')
+})
+
+it.each(['', '/'])('joins deployed Fleet and Forge UI roots with suffix %s', async (suffix) => {
+  mocks.services = [
+    { key: 'fleet-control', ui_url: 'https://dev.test/fleet' + suffix },
+    { key: 'ci-cd', ui_url: 'https://dev.test/forge' + suffix },
+  ]
+  mocks.get.mockImplementation(async (path: string) => ({
+    data: path.endsWith('/repositories')
+      ? [
+          {
+            forge_instance_id: 'forge',
+            repository_id: 'repo',
+            public_name: 'group/repo',
+            kind: 'hosted',
+          },
+        ]
+      : [],
+  }))
+  render(
+    <MemoryRouter>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <TaskRepositoriesPanel taskId="task" projectKey="PROJECT" />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  )
+  const forge = await screen.findByRole('link', { name: 'group/repo' })
+  const fleet = screen.getByRole('link', { name: 'Чаты Fleet с контекстом задачи' })
+  expect(new URL(forge.getAttribute('href')!).pathname).toBe('/forge/catalog/repositories/repo')
+  expect(new URL(fleet.getAttribute('href')!).pathname).toBe('/fleet/chats')
+  for (const link of [forge, fleet]) {
+    const url = new URL(link.getAttribute('href')!)
+    expect(url.searchParams.get('task_id')).toBe('task')
+    expect(url.searchParams.get('namespace_id')).toBe('namespace')
+  }
 })

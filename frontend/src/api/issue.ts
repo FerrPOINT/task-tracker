@@ -3,6 +3,7 @@ import type { components } from './generated'
 
 type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
 export type Issue = components['schemas']['IssueResponse']
+export type IssueDetail = components['schemas']['IssueDetailResponse']
 
 export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {
   const { data, error } = await api.PATCH('/api/v1/issues/{id}', {
@@ -20,13 +21,19 @@ export async function deleteIssue(id: string): Promise<void> {
   if (error) throw new Error('Failed to delete issue')
 }
 
-export async function getIssue(id: string, signal?: AbortSignal): Promise<Issue | null> {
+export async function getIssue(id: string, signal?: AbortSignal): Promise<IssueDetail | null> {
   const { data, error, response } = await api.GET('/api/v1/issues/{id}', {
     signal,
     params: { path: { id } },
   })
   if (response.status === 404) return null
   if (error || !data) throw new Error('Failed to load issue')
+  if (
+    !data.lifecycle ||
+    data.lifecycle.issue_id !== data.id ||
+    typeof data.lifecycle.enrolled !== 'boolean'
+  )
+    throw new Error('Invalid issue lifecycle response')
   return data
 }
 

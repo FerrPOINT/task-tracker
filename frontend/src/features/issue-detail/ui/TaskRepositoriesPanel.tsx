@@ -111,8 +111,10 @@ export function TaskRepositoriesPanel({
     }
   }
   if (!ref || !matching) return null
-  const forge = services.find((service) => service.key === 'ci-cd')?.ui_url
-  const fleet = services.find((service) => service.key === 'fleet-control')?.ui_url
+  const forge = services.find((service) => service.key === 'ci-cd')?.ui_url?.replace(/\/$/, '')
+  const fleet = services
+    .find((service) => service.key === 'fleet-control')
+    ?.ui_url?.replace(/\/$/, '')
   return (
     <Card asChild>
       <section>

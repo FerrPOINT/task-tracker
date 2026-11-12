@@ -1,5 +1,15 @@
 # Owner SDLC UI v1
 
+## Ordinary task versus an enrolled process
+
+The normal issue detail explicitly supplies lifecycle metadata from the same
+projection as the board. An unenrolled task shows Draft and “This task has not
+entered the development cycle yet”; it does not query private SDLC context,
+history or routing policy. A missing lifecycle field is a protocol error, not
+evidence that a task is unenrolled. An enrolled task retains the existing
+credential-scoped snapshot and strict 401/403 behavior. No implicit enrollment,
+role change or automatic start is performed.
+
 ## Каноническая доска всех проектов
 
 Доска читает обязательный BoardResponse.sdlc: девять стадий одного серверного

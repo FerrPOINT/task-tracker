@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
+import type { IssueDetail } from '@/api/issue'
 import { useQuery } from '@tanstack/react-query'
 import { getSdlcMetadata, getSdlcRoutingPolicy, getSdlcSnapshot } from '@/api/sdlc'
 import { useAuthStore } from '@/shared/auth/store'
 import { canConfirmRequirementsContext } from './confirmation-context'
 
-export function useSdlcSnapshot(issueId: string) {
+export function useSdlcSnapshot(issueId: string, lifecycle: IssueDetail['lifecycle'] | undefined) {
   const token = useAuthStore((state) => state.token)
   // Never reuse a previous credential's scoped data or put a bearer in a query key.
   const session = useMemo(() => ({ token, cacheKey: crypto.randomUUID() }), [token])
@@ -12,11 +13,11 @@ export function useSdlcSnapshot(issueId: string) {
   const snapshot = useQuery({
     queryKey: [...queryKey, 'snapshot'],
     queryFn: ({ signal }) => getSdlcSnapshot(issueId, signal),
-    enabled: Boolean(session.token && issueId),
+    enabled: Boolean(session.token && issueId && lifecycle?.enrolled),
     retry: false,
     gcTime: 0,
   })
-  return { issueId, snapshot, queryKey, authenticated: Boolean(session.token) }
+  return { issueId, lifecycle, snapshot, queryKey, authenticated: Boolean(session.token) }
 }
 
 export type SdlcSnapshotSource = ReturnType<typeof useSdlcSnapshot>

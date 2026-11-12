@@ -122,9 +122,9 @@ const event: MetadataEvent = {
   },
 }
 
-function mount(issueId = task, showStage = false) {
+function mount(issueId = task, showStage = false, enrolled = true) {
   function TaskView() {
-    const source = useSdlcSnapshot(issueId)
+    const source = useSdlcSnapshot(issueId, { issue_id: issueId, stage: 'Draft', enrolled })
     return (
       <>
         {showStage && <TaskStage source={source} />}
@@ -146,6 +146,18 @@ function mount(issueId = task, showStage = false) {
 }
 
 describe('SDLC owner panel (isolated controller fixtures, not live admission)', () => {
+  it('shows an unenrolled task without querying a private SDLC resource', async () => {
+    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(403))
+    mount(task, true, false)
+    const stage = screen.getByRole('group', { name: 'Stage' })
+    expect(await within(stage).findByText('Draft')).toBeVisible()
+    expect(screen.getByText('This task has not entered the development cycle yet.')).toBeVisible()
+    expect(getSdlcSnapshot).not.toHaveBeenCalled()
+    expect(getSdlcMetadata).not.toHaveBeenCalled()
+    expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+    expect(screen.queryByText('Access to this SDLC resource is denied')).not.toBeInTheDocument()
+  })
+
   it('shares one canonical read between the right-hand stage and the SDLC tab', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
       ...initial,
