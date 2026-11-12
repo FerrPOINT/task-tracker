@@ -213,10 +213,10 @@ pub fn configured_source_binding(
 
 /// The existing namespace reader may prove checkout preparation while Fleet
 /// holds the exact Developer reservation. This does not authorize a run.
-pub fn workspace_preparation_expires_at(
+pub fn workspace_preparation_authorized(
     source: &TaskSourceReadback,
     execution: &SdlcContext,
-) -> Option<DateTime<Utc>> {
+) -> bool {
     let TaskSourceReadback::Blocked {
         reason: SourceBlockReason::ExecutionNotRunning,
         binding: Some(source),
@@ -224,13 +224,13 @@ pub fn workspace_preparation_expires_at(
         ..
     } = source
     else {
-        return None;
+        return false;
     };
     let receipt = &current.receipt;
-    let assignment = receipt.assignment.as_ref()?;
-    let lease = receipt.lease.as_ref()?;
-    let exposed = execution.assignment.as_ref()?;
-    (source.development_workspace_id.is_some()
+    let (Some(assignment), Some(lease), Some(exposed)) = (
+        receipt.assignment.as_ref(), receipt.lease.as_ref(), execution.assignment.as_ref(),
+    ) else { return false; };
+    source.development_workspace_id.is_some()
         && execution.task_id == source.task_id
         && execution.status == Some(LifecycleStatus::Ready)
         && current.runtime_state == RuntimeState::Reserved
@@ -252,11 +252,6 @@ pub fn workspace_preparation_expires_at(
         && lease.version > 0
         && !lease.holder_subject.is_empty()
         && lease.holder_subject != assignment.owner_subject
-        && lease.claimed_at <= lease.heartbeat_at
-        && lease.heartbeat_at <= current.observed_at
-        && current.observed_at < lease.expires_at
-        && lease.expires_at - lease.heartbeat_at <= chrono::Duration::seconds(30))
-        .then_some(lease.expires_at)
 }
 
 pub fn readback(
@@ -285,12 +280,6 @@ pub fn readback(
                 || binding.content_hash != routing.content_hash
             {
                 Some(SourceBlockReason::SourceContextChanged)
-            } else if receipt
-                .lease
-                .as_ref()
-                .is_some_and(|lease| lease.expires_at <= current.observed_at)
-            {
-                Some(SourceBlockReason::LeaseExpired)
             } else if current.runtime_state != RuntimeState::Running
                 || receipt.task.runtime != RuntimeState::Running
                 || receipt.task.status != LifecycleStatus::InProgress
@@ -319,16 +308,7 @@ pub fn readback(
                             && native.machine_subject != lease.holder_subject
                             && native.machine_subject != binding.owner_subject =>
                     {
-                        if lease.claimed_at <= lease.heartbeat_at
-                            && lease.heartbeat_at <= current.observed_at
-                            && current.observed_at < lease.expires_at
-                            && lease.expires_at - lease.heartbeat_at
-                                <= chrono::Duration::seconds(30)
-                        {
-                            None
-                        } else {
-                            Some(SourceBlockReason::LeaseExpired)
-                        }
+                        None
                     }
                     _ => Some(SourceBlockReason::MissingCurrentExecution),
                 }

@@ -6,7 +6,7 @@ use domain::sdlc_routing::{
 };
 
 #[test]
-fn never_submitted_observation_is_exclusive_and_does_not_invent_terminal_identity() {
+fn historical_unsubmitted_observation_decodes_but_cannot_release_current_ownership() {
     let raw = serde_json::json!({"operation":"reconcile","fence":{
         "assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),"fencing_token":1,
         "lease_id":Uuid::new_v4(),"expected_lease_version":1},
@@ -15,6 +15,7 @@ fn never_submitted_observation_is_exclusive_and_does_not_invent_terminal_identit
         "recovery":{"disposition":"retry_unsubmitted"},"idempotency_key":"recover:original"});
     let command: LifecycleCommand = serde_json::from_value(raw.clone()).unwrap();
     validate_command(&command).unwrap();
+    assert!(validate_active_command(&command).is_err());
     assert!(serde_json::to_value(&command).unwrap().get("terminal").is_none());
     for field in ["never_submitted", "recovery"] {
         let mut wrong = raw.clone();
@@ -27,15 +28,16 @@ fn never_submitted_observation_is_exclusive_and_does_not_invent_terminal_identit
     value.runtime = RuntimeState::Reserved;
     let routing = value.routing.clone();
     let stage = value.stage;
-    reconcile_unsubmitted(&mut value).unwrap();
-    assert_eq!(value.runtime, RuntimeState::Queued);
+    cancel_unsubmitted(&mut value).unwrap();
+    assert_eq!(value.runtime, RuntimeState::Terminal);
+    assert_eq!(value.transient_retries, 0);
     assert_eq!(value.routing, routing);
     assert_eq!(value.stage, stage);
     value.runtime = RuntimeState::Running;
-    assert!(reconcile_unsubmitted(&mut value).is_err());
+    assert!(cancel_unsubmitted(&mut value).is_err());
     value.runtime = RuntimeState::Unknown;
     value.transient_retries = MAX_TRANSIENT_RETRIES;
-    reconcile_unsubmitted(&mut value).unwrap();
+    cancel_unsubmitted(&mut value).unwrap();
     assert_eq!(value.runtime, RuntimeState::Terminal);
 }
 
@@ -884,4 +886,36 @@ fn configured_original_proposal_receipt_has_its_own_frozen_identity() {
         authorize_configured_proposal_receipt(&actor, &receipt, &assignment, "changed-owner")
             .is_err()
     );
+}
+
+#[test]
+fn persistent_ownership_preserves_historical_wire_and_closed_current_commands() {
+    use serde_json::json;
+    let old = json!({"lease_id":Uuid::new_v4(),"version":3,"holder_subject":"scheduler",
+        "claimed_at":"2026-01-01T00:00:00.000000000Z","heartbeat_at":"2026-01-01T00:00:10.000000000Z",
+        "expires_at":"2026-01-01T00:00:40.000000000Z"});
+    let history: DeliveryOwnership = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&history).unwrap(), old);
+    let mut current = history.clone();
+    current.expires_at = None;
+    let encoded = serde_json::to_value(&current).unwrap();
+    assert!(encoded["expires_at"].is_null());
+    assert_eq!(encoded["lease_id"], old["lease_id"]);
+    assert_eq!(encoded["version"], old["version"]);
+    assert_eq!(encoded["holder_subject"], old["holder_subject"]);
+    let reserve = json!({"operation":"reserve","expected_task_version":1,"idempotency_key":"reserve"});
+    let command: LifecycleCommand = serde_json::from_value(reserve.clone()).unwrap();
+    validate_active_command(&command).unwrap();
+    let mut timed = reserve;
+    timed["lease_seconds"] = json!(30);
+    assert!(serde_json::from_value::<LifecycleCommand>(timed).is_err());
+    let fence = DeliveryFence { assignment_id:Uuid::new_v4(),execution_id:Uuid::new_v4(),
+        fencing_token:1,lease_id:current.lease_id,expected_lease_version:current.version };
+    let renewal = LifecycleCommand::Heartbeat { fence:fence.clone(),idempotency_key:"retired-heartbeat".into() };
+    validate_command(&renewal).unwrap();
+    assert!(validate_active_command(&renewal).is_err());
+    let cancel = LifecycleCommand::CancelUnsubmitted { fence,idempotency_key:"explicit-cancel".into() };
+    validate_command(&cancel).unwrap();
+    validate_active_command(&cancel).unwrap();
+    assert_eq!(cancel.key(), "explicit-cancel");
 }

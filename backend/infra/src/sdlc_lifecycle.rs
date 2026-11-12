@@ -1,6 +1,5 @@
 use super::*;
-use chrono::{DateTime, Duration, Utc};
-use domain::sdlc_execution_lease::ExecutionLease;
+use chrono::{DateTime, Utc};
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_routing::TaskRoutingSnapshot;
 
@@ -323,28 +322,22 @@ fn fence(
     receipt: &LifecycleReceipt,
     expected: &DeliveryFence,
     actor: &Principal,
-    observed_at: DateTime<Utc>,
-    renewing: bool,
 ) -> Result<(), AppError> {
     let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
     if lease.holder_subject != actor.subject {
         return Err(AppError::Forbidden);
     }
-    exact_fence(receipt, expected, observed_at, renewing)
+    exact_fence(receipt, expected)
 }
 
 pub(super) fn exact_fence(
     receipt: &LifecycleReceipt,
     expected: &DeliveryFence,
-    observed_at: DateTime<Utc>,
-    renewing: bool,
 ) -> Result<(), AppError> {
     let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
     let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
-    if lease.expires_at <= observed_at
-        || expected.expected_lease_version > lease.version
+    if expected.expected_lease_version > lease.version
         || expected.expected_lease_version < 1
-        || (renewing && lease.version != expected.expected_lease_version)
         || assignment.assignment_id != expected.assignment_id
         || assignment.execution_id != expected.execution_id
         || assignment.fencing_token != expected.fencing_token
@@ -357,7 +350,7 @@ pub(super) fn exact_fence(
         || assignment.routing != receipt.task.routing
         || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(assignment)?
     {
-        return Err(AppError::conflict("stale or expired delivery fence"));
+        return Err(AppError::conflict("stale delivery ownership fence"));
     }
     Ok(())
 }
@@ -622,13 +615,13 @@ impl PostgresSdlcRepository {
             assignment_hash: String::new(),
         };
         assignment.assignment_hash = app::sdlc_lifecycle::assignment_hash(&assignment)?;
-        let lease = ExecutionLease {
+        let lease = DeliveryOwnership {
             lease_id: assignment.lease_id,
             version: 1,
             holder_subject: actor.subject.clone(),
             claimed_at: observed_at,
             heartbeat_at: observed_at,
-            expires_at: observed_at + Duration::seconds(LEASE_TTL_SECONDS),
+            expires_at: None,
         };
         exec(tx, "INSERT INTO sdlc_delivery_assignments(assignment_id,execution_id,task_id,agent_id,payload)
             VALUES($1,$2,$3,$4,$5)", vec![assignment.assignment_id.into(),assignment.execution_id.into(),
@@ -946,7 +939,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let observed_at = now(&tx).await?;
-        exact_fence(&receipt, &command.fence, observed_at, false)?;
+        exact_fence(&receipt, &command.fence)?;
         if receipt.task.runtime != RuntimeState::Running
             || receipt.task.status != LifecycleStatus::InProgress
             || receipt.task.stage.role() != Some(command.result.role())
@@ -1125,6 +1118,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((result, true));
         }
+        app::sdlc_lifecycle::validate_active_command(&command)?;
         if state.configured_cli()
             && matches!(state.stage, Stage::Draft | Stage::Backlog)
             && matches!(
@@ -1158,10 +1152,35 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::StartAnalysis { .. } => {
                 unreachable!("handled before scheduler admission")
             }
+            LifecycleCommand::CancelUnsubmitted { fence: expected, .. } => {
+                fence(&receipt, expected, actor)?;
+                let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
+                if tx.query_one(statement(
+                    "SELECT assignment_id FROM sdlc_delivery_holds WHERE assignment_id=$1 FOR UPDATE",
+                    vec![assignment.assignment_id.into()],
+                )).await.map_err(map_db)?.is_none() {
+                    return Err(AppError::conflict("delivery capacity released"));
+                }
+                if receipt.binding.is_some() || tx.query_one(statement(
+                    "SELECT assignment_id FROM sdlc_delivery_run_bindings WHERE assignment_id=$1
+                     UNION ALL SELECT assignment_id FROM sdlc_delivery_proposals WHERE assignment_id=$1",
+                    vec![assignment.assignment_id.into()],
+                )).await.map_err(map_db)?.is_some() {
+                    return Err(AppError::conflict("bound or proposed work requires actual terminal readback"));
+                }
+                let assignment_id = assignment.assignment_id;
+                app::sdlc_lifecycle::cancel_unsubmitted(&mut receipt.task)?;
+                exec(&tx, "INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+                    vec![assignment_id.into(), task.into(), json_value(&command)?]).await?;
+                exec(&tx, "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1", vec![assignment_id.into()]).await?;
+                receipt.assignment = None;
+                receipt.lease = None;
+                receipt.binding = None;
+                receipt.result = None;
+            }
             LifecycleCommand::Reconcile {
                 fence: expected,
                 terminal,
-                never_submitted,
                 recovery,
                 ..
             } => {
@@ -1184,32 +1203,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         "reconciliation immutable identity mismatch",
                     ));
                 }
-                if let Some(observation) = never_submitted {
-                    if receipt.binding.is_some()
-                        || receipt.task.status != LifecycleStatus::Ready
-                        || receipt.task.waiting_reason.as_deref() != Some("awaiting_run_binding")
-                        || lease.expires_at > now(&tx).await?
-                        || observation.assignment_hash != assignment.assignment_hash
-                    {
-                        return Err(AppError::conflict("expired unbound original assignment required"));
-                    }
-                    let original = tx.query_one(statement(
-                        "SELECT o.payload_hash,o.result FROM sdlc_delivery_operations o
-                         JOIN sdlc_outbox e ON e.event_id=o.event_id AND e.task_id=o.task_id
-                         WHERE o.task_id=$1 AND o.actor_subject=$2 AND o.idempotency_key=$3
-                           AND e.event_type='delivery.assignment_reserved'",
-                        vec![task.into(), actor.subject.clone().into(), observation.reservation_key.clone().into()],
-                    )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("original reservation operation required"))?;
-                    let hash: String = original.try_get("", "payload_hash").map_err(map_db)?;
-                    let original: LifecycleReceipt = serde_json::from_value(original.try_get::<Json>("", "result").map_err(map_db)?)
-                        .map_err(|_| corrupt())?;
-                    if hash != observation.reservation_payload_sha256
-                        || original.assignment.as_ref() != Some(assignment)
-                        || original.task.runtime != RuntimeState::Reserved
-                    {
-                        return Err(AppError::conflict("never-submitted reservation provenance changed"));
-                    }
-                }
                 if terminal.as_ref().is_some_and(|terminal| receipt
                     .binding
                     .as_ref()
@@ -1220,13 +1213,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 let old_assignment = assignment.assignment_id;
                 exec(&tx,"INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
                     vec![old_assignment.into(),task.into(),json_value(&command)?]).await?;
-                if never_submitted.is_some() {
-                    app::sdlc_lifecycle::reconcile_unsubmitted(&mut receipt.task)?;
-                } else {
-                    app::sdlc_lifecycle::reconcile_terminal(
-                        &mut receipt.task, terminal.as_ref().ok_or_else(corrupt)?, recovery,
-                    )?;
-                }
+                app::sdlc_lifecycle::reconcile_terminal(
+                    &mut receipt.task, terminal.as_ref().ok_or_else(corrupt)?, recovery,
+                )?;
                 exec(
                     &tx,
                     "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1",
@@ -1270,10 +1259,8 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 )
                 .await?;
             }
-            LifecycleCommand::Heartbeat {
-                fence: expected, ..
-            }
-            | LifecycleCommand::BindRun {
+            LifecycleCommand::Heartbeat { .. } => unreachable!("historical renewal is replay-only"),
+            LifecycleCommand::BindRun {
                 fence: expected, ..
             }
             | LifecycleCommand::Complete {
@@ -1287,23 +1274,8 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     return Err(AppError::conflict("delivery capacity released"));
                 }
                 let observed_at = now(&tx).await?;
-                fence(
-                    &receipt,
-                    expected,
-                    actor,
-                    observed_at,
-                    matches!(command, LifecycleCommand::Heartbeat { .. }),
-                )?;
+                fence(&receipt, expected, actor)?;
                 match &command {
-                    LifecycleCommand::Heartbeat { .. } => {
-                        let lease = receipt.lease.as_mut().ok_or_else(corrupt)?;
-                        if lease.version == MAX_SAFE_VERSION {
-                            return Err(AppError::conflict("lease version exhausted"));
-                        }
-                        lease.version += 1;
-                        lease.heartbeat_at = observed_at;
-                        lease.expires_at = observed_at + Duration::seconds(LEASE_TTL_SECONDS);
-                    }
                     LifecycleCommand::BindRun { binding, .. } => {
                         if receipt
                             .assignment
@@ -1422,6 +1394,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 unreachable!("handled before scheduler admission")
             }
             LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
+            LifecycleCommand::CancelUnsubmitted { .. } => Some("delivery.reconciled"),
             LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
             LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
             // Lease renewals are audited in operations, not mirrored into business chat.
@@ -1476,15 +1449,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         tx.commit().await.map_err(map_db)?;
         Ok(LifecycleReadback {
             observed_at,
-            runtime_state: if receipt
-                .lease
-                .as_ref()
-                .is_some_and(|l| l.expires_at <= observed_at)
-            {
-                RuntimeState::Unknown
-            } else {
-                receipt.task.runtime
-            },
+            runtime_state: receipt.task.runtime,
             receipt,
         })
     }

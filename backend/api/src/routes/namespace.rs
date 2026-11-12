@@ -379,12 +379,12 @@ pub async fn task_context(
             .source_repository()?
             .task_source(id, &actor)
             .await?;
-        let workspace_preparation_expires_at =
-            app::sdlc_source::workspace_preparation_expires_at(&source, &execution);
+        let workspace_preparation_authorized =
+            app::sdlc_source::workspace_preparation_authorized(&source, &execution);
         let workspace_preparation_commit = match &source {
             domain::sdlc_source::TaskSourceReadback::Blocked {
                 workspace_preparation_commit, ..
-            } if workspace_preparation_expires_at.is_some() => workspace_preparation_commit.clone(),
+            } if workspace_preparation_authorized => workspace_preparation_commit.clone(),
             _ => None,
         };
         let source_binding = app::sdlc_source::configured_source_binding(source)?;
@@ -396,7 +396,8 @@ pub async fn task_context(
             "assignment": execution.assignment,
             "requirement_revision": execution.requirement_revision,
             "source_binding": source_binding,
-            "workspace_preparation_expires_at": workspace_preparation_expires_at,
+            "workspace_preparation_authorized": workspace_preparation_authorized,
+            "workspace_preparation_expires_at": null,
             "workspace_preparation_commit": workspace_preparation_commit,
         });
     }

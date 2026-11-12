@@ -1,6 +1,5 @@
 //! Single-task delivery policy. Historical PM/Analysis wire types stay unchanged.
 use crate::sdlc::{MachineFence, Principal, Stage, safe_version};
-use crate::sdlc_execution_lease::ExecutionLease;
 use crate::sdlc_routing::TaskRoutingSnapshot;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,8 +7,6 @@ use shared::AppError;
 use uuid::Uuid;
 
 pub const POOL_LIMIT: u8 = 2;
-pub const LEASE_TTL_SECONDS: i64 = 30;
-pub const HEARTBEAT_SECONDS: i64 = 10;
 pub const MAX_TRANSIENT_RETRIES: u8 = 3;
 pub const MAX_REWORK_CYCLES: u8 = 3;
 pub const DELIVERY_GRANT_PREFIX: &str = "task-tracker:sdlc:delivery:";
@@ -249,6 +246,7 @@ pub enum RuntimeTerminalState {
 #[serde(tag = "disposition", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecoveryDisposition {
     Stop,
+    /// Historical expiry recovery; only original operation-key replay is supported.
     RetryUnsubmitted,
     RetryTransient {
         replay_safety_receipt: ArtifactReceipt,
@@ -483,6 +481,12 @@ pub enum LifecycleCommand {
         machine_subject: Option<String>,
         idempotency_key: String,
     },
+    /// Explicit holder cancellation after its native owner proves no custody.
+    CancelUnsubmitted {
+        fence: DeliveryFence,
+        idempotency_key: String,
+    },
+    /// Historical operation decoding/replay only; new renewals are rejected.
     Heartbeat {
         fence: DeliveryFence,
         idempotency_key: String,
@@ -511,6 +515,9 @@ impl LifecycleCommand {
             } => idempotency_key,
             Self::EnsureQueued { idempotency_key }
             | Self::Reserve {
+                idempotency_key, ..
+            }
+            | Self::CancelUnsubmitted {
                 idempotency_key, ..
             }
             | Self::Heartbeat {
@@ -548,12 +555,39 @@ pub enum DeliveryInput {
     LegacyAnalysis(crate::sdlc_reservation::AnalysisResultReceipt),
 }
 
+/// Stable assignment ownership. Timestamps survive historical receipt readback;
+/// current ownership has no expiration and does not depend on a renewal timer.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeliveryOwnership {
+    pub lease_id: Uuid,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub version: i64,
+    pub holder_subject: String,
+    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
+    pub claimed_at: DateTime<Utc>,
+    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
+    pub heartbeat_at: DateTime<Utc>,
+    #[serde(default, serialize_with = "ownership_expiration")]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+fn ownership_expiration<S: serde::Serializer>(
+    value: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(value) => crate::sdlc_execution_lease::utc_nanos(value, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifecycleReceipt {
     pub task: LifecycleTask,
     pub assignment: Option<DeliveryAssignment>,
-    pub lease: Option<ExecutionLease>,
+    pub lease: Option<DeliveryOwnership>,
     pub binding: Option<RunBinding>,
     pub result: Option<AcceptedDeliveryResult>,
 }

@@ -1,6 +1,6 @@
 //! Synthetic wire fixtures from real producer DTOs; not execution/readiness evidence.
 use chrono::{Duration, TimeZone, Utc};
-use domain::{sdlc_execution_lease::ExecutionLease, sdlc_lifecycle::*, sdlc_routing::*};
+use domain::{sdlc_lifecycle::*, sdlc_routing::*};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -131,13 +131,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assignment_hash: String::new(),
         };
         assignment.assignment_hash = app::sdlc_lifecycle::assignment_hash(&assignment)?;
-        let lease = ExecutionLease {
+        let lease = DeliveryOwnership {
             lease_id: assignment.lease_id,
             version: 1,
             holder_subject: scheduler_subject.clone(),
             claimed_at: now,
             heartbeat_at: now,
-            expires_at: now + Duration::seconds(30),
+            expires_at: None,
         };
         readbacks.push(LifecycleReadback {
             observed_at: now + Duration::seconds(1),

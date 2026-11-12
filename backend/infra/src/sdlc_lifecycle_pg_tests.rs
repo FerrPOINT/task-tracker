@@ -760,7 +760,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         serde_json::to_value(&renewed).unwrap()
     );
     assert!(fresh_after_heartbeat.observed_at >= renewed.lease.as_ref().unwrap().heartbeat_at);
-    assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at);
+    assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at.expect("historical heartbeat receipt"));
     assert!(
         repo.lifecycle_command(
             task,

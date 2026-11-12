@@ -32,64 +32,105 @@ struct OriginalStep {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn expired_unsubmitted_reservation_requeues_only_with_exact_original_provenance() {
-    let (f, queued) = ReworkFixture::configured().await;
+async fn assignment_persists_across_old_deadline_and_restart_until_result_or_explicit_cancel() {
+    let (mut f, queued) = ReworkFixture::configured_before_persistent_ownership().await;
+    let output = DeliveryResult::Analyst { analysis: artifact("persistent-analysis") };
     let reserve = LifecycleCommand::Reserve {
         expected_task_version: queued.task.version,
         machine_subject: Some(f.producers["analyst"].subject.clone()),
-        idempotency_key: "unsubmitted:reserve".into(),
+        idempotency_key: "persistent:reserve".into(),
     };
-    let (reserved, _) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
-    let mut command = LifecycleCommand::Reconcile {
+    // Publish one legitimate predecessor reservation through the existing owner
+    // transaction helpers, with its original TTL30 metadata before first save.
+    let tx = f.db.begin().await.unwrap();
+    let state = f.repo.load(&tx, f.task, &f.scheduler).await.unwrap();
+    let mut historical = current(&tx, f.task).await.unwrap().unwrap();
+    f.repo.delivery_reserve(&tx, &f.scheduler, &mut historical, queued.task.version,
+        Some(f.producers["analyst"].subject.as_str())).await.unwrap();
+    let lease = historical.lease.as_mut().unwrap();
+    lease.expires_at = Some(lease.claimed_at + chrono::Duration::seconds(30));
+    PostgresSdlcRepository::save_delivery_projection(&tx, &f.scheduler, &historical, false).await.unwrap();
+    let event_id = Uuid::now_v7();
+    let hash = app::sdlc::canonical_hash(&reserve).unwrap();
+    exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
+        VALUES($1,$2,$3,$4,$5,$6)", vec![f.task.into(),f.scheduler.subject.clone().into(),reserve.key().into(),
+        hash.into(),json_value(&historical).unwrap(),event_id.into()]).await.unwrap();
+    let event = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":state.project_id,"task_id":f.task,"root_task_id":f.task,"owner_subject":state.owner_subject,
+        "stage":historical.task.stage,"requirement_revision":historical.task.routing.requirement_revision,"result":historical});
+    exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'delivery.assignment_reserved',$3)",
+        vec![event_id.into(),f.task.into(),event.into()]).await.unwrap();
+    tx.commit().await.unwrap();
+    let original_json: Json = f.db.query_one(statement("SELECT result FROM sdlc_delivery_operations WHERE task_id=$1 AND idempotency_key=$2",
+        vec![f.task.into(),reserve.key().into()])).await.unwrap().unwrap().try_get("", "result").unwrap();
+    let assignment = historical.assignment.as_ref().unwrap().clone();
+    // Advance the real database clock past the old TTL; never UPDATE custody dates.
+    f.db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
+    migration::Migrator::up(&f.db, None).await.unwrap();
+    let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").unwrap();
+    f.repo = PostgresSdlcRepository::connect(&url, f.repo.config.clone()).await.unwrap();
+    let reserved = f.repo.lifecycle_read(f.task, &f.reader).await.unwrap().receipt;
+    let mut expected = historical.clone();
+    expected.lease.as_mut().unwrap().expires_at = None;
+    assert_eq!(reserved, expected);
+    assert_eq!(reserved.assignment.as_ref(), Some(&assignment));
+    f.assert_current(&reserved).await;
+    let (replayed, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(replayed, historical);
+    let unchanged: Json = f.db.query_one(statement("SELECT result FROM sdlc_delivery_operations WHERE task_id=$1 AND idempotency_key=$2",
+        vec![f.task.into(),reserve.key().into()])).await.unwrap().unwrap().try_get("", "result").unwrap();
+    assert_eq!(unchanged, original_json);
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 1);
+    let heartbeat = LifecycleCommand::Heartbeat { fence: delivery_fence(&reserved), idempotency_key: "persistent:no-renew".into() };
+    let retry = LifecycleCommand::Reconcile {
         fence: delivery_fence(&reserved), terminal: None,
         never_submitted: Some(NeverSubmittedObservation {
-            assignment_hash: reserved.assignment.as_ref().unwrap().assignment_hash.clone(),
-            reservation_key: reserve.key().into(),
+            assignment_hash: assignment.assignment_hash.clone(), reservation_key: reserve.key().into(),
             reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
-        }),
-        recovery: RecoveryDisposition::RetryUnsubmitted,
-        idempotency_key: "unsubmitted:recover".into(),
+        }), recovery: RecoveryDisposition::RetryUnsubmitted, idempotency_key: "persistent:no-expiry-retry".into(),
     };
-    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.is_err());
+    for command in [heartbeat, retry, LifecycleCommand::Reserve {
+        expected_task_version: reserved.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()), idempotency_key: "persistent:no-duplicate".into(),
+    }] {
+        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command).await.is_err());
+    }
+    let foreign = actor("foreign-scheduler", false, vec![]);
+    let cancel = LifecycleCommand::CancelUnsubmitted { fence: delivery_fence(&reserved), idempotency_key: "persistent:foreign-cancel".into() };
+    assert!(matches!(f.repo.lifecycle_command(f.task, &foreign, cancel).await, Err(AppError::Forbidden)));
+    let mut stale = delivery_fence(&reserved);
+    stale.fencing_token += 1;
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::CancelUnsubmitted {
+        fence: stale, idempotency_key: "persistent:stale-cancel".into(),
+    }).await.is_err());
+    f.assert_current(&reserved).await;
     assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
-    // Real expiry, without rewriting immutable lease/native evidence.
-    f.db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
-    for case in ["key", "hash", "assignment"] {
-        let mut wrong = command.clone();
-        let LifecycleCommand::Reconcile { never_submitted: Some(observation), .. } = &mut wrong else { unreachable!() };
-        match case {
-            "key" => observation.reservation_key = "foreign-reserve".into(),
-            "hash" => observation.reservation_payload_sha256 = "e".repeat(64),
-            _ => observation.assignment_hash = "f".repeat(64),
-        }
-        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, wrong).await.is_err(), "{case}");
-    }
-    assert!(matches!(f.repo.lifecycle_command(f.task, &f.owner, command.clone()).await, Err(AppError::Forbidden)));
-    let (recovered, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.unwrap();
-    assert!(!replayed);
-    assert_eq!(recovered.task.stage, reserved.task.stage);
-    assert_eq!(recovered.task.routing, reserved.task.routing);
-    assert_eq!(recovered.task.runtime, RuntimeState::Queued);
-    assert_eq!(recovered.task.status, LifecycleStatus::Ready);
-    assert_eq!(recovered.task.transient_retries, 1);
-    assert!(recovered.assignment.is_none() && recovered.binding.is_none());
-    assert!(recovered.task.resume_chat_id.is_none());
-    assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 1);
-    assert_eq!(count(&f.db, "sdlc_delivery_run_bindings").await, 0);
-    let (replayed, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, command.clone()).await.unwrap();
-    assert!(duplicate);
-    assert_eq!(replayed, recovered);
+    // The same assignment can bind, start and complete after the former deadline.
+    let completed = f.finish_reserved(&queued, output, 0, reserve.clone(), reserved.clone()).await.completed;
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
+    assert_eq!(completed.task.stage, LifecycleStage::Architecture);
     let (next, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
-        expected_task_version: recovered.task.version,
-        machine_subject: Some(f.producers["analyst"].subject.clone()),
-        idempotency_key: "unsubmitted:next".into(),
+        expected_task_version: completed.task.version,
+        machine_subject: Some(f.producers["architect"].subject.clone()), idempotency_key: "persistent:next-stage".into(),
     }).await.unwrap();
-    assert_ne!(next.assignment.as_ref().unwrap().assignment_id, reserved.assignment.as_ref().unwrap().assignment_id);
-    if let LifecycleCommand::Reconcile { idempotency_key, .. } = &mut command {
-        *idempotency_key = "unsubmitted:stale-fence".into();
-    }
-    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command).await.is_err());
-    f.assert_current(&next).await;
+    assert_ne!(next.assignment.as_ref().unwrap().assignment_id, assignment.assignment_id);
+    let cancel = LifecycleCommand::CancelUnsubmitted { fence: delivery_fence(&next), idempotency_key: "persistent:explicit-cancel".into() };
+    let (cancelled, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, cancel.clone()).await.unwrap();
+    assert!(!replayed);
+    assert_eq!(cancelled.task.stage, next.task.stage);
+    assert_eq!(cancelled.task.routing, next.task.routing);
+    assert_eq!(cancelled.task.transient_retries, 0);
+    assert_eq!(cancelled.task.runtime, RuntimeState::Terminal);
+    assert!(cancelled.assignment.is_none() && cancelled.binding.is_none() && cancelled.lease.is_none());
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
+    let (same, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, cancel).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(same, cancelled);
+    let (old, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(old, historical);
+    f.assert_current(&cancelled).await;
 }
 
 async fn pm_history(db: &DatabaseConnection, task: Uuid) -> Json {
@@ -157,13 +198,15 @@ impl ReworkFixture {
         Self::with_architect_inputs(None, None).await
     }
 
-    async fn configured() -> (Self, LifecycleReceipt) {
+    async fn configured_before_persistent_ownership() -> (Self, LifecycleReceipt) {
         Self::with_draft_protocol(
             None,
             None,
             "owner",
             "scheduler",
             Some(InteractionProtocol::ConfiguredCliV1),
+            Some(migration::Migrator::migrations().iter().position(|step|
+                step.name() == "m20261112_0000117_persistent_delivery_ownership").unwrap().try_into().unwrap()),
         )
         .await
     }
@@ -181,7 +224,7 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
-        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, None).await
+        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, None, None).await
     }
 
     async fn with_draft_protocol(
@@ -190,6 +233,7 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
         interaction_protocol: Option<InteractionProtocol>,
+        migration_steps: Option<u32>,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
@@ -204,7 +248,7 @@ impl ReworkFixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        migration::Migrator::up(&db, None).await.unwrap();
+        migration::Migrator::up(&db, migration_steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
@@ -432,6 +476,18 @@ impl ReworkFixture {
             .await
             .unwrap();
         assert!(!replayed);
+        self.finish_reserved(queued, output, index, reserve, reserved).await
+    }
+
+    async fn finish_reserved(
+        &self,
+        queued: &LifecycleReceipt,
+        output: DeliveryResult,
+        index: usize,
+        reserve: LifecycleCommand,
+        reserved: LifecycleReceipt,
+    ) -> OriginalStep {
+        let producer = self.producers[output.role().key()].clone();
         assert_eq!(reserved.task.version, queued.task.version + 1);
         assert_eq!(reserved.task.status, LifecycleStatus::Ready);
         assert_eq!(reserved.task.runtime, RuntimeState::Reserved);
@@ -496,6 +552,12 @@ impl ReworkFixture {
         assert_eq!(running.task.stage, queued.task.stage);
         assert_eq!(running.task.cycle, queued.task.cycle);
         assert_eq!(running.task.version, reserved.task.version + 1);
+        self.assert_current(&running).await;
+        assert!(self.repo.lifecycle_command(self.task, &self.scheduler,
+            LifecycleCommand::CancelUnsubmitted {
+                fence: fence.clone(), idempotency_key: format!("rework:{index}:cannot-cancel-bound"),
+            },
+        ).await.is_err());
         self.assert_current(&running).await;
         let (start, started_receipt, started) = start_delivery(
             &self.repo,

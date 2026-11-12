@@ -209,24 +209,16 @@ async fn authority(
     })
 }
 
-async fn ensure_live(tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Result<(), AppError> {
+async fn ensure_live(_tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Result<(), AppError> {
     let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
     let lease = head.lease.as_ref().ok_or(AppError::Forbidden)?;
-    let now: chrono::DateTime<chrono::Utc> = tx
-        .query_one(statement("SELECT clock_timestamp() AS now", vec![]))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?
-        .try_get("", "now")
-        .map_err(map_db)?;
     if head.task.runtime != RuntimeState::Running
         || head.task.status != LifecycleStatus::InProgress
         || lease.lease_id != assignment.lease_id
         || lease.version < 1
-        || lease.expires_at <= now
     {
         return Err(AppError::conflict(
-            "artifact publisher not running or lease expired",
+            "artifact publisher not running or ownership changed",
         ));
     }
     // The scheduler owns this lease. Agent identity is the run binding, never lease.holder_subject.

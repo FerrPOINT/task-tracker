@@ -44,6 +44,7 @@ Positive and negative.
 | ADR-0010 | apalis for background jobs | Accepted |
 | [ADR-0011](adr/0011-sdlc-clarification.md) | Strict SDLC ownership and durable clarification gate | Accepted |
 | [ADR-0012](adr/0012-identity-deletion-owner.md) | Durable identity-reference owner и отдельный coordinator допуск | Accepted |
+| [ADR-0013](adr/0013-persistent-technical-ownership.md) | Persistent technical assignment ownership | Accepted |
 
 ## 4. Creating New ADRs
 

@@ -6,19 +6,19 @@
 Это применение миграции вперёд без копирования данных; `fresh` и `down`
 при штатном обновлении не используются.
 
-## Восстановление до native dispatch
+## Владение назначением без TTL
 
-Fleet доказывает отсутствие технического и configured-message native journals
-под теми же agent/root locks,
-которыми сериализованы reservation и claim. В этой транзакции Fleet сохраняет
-точную команду `reconcile` с `never_submitted` в штатном журнале команд;
-её наличие навсегда запрещает native reserve/claim исходного назначения.
-Только затем команда передаётся Tracker. Tracker сверяет свой исходный Reserve,
-assignment/hash, владельца lease, expiry и отсутствие run binding/proposal,
-сохраняет существующую reconciliation-запись и освобождает capacity.
-HTTP-неопределённость восстанавливается GET исходного ключа. Само отсутствие
-журнала вне блокировок не является доказательством. Существующая native custody,
-включая submitted без ACK, этим путём не освобождается.
+Для single-task-v1/configured-cli-v1 назначение принадлежит одному holder до
+принятого результата или явной отмены. Часы и restart Fleet не передают ownership
+и не создают попытку. Stable assignment, fence, operation keys, project/owner
+authorization и один capacity hold сохраняются. Отсутствие native journal означает
+продолжение того же назначения. Unknown outcome требует исходного readback.
+
+DeliveryOwnership — текущий DTO с nullable expires_at. Исторический ExecutionLease
+и read-only PM decoder остаются строгими. Forward117 нормализует current head через
+прежние permits, сохраняя журналы и receipts. Явный CancelUnsubmitted использует
+прежний Terminal/Ready projection без requeue и вымышленного terminal proof.
+[Решение и границы](adr/0013-persistent-technical-ownership.md).
 
 ## Встроенная Декомпозиция
 

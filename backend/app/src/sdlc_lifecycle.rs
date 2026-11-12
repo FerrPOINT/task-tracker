@@ -379,7 +379,8 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
             }
             return Ok(());
         }
-        LifecycleCommand::Heartbeat { fence, .. } => fence,
+        LifecycleCommand::CancelUnsubmitted { fence, .. }
+        | LifecycleCommand::Heartbeat { fence, .. } => fence,
         LifecycleCommand::BindRun { fence, binding, .. } => {
             if binding.chat_id.is_nil()
                 || binding.run_id.is_nil()
@@ -413,6 +414,16 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
         }
     };
     validate_fence(fence)
+}
+
+/// Historical requests remain decodable and replayable by their original key.
+pub fn validate_active_command(command: &LifecycleCommand) -> Result<(), AppError> {
+    if matches!(command, LifecycleCommand::Heartbeat { .. }
+        | LifecycleCommand::Reconcile { recovery: RecoveryDisposition::RetryUnsubmitted, .. })
+    {
+        return Err(AppError::conflict("assignment ownership persists until result or explicit cancellation"));
+    }
+    Ok(())
 }
 
 pub fn validate_fence(fence: &DeliveryFence) -> Result<(), AppError> {
@@ -830,22 +841,16 @@ pub fn reconcile_terminal(
     Ok(())
 }
 
-/// Caller has locked and verified the exact expired, unbound original reservation.
-pub fn reconcile_unsubmitted(task: &mut LifecycleTask) -> Result<(), AppError> {
+/// Explicit holder cancellation after proving no bound run or accepted proposal.
+pub fn cancel_unsubmitted(task: &mut LifecycleTask) -> Result<(), AppError> {
     if !matches!(task.runtime, RuntimeState::Reserved | RuntimeState::Unknown) || task.status != LifecycleStatus::Ready {
-        return Err(AppError::conflict("expired unstarted assignment required"));
+        return Err(AppError::conflict("unstarted assignment required"));
     }
     task.version = task.version.checked_add(1)
         .filter(|version| *version <= MAX_SAFE_VERSION)
         .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
-    if task.transient_retries < MAX_TRANSIENT_RETRIES {
-        task.transient_retries += 1;
-        task.runtime = RuntimeState::Queued;
-        task.waiting_reason = Some("unsubmitted_retry_queued".into());
-    } else {
-        task.runtime = RuntimeState::Terminal;
-        task.waiting_reason = Some("unsubmitted_retry_limit_reached".into());
-    }
+    task.runtime = RuntimeState::Terminal;
+    task.waiting_reason = Some("runtime_terminal_requires_intervention".into());
     Ok(())
 }
 

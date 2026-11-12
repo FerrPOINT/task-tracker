@@ -116,13 +116,13 @@ fn delivery(stage: LifecycleStage) -> (TaskState, Principal, StartStage, Lifecyc
             resume_chat_id: None,
         },
         assignment: Some(assignment),
-        lease: Some(domain::sdlc_execution_lease::ExecutionLease {
+        lease: Some(DeliveryOwnership {
             lease_id: fence.lease_id,
             version: fence.expected_lease_version,
             holder_subject: "scheduler".into(),
             claimed_at: now(),
             heartbeat_at: now(),
-            expires_at: now() + Duration::seconds(30),
+            expires_at: Some(now() + Duration::seconds(30)),
         }),
         binding: Some(RunBinding {
             chat_id: Uuid::new_v4(),
@@ -339,7 +339,7 @@ fn delivery_start_refuses_every_stale_fence_component() {
 
 #[test]
 fn delivery_start_requires_live_exact_custody_and_native_binding() {
-    for case in 0..23 {
+    for case in (0..23).filter(|case| !matches!(*case, 7 | 8)) {
         let (state, actor, command, mut custody) = delivery(LifecycleStage::Analysis);
         match case {
             0 => custody.task.task_id = Uuid::new_v4(),
@@ -349,8 +349,8 @@ fn delivery_start_requires_live_exact_custody_and_native_binding() {
             4 => custody.assignment = None,
             5 => custody.lease = None,
             6 => custody.binding = None,
-            7 => custody.lease.as_mut().unwrap().expires_at = now(),
-            8 => custody.lease.as_mut().unwrap().expires_at = now() - Duration::seconds(1),
+            7 => unreachable!(),
+            8 => unreachable!(),
             9 => custody.binding.as_mut().unwrap().machine_subject = Uuid::new_v4().to_string(),
             10 => custody.assignment.as_mut().unwrap().machine_subject = None,
             11 => custody.binding.as_mut().unwrap().run_id = Uuid::nil(),
@@ -544,5 +544,15 @@ fn completed_wrong_role_unknown_runtime_and_exhausted_version_cannot_handoff() {
             "case {case}"
         );
         assert_eq!(json!(custody.task), before);
+    }
+}
+
+#[test]
+fn delivery_start_uses_stable_ownership_after_old_deadline_or_null_expiration() {
+    for expiry in [Some(now() - Duration::days(1)), None] {
+        let (state, actor, command, mut custody) = delivery(LifecycleStage::Analysis);
+        custody.lease.as_mut().unwrap().expires_at = expiry;
+        let future = now() + Duration::days(30);
+        assert!(prepare_stage_start(&state, &actor, &command, Some(&custody), future).is_ok());
     }
 }

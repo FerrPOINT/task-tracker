@@ -1,7 +1,7 @@
 use super::*;
 use chrono::{Duration, TimeZone, Utc};
 use domain::attachment_artifact::{ArtifactBinding, AttachmentArtifact};
-use domain::sdlc_execution_lease::ExecutionLease;
+
 use domain::sdlc_routing::{
     RoleRoute, RoleRoutes, RoutingPolicy, RoutingVerification, TaskRoutingSnapshot,
 };
@@ -88,13 +88,13 @@ impl Fixture {
             },
             created_at: now,
         };
-        let lease = ExecutionLease {
+        let lease = DeliveryOwnership {
             lease_id: Uuid::new_v4(),
             version: 1,
             holder_subject: "scheduler".into(),
             claimed_at: now,
             heartbeat_at: now,
-            expires_at: now + Duration::seconds(30),
+            expires_at: Some(now + Duration::seconds(30)),
         };
         let mut assignment = DeliveryAssignment {
             machine_subject: Some(PRODUCER.into()),
@@ -486,7 +486,7 @@ fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
 
 #[test]
 fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runtime() {
-    for change in 0..11 {
+    for change in (0..11).filter(|change| *change != 8) {
         let mut f = Fixture::new(LifecycleStage::Architecture);
         match change {
             0 => f.proposal.requirement_revision += 1,
@@ -497,7 +497,7 @@ fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runt
             5 => f.current.task.owner_subject = "another-owner".into(),
             6 => f.current.task.runtime = RuntimeState::Unknown,
             7 => f.current.task.runtime = RuntimeState::Terminal,
-            8 => f.current.lease.as_mut().unwrap().expires_at = f.now,
+            8 => unreachable!(),
             9 => f.current.lease.as_mut().unwrap().holder_subject = "agent".into(),
             _ => f.current.task.routing.contract_version = 1,
         }
@@ -563,14 +563,14 @@ fn prepare_and_hold_validation_failure_has_no_partial_change_or_accepted_proposa
 }
 
 #[test]
-fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
+fn historical_ownership_version_still_requires_exact_scheduler_cas() {
     let mut f = Fixture::new(LifecycleStage::Architecture);
     let blocker = f.hold();
     let stale = f.handoff(&blocker);
     let lease = f.current.lease.as_mut().unwrap();
     lease.version += 1;
     lease.heartbeat_at += Duration::seconds(10);
-    lease.expires_at += Duration::seconds(10);
+    lease.expires_at = lease.expires_at.map(|expiry| expiry + Duration::seconds(10));
     assert!(return_to_pm(&f.current, &blocker, &f.scheduler, &f.config, &stale).is_err());
     assert!(
         return_to_pm(
@@ -585,12 +585,12 @@ fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
 }
 
 #[test]
-fn current_producer_fence_survives_heartbeat_without_renewing_or_changing_lease_identity() {
+fn retained_producer_fence_survives_historical_ownership_versions() {
     let mut f = Fixture::new(LifecycleStage::Architecture);
     let lease = f.current.lease.as_mut().unwrap();
     lease.version += 2;
     lease.heartbeat_at += Duration::seconds(10);
-    lease.expires_at += Duration::seconds(10);
+    lease.expires_at = lease.expires_at.map(|expiry| expiry + Duration::seconds(10));
     f.now += Duration::seconds(11);
     let retained = f.proposal.clone();
     let change = f.plan().unwrap();
@@ -837,5 +837,15 @@ fn analyst_cannot_create_a_pm_hold_for_either_business_question_kind() {
         assert_eq!(f.current, before);
         assert_eq!(f.proposal, proposal);
         assert!(ensure_technical_progress_allowed(&f.current, None).is_ok());
+    }
+}
+
+#[test]
+fn critical_proposal_uses_identity_after_historical_deadline_or_null_expiration() {
+    for expiry in [Some(Utc::now() - Duration::days(60)), None] {
+        let mut f = Fixture::new(LifecycleStage::Architecture);
+        f.current.lease.as_mut().unwrap().expires_at = expiry;
+        f.now += Duration::days(365);
+        assert!(f.plan().is_ok());
     }
 }

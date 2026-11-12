@@ -1,15 +1,26 @@
 # API v1 Specification — Task Tracker
 
-## Never-Submitted Delivery Reconciliation
+## Persistent Technical Assignment Ownership
 
-`POST /api/v1/issues/{id}/sdlc/lifecycle` retains the `reconcile` operation.
-Supply exactly one observation: existing `terminal`, or `never_submitted` with
-`assignment_hash`, `reservation_key` and `reservation_payload_sha256`.
-The latter requires `recovery.disposition=retry_unsubmitted`, the scheduler's
-original accepted Reserve key/hash, an expired unbound Ready assignment and no
-run binding/proposal. It uses the existing bounded retry counter and original-key
-GET recovery. It supplies no synthetic chat, run or terminal receipt.
-Existing terminal payloads and historical receipts retain their wire shape.
+`POST /api/v1/issues/{id}/sdlc/lifecycle` сохраняет Reserve/BindRun/Complete и
+исходный operation-key readback. Current `receipt.lease` имеет тип DeliveryOwnership:
+`lease_id`, `version`, `holder_subject`, `claimed_at`, `heartbeat_at` сохранены,
+`expires_at` равен null. Исторические timestamps читаются, а exact-key replay
+возвращает исходный receipt. Время не освобождает ownership или capacity.
+Reserve не принимает `lease_seconds`; новые `heartbeat` и `retry_unsubmitted`
+отклоняются после проверки исторического replay.
+
+Явный `cancel_unsubmitted` принимает `fence` и `idempotency_key` от текущего
+scheduler/holder с прежними project rights. Binding/proposal недопустимы; Fleet
+сначала проверяет отсутствие native custody. Существующий reconciliation journal
+фиксирует отмену, освобождает capacity и переводит runtime в Terminal без requeue.
+Submitted/unknown native work требует настоящего terminal readback. CLI lifecycle
+JSON использует тот же endpoint; второго протокола команд нет.
+
+Namespace source публикует `execution.workspace_preparation_authorized` и только
+при этом proof — `workspace_preparation_commit`. Старое поле
+`workspace_preparation_expires_at` равно null и не даёт полномочий.
+OpenAPI/client parity экспортируется из квалифицированного Rust candidate.
 
 ## Embedded Decomposition
 

@@ -1,13 +1,17 @@
 # Дата-модель Task Tracker
 
-## Неотправленное delivery-назначение
+## Постоянное владение техническим назначением
 
-Forward migration 0116 расширяет CHECK и admission-trigger существующей
-`sdlc_delivery_reconciliations`. Новый `never_submitted` сверяется с исходной
-записью Reserve в `sdlc_delivery_operations` и её событием резервирования;
-назначение должно быть точным, lease истекшей, binding/proposal отсутствующими.
-История terminal reconciliation сохраняется. Новых таблиц и вымышленных
-runtime-записей нет; освобождение capacity использует существующий журнал.
+Forward117 сохраняет assignments, operation results, outbox и исторические
+timestamps. Только в текущем JSON `sdlc_delivery_heads.execution` поле
+`lease.expires_at` становится null; отдельной SQL-колонки здесь нет. Переход
+использует прежний projection permit. IDs, holder, version, fencing, assignment
+hash, capacity hold и business state сохраняются. Historical PM/Analysis не меняются.
+
+Ownership не продлевается и не истекает. Старые heartbeat/never-submitted keys
+доступны для read/replay; новые действия запрещены. Explicit CancelUnsubmitted
+пишет существующий reconciliation journal, проверяет fence и отсутствие
+binding/proposal, освобождает hold и переводит runtime в Terminal без новой попытки.
 
 ## Встроенная Декомпозиция
 
