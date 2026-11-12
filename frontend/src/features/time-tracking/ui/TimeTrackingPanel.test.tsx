@@ -18,6 +18,21 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('TimeTrackingPanel', () => {
+  it.each([0, 3600])('does not invent an estimate or progress from %i spent seconds', (spent) => {
+    render(
+      wrapper(
+        <TimeTrackingPanel
+          timeSpentSeconds={spent}
+          originalEstimateSeconds={null}
+          remainingEstimateSeconds={null}
+          onLogWork={vi.fn()}
+        />,
+      ),
+    )
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(screen.getByText('No estimate set')).toBeVisible()
+    expect(screen.getByRole('button', { name: /log work/i })).toBeEnabled()
+  })
   it('renders time summary with spent and estimated', () => {
     render(
       wrapper(
@@ -33,6 +48,7 @@ describe('TimeTrackingPanel', () => {
     expect(summary).toBeInTheDocument()
     expect(summary.textContent).toMatch(/1h/)
     expect(summary.textContent).toMatch(/2h/)
+    expect(screen.getByRole('progressbar')).toBeVisible()
   })
 
   it('calls onLogWork when log work button is clicked', () => {

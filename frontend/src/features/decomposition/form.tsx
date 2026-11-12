@@ -2,7 +2,7 @@ import { useRef, type FormEvent } from 'react'
 import {
   Card,
   CardHeader,
-  CardTitle,
+  SectionHeader,
   CardContent,
   Fieldset,
   ActionGroup,
@@ -71,49 +71,54 @@ export function PlanForm<T extends ReadablePlan>({
           {draft.sections.map((section, index) => (
             <Card key={section.id} data-testid={`editor-${section.id}`}>
               <CardHeader>
-                <CardTitle>Раздел {index + 1}</CardTitle>
+                <SectionHeader
+                  title={`Раздел ${index + 1}`}
+                  level={3}
+                  actions={
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Переместить ${section.title || 'раздел'} вверх`}
+                        disabled={index === 0}
+                        onClick={() => move(section.id, -1)}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Переместить ${section.title || 'раздел'} вниз`}
+                        disabled={index === draft.sections.length - 1}
+                        onClick={() => move(section.id, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setDraft({
+                            ...draft,
+                            sections: draft.sections.filter((s) => s.id !== section.id),
+                          })
+                          const neighbor = draft.sections[index + 1] ?? draft.sections[index - 1]
+                          queueMicrotask(() => {
+                            if (neighbor) document.getElementById(`${neighbor.id}-title`)?.focus()
+                            else addSectionRef.current?.focus()
+                          })
+                        }}
+                      >
+                        <Trash2 />
+                        Убрать раздел
+                      </Button>
+                    </>
+                  }
+                />
               </CardHeader>
               <CardContent className="space-y-4">
-                <ActionGroup align="start">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Переместить ${section.title || 'раздел'} вверх`}
-                    disabled={index === 0}
-                    onClick={() => move(section.id, -1)}
-                  >
-                    <ArrowUp />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Переместить ${section.title || 'раздел'} вниз`}
-                    disabled={index === draft.sections.length - 1}
-                    onClick={() => move(section.id, 1)}
-                  >
-                    <ArrowDown />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setDraft({
-                        ...draft,
-                        sections: draft.sections.filter((s) => s.id !== section.id),
-                      })
-                      const neighbor = draft.sections[index + 1] ?? draft.sections[index - 1]
-                      queueMicrotask(() => {
-                        if (neighbor) document.getElementById(`${neighbor.id}-title`)?.focus()
-                        else addSectionRef.current?.focus()
-                      })
-                    }}
-                  >
-                    <Trash2 />
-                    Убрать раздел
-                  </Button>
-                </ActionGroup>
                 <Field
                   id={`${section.id}-title`}
                   label="Название раздела"

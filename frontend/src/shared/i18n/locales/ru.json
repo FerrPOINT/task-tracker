@@ -80,7 +80,8 @@
       "waiting_for_owner_answers": "Ожидаются ответы владельца",
       "waiting_for_requirements_or_evidence": "Ожидаются требования или evidence",
       "waiting_for_owner_confirmation": "Ожидается подтверждение владельца",
-      "queued_for_analysis": "В очереди, ожидает допуска Analysis"
+      "queued_for_analysis": "В очереди, ожидает допуска Analysis",
+      "queued_for_assignment": "Ожидается назначение агента"
     },
     "document": {
       "goal": "Цель",
@@ -117,7 +118,11 @@
       "intentQueued": "Analysis intent поставлен в очередь",
       "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается",
       "analysisResultAccepted": "Результат анализа принят"
-    }
+    },
+    "technicalDetails": "Технические данные",
+    "revisionDetails": "Данные ревизии",
+    "reasonCode": "Код причины ожидания",
+    "unknownReason": "Причина ожидания не распознана; код доступен в технических данных."
   },
   "navigation": {
     "projects": "Проекты",
@@ -255,6 +260,24 @@
     "noMatches": "По вашему запросу проекты не найдены."
   },
   "board": {
+    "columns": "Колонки доски",
+    "filters": "Фильтры",
+    "addColumn": "Колонка",
+    "create": "Новая задача",
+    "wip": "WIP",
+    "wipWarning": "⚠️",
+    "backlog": "Бэклог",
+    "done": "Готово",
+    "inProgress": "В работе",
+    "subtitle": "Задач агентного цикла: {{count}}",
+    "title": "Доска · {{projectName}}",
+    "todo": "К выполнению",
+    "columnActions": "Действия с колонкой",
+    "moveTo": "Переместить: {{status}}",
+    "noTransitions": "Нет доступных переходов",
+    "statusChanged": "Статус задачи изменён",
+    "emptyStatus": "На этом этапе нет задач",
+    "notAvailable": "нет данных",
     "sdlcStage": {
       "Draft": "Черновик",
       "Backlog": "Бэклог",
@@ -264,34 +287,14 @@
       "Review": "Ревью",
       "Testing": "Тестирование",
       "Rework": "Доработка",
-      "Deployment": "Развёртывание"
+      "Deployment": "Развёртывание",
+      "Clarification": "Уточнение требований"
     },
     "sdlcStatus": {
-      "Ready": "Готово",
+      "Ready": "Ожидает выполнения",
       "InProgress": "В работе",
-      "Completed": "Завершено"
-    },
-    "columns": "Колонки доски",
-    "density": "Плотность доски",
-    "densityComfortable": "Обычная",
-    "densityCompact": "Компактная",
-    "filters": "Фильтры",
-    "addColumn": "Колонка",
-    "create": "Создать",
-    "wip": "WIP",
-    "wipWarning": "⚠️",
-    "backlog": "Бэклог",
-    "done": "Готово",
-    "inProgress": "В работе",
-    "subtitle": "Бэклог: {{backlog}} · Осталось дней: {{remainingDays}}",
-    "title": "Доска · {{projectName}} — {{sprintName}}",
-    "todo": "К выполнению",
-    "columnActions": "Действия с колонкой",
-    "moveTo": "Переместить: {{status}}",
-    "noTransitions": "Нет доступных переходов",
-    "statusChanged": "Статус задачи изменён",
-    "emptyStatus": "В этом статусе нет задач",
-    "notAvailable": "нет данных"
+      "Completed": "Этап завершён"
+    }
   },
   "backlog": {
     "createSprint": "Создать спринт",
@@ -422,8 +425,6 @@
     "keyCopied": "Ключ скопирован.",
     "copyFailed": "Не удалось скопировать ключ. Повторите попытку.",
     "noDescription": "Нет описания.",
-    "showMoreDescription": "Показать описание полностью",
-    "showLessDescription": "Свернуть описание",
     "loading": "Загрузка...",
     "loadingActivity": "Загрузка активности…",
     "loadError": "Не удалось загрузить задачу.",
@@ -438,7 +439,14 @@
     "noActivity": "Активности пока нет",
     "summaryRequired": "Укажите тему задачи",
     "unassigned": "Не назначен",
-    "actions": "Действия"
+    "actions": "Действия",
+    "editTitle": "Изменить заголовок",
+    "properties": "Свойства задачи",
+    "requirementsLoadError": "Не удалось загрузить актуальные требования задачи.",
+    "discussion": "Обсуждение",
+    "responsible": "Ответственный",
+    "assignResponsibility": "Назначить себя ответственным",
+    "editDescription": "Редактировать задачу"
   },
   "timeTracking": {
     "title": "Учёт времени",
@@ -476,7 +484,8 @@
       "remaining": "Осталось",
       "comment": "Комментарий",
       "actions": "Действия"
-    }
+    },
+    "noEstimate": "Оценка не задана"
   },
   "common": {
     "saved": "Сохранено",
@@ -732,7 +741,7 @@
     "configuredTitle": "Настроенные поля",
     "noFields": "Нет настроенных полей.",
     "loading": "Загрузка...",
-    "loadError": "Не удалось загрузить поля. Повторите попытку.",
+    "loadError": "Не удалось загрузить дополнительные поля.",
     "readOnly": "Данные временно не подтверждены. Показаны последние прочитанные значения; правки сохранены, запись недоступна до успешной загрузки.",
     "createError": "Не удалось добавить поле. Проверьте данные и повторите попытку.",
     "created": "Поле добавлено.",

@@ -711,12 +711,11 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 > **Single source of truth:** актуальная OpenAPI-схема лежит в [`openapi/openapi.json`](../openapi/openapi.json). Backend генерирует её из `utoipa`-аннотаций Rust-хендлеров, а фронт получает из неё TypeScript-клиент. Ручная документация ниже — для контекста, но при расхождении приоритет у `openapi/openapi.json`.
 
-Доска проекта `GET /api/v1/projects/{project_key}/board` возвращает секцию
-`sdlc` для включённого проекта или при наличии видимых задач SDLC.
-`stages` задаёт порядок колонок, а `tasks` связывает ID карточки с её
+Доска проекта `GET /api/v1/projects/{project_key}/board` возвращает обязательную
+секцию `sdlc`. `stages` задаёт порядок колонок, а `tasks` связывает ID карточки с
 канонической стадией и операционным статусом. Историческая задача без
-операционного статуса возвращается без поля `status`. Обычные колонки
-остаются в `columns`. Стадии SDLC меняются штатными переходами Tracker.
+операционного статуса возвращается без поля `status`. Стадии SDLC меняются
+штатными переходами Tracker; прежних workflow-колонок в ответе доски нет.
 
 ## Базовая информация
 
@@ -784,14 +783,20 @@ password/register/refresh endpoints являются legacy-контрактом
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/projects/{project_key}/backlog` | Бэклог проекта |
-| GET | `/projects/{project_key}/board` | Доска проекта |
-| POST | `/projects/{project_key}/board/move` | Перемещение задачи по колонкам |
+| GET | `/projects/{project_key}/board` | Девять стадий SDLC и задачи агентного цикла |
 | GET, POST | `/projects/{project_key}/labels` | Метки проекта / создание |
 | GET, POST | `/projects/{project_key}/sprints` | Спринты проекта / создание |
 | GET, PATCH | `/projects/{project_key}/sprints/{sprint_id}` | Спринт: получение / PATCH / удаление |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/close` | Закрытие спринта |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/issues` | Перенос задач в спринт |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/remove-issue` | Убрать задачу из спринта |
+
+Ответ доски содержит обязательный `sdlc` со стадиями и задачами канонического
+агентного цикла. Порядок стадий задаёт `LifecycleStage::BOARD_ORDER`;
+операционное состояние этапа передаётся отдельно. UI показывает компактные
+карточки, а число колонок определяется доступной шириной. Контракт доски,
+доступ и выбор задач принадлежат серверу; UI не восстанавливает прежние
+workflow-колонки или manual move.
 
 #### Backlog pagination
 

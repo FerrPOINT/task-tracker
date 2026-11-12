@@ -1,8 +1,7 @@
-import { ContentSection } from '@pdlc/ui/ui'
 import { useClipboard, useMediaQuery } from '@pdlc/ui/lib'
 import {
+  Disclosure,
   ActionGroup,
-  Badge,
   TextLink,
   ProjectAvatar,
   toast,
@@ -10,8 +9,10 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  SectionHeader,
-  Disclosure,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Button,
   ConfirmDialog,
   DropdownMenu,
@@ -37,8 +38,6 @@ import { TimeTrackingPanel } from '@/features/time-tracking/ui/TimeTrackingPanel
 import { WorklogTab } from '@/features/time-tracking/ui/WorklogTab'
 import { LogWorkDialog } from '@/features/time-tracking/ui/LogWorkDialog'
 import { CommentsPanel } from '@/features/comments/ui/CommentList'
-import { useComments } from '@/features/comments/model/use-comments'
-import { ActivityFeed } from '@/features/issue-detail/ui/ActivityFeed'
 import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
 import { LabelEditor } from '@/features/issue-detail/ui/LabelEditor'
 import { LinkEditor } from '@/features/issue-detail/ui/LinkEditor'
@@ -54,31 +53,30 @@ import {
   useDeleteIssue,
   useSprints,
   useIssue,
+  useProjectCustomFields,
 } from '@/shared/api/hooks'
 import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
 import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
 import { DecompositionPanel } from '@/features/decomposition/panel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
+import { useSdlcSnapshot } from '@/features/sdlc/model/use-sdlc'
 
-const issueTabs = [
-  'activity',
-  'comments',
-  'worklog',
-  'attachments',
-  'decomposition',
-  'sdlc',
-] as const
+const issueTabs = ['comments', 'worklog', 'decomposition', 'sdlc'] as const
+const issueTabPanelStyle = { marginTop: 'var(--shell-page-block-gap)' }
 type IssueTab = (typeof issueTabs)[number]
 
-function parseIssueTab(value: string | null, hasDecomposition = true): IssueTab {
-  return (
-    issueTabs.find((tab) => tab === value && (tab !== 'decomposition' || hasDecomposition)) ??
-    'activity'
-  )
+function parseIssueTab(value: string | null): IssueTab {
+  return issueTabs.find((tab) => tab === value) ?? issueTabs[0]
 }
 
-export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: ReactNode } = {}) {
+type IssueDetailPageProps = { decompositionPanel?: ReactNode }
+
+export function IssueDetailPage(props: IssueDetailPageProps = {}) {
   const { id = '' } = useParams()
+  return <IssueDetail key={id} id={id} {...props} />
+}
+
+function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: string }) {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
@@ -94,7 +92,6 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const issueActionsRef = useRef<HTMLButtonElement | null>(null)
   const worklogTabRef = useRef<HTMLButtonElement | null>(null)
-  const tabsViewportRef = useRef<HTMLDivElement | null>(null)
 
   const issueQuery = useIssue(id)
   const issueClipboard = useClipboard(issueQuery.data?.key ?? '', {
@@ -103,12 +100,13 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
   })
   const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
+  const customFieldsQuery = useProjectCustomFields(issueQuery.data?.project_key ?? '')
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
   // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
   const taskId = issueQuery.data?.id ?? ''
+  const { snapshot: taskSnapshot } = useSdlcSnapshot(taskId)
   const worklogsQuery = useWorklogs(taskId)
-  const commentsQuery = useComments(taskId)
   const create = useCreateWorklog(taskId)
   const update = useUpdateWorklog(taskId)
   const remove = useDeleteWorklog(taskId)
@@ -118,25 +116,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
   }, [activeTab])
 
   useEffect(() => {
-    const revealSelected = () => {
-      const viewport = tabsViewportRef.current
-      const selected = viewport?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
-      if (!viewport || !selected) return
-      const bounds = viewport.getBoundingClientRect()
-      const tab = selected.getBoundingClientRect()
-      const spacing = getComputedStyle(viewport)
-      const left = bounds.left + Number.parseFloat(spacing.paddingLeft)
-      const right = bounds.right - Number.parseFloat(spacing.paddingRight)
-      if (tab.left < left) viewport.scrollLeft -= left - tab.left
-      else if (tab.right > right) viewport.scrollLeft += tab.right - right
-    }
-    revealSelected()
-    window.addEventListener('resize', revealSelected)
-    return () => window.removeEventListener('resize', revealSelected)
-  }, [activeTab, issueQuery.data?.id])
-
-  useEffect(() => {
-    const isCanonical = tabParam === null || (activeTab !== 'activity' && tabParam === activeTab)
+    const isCanonical = tabParam === null || (activeTab !== issueTabs[0] && tabParam === activeTab)
     if (isCanonical) return
 
     setSearchParams(
@@ -163,9 +143,8 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
 
   const issue = issueQuery.data
   const worklogs = worklogsQuery.data ?? []
-  const activityLoading = commentsQuery.isLoading || worklogsQuery.isLoading
-  const activityError = commentsQuery.error || worklogsQuery.error
-  const hasActivityData = Boolean(commentsQuery.data?.length || worklogs.length)
+  const lifecycle = boardQuery.data?.sdlc?.tasks.find((task) => task.issue_id === issue.id)
+  const showCustomFields = customFieldsQuery.data?.length !== 0 || customFieldsQuery.isError
 
   const handleLogWork = () => {
     setEditingWorklog(undefined)
@@ -207,7 +186,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
     if (nextTab === latestTab.current) return
     latestTab.current = nextTab
     const next = new URLSearchParams(searchParams)
-    if (nextTab === 'activity') next.delete('tab')
+    if (nextTab === issueTabs[0]) next.delete('tab')
     else next.set('tab', nextTab)
     setSearchParams(next)
   }
@@ -229,11 +208,14 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
               </TextLink>{' '}
               / {issue.key}
             </div>
-            <Badge tone="info" className="shrink-0">
-              {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
-            </Badge>
+            {lifecycle && (
+              <p aria-label={t('issue.status')} className="text-sm font-medium text-text-primary">
+                {t(`board.sdlcStage.${lifecycle.stage}`)}
+                {lifecycle.status && ` · ${t(`board.sdlcStatus.${lifecycle.status}`)}`}
+              </p>
+            )}
           </div>
-          <ActionGroup align="start" className="ml-auto">
+          <ActionGroup className="ml-auto">
             <Button
               variant="secondary"
               size="sm"
@@ -250,7 +232,7 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
               }
             >
               <UserPlus className="h-4 w-4" />
-              {t('issue.assignToMe')}
+              {t('issue.assignResponsibility')}
             </Button>
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
@@ -288,88 +270,81 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
         </div>
 
         <IssueDetailLayout
-          detailsSummary={t('issue.details')}
           description={
-            <ContentSection asChild dividers="none">
-              <section className="min-w-0 lg:col-start-1 lg:row-start-1">
+            <section className="grid min-w-0 gap-[var(--shell-page-block-gap)] border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
+              {taskSnapshot.error && (
+                <ErrorState
+                  message={t('issue.requirementsLoadError')}
+                  onRetry={() => void taskSnapshot.refetch()}
+                />
+              )}
+              {taskSnapshot.isLoading ? (
+                <LoadingState message={t('sdlc.loading')} />
+              ) : (
                 <IssueDescriptionEditor
                   issue={issue}
+                  requirements={taskSnapshot.data?.requirements}
+                  descriptionUnavailable={Boolean(taskSnapshot.error)}
                   disabled={updateIssue.isPending}
                   onSubmit={async (patch) => {
                     await updateIssue.mutateAsync(patch)
                     toast.success(t('common.saved'))
                   }}
                 />
+              )}
+              <section
+                aria-label={t('attachments.title')}
+                className="min-w-0 border-t border-border pt-5"
+              >
+                <AttachmentPanel issueId={issue.id} />
               </section>
-            </ContentSection>
+            </section>
           }
           details={
-            <ContentSection asChild dividers="none">
-              <section className="min-w-0" aria-label={t('issue.details')}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-[var(--shell-page-block-gap)] text-sm">
                 <IssueMetaEditor
                   issue={issue}
-                  lifecycle={boardQuery.data?.sdlc?.tasks.find((task) => task.issue_id === issue.id)}
                   sprints={sprintsQuery.data ?? []}
                   disabled={updateIssue.isPending}
                   onChange={(patch) =>
                     updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
                   }
                 />
-              </section>
-            </ContentSection>
+                <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
+              </CardContent>
+            </Card>
           }
           activity={
-            <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
+            <div className="flex min-w-0 flex-col gap-[var(--shell-page-block-gap)] lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <div ref={tabsViewportRef} className="-m-1 min-w-0 overflow-x-auto p-1">
-                  <TabsList
-                    appearance="underline"
-                    style={{
-                      flexWrap: 'nowrap',
-                      width: 'max-content',
-                      maxWidth: 'none',
-                    }}
-                  >
-                    <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
-                    <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
-                    <TabsTrigger ref={worklogTabRef} value="worklog">
-                      {t('timeTracking.worklog.title')}
-                    </TabsTrigger>
-                    <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
-                    <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
-                    <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="activity">
-                  {commentsQuery.error && (
-                    <ErrorState
-                      message={t('comments.loadError')}
-                      onRetry={() => void commentsQuery.refetch()}
-                    />
-                  )}
-                  {worklogsQuery.error && (
-                    <ErrorState
-                      message={t('timeTracking.worklog.loadError')}
-                      onRetry={() => void worklogsQuery.refetch()}
-                    />
-                  )}
-                  {activityLoading ? (
-                    <LoadingState scope="local" message={t('issue.loadingActivity')} />
-                  ) : hasActivityData || !activityError ? (
-                    <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
-                  ) : null}
-                </TabsContent>
-                <TabsContent value="comments">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+                  <TabsTrigger value="comments">{t('issue.discussion')}</TabsTrigger>
+                  <TabsTrigger ref={worklogTabRef} value="worklog">
+                    {t('timeTracking.worklog.title')}
+                  </TabsTrigger>
+                  <TabsTrigger value="decomposition">Декомпозиция</TabsTrigger>
+                  <TabsTrigger value="sdlc">{t('sdlc.title')}</TabsTrigger>
+                </TabsList>
+                <TabsContent value="comments" style={issueTabPanelStyle}>
                   <CommentsPanel issueId={issue.id} currentUserId={currentUserId ?? undefined} />
                 </TabsContent>
-                <TabsContent value="worklog">
+                <TabsContent value="worklog" style={issueTabPanelStyle}>
+                  <ActionGroup className="mb-[var(--shell-page-block-gap)]">
+                    <Button size="sm" onClick={handleLogWork}>
+                      {t('timeTracking.logWork')}
+                    </Button>
+                  </ActionGroup>
                   {worklogsQuery.error ? (
                     <ErrorState
                       message={t('timeTracking.worklog.loadError')}
                       onRetry={() => void worklogsQuery.refetch()}
                     />
                   ) : worklogsQuery.isLoading ? (
-                    <LoadingState scope="local" message={t('common.loading')} />
+                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
                   ) : (
                     <WorklogTab
                       worklogs={worklogs}
@@ -380,32 +355,36 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                     />
                   )}
                 </TabsContent>
-                <TabsContent value="attachments">
-                  <AttachmentPanel issueId={issue.id} />
-                </TabsContent>
                 <TabsContent
                   key={issue.id}
                   value="decomposition"
                   forceMount
                   hidden={activeTab !== 'decomposition'}
+                  style={issueTabPanelStyle}
                 >
                   {(activeTab === 'decomposition' || decompositionVisited) &&
                     (decompositionPanel ?? <DecompositionPanel issueId={issue.id} />)}
                 </TabsContent>
-                <TabsContent value="sdlc">
+                <TabsContent value="sdlc" style={issueTabPanelStyle}>
                   <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>
               </Tabs>
-
-              <div className="grid items-start gap-x-4 gap-y-2 md:grid-cols-2">
-                <ContentSection density="compact">
-                  <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
-                </ContentSection>
-                <ContentSection density="compact">
-                  <SectionHeader level={3} title={t('customFields.title')} />
-                  <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
-                </ContentSection>
-                <ContentSection density="compact" className="md:col-span-2">
+            </div>
+          }
+          supplemental={
+            <>
+              {showCustomFields && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
+                  </CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardContent className="grid gap-4">
                   <LinkEditor issueId={issue.id} currentKey={issue.key} />
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                     <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
@@ -413,31 +392,30 @@ export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: R
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                     <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
                   )}
-                </ContentSection>
-              </div>
-            </div>
-          }
-          supplemental={
-            <>
-              <ContentSection density="compact" className="space-y-2">
-                <SectionHeader level={3} title={t('timeTracking.title')} />
-                <TimeTrackingPanel
-                  timeSpentSeconds={issue.time_spent_seconds}
-                  originalEstimateSeconds={issue.original_estimate_seconds ?? null}
-                  remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
-                  onLogWork={handleLogWork}
-                />
-              </ContentSection>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TimeTrackingPanel
+                    timeSpentSeconds={issue.time_spent_seconds}
+                    originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+                    remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+                    onLogWork={handleLogWork}
+                  />
+                </CardContent>
+              </Card>
 
-              <ContentSection density="compact" className="space-y-2">
-                <SectionHeader level={3} title={t('engagement.title')} />
+              <Disclosure summary={t('engagement.title')}>
                 <IssueEngagementPanel
                   issueId={issue.id}
                   projectKey={issue.project_key}
                   currentUserId={currentUserId}
                   reporterId={issue.reporter_id}
                 />
-              </ContentSection>
+              </Disclosure>
             </>
           }
         />
@@ -473,39 +451,48 @@ const desktopLayoutQuery = '(min-width: 1024px)'
 function IssueDetailLayout({
   description,
   details,
-  detailsSummary,
   activity,
   supplemental,
 }: {
   description: ReactNode
   details: ReactNode
-  detailsSummary: ReactNode
   activity: ReactNode
   supplemental: ReactNode
 }) {
+  const { t } = useTranslation()
   const desktop = useMediaQuery(desktopLayoutQuery)
+  const [expanded, setExpanded] = useState(desktop)
 
   return (
     <div
       className={
         desktop
-          ? 'grid min-w-0 grid-cols-[minmax(0,1fr)_320px] grid-rows-[min-content_minmax(0,1fr)] gap-6'
-          : 'grid min-w-0 gap-2'
+          ? 'grid min-w-0 grid-cols-[minmax(0,1fr)_320px] grid-rows-[min-content_minmax(0,1fr)] gap-[var(--shell-page-block-gap)]'
+          : 'grid min-w-0 gap-[var(--shell-page-block-gap)]'
       }
     >
       {description}
-      {desktop ? (
-        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 self-start space-y-2">
-          {details}
-          {supplemental}
-        </aside>
-      ) : (
-        <Disclosure appearance="row" summary={detailsSummary}>
-          {details}
+      <aside
+        className={
+          desktop
+            ? 'sticky top-16 col-start-2 row-start-1 row-span-2 min-w-0 self-start'
+            : 'min-w-0'
+        }
+      >
+        <Disclosure
+          summary={t('issue.properties')}
+          appearance={desktop ? 'plain' : 'panel'}
+          summaryProps={{ hidden: desktop }}
+          open={desktop || expanded}
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+        >
+          <div className="grid gap-[var(--shell-page-block-gap)]">
+            {details}
+            {supplemental}
+          </div>
         </Disclosure>
-      )}
+      </aside>
       {activity}
-      {!desktop && <aside className="space-y-2">{supplemental}</aside>}
     </div>
   )
 }
