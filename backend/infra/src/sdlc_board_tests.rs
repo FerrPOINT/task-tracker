@@ -54,8 +54,13 @@ async fn board_reader_batches_only_authorized_issue_ids_in_project_and_instance(
     assert_eq!(tasks[1].status, Some(LifecycleStatus::InProgress));
     // No synthesized stage or status for an ordinary issue absent from the SDLC table.
     assert!(!tasks.iter().any(|task| task.issue_id == ordinary));
+    let DatabaseConnection::MockDatabaseConnection(connection) = repo.db.raw() else {
+        panic!("expected mock connection");
+    };
+    let log =
+        DatabaseConnection::MockDatabaseConnection(Arc::clone(connection)).into_transaction_log();
     assert_eq!(
-        repo.db.raw().as_mock_connection().drain_transaction_log(),
+        log,
         vec![Transaction::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT task_id, state->'stage' AS stage,
