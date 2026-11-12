@@ -922,7 +922,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(await within(history).findByText('Analysis intent queued')).toBeInTheDocument()
     fireEvent.click(within(history).getByRole('button', { name: 'Next events' }))
     await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledWith(task, '19', expect.anything()))
-    expect(await within(history).findByText('No events after this sequence')).toBeInTheDocument()
+    expect(await within(history).findByText('No development events yet.')).toBeInTheDocument()
   })
   it('does not render a failed metadata refresh as an empty or current history', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
@@ -943,7 +943,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       await within(history).findByText('SDLC or Central Auth is unavailable'),
     ).toBeInTheDocument()
     expect(within(history).getByText(/Saved data · refresh failed/)).toBeInTheDocument()
-    expect(within(history).queryByText('No events after this sequence')).not.toBeInTheDocument()
+    expect(within(history).queryByText('No development events yet.')).not.toBeInTheDocument()
     expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
   })
   it('renders reservation history as prepared and still awaiting admission', async () => {

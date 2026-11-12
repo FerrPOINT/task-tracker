@@ -59,7 +59,7 @@
       }
     },
     "history": "Development history",
-    "noEvents": "No events after this sequence",
+    "noEvents": "No development events yet.",
     "eventPin": "Event technical details",
     "eventRef": "Journal entry ID",
     "previous": "Previous events",

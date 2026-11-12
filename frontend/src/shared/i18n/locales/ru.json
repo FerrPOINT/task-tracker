@@ -59,7 +59,7 @@
       }
     },
     "history": "История разработки",
-    "noEvents": "После этого sequence событий нет",
+    "noEvents": "История разработки пока пуста.",
     "eventPin": "Технические сведения о событии",
     "eventRef": "ID записи журнала",
     "previous": "Предыдущие события",
@@ -103,7 +103,7 @@
       "deliveryProposalSubmitted": "Предложение результата сохранено",
       "pmFeedbackRecorded": "Сообщение владельца для PM сохранено",
       "pmCompleted": "Выполнение PM завершено",
-      "taskCreated": "Draft создан",
+      "taskCreated": "Создан черновик задачи",
       "taskBound": "Task binding сохранён",
       "pmAssigned": "PM assignment сохранён",
       "questionPublished": "Уточнение опубликовано",
