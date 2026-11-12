@@ -58,11 +58,10 @@
         "devops": "Operations"
       }
     },
-    "history": "SDLC events",
-    "afterCursor": "After sequence {{cursor}}",
+    "history": "Development history",
     "noEvents": "No events after this sequence",
-    "eventPin": "Event reference and hash",
-    "eventRef": "Event ref",
+    "eventPin": "Event technical details",
+    "eventRef": "Journal entry ID",
     "previous": "Previous events",
     "next": "Next events",
     "errors": {
@@ -116,6 +115,29 @@
       "intentQueued": "Analysis intent queued",
       "assignmentPrepared": "Analysis assignment prepared, awaiting admission",
       "analysisResultAccepted": "Analysis result accepted"
+    },
+    "heading": "Development progress",
+    "current": "Now",
+    "nextStep": "Your next step",
+    "technicalDetails": "Technical details",
+    "revisionDetails": "Requirements revision details",
+    "analysisRequestDetails": "Analysis request technical details",
+    "reviewRequirements": "Review the requirements below. Confirmation saves this exact revision; it does not start execution.",
+    "answerQuestions": "Your answers to clarification questions are awaited.",
+    "waitForPreparation": "The project manager needs to prepare requirements. No action is required from you yet.",
+    "noAction": "No action is currently available to your account on this tab.",
+    "eventSequence": "Journal entry number",
+    "stages": {
+      "Draft": "Draft",
+      "Clarification": "Requirements clarification",
+      "Backlog": "Backlog",
+      "Analysis": "Analysis",
+      "Architecture": "Architecture",
+      "Development": "Development",
+      "Review": "Review",
+      "Testing": "Testing",
+      "Rework": "Rework",
+      "Deployment": "Deployment"
     }
   },
   "navigation": {
@@ -231,7 +253,6 @@
     "done": "Done",
     "lead": "Lead",
     "createProject": "Create project",
-    "archived": "Archived",
     "manage": "Manage project",
     "managementUnavailable": "Project management is unavailable",
     "deleteDescription": "The project “{{name}}” and all its issues will be permanently deleted.",

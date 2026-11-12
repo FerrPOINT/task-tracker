@@ -58,11 +58,10 @@
         "devops": "Эксплуатация"
       }
     },
-    "history": "События SDLC",
-    "afterCursor": "После sequence {{cursor}}",
+    "history": "История разработки",
     "noEvents": "После этого sequence событий нет",
-    "eventPin": "Ссылка и hash события",
-    "eventRef": "Event ref",
+    "eventPin": "Технические сведения о событии",
+    "eventRef": "ID записи журнала",
     "previous": "Предыдущие события",
     "next": "Следующие события",
     "errors": {
@@ -75,7 +74,7 @@
       "unknown": "Результат SDLC запроса не получен; требуется обновление"
     },
     "reasons": {
-      "waiting_for_pm": "Ожидается PM",
+      "waiting_for_pm": "Ожидается подготовка требований",
       "waiting_for_owner_answers": "Ожидаются ответы владельца",
       "waiting_for_requirements_or_evidence": "Ожидаются требования или evidence",
       "waiting_for_owner_confirmation": "Ожидается подтверждение владельца",
@@ -116,6 +115,29 @@
       "intentQueued": "Analysis intent поставлен в очередь",
       "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается",
       "analysisResultAccepted": "Результат анализа принят"
+    },
+    "heading": "Ход разработки",
+    "current": "Сейчас",
+    "nextStep": "Что нужно сделать",
+    "technicalDetails": "Технические сведения",
+    "revisionDetails": "Технические сведения о версии требований",
+    "analysisRequestDetails": "Технические сведения о запросе на анализ",
+    "reviewRequirements": "Проверьте требования ниже. Подтверждение сохраняет эту версию требований и само по себе не запускает выполнение.",
+    "answerQuestions": "Ожидаются ваши ответы на уточняющие вопросы.",
+    "waitForPreparation": "Менеджеру проекта нужно подготовить требования. Сейчас от вас действий не требуется.",
+    "noAction": "На этой вкладке сейчас нет доступных действий для вашей учётной записи.",
+    "eventSequence": "Номер записи журнала",
+    "stages": {
+      "Draft": "Черновик",
+      "Clarification": "Уточнение требований",
+      "Backlog": "Бэклог",
+      "Analysis": "Анализ",
+      "Architecture": "Архитектура",
+      "Development": "Разработка",
+      "Review": "Ревью",
+      "Testing": "Тестирование",
+      "Rework": "Доработка",
+      "Deployment": "Поставка"
     }
   },
   "navigation": {
@@ -221,7 +243,7 @@
     "search": "Поиск проектов...",
     "all": "Все проекты",
     "active": "Активные",
-    "archived": "Архивные",
+    "archived": "В архиве",
     "anyType": "Любой тип",
     "scrum": "Scrum",
     "kanban": "Kanban",
@@ -231,7 +253,6 @@
     "done": "Готово",
     "lead": "Лид",
     "createProject": "Создать проект",
-    "archived": "В архиве",
     "manage": "Управление проектом",
     "managementUnavailable": "Управление проектом недоступно",
     "deleteDescription": "Проект «{{name}}» и все его задачи будут удалены без возможности восстановления.",

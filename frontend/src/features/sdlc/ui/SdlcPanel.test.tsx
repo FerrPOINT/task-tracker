@@ -136,6 +136,52 @@ function mount(issueId = task) {
 }
 
 describe('SDLC owner panel (isolated controller fixtures, not live admission)', () => {
+  it('keeps machine references out of the ordinary reading view', async () => {
+    mount()
+    await screen.findByText('Exact goal shown to the owner')
+    for (const element of screen.getAllByText(task)) expect(element).not.toBeVisible()
+    for (const element of screen.getAllByText(hash)) expect(element).not.toBeVisible()
+    expect(screen.getByText('Technical details')).toBeVisible()
+  })
+
+  it('labels technical identifiers as details instead of an event link', async () => {
+    vi.mocked(getSdlcMetadata).mockResolvedValue({
+      contract_version: 1,
+      projection: 'metadata_v1',
+      after: '0',
+      next_after: '1',
+      has_more: false,
+      events: [event],
+    })
+    mount()
+    expect(await screen.findByText('Event technical details')).toBeVisible()
+    expect(screen.queryByText('Event reference and hash')).not.toBeInTheDocument()
+    for (const element of screen.getAllByText(event.event_id)) expect(element).not.toBeVisible()
+  })
+
+  it('explains a real Draft without implying execution or published requirements', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        requirement_revision: null,
+        waiting_reason: 'waiting_for_pm',
+        permissions: { can_answer: false, can_confirm: false },
+      },
+      requirements: null,
+    })
+    mount()
+    expect(await screen.findByRole('heading', { name: 'Development progress' })).toBeVisible()
+    expect(screen.getByText('Draft')).toBeVisible()
+    expect(
+      screen.getByText(
+        'The project manager needs to prepare requirements. No action is required from you yet.',
+      ),
+    ).toBeVisible()
+    expect(screen.getByText('Requirements have not been published')).toBeVisible()
+  })
+
   beforeEach(async () => {
     vi.clearAllMocks()
     await i18n.changeLanguage('en')
@@ -872,7 +918,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: after === '0' ? [event] : [],
     }))
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(await within(history).findByText('Analysis intent queued')).toBeInTheDocument()
     fireEvent.click(within(history).getByRole('button', { name: 'Next events' }))
     await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledWith(task, '19', expect.anything()))
@@ -889,7 +935,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: [event],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     await within(history).findByText('Analysis intent queued')
     vi.mocked(getSdlcMetadata).mockRejectedValue(new SdlcRequestError(503))
     fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
@@ -928,7 +974,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: [reserved],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(
       await within(history).findByText('Analysis assignment prepared, awaiting admission'),
     ).toBeInTheDocument()
@@ -963,7 +1009,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       ],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(await within(history).findByText('Analysis result accepted')).toBeInTheDocument()
     expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
   })
@@ -1035,7 +1081,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         events: [lifecycleEvent],
       })
       mount()
-      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      const history = await screen.findByRole('region', { name: 'Development history' })
       expect(await within(history).findByText(en)).toBeInTheDocument()
       await act(() => i18n.changeLanguage('ru'))
       expect(await within(history).findByText(ru)).toBeInTheDocument()
@@ -1123,7 +1169,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         events: [recorded],
       })
       mount()
-      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      const history = await screen.findByRole('region', { name: 'Development history' })
       expect(await within(history).findByText(en)).toBeInTheDocument()
       await act(() => i18n.changeLanguage('ru'))
       expect(await within(history).findByText(ru)).toBeInTheDocument()
