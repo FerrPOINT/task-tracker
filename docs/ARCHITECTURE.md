@@ -9,15 +9,16 @@
 ## Владение назначением без TTL
 
 Для single-task-v1/configured-cli-v1 назначение принадлежит одному holder до
-принятого результата или явной отмены. Часы и restart Fleet не передают ownership
+принятого результата или подтверждённого terminal Stop. Часы и restart Fleet не передают ownership
 и не создают попытку. Stable assignment, fence, operation keys, project/owner
 authorization и один capacity hold сохраняются. Отсутствие native journal означает
 продолжение того же назначения. Unknown outcome требует исходного readback.
 
 DeliveryOwnership — текущий DTO с nullable expires_at. Исторический ExecutionLease
 и read-only PM decoder остаются строгими. Forward117 нормализует current head через
-прежние permits, сохраняя журналы и receipts. Явный CancelUnsubmitted использует
-прежний Terminal/Ready projection без requeue и вымышленного terminal proof.
+прежние permits, сохраняя журналы и receipts. Unsubmitted назначение продолжается;
+новой команды отмены нет. Capacity освобождают прежние accepted result/known
+terminal Stop, а lost ACK требует readback, не отмены по отсутствию binding.
 [Решение и границы](adr/0013-persistent-technical-ownership.md).
 
 ## Встроенная Декомпозиция

@@ -10,12 +10,11 @@
 Reserve не принимает `lease_seconds`; новые `heartbeat` и `retry_unsubmitted`
 отклоняются после проверки исторического replay.
 
-Явный `cancel_unsubmitted` принимает `fence` и `idempotency_key` от текущего
-scheduler/holder с прежними project rights. Binding/proposal недопустимы; Fleet
-сначала проверяет отсутствие native custody. Существующий reconciliation journal
-фиксирует отмену, освобождает capacity и переводит runtime в Terminal без requeue.
-Submitted/unknown native work требует настоящего terminal readback. CLI lifecycle
-JSON использует тот же endpoint; второго протокола команд нет.
+Unsubmitted assignment сохраняется для обычного продолжения того же назначения.
+Само отсутствие Tracker binding не доказывает отсутствие native POST или lost ACK.
+Освобождение использует прежние accepted result и `reconcile` с настоящим terminal
+receipt. Known terminal Stop сохраняет прежние fence/project/holder проверки;
+unknown native outcome требует исходного readback. Нового cancel API/CLI нет.
 
 Namespace source публикует `execution.workspace_preparation_authorized` и только
 при этом proof — `workspace_preparation_commit`. Старое поле

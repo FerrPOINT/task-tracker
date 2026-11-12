@@ -379,8 +379,7 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
             }
             return Ok(());
         }
-        LifecycleCommand::CancelUnsubmitted { fence, .. }
-        | LifecycleCommand::Heartbeat { fence, .. } => fence,
+        LifecycleCommand::Heartbeat { fence, .. } => fence,
         LifecycleCommand::BindRun { fence, binding, .. } => {
             if binding.chat_id.is_nil()
                 || binding.run_id.is_nil()
@@ -421,7 +420,7 @@ pub fn validate_active_command(command: &LifecycleCommand) -> Result<(), AppErro
     if matches!(command, LifecycleCommand::Heartbeat { .. }
         | LifecycleCommand::Reconcile { recovery: RecoveryDisposition::RetryUnsubmitted, .. })
     {
-        return Err(AppError::conflict("assignment ownership persists until result or explicit cancellation"));
+        return Err(AppError::conflict("assignment ownership persists until result or confirmed terminal reconciliation"));
     }
     Ok(())
 }
@@ -838,19 +837,6 @@ pub fn reconcile_terminal(
             .into(),
         );
     }
-    Ok(())
-}
-
-/// Explicit holder cancellation after proving no bound run or accepted proposal.
-pub fn cancel_unsubmitted(task: &mut LifecycleTask) -> Result<(), AppError> {
-    if !matches!(task.runtime, RuntimeState::Reserved | RuntimeState::Unknown) || task.status != LifecycleStatus::Ready {
-        return Err(AppError::conflict("unstarted assignment required"));
-    }
-    task.version = task.version.checked_add(1)
-        .filter(|version| *version <= MAX_SAFE_VERSION)
-        .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
-    task.runtime = RuntimeState::Terminal;
-    task.waiting_reason = Some("runtime_terminal_requires_intervention".into());
     Ok(())
 }
 

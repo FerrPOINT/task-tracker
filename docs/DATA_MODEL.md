@@ -9,9 +9,9 @@ timestamps. Только в текущем JSON `sdlc_delivery_heads.execution` 
 hash, capacity hold и business state сохраняются. Historical PM/Analysis не меняются.
 
 Ownership не продлевается и не истекает. Старые heartbeat/never-submitted keys
-доступны для read/replay; новые действия запрещены. Explicit CancelUnsubmitted
-пишет существующий reconciliation journal, проверяет fence и отсутствие
-binding/proposal, освобождает hold и переводит runtime в Terminal без новой попытки.
+доступны для read/replay; новые действия запрещены. Нового отменяющего контракта
+нет: binding отсутствует и при неизвестном native POST. Capacity освобождают
+прежние accepted result/known terminal Stop с исходными проверками и журналами.
 
 ## Встроенная Декомпозиция
 

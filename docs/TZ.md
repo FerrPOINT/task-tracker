@@ -3,7 +3,7 @@
 ## Постоянное назначение агента
 
 Техническое single-task-v1/configured-cli-v1 назначение сохраняет ID, holder и
-fence до принятого результата или явной отмены. TTL, heartbeat и автоматическое
+fence до принятого результата или подтверждённого terminal Stop. TTL, heartbeat и автоматическое
 освобождение по времени отсутствуют. Restart Fleet продолжает то же назначение;
 отсутствие native journal не является поводом cancel/requeue. Unknown submitted
 требует прежнего точного readback, а не повторного dispatch.

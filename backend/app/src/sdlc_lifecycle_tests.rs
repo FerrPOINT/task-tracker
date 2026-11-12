@@ -23,22 +23,7 @@ fn historical_unsubmitted_observation_decodes_but_cannot_release_current_ownersh
         let command: LifecycleCommand = serde_json::from_value(wrong).unwrap();
         assert!(validate_command(&command).is_err());
     }
-    let mut value = task();
-    value.status = LifecycleStatus::Ready;
-    value.runtime = RuntimeState::Reserved;
-    let routing = value.routing.clone();
-    let stage = value.stage;
-    cancel_unsubmitted(&mut value).unwrap();
-    assert_eq!(value.runtime, RuntimeState::Terminal);
-    assert_eq!(value.transient_retries, 0);
-    assert_eq!(value.routing, routing);
-    assert_eq!(value.stage, stage);
-    value.runtime = RuntimeState::Running;
-    assert!(cancel_unsubmitted(&mut value).is_err());
-    value.runtime = RuntimeState::Unknown;
-    value.transient_retries = MAX_TRANSIENT_RETRIES;
-    cancel_unsubmitted(&mut value).unwrap();
-    assert_eq!(value.runtime, RuntimeState::Terminal);
+
 }
 
 #[test]
@@ -914,8 +899,5 @@ fn persistent_ownership_preserves_historical_wire_and_closed_current_commands() 
     let renewal = LifecycleCommand::Heartbeat { fence:fence.clone(),idempotency_key:"retired-heartbeat".into() };
     validate_command(&renewal).unwrap();
     assert!(validate_active_command(&renewal).is_err());
-    let cancel = LifecycleCommand::CancelUnsubmitted { fence,idempotency_key:"explicit-cancel".into() };
-    validate_command(&cancel).unwrap();
-    validate_active_command(&cancel).unwrap();
-    assert_eq!(cancel.key(), "explicit-cancel");
+
 }

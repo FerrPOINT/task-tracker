@@ -481,11 +481,6 @@ pub enum LifecycleCommand {
         machine_subject: Option<String>,
         idempotency_key: String,
     },
-    /// Explicit holder cancellation after its native owner proves no custody.
-    CancelUnsubmitted {
-        fence: DeliveryFence,
-        idempotency_key: String,
-    },
     /// Historical operation decoding/replay only; new renewals are rejected.
     Heartbeat {
         fence: DeliveryFence,
@@ -515,9 +510,6 @@ impl LifecycleCommand {
             } => idempotency_key,
             Self::EnsureQueued { idempotency_key }
             | Self::Reserve {
-                idempotency_key, ..
-            }
-            | Self::CancelUnsubmitted {
                 idempotency_key, ..
             }
             | Self::Heartbeat {

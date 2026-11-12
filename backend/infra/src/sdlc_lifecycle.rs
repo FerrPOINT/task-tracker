@@ -1152,32 +1152,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::StartAnalysis { .. } => {
                 unreachable!("handled before scheduler admission")
             }
-            LifecycleCommand::CancelUnsubmitted { fence: expected, .. } => {
-                fence(&receipt, expected, actor)?;
-                let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
-                if tx.query_one(statement(
-                    "SELECT assignment_id FROM sdlc_delivery_holds WHERE assignment_id=$1 FOR UPDATE",
-                    vec![assignment.assignment_id.into()],
-                )).await.map_err(map_db)?.is_none() {
-                    return Err(AppError::conflict("delivery capacity released"));
-                }
-                if receipt.binding.is_some() || tx.query_one(statement(
-                    "SELECT assignment_id FROM sdlc_delivery_run_bindings WHERE assignment_id=$1
-                     UNION ALL SELECT assignment_id FROM sdlc_delivery_proposals WHERE assignment_id=$1",
-                    vec![assignment.assignment_id.into()],
-                )).await.map_err(map_db)?.is_some() {
-                    return Err(AppError::conflict("bound or proposed work requires actual terminal readback"));
-                }
-                let assignment_id = assignment.assignment_id;
-                app::sdlc_lifecycle::cancel_unsubmitted(&mut receipt.task)?;
-                exec(&tx, "INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
-                    vec![assignment_id.into(), task.into(), json_value(&command)?]).await?;
-                exec(&tx, "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1", vec![assignment_id.into()]).await?;
-                receipt.assignment = None;
-                receipt.lease = None;
-                receipt.binding = None;
-                receipt.result = None;
-            }
             LifecycleCommand::Reconcile {
                 fence: expected,
                 terminal,
@@ -1394,7 +1368,6 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 unreachable!("handled before scheduler admission")
             }
             LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
-            LifecycleCommand::CancelUnsubmitted { .. } => Some("delivery.reconciled"),
             LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
             LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
             // Lease renewals are audited in operations, not mirrored into business chat.

@@ -32,7 +32,7 @@ struct OriginalStep {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn assignment_persists_across_old_deadline_and_restart_until_result_or_explicit_cancel() {
+async fn assignment_persists_across_old_deadline_and_restart_until_result_or_known_terminal_stop() {
     let (mut f, queued) = ReworkFixture::configured_before_persistent_ownership().await;
     let output = DeliveryResult::Analyst { analysis: artifact("persistent-analysis") };
     let reserve = LifecycleCommand::Reserve {
@@ -97,12 +97,16 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_exp
         assert!(f.repo.lifecycle_command(f.task, &f.scheduler, command).await.is_err());
     }
     let foreign = actor("foreign-scheduler", false, vec![]);
-    let cancel = LifecycleCommand::CancelUnsubmitted { fence: delivery_fence(&reserved), idempotency_key: "persistent:foreign-cancel".into() };
-    assert!(matches!(f.repo.lifecycle_command(f.task, &foreign, cancel).await, Err(AppError::Forbidden)));
+    let binding = RunBinding {
+        chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        machine_subject: f.producers["analyst"].subject.clone(), dispatch_receipt: artifact("persistent-native"),
+    };
+    let bind = LifecycleCommand::BindRun { fence: delivery_fence(&reserved), binding: binding.clone(), idempotency_key: "persistent:foreign-bind".into() };
+    assert!(matches!(f.repo.lifecycle_command(f.task, &foreign, bind).await, Err(AppError::Forbidden)));
     let mut stale = delivery_fence(&reserved);
     stale.fencing_token += 1;
-    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::CancelUnsubmitted {
-        fence: stale, idempotency_key: "persistent:stale-cancel".into(),
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::BindRun {
+        fence: stale, binding, idempotency_key: "persistent:stale-bind".into(),
     }).await.is_err());
     f.assert_current(&reserved).await;
     assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
@@ -115,22 +119,43 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_exp
         machine_subject: Some(f.producers["architect"].subject.clone()), idempotency_key: "persistent:next-stage".into(),
     }).await.unwrap();
     assert_ne!(next.assignment.as_ref().unwrap().assignment_id, assignment.assignment_id);
-    let cancel = LifecycleCommand::CancelUnsubmitted { fence: delivery_fence(&next), idempotency_key: "persistent:explicit-cancel".into() };
-    let (cancelled, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, cancel.clone()).await.unwrap();
+    let binding = RunBinding {
+        chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        machine_subject: f.producers["architect"].subject.clone(), dispatch_receipt: artifact("persistent-stop-native"),
+    };
+    let (running, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::BindRun {
+        fence: delivery_fence(&next), binding: binding.clone(), idempotency_key: "persistent:stop-bind".into(),
+    }).await.unwrap();
+    let terminal = RuntimeTerminalObservation {
+        assignment_hash: next.assignment.as_ref().unwrap().assignment_hash.clone(),
+        chat_id: binding.chat_id, run_id: binding.run_id, state: RuntimeTerminalState::Cancelled,
+        receipt: artifact("persistent-known-terminal"),
+    };
+    let stop = LifecycleCommand::Reconcile { fence: delivery_fence(&running), terminal: Some(terminal),
+        never_submitted: None, recovery: RecoveryDisposition::Stop, idempotency_key: "persistent:known-stop".into() };
+    let mut foreign_terminal = stop.clone();
+    if let LifecycleCommand::Reconcile { terminal: Some(terminal), idempotency_key, .. } = &mut foreign_terminal {
+        terminal.run_id = Uuid::new_v4();
+        *idempotency_key = "persistent:foreign-terminal".into();
+    }
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, foreign_terminal).await.is_err());
+    f.assert_current(&running).await;
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 1);
+    let (stopped, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, stop.clone()).await.unwrap();
     assert!(!replayed);
-    assert_eq!(cancelled.task.stage, next.task.stage);
-    assert_eq!(cancelled.task.routing, next.task.routing);
-    assert_eq!(cancelled.task.transient_retries, 0);
-    assert_eq!(cancelled.task.runtime, RuntimeState::Terminal);
-    assert!(cancelled.assignment.is_none() && cancelled.binding.is_none() && cancelled.lease.is_none());
+    assert_eq!(stopped.task.stage, next.task.stage);
+    assert_eq!(stopped.task.routing, next.task.routing);
+    assert_eq!(stopped.task.transient_retries, 0);
+    assert_eq!(stopped.task.runtime, RuntimeState::Terminal);
+    assert!(stopped.assignment.is_none() && stopped.binding.is_none() && stopped.lease.is_none());
     assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
-    let (same, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, cancel).await.unwrap();
+    let (same, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, stop).await.unwrap();
     assert!(duplicate);
-    assert_eq!(same, cancelled);
+    assert_eq!(same, stopped);
     let (old, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve).await.unwrap();
     assert!(duplicate);
     assert_eq!(old, historical);
-    f.assert_current(&cancelled).await;
+    f.assert_current(&stopped).await;
 }
 
 async fn pm_history(db: &DatabaseConnection, task: Uuid) -> Json {
@@ -552,12 +577,6 @@ impl ReworkFixture {
         assert_eq!(running.task.stage, queued.task.stage);
         assert_eq!(running.task.cycle, queued.task.cycle);
         assert_eq!(running.task.version, reserved.task.version + 1);
-        self.assert_current(&running).await;
-        assert!(self.repo.lifecycle_command(self.task, &self.scheduler,
-            LifecycleCommand::CancelUnsubmitted {
-                fence: fence.clone(), idempotency_key: format!("rework:{index}:cannot-cancel-bound"),
-            },
-        ).await.is_err());
         self.assert_current(&running).await;
         let (start, started_receipt, started) = start_delivery(
             &self.repo,
