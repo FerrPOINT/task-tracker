@@ -33,7 +33,7 @@ struct OriginalStep {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
 async fn expired_unsubmitted_reservation_requeues_only_with_exact_original_provenance() {
-    let (f, queued) = ReworkFixture::new().await;
+    let (f, queued) = ReworkFixture::configured().await;
     let reserve = LifecycleCommand::Reserve {
         expected_task_version: queued.task.version,
         machine_subject: Some(f.producers["analyst"].subject.clone()),
@@ -157,6 +157,17 @@ impl ReworkFixture {
         Self::with_architect_inputs(None, None).await
     }
 
+    async fn configured() -> (Self, LifecycleReceipt) {
+        Self::with_draft_protocol(
+            None,
+            None,
+            "owner",
+            "scheduler",
+            Some(InteractionProtocol::ConfiguredCliV1),
+        )
+        .await
+    }
+
     async fn with_architect_inputs(
         source: Option<domain::sdlc_source::VerifiedSource>,
         document: Option<RequirementsDocument>,
@@ -169,6 +180,16 @@ impl ReworkFixture {
         document: Option<RequirementsDocument>,
         owner_subject: &str,
         scheduler_subject: &str,
+    ) -> (Self, LifecycleReceipt) {
+        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, None).await
+    }
+
+    async fn with_draft_protocol(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+        scheduler_subject: &str,
+        interaction_protocol: Option<InteractionProtocol>,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
@@ -234,7 +255,7 @@ impl ReworkFixture {
                 project,
                 &owner,
                 CreateDraftCommand {
-                    interaction_protocol: None,
+                    interaction_protocol,
                     flow: Some(DraftFlow::SingleTaskV1),
                     title: "One actual Tracker task".into(),
                     description: "Synthetic persisted Reviewer and Tester rework fixture".into(),
