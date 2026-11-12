@@ -13,7 +13,7 @@ import { render as renderView, screen, waitFor, within, fireEvent } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
 
 import { AppShell } from './app-shell'

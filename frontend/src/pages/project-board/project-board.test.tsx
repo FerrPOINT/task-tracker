@@ -49,6 +49,7 @@ vi.mock('@/shared/api/hooks', () => ({
         tasks: fixture.empty ? [] : [
           { issue_id: 'i1', stage: 'Development', status: 'Ready' },
           { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+          { issue_id: 'i3', stage: 'Draft' },
         ],
       },
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
@@ -107,17 +108,18 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
-  it('groups the same issue status into separate SDLC stages without displaying ordinary cards', () => {
+  it('keeps tracked and historical cards in the same documented stage set', () => {
     render(wrapper(<ProjectBoardPage />))
     for (const [stage, card] of [
       ['Разработка', 'Do work'],
       ['Ревью', 'Review work'],
+      ['Черновик', 'Ordinary work'],
     ] as const) {
       const section = screen.getByRole('heading', { name: stage }).closest('section')
       expect(section).toHaveTextContent(card)
       expect(screen.getByText(card).closest('article')).not.toHaveAttribute('draggable')
     }
-    expect(screen.queryByText('Ordinary work')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Обычные задачи' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Доработка' })).toBeInTheDocument()
   })
 

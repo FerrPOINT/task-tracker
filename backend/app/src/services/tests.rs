@@ -634,7 +634,7 @@ async fn transition_same_status_is_noop_for_history_and_events() {
         .get_default_by_project_key(&project_key)
         .await
         .unwrap();
-    let status_id: StatusId = board.columns[0].id.parse().unwrap();
+    let status_id: StatusId = board.columns[0].id;
     let issue = ctx
         .services
         .issue
@@ -802,8 +802,8 @@ async fn issue_update_prevalidates_assignee_before_status_transition() {
         .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let todo: StatusId = board.columns[0].id.parse().unwrap();
-    let done: StatusId = board.columns[3].id.parse().unwrap();
+    let todo: StatusId = board.columns[0].id;
+    let done: StatusId = board.columns[3].id;
     let issue = ctx
         .services
         .issue
@@ -1038,7 +1038,7 @@ async fn dashboard_does_not_show_assigned_issues_from_inaccessible_projects() {
         &project,
         404,
         IssueType::Task,
-        board.columns[0].id.parse().unwrap(),
+        board.columns[0].id,
         "Legacy assignment",
         None,
         owner.id,
@@ -1111,7 +1111,7 @@ async fn issue_service_search_defaults_to_newest_first() {
         .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let status_id = board.columns[0].id.parse().unwrap();
+    let status_id = board.columns[0].id;
     let now = shared::now();
     let mut older = Issue::create(
         &project,
@@ -1990,6 +1990,13 @@ fn failing_context() -> AppContext {
     struct FailingBoardRepository;
     #[async_trait::async_trait]
     impl BoardRepository for FailingBoardRepository {
+        async fn sdlc_tasks(
+            &self,
+            _project: ProjectId,
+            _issues: &[IssueId],
+        ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+            Err(AppError::Internal("failing board repo".into()))
+        }
         async fn get_by_id(&self, _id: shared::BoardId) -> Result<Board, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -2115,6 +2122,105 @@ async fn board_get_propagates_repo_error() {
             .get_board(&ProjectKey::new("TT"), UserId::new())
             .await,
     );
+}
+
+#[tokio::test]
+async fn unified_board_reads_saved_stages_without_automation_and_checks_project_access_first() {
+    use crate::context::BoardService;
+    use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SavedStage {
+        project: ProjectId,
+        task: IssueId,
+        reads: Arc<AtomicUsize>,
+    }
+    #[async_trait::async_trait]
+    impl BoardRepository for SavedStage {
+        async fn sdlc_tasks(
+            &self,
+            project: ProjectId,
+            issues: &[IssueId],
+        ) -> Result<Vec<SdlcBoardTask>, AppError> {
+            assert_eq!(project, self.project);
+            assert!(issues.contains(&self.task));
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![SdlcBoardTask {
+                issue_id: self.task.as_uuid(),
+                stage: LifecycleStage::Testing,
+                status: Some(LifecycleStatus::InProgress),
+            }])
+        }
+        async fn get_by_id(&self, id: shared::BoardId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_by_id(id).await
+        }
+        async fn get_default_by_project(&self, project: ProjectId) -> Result<Board, AppError> {
+            domain::StubBoardRepository
+                .get_default_by_project(project)
+                .await
+        }
+        async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError> {
+            domain::StubBoardRepository
+                .get_default_by_project_key(key)
+                .await
+        }
+        async fn save(&self, board: &Board) -> Result<(), AppError> {
+            domain::StubBoardRepository.save(board).await
+        }
+    }
+
+    let (ctx, user) = ctx_with_demo_data().await;
+    assert!(ctx.sdlc.is_none());
+    let legacy = create_demo_issue(&ctx, &user, "Historical card").await;
+    let tracked = create_demo_issue(&ctx, &user, "Tracked card").await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let reads = Arc::new(AtomicUsize::new(0));
+    let board = super::board::BoardServiceImpl::new(
+        Arc::new(SavedStage {
+            project: project.id,
+            task: tracked,
+            reads: reads.clone(),
+        }),
+        ctx.repos.issues.clone(),
+        ctx.repos.sprints.clone(),
+        ctx.repos.users.clone(),
+        ctx.repos.labels.clone(),
+        ctx.repos.projects.clone(),
+        ctx.authz.clone(),
+    );
+    let result = board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    assert_eq!(result.cards.len(), 2);
+    let tracked = &result
+        .cards
+        .iter()
+        .find(|(issue, _)| issue.id == tracked.to_string())
+        .unwrap()
+        .1;
+    assert_eq!(tracked.stage, LifecycleStage::Testing);
+    assert_eq!(tracked.status, Some(LifecycleStatus::InProgress));
+    let legacy = &result
+        .cards
+        .iter()
+        .find(|(issue, _)| issue.id == legacy.to_string())
+        .unwrap()
+        .1;
+    assert_eq!(legacy.stage, LifecycleStage::Draft);
+    assert_eq!(legacy.status, None);
+    assert!(
+        board
+            .get_board(&ProjectKey::new("TT"), UserId::new())
+            .await
+            .is_err()
+    );
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -4841,7 +4947,7 @@ async fn issue_trash_paginates_beyond_default_issue_cap() {
         .get_default_by_project_key(&ProjectKey::new("TT"))
         .await
         .unwrap();
-    let todo: StatusId = board.columns[0].id.parse().unwrap();
+    let todo: StatusId = board.columns[0].id;
 
     for number in 1..=1_005 {
         let mut issue = domain::Issue::create(

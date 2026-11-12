@@ -507,7 +507,7 @@ async fn dashboard_and_search() {
 }
 
 #[tokio::test]
-async fn backlog_requires_auth_and_reports_missing_sdlc() {
+async fn backlog_requires_auth_without_requiring_automation() {
     let (url, client) = spawn_server().await;
     let login = client
         .post(format!("{url}/api/v1/auth/login"))
@@ -533,7 +533,10 @@ async fn backlog_requires_auth_and_reports_missing_sdlc() {
         .send()
         .await
         .unwrap();
-    assert_eq!(backlog.status(), 503);
+    assert_eq!(backlog.status(), 200);
+    let backlog: serde_json::Value = backlog.json().await.unwrap();
+    assert_eq!(backlog["backlog_total"], 0);
+    assert_eq!(backlog["backlog_issues"], serde_json::json!([]));
 }
 
 #[tokio::test]
@@ -4644,7 +4647,7 @@ async fn non_member_cannot_read_reports() {
 
 // 12. member_can_view_board — make B a member, B GET /projects/PA/board → 200
 #[tokio::test]
-async fn member_passes_board_access_check_without_sdlc_fixture() {
+async fn member_reads_nine_stage_board_without_enabling_automation() {
     let (url, client) = spawn_server().await;
     let a_token = login_token(&url, &client).await;
     let project_key = "TT";
@@ -4654,14 +4657,30 @@ async fn member_passes_board_access_check_without_sdlc_fixture() {
     // A (owner) adds B as a member
     add_member_via_api(&url, &client, &a_token, project_key, &b_id).await;
 
-    // Project access succeeds. This in-memory server has no SDLC repository.
+    // The same board remains available when no automation repository is enabled.
     let res = client
         .get(format!("{url}/api/v1/projects/TT/board"))
         .bearer_auth(&b_token)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 503);
+    assert_eq!(res.status(), 200);
+    let board: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        board["sdlc"]["stages"],
+        serde_json::json!([
+            "Draft",
+            "Backlog",
+            "Analysis",
+            "Architecture",
+            "Development",
+            "Review",
+            "Testing",
+            "Rework",
+            "Deployment"
+        ])
+    );
+    assert!(board.get("columns").is_none());
 }
 
 // 13. issue_link_delete_denied_for_outsider — B cannot delete A's link (SEC-1)

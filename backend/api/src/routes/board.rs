@@ -115,16 +115,10 @@ async fn read_board(
 ) -> Result<SdlcBoard, AppError> {
     let key = shared::ProjectKey::from_str(project_key)
         .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let board = ctx
-        .services
+    ctx.services
         .board
         .get_board(&key, parse_user_id(claims)?)
-        .await?;
-    let service = ctx
-        .sdlc
-        .as_ref()
-        .ok_or_else(|| AppError::Unavailable("SDLC unavailable".into()))?;
-    board.into_sdlc(service.repository.as_ref()).await
+        .await
 }
 
 fn map_sprint(sprint: app::dto::SprintDto) -> crate::dto::SprintResponse {

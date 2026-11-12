@@ -150,6 +150,13 @@ pub struct FailingBoardRepository;
 
 #[async_trait]
 impl BoardRepository for FailingBoardRepository {
+    async fn sdlc_tasks(
+        &self,
+        _project: ProjectId,
+        _issues: &[IssueId],
+    ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        Err(AppError::Internal("failing board repo".into()))
+    }
     async fn get_by_id(&self, _id: BoardId) -> Result<Board, AppError> {
         Err(AppError::Internal("failing board repo".into()))
     }

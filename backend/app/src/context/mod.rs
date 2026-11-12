@@ -161,6 +161,7 @@ impl AppContext {
             authz.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
+            repos.boards.clone(),
             repos.issues.clone(),
             repos.sprints.clone(),
             repos.users.clone(),

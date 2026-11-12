@@ -193,6 +193,7 @@ pub struct BoardDto {
     pub sprint: SprintDto,
 }
 
+#[derive(Debug)]
 pub struct SdlcBoard {
     pub project_id: String,
     pub project_key: String,
@@ -201,37 +202,38 @@ pub struct SdlcBoard {
 }
 
 impl BoardDto {
-    pub async fn into_sdlc(
+    pub(crate) fn with_sdlc_tasks(
         self,
-        repository: &dyn domain::sdlc::SdlcRepository,
+        tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
     ) -> Result<SdlcBoard, shared::AppError> {
-        let project = self
-            .project_id
-            .parse()
-            .map_err(shared::AppError::internal)?;
-        let ids = self
-            .issues
-            .iter()
-            .map(|issue| issue.id.parse())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(shared::AppError::internal)?;
-        let mut tasks: std::collections::HashMap<_, _> = repository
-            .board_tasks(project, &ids)
-            .await?
+        use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+
+        let mut tasks: std::collections::HashMap<_, _> = tasks
             .into_iter()
             .map(|task| (task.issue_id.to_string(), task))
             .collect();
-        let mut sprint = self.sprint;
-        sprint.issue_ids.retain(|id| tasks.contains_key(id));
         let cards = self
             .issues
             .into_iter()
-            .filter_map(|issue| tasks.remove(&issue.id).map(|task| (issue, task)))
-            .collect();
+            .map(|issue| {
+                let task = match tasks.remove(&issue.id) {
+                    Some(task) => task,
+                    // Historical issue statuses do not prove SDLC progress.
+                    // Keep those cards visible at the initial stage without
+                    // enrolling them, changing their status or inventing a run.
+                    None => SdlcBoardTask {
+                        issue_id: issue.id.parse().map_err(shared::AppError::internal)?,
+                        stage: LifecycleStage::Draft,
+                        status: None,
+                    },
+                };
+                Ok((issue, task))
+            })
+            .collect::<Result<Vec<_>, shared::AppError>>()?;
         Ok(SdlcBoard {
             project_id: self.project_id,
             project_key: self.project_key,
-            sprint,
+            sprint: self.sprint,
             cards,
         })
     }

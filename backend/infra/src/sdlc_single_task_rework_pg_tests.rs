@@ -7,6 +7,7 @@ mod decomposition_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
+    boards: std::sync::Arc<dyn domain::BoardRepository>,
     repo: PostgresSdlcRepository,
     task: Uuid,
     owner: Principal,
@@ -254,6 +255,10 @@ impl ReworkFixture {
         (
             Self {
                 db,
+                boards: crate::repos::SeaOrmRepositories::new(
+                    Database::connect(&url).await.unwrap(),
+                )
+                .boards,
                 repo,
                 task,
                 owner,
@@ -284,8 +289,11 @@ impl ReworkFixture {
         assert_eq!(canonical.stage, expected.task.stage.canonical());
         assert_eq!(canonical.status, Some(expected.task.status));
         let board = self
-            .repo
-            .board_tasks(canonical.project_id, &[self.task])
+            .boards
+            .sdlc_tasks(
+                shared::ProjectId::from_uuid(canonical.project_id),
+                &[shared::IssueId::from_uuid(self.task)],
+            )
             .await
             .unwrap();
         assert_eq!(board.len(), 1);

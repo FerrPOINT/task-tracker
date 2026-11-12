@@ -2,8 +2,11 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::authz::Authz;
-use crate::dto::{BoardDto, SprintDto};
-use domain::{IssueQuery, IssueRepository, LabelRepository, ProjectRepository, SprintRepository};
+use crate::dto::{BoardDto, SdlcBoard, SprintDto};
+use domain::{
+    BoardRepository, IssueQuery, IssueRepository, LabelRepository, ProjectRepository,
+    SprintRepository,
+};
 use shared::{AppError, ProjectKey, UserId};
 
 /// Bounded offset pagination for a deterministic backlog order.
@@ -13,6 +16,7 @@ pub mod backlog {
 }
 
 pub struct BoardServiceImpl {
+    boards: Arc<dyn BoardRepository>,
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
     users: Arc<dyn domain::UserRepository>,
@@ -23,6 +27,7 @@ pub struct BoardServiceImpl {
 
 impl BoardServiceImpl {
     pub fn new(
+        boards: Arc<dyn BoardRepository>,
         issues: Arc<dyn IssueRepository>,
         sprints: Arc<dyn SprintRepository>,
         users: Arc<dyn domain::UserRepository>,
@@ -31,6 +36,7 @@ impl BoardServiceImpl {
         authz: Authz,
     ) -> Self {
         Self {
+            boards,
             issues,
             sprints,
             users,
@@ -44,7 +50,7 @@ impl BoardServiceImpl {
         &self,
         project: domain::Project,
         project_key: &ProjectKey,
-    ) -> Result<BoardDto, AppError> {
+    ) -> Result<SdlcBoard, AppError> {
         let sprint = self.sprints.get_active_by_project(project.id).await?;
         let issues = self
             .issues
@@ -54,6 +60,13 @@ impl BoardServiceImpl {
             })
             .await?;
 
+        let tasks = self
+            .boards
+            .sdlc_tasks(
+                project.id,
+                &issues.iter().map(|issue| issue.id).collect::<Vec<_>>(),
+            )
+            .await?;
         let sprint_dto = sprint
             .map(|s| {
                 let issue_ids = issues
@@ -84,12 +97,13 @@ impl BoardServiceImpl {
         )
         .await?;
 
-        Ok(BoardDto {
+        BoardDto {
             project_id: project.id.to_string(),
             project_key: project_key.to_string(),
             issues: issue_dtos,
             sprint: sprint_dto,
-        })
+        }
+        .with_sdlc_tasks(tasks)
     }
 }
 
@@ -99,7 +113,7 @@ impl crate::context::BoardService for BoardServiceImpl {
         &self,
         project_key: &ProjectKey,
         requester: UserId,
-    ) -> Result<BoardDto, AppError> {
+    ) -> Result<SdlcBoard, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
             .require_project_access(project.id, requester)

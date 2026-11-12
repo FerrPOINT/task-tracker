@@ -22,7 +22,6 @@ import { useBoard } from '@/shared/api/hooks'
 
 import type { components } from '@/api/generated'
 
-
 export type Issue = components['schemas']['IssueResponse']
 
 function IssueCard({ issue, compact, status }: { issue: Issue; compact: boolean; status?: string }) {
