@@ -269,7 +269,7 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
             async move{
                 assert!(authorized(&headers));assert_eq!(request.identity.subject,state.target.to_string(),
                     "processor privileges must never replace the original identity");
-                Json(SpaceAdmission{schema_version:1,identity:request.identity,identity_active:true,
+                Json(SpaceAdmission {inheritance: None,schema_version:1,identity:request.identity,identity_active:true,
                     policy_revision:state.revision.load(Ordering::SeqCst),
                     policy:SpaceAccessPolicy::Selected{spaces:state.selected.read().unwrap().clone()},
                     validity:validity(state.until.load(Ordering::SeqCst)),

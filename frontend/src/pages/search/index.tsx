@@ -1,3 +1,4 @@
+import { useActiveProjects as useProjects } from '@/widgets/active-projects'
 import { ProjectAvatar, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -13,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@pdlc/ui/ui'
-import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
+import { useIssues, useUsers } from '@/shared/api/hooks'
 import { SearchRequestError, type Issue } from '@/api/search'
 
 const PAGE_SIZE = 25

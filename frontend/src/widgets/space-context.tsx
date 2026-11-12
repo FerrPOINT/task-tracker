@@ -97,7 +97,10 @@ export function SpaceShellContext({ projectKey }: { projectKey?: string }) {
   const [spaceQuery, setSpaceQuery] = useState({ q: '', offset: 0, limit: 10 })
   const [projectQuery, setProjectQuery] = useState({ q: '', offset: 0, limit: 10 })
   const spaces = useVisibleSpaces(spaceQuery)
-  const projects = useVisibleProjects({ ...projectQuery, space: context.space }, !context.invalid)
+  const projects = useVisibleProjects(
+    { ...projectQuery, space: context.space, workingOnly: true },
+    !context.invalid,
+  )
   const exact = useVisibleProjects(
     { space: context.space, projectKey, limit: 1 },
     !context.invalid && Boolean(projectKey),

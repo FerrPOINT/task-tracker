@@ -12,6 +12,7 @@ use std::sync::Arc;
 #[derive(serde::Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
 pub struct VisibleProjectQuery {
+    pub working_only: Option<bool>,
     #[param(minimum = 1, maximum = 100)]
     pub limit: Option<u64>,
     pub offset: Option<u64>,
@@ -35,6 +36,7 @@ impl VisibleProjectQuery {
             return Err(AppError::invalid_input("invalid_project_catalog_search"));
         }
         let query = domain::project_spaces::ProjectCatalogQuery {
+            working_only: self.working_only.unwrap_or(false),
             limit: self.limit.unwrap_or(50),
             offset: self.offset.unwrap_or(0),
             search: self.q.as_deref().unwrap_or("").trim().into(),

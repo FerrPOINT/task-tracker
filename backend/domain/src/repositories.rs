@@ -176,6 +176,15 @@ pub trait ProjectRepository: Send + Sync {
     async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
         Err(AppError::Unavailable("space_catalog_not_supported".into()))
     }
+    async fn admitted_project_ids(
+        &self,
+        _readable: &[shared::space_access::SpaceRef],
+        _active: &[shared::space_access::SpaceRef],
+    ) -> Result<(Vec<uuid::Uuid>, Vec<uuid::Uuid>), AppError> {
+        Err(AppError::Unavailable(
+            "project_admission_snapshot_not_supported".into(),
+        ))
+    }
     async fn list_space_accessible_catalog(
         &self,
         _spaces: &[shared::space_access::SpaceRef],

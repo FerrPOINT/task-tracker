@@ -554,6 +554,13 @@ impl ProjectRepository for ProjectRepo {
     async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
         crate::project_spaces::catalog_refs(self.db.as_ref()).await
     }
+    async fn admitted_project_ids(
+        &self,
+        readable: &[shared::space_access::SpaceRef],
+        active: &[shared::space_access::SpaceRef],
+    ) -> Result<(Vec<uuid::Uuid>, Vec<uuid::Uuid>), AppError> {
+        crate::project_spaces::admitted_project_ids(self.db.as_ref(), readable, active).await
+    }
     async fn list_space_accessible_catalog(
         &self,
         spaces: &[shared::space_access::SpaceRef],

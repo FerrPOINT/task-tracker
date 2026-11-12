@@ -9643,6 +9643,17 @@
         "operationId": "get_visible_projects_v2",
         "parameters": [
           {
+            "name": "working_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -10209,6 +10220,37 @@
           },
           "503": {
             "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/sdlc/project-access": {
+      "get": {
+        "tags": [
+          "routes::project_access"
+        ],
+        "operationId": "get_project_access_v2",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAccessV2"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Human project admission required"
+          },
+          "503": {
+            "description": "Fresh confirmation unavailable"
           }
         },
         "security": [
@@ -18402,6 +18444,73 @@
           },
           "tracker_instance_id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectAccessV2": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "identity",
+          "tracker_instance_id",
+          "canonical_tracker_instance_id",
+          "policy_revision",
+          "validity",
+          "readable_spaces",
+          "writable_spaces",
+          "project_ids",
+          "writable_project_ids"
+        ],
+        "properties": {
+          "canonical_tracker_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CentralIdentity"
+          },
+          "policy_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "project_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "readable_spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            }
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          },
+          "writable_project_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Space lifecycle/service-scope ceiling, not a substitute for native edit roles."
+          },
+          "writable_spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            }
           }
         },
         "additionalProperties": false

@@ -9,33 +9,49 @@ use std::{future::Future, pin::Pin, sync::Arc};
 pub(crate) const EXPIRED: &str = "pdlc_request_authority_expired";
 #[derive(Clone)]
 struct BoundRequest {
-    frame: Arc<app::space_access::CentralRequestContext>,
+    frame: Option<Arc<app::space_access::CentralRequestContext>>,
+    native: Option<Arc<app::native_space_access::NativeRequest>>,
     document: Option<serde_json::Value>,
 }
 impl BoundRequest {
     fn capture() -> Result<Option<Self>, DbErr> {
-        let Some(frame) =
-            app::space_access::current_request().map_err(|_| DbErr::Custom(EXPIRED.into()))?
-        else {
-            return Ok(None);
-        };
-        // The intent comes from the verified HTTP operation, never SQL text.
-        // Ordinary reads keep one query. Without a write context, active SQL guards
-        // reject accidental content mutations rather than authorizing a GET side effect.
-        if !frame.is_mutation() {
-            return Ok(None);
+        let frame =
+            app::space_access::current_request().map_err(|_| DbErr::Custom(EXPIRED.into()))?;
+        if let Some(frame) = frame {
+            if !frame.is_mutation() {
+                return Ok(None);
+            }
+            let document = if let Some(actor) = frame.spaces() {
+                Some(
+                    serde_json::json!({"schema_version":1,"kind":"human","user_id":frame.user().as_uuid(),
+                    "identity":actor.identity(),"active_spaces":actor.active_spaces().map_err(|_|DbErr::Custom(EXPIRED.into()))?,
+                    "readable_spaces":actor.readable_spaces().map_err(|_|DbErr::Custom(EXPIRED.into()))?,
+                    "policy_revision":actor.policy_revision(),"writable":frame.allows_mutation(),"valid_until":frame.valid_until()}),
+                )
+            } else {
+                None
+            };
+            return Ok(Some(Self {
+                frame: Some(frame),
+                native: None,
+                document,
+            }));
         }
-        let document = if let Some(actor) = frame.spaces() {
-            Some(
-                serde_json::json!({"schema_version":1,"kind":"human","user_id":frame.user().as_uuid(),"identity":actor.identity(),"active_spaces":actor.active_spaces().map_err(|_|DbErr::Custom(EXPIRED.into()))?,"readable_spaces":actor.readable_spaces().map_err(|_|DbErr::Custom(EXPIRED.into()))?,"policy_revision":actor.policy_revision(),"writable":frame.allows_mutation(),"valid_until":frame.valid_until()}),
-            )
-        } else {
-            None
-        };
-        Ok(Some(Self { frame, document }))
+        if let Some(native) =
+            app::native_space_access::current().map_err(|_| DbErr::Custom(EXPIRED.into()))?
+        {
+            return Ok(Some(Self {
+                frame: None,
+                native: Some(native),
+                document: None,
+            }));
+        }
+        Ok(None)
     }
     fn current(&self) -> Result<(), DbErr> {
-        if self.frame.is_current() {
+        let current = self.frame.as_ref().is_some_and(|f| f.is_current())
+            || self.native.as_ref().is_some_and(|f| f.is_current());
+        if current {
             Ok(())
         } else {
             Err(DbErr::Custom(EXPIRED.into()))
@@ -43,8 +59,6 @@ impl BoundRequest {
     }
     async fn bind(&self, tx: &DatabaseTransaction) -> Result<(), DbErr> {
         self.current()?;
-        // Before any content-table locks: serialize legacy/active writes with cohort
-        // activation and force a stale RR transaction to fail instead of using old mode.
         if tx
             .query_one(Statement::from_string(
                 DbBackend::Postgres,
@@ -59,6 +73,19 @@ impl BoundRequest {
             tx.execute(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT set_config('pdlc.tracker.write_actor',$1,true)",
+                [document.to_string().into()],
+            ))
+            .await?;
+        }
+        if let Some(native) = self.native.as_ref() {
+            let validity = native
+                .validity()
+                .map_err(|_| DbErr::Custom(EXPIRED.into()))?;
+            let document = serde_json::json!({"schema_version":1,"identity":native.identity(),
+                "scopes":native.scopes(),"writable":native.may_write(),"validity":validity});
+            tx.execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT set_config('pdlc.tracker.native_caller',$1,true)",
                 [document.to_string().into()],
             ))
             .await?;

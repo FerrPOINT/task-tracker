@@ -32,3 +32,5 @@ pub use commands::*;
 pub use context::*;
 pub use dto::*;
 pub use services::*;
+
+pub mod native_space_access;

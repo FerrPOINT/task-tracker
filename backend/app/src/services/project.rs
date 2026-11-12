@@ -303,12 +303,21 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         actor: &crate::space_access::SpaceActor,
     ) -> Result<(Vec<ProjectDto>, u64), AppError> {
         query.validate()?;
-        let mut allowed = actor.readable_spaces()?;
+        let readable = actor.readable_spaces()?;
+        let mut allowed = if query.working_only {
+            actor.active_spaces()?
+        } else {
+            readable.clone()
+        };
         if let Some(space) = space {
-            if !space.valid() || !allowed.contains(space) {
+            if !space.valid() || !readable.contains(space) {
                 return Err(AppError::Forbidden);
             }
-            allowed = vec![space.clone()];
+            allowed = if allowed.contains(space) {
+                vec![space.clone()]
+            } else {
+                Vec::new()
+            };
         }
         let page = self
             .projects

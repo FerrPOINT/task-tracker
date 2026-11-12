@@ -40,89 +40,7 @@ pub async fn bearer_auth(
     // not be silently converted into a human administrator during JIT.
     match super::central_auth::BRIDGE.try_verified_token(&token).await {
         Ok(verified) => {
-            let central = &verified.context;
-            if app::sdlc::has_pm_grant(&central.scopes)
-                || app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
-                || crate::routes::namespace::human_route_machine(&central.user_id)
-                || verified.subject_role.as_deref() == Some("service_account")
-            {
-                return Err(StatusCode::FORBIDDEN);
-            }
-            let scope_method = match operation {
-                app::space_access::RequestOperation::Read => "GET",
-                app::space_access::RequestOperation::Write => req.method().as_str(),
-            };
-            if !central.allows_service("task-tracker", scope_method) {
-                return Err(StatusCode::FORBIDDEN);
-            }
-            let user = find_or_link_central_user(&ctx, central, verified.display_name.as_deref())
-                .await
-                .map_err(|_| StatusCode::UNAUTHORIZED)?;
-            if !user.is_active {
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-            let space_actor = if policy_active {
-                let refs = ctx
-                    .repos
-                    .projects
-                    .space_catalog_refs()
-                    .await
-                    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-                let proof = crate::routes::project_spaces::client()
-                    .await
-                    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
-                    .confirm_many_read(&super::central_auth::BRIDGE, &verified, &refs)
-                    .await
-                    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-                Some(
-                    app::space_access::SpaceActor::from_read_proof(user.id, &verified, &proof)
-                        .map_err(|_| StatusCode::FORBIDDEN)?,
-                )
-            } else {
-                None
-            };
-            let frame = Arc::new(
-                app::space_access::CentralRequestContext::verified(
-                    user.id,
-                    &verified,
-                    space_actor,
-                    operation,
-                )
-                .map_err(|_| StatusCode::FORBIDDEN)?,
-            );
-            req.extensions_mut().insert(app::auth::UserClaims {
-                sub: user.id.as_uuid().to_string(),
-                exp: 0,
-                typ: Some("access".into()),
-                jti: None,
-            });
-            let response =
-                app::space_access::with_request_context(frame.clone(), next.run(req)).await;
-            if !frame.is_current() {
-                return Err(StatusCode::FORBIDDEN);
-            }
-            let mut response = response;
-            let (valid_until, deadline) = response_deadline(
-                &mut response,
-                frame.valid_until(),
-                frame.monotonic_deadline(),
-            );
-            response.headers_mut().insert(
-                "x-pdlc-admission-valid-until",
-                axum::http::HeaderValue::from_str(&valid_until.to_string())
-                    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
-            );
-            if frame.spaces().is_some() {
-                response.headers_mut().insert(
-                    axum::http::header::CACHE_CONTROL,
-                    axum::http::HeaderValue::from_static("private, no-store, no-transform"),
-                );
-            }
-            let (parts, body) = response.into_parts();
-            return Ok(Response::from_parts(
-                parts,
-                guard_admission_body(body, deadline, move || frame.is_current()),
-            ));
+            return verified_request(ctx, req, next, verified, policy_active, operation).await;
         }
         Err(pdlc_auth_core::service_bridge::VerifiedBridgeError::NotConfigured) => {
             if policy_active {
@@ -324,7 +242,7 @@ mod response_deadline_tests {
 }
 
 /// Export uses POST only to carry a structured query. It never authorizes a write.
-fn request_operation(
+pub(crate) fn request_operation(
     method: &axum::http::Method,
     path: &str,
 ) -> app::space_access::RequestOperation {
@@ -360,4 +278,103 @@ mod request_operation_tests {
             assert_eq!(request_operation(&Method::GET, path), Read);
         }
     }
+}
+
+/// Reuse the original verified actor across ordinary and SDLC HTTP adapters.
+pub(crate) async fn verified_request(
+    ctx: Arc<app::AppContext>,
+    mut req: Request,
+    next: Next,
+    verified: pdlc_auth_core::service_bridge::VerifiedCentralToken,
+    policy_active: bool,
+    operation: app::space_access::RequestOperation,
+) -> Result<Response, StatusCode> {
+    let central = &verified.context;
+    if app::sdlc::has_pm_grant(&central.scopes)
+        || app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
+        || crate::routes::namespace::human_route_machine(&central.user_id)
+        || verified.subject_role.as_deref() == Some("service_account")
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let scope_method = match operation {
+        app::space_access::RequestOperation::Read => "GET",
+        app::space_access::RequestOperation::Write => req.method().as_str(),
+    };
+    if !central.allows_service("task-tracker", scope_method) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let user = find_or_link_central_user(&ctx, central, verified.display_name.as_deref())
+        .await
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    if !user.is_active {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let space_actor = if policy_active {
+        let refs = ctx
+            .repos
+            .projects
+            .space_catalog_refs()
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        let proof = crate::routes::project_spaces::client()
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+            .confirm_many_read(&super::central_auth::BRIDGE, &verified, &refs)
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        Some(
+            app::space_access::SpaceActor::from_read_proof(user.id, &verified, &proof)
+                .map_err(|_| StatusCode::FORBIDDEN)?,
+        )
+    } else {
+        None
+    };
+    let frame = Arc::new(
+        app::space_access::CentralRequestContext::verified(
+            user.id,
+            &verified,
+            space_actor,
+            operation,
+        )
+        .map_err(|_| StatusCode::FORBIDDEN)?,
+    );
+    req.extensions_mut().insert(verified.clone());
+    req.extensions_mut().insert(app::auth::UserClaims {
+        sub: user.id.as_uuid().to_string(),
+        exp: 0,
+        typ: Some("access".into()),
+        jti: None,
+    });
+    let response = tokio::time::timeout_at(
+        frame.monotonic_deadline().into(),
+        app::space_access::with_request_context(frame.clone(), next.run(req)),
+    )
+    .await
+    .map_err(|_| StatusCode::FORBIDDEN)?;
+    if !frame.is_current() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let mut response = response;
+    let (valid_until, deadline) = response_deadline(
+        &mut response,
+        frame.valid_until(),
+        frame.monotonic_deadline(),
+    );
+    response.headers_mut().insert(
+        "x-pdlc-admission-valid-until",
+        axum::http::HeaderValue::from_str(&valid_until.to_string())
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
+    );
+    if frame.spaces().is_some() {
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("private, no-store, no-transform"),
+        );
+    }
+    let (parts, body) = response.into_parts();
+    return Ok(Response::from_parts(
+        parts,
+        guard_admission_body(body, deadline, move || frame.is_current()),
+    ));
 }

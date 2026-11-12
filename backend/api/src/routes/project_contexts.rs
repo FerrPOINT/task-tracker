@@ -308,6 +308,7 @@ mod tests {
             },
         };
         let admission = SpaceAdmission {
+            inheritance: None,
             schema_version: 1,
             identity,
             identity_active: true,

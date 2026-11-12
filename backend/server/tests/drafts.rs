@@ -59,7 +59,9 @@ async fn session(
         .map_err(|_| StatusCode::UNAUTHORIZED)?
         .claims;
     let subject = claims["sub"].as_str().ok_or(StatusCode::UNAUTHORIZED)?;
-    Ok(Json(json!({"id":subject,"display_name":subject})))
+    Ok(Json(
+        json!({"id":subject,"display_name":subject,"status":"active","role":"member","email":"owner@example.test"}),
+    ))
 }
 
 async fn introspect(
@@ -76,7 +78,8 @@ async fn introspect(
         _ => return Err(StatusCode::UNAUTHORIZED),
     };
     Ok(Json(
-        json!({"sub":stub.owner,"email":"owner@example.test","display_name":"owner","role":"member","scopes":scopes}),
+        json!({"sub":stub.owner,"email":"owner@example.test","display_name":"owner","role":"member","subject_role":"member","scopes":scopes,
+            "observed_at":shared::now(),"expires_at":shared::now()+std::time::Duration::from_secs(3600)}),
     ))
 }
 

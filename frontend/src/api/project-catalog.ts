@@ -15,6 +15,7 @@ import {
 
 export type VisibleProjectCatalog = components['schemas']['VisibleProjectCatalogV2']
 export interface VisibleProjectQuery {
+  workingOnly?: boolean
   limit?: number
   offset?: number
   q?: string
@@ -23,6 +24,7 @@ export interface VisibleProjectQuery {
 }
 const querySchema = z
   .object({
+    workingOnly: z.boolean().default(false),
     limit: z.number().int().safe().min(1).max(100).default(50),
     offset: z.number().int().safe().nonnegative().default(0),
     q: z
@@ -78,6 +80,7 @@ export const visibleProjectKeys = {
       query.offset ?? 0,
       query.q?.trim() ?? '',
       query.projectKey ?? null,
+      query.workingOnly ?? false,
     ] as const,
 }
 export async function getVisibleProjectCatalog(
@@ -95,6 +98,7 @@ export async function getVisibleProjectCatalog(
         offset: query.offset,
         q: q || undefined,
         project_key: query.projectKey,
+        working_only: query.workingOnly || undefined,
         registry_instance_id: space?.registry_instance_id,
         space_id: space?.space_id,
       },

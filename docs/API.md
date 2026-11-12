@@ -2061,3 +2061,14 @@ Human V2 project/space ответы используют typed response deadline
 не расширяются; policy revision/read-only hint — отдельные bounded headers.
 Глобальная UI страница /admin имеет независимую route classification; доступ к
 ней определяют её прежние серверные глобальные полномочия, не Project catalog.
+
+Human SDLC project directory/access применяет тот же набор SpaceRef, включая
+наследование, до сортировки и страниц. Native ACL не сохраняет чтение отозванного
+пространства. Допуск пространства открывает чтение проекта, а SDLC изменение
+дополнительно требует прежнего native project membership/ownership и active
+space permit. ProjectRef берётся из текущего владельца Tracker; legacy instance
+строка SDLC сохраняет прежний wire и не преобразуется в UUID неявно.
+
+SDLC repository использует существующий GuardedDb для request-owned write context;
+не создаётся второй допуск, пул или копия членства. Отсутствующий human proof при
+активной политике закрывает доступ. Native capability не становится human proof.

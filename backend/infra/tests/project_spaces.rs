@@ -25,6 +25,7 @@ fn permit(user: UserId, spaces: &[SpaceRef], seconds: i64) -> SpaceWritePermit {
     };
     let now = chrono::Utc::now().timestamp();
     let admission = SpaceAdmission {
+        inheritance: None,
         schema_version: 1,
         identity: identity.clone(),
         identity_active: true,
@@ -201,6 +202,7 @@ async fn verify(db: &Arc<DatabaseConnection>) {
             .is_empty()
     );
     let query = |search: &str, offset: u64| domain::project_spaces::ProjectCatalogQuery {
+        working_only: false,
         limit: 1,
         offset,
         search: search.into(),
