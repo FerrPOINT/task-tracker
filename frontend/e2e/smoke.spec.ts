@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import nodePath from 'node:path'
 import { createServer } from 'node:http'
 import { test, expect, type Page, type Route } from '@playwright/test'
+import type { ApplicationAccessV1 } from '@pdlc/ui/application-access'
 
 const mockUser = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -28,11 +29,29 @@ function routeJson(route: Route, body: unknown, status = 200) {
   })
 }
 
-async function installSsoMocks(page: Page) {
+async function installSsoMocks(
+  page: Page,
+  access: Partial<Pick<ApplicationAccessV1, 'role' | 'applications'>> = {},
+) {
   const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'qa', alg: 'ES256', use: 'sig' }
-  let issuer = 'http://localhost:7701'
+  const issuer = 'http://localhost:7701'
   let nonce = ''
+  let accessToken = ''
+  let accessExpiresAt = 0
+
+  function signedToken(claims: Record<string, unknown>, type: 'JWT' | 'at+jwt') {
+    const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: type, kid: 'qa' })).toString(
+      'base64url',
+    )
+    const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
+    const content = `${header}.${payload}`
+    const signature = sign('sha256', Buffer.from(content), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url')
+    return `${content}.${signature}`
+  }
 
   const authorizationServer = createServer((request, response) => {
     const url = new URL(request.url!, issuer)
@@ -50,39 +69,65 @@ async function installSsoMocks(page: Page) {
   if (!address || typeof address === 'string') throw new Error('Missing SSO fixture address')
   page.once('close', () => authorizationServer.close())
 
-  await page.route('**/oidc/authorize**', async (route) => {
-    const url = new URL(route.request().url())
-    issuer = url.origin
-    nonce = url.searchParams.get('nonce') ?? ''
-    await route.continue({ url: `http://127.0.0.1:${address.port}/authorize${url.search}` })
-  })
-  await page.route('**/oidc/token', async (route) => {
-    const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'qa' })).toString(
-      'base64url',
+  await page.route(
+    (url) => url.origin === issuer && url.pathname === '/oidc/authorize',
+    async (route) => {
+      const url = new URL(route.request().url())
+      nonce = url.searchParams.get('nonce') ?? ''
+      await route.continue({ url: `http://127.0.0.1:${address.port}/authorize${url.search}` })
+    },
+  )
+  await page.route(`${issuer}/oidc/token`, async (route) => {
+    const issuedAt = Math.floor(Date.now() / 1000)
+    const expiresAt = issuedAt + 3600
+    accessExpiresAt = expiresAt * 1000
+    accessToken = signedToken(
+      { iss: issuer, aud: 'task-tracker', sub: mockUser.id, iat: issuedAt, exp: expiresAt },
+      'at+jwt',
     )
-    const payload = Buffer.from(
-      JSON.stringify({
+    const idToken = signedToken(
+      {
         iss: issuer,
         aud: 'task-tracker',
         sub: mockUser.id,
         email: 'demo@example.com',
         nonce,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 3600,
-      }),
-    ).toString('base64url')
-    const content = `${header}.${payload}`
-    const signature = sign('sha256', Buffer.from(content), {
-      key: privateKey,
-      dsaEncoding: 'ieee-p1363',
-    }).toString('base64url')
+        iat: issuedAt,
+        exp: expiresAt,
+      },
+      'JWT',
+    )
     return routeJson(route, {
-      access_token: 'demo-token',
-      id_token: `${content}.${signature}`,
+      access_token: accessToken,
+      id_token: idToken,
       expires_in: 3600,
     })
   })
-  await page.route('**/oidc/jwks', (route) => routeJson(route, { keys: [jwk] }))
+  await page.route(`${issuer}/oidc/jwks`, (route) => routeJson(route, { keys: [jwk] }))
+  await page.route(`${issuer}/auth/access`, (route) => {
+    const request = route.request()
+    if (request.method() !== 'GET') return routeJson(route, { error: 'Method not allowed' }, 405)
+    const now = Date.now()
+    if (
+      !accessToken ||
+      request.headers()['authorization'] !== `Bearer ${accessToken}` ||
+      now >= accessExpiresAt
+    ) {
+      return routeJson(route, { error: 'Unknown or expired fixture bearer' }, 401)
+    }
+    const decision: ApplicationAccessV1 = {
+      schema_version: 1,
+      issuer,
+      subject: mockUser.id,
+      role: access.role ?? 'user',
+      applications: access.applications ?? ['task-tracker'],
+      revision: 1,
+      enforced: true,
+      observed_at: new Date(now).toISOString(),
+      expires_at: new Date(Math.min(now + 30_000, accessExpiresAt)).toISOString(),
+    }
+    return routeJson(route, decision)
+  })
 }
 
 test.describe('smoke', () => {
@@ -90,7 +135,7 @@ test.describe('smoke', () => {
     page,
     baseURL,
   }, testInfo) => {
-    await installSsoMocks(page)
+    await installSsoMocks(page, { applications: ['task-tracker', 'fleet-control'] })
     const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
     const project = {
       id: '00000000-0000-0000-0000-000000000010',
@@ -156,7 +201,7 @@ test.describe('smoke', () => {
       }),
     )
     await page.goto(`${app}/projects/DEMO/backlog`)
-    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /backlog|бэклог/i, level: 1 })).toBeVisible()
     const actions = page
       .locator('main')
       .getByRole('button', { name: /^Создать$|Создать задачу|^Create$|Create issue/i })
@@ -302,7 +347,7 @@ test.describe('smoke', () => {
     page,
     baseURL,
   }, testInfo) => {
-    await installSsoMocks(page)
+    await installSsoMocks(page, { role: 'admin' })
     const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
     const project = {
       id: '00000000-0000-0000-0000-000000000010',
@@ -337,6 +382,7 @@ test.describe('smoke', () => {
           email: 'demo@example.com',
           username: 'demo',
           display_name: 'Demo User',
+          is_system_admin: true,
         })
       if (path === '/users') return routeJson(route, { users: [] })
       if (path === '/issue-types')
@@ -361,11 +407,14 @@ test.describe('smoke', () => {
     denied = false
     await dialog.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
     await expect(dialog).toBeHidden()
-    await expect(page.getByLabel(/^(проект|project)\s*\*?$/i)).toContainText('Renamed Project')
+    await expect(page.getByRole('button', { name: /^(проект|project):/i })).toContainText(
+      'Renamed Project',
+    )
     await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
       'Draft before project',
     )
-    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeEnabled()
+    const submit = page.getByRole('main').getByRole('button', { name: /^(создать|create)$/i })
+    await expect(submit).toBeEnabled()
     expect(projectWrites).toBe(2)
     expect(issueWrites).toBe(0)
     for (const width of [375, 1920, 2560]) {
@@ -383,7 +432,7 @@ test.describe('smoke', () => {
     )
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
     await readback
-    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeDisabled()
+    await expect(submit).toBeDisabled()
     await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
       'Draft before project',
     )
@@ -396,7 +445,7 @@ test.describe('smoke', () => {
   }, testInfo) => {
     test.setTimeout(120_000)
     const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
-    await installSsoMocks(page)
+    await installSsoMocks(page, { role: 'admin' })
     await page.route('**/api/v1/auth/login', (route) =>
       routeJson(route, {
         access_token: 'demo-token',
@@ -412,6 +461,7 @@ test.describe('smoke', () => {
         email: 'demo@example.com',
         username: 'demo',
         display_name: 'Demo User',
+        is_system_admin: true,
       }),
     )
     await page.route('**/api/v1/statuses', (route) =>
@@ -740,7 +790,12 @@ test.describe('smoke', () => {
     await page.goto(`${appBaseURL}/projects`)
     await expect(page.getByRole('main').getByText(mockUser.name, { exact: true })).toBeVisible()
 
-    await page.getByRole('link', { name: /(?:settings|настройки проекта):/i }).click()
+    await page
+      .getByRole('button', {
+        name: new RegExp(`^(actions for project|действия с проектом) ${mockUser.name}$`, 'i'),
+      })
+      .click()
+    await page.getByRole('menuitem', { name: /^(project settings|настройки проекта)$/i }).click()
     await expect.poll(() => new URL(page.url()).pathname).toBe(`/projects/${mockUser.key}/settings`)
     expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
       namespaceEnabled ? registryId : null,
@@ -755,7 +810,9 @@ test.describe('smoke', () => {
     await expect(description).toHaveValue('Updated description')
     projectDetails = { ...projectDetails, name: 'Renamed by another editor' }
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
-    await expect(page.getByLabel(/^(name|название)$/i)).toHaveValue('Renamed by another editor')
+    await expect(page.getByRole('textbox', { name: /^(name|название)$/i })).toHaveValue(
+      'Renamed by another editor',
+    )
     await expect(description).toHaveValue('Updated description')
     failSave = false
     await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
@@ -782,7 +839,7 @@ test.describe('smoke', () => {
     await page.goto(
       `${appBaseURL}/projects/${mockUser.key}/backlog${namespaceEnabled ? `?registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
     )
-    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /backlog|бэклог/i, level: 1 })).toBeVisible()
     const createActions = page
       .locator('main')
       .getByRole('button', { name: /^Создать$|Создать задачу|^Create$|Create issue/i })
@@ -791,7 +848,7 @@ test.describe('smoke', () => {
     await page.goto(
       `${appBaseURL}/issues/create?project_key=${mockUser.key}${namespaceEnabled ? `&registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
     )
-    await expect(page.locator('#issue-project')).toHaveAttribute('value', mockUser.key)
+    await expect(page.locator('#issue-project')).toHaveText(`${mockUser.name} (${mockUser.key})`)
 
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()

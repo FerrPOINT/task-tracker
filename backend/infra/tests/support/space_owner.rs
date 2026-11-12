@@ -7,11 +7,11 @@ use uuid::Uuid;
 fn id(n: u64) -> Uuid {
     Uuid::parse_str(&format!("00000000-0000-4000-8000-{n:012}")).unwrap()
 }
-fn command(space: SpaceRef, slug: &str) -> SpaceOwnerCommandV2 {
+fn command(space: SpaceRef, participant: Uuid, slug: &str) -> SpaceOwnerCommandV2 {
     SpaceOwnerCommandV2 {
         schema_version: 2,
         space,
-        participant_instance_id: id(99),
+        participant_instance_id: participant,
         operation_id: Uuid::new_v4(),
         revision: 11,
         desired_state: DesiredSpaceState::Active,
@@ -86,7 +86,7 @@ async fn complete(
     db.execute(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO sdlc_pm_completions(task_id,assignment_id,execution_id,assignment_version) VALUES($1,$2,$3,1)",[task.into(),assignment.into(),execution.into()])).await?;
     Ok(())
 }
-pub async fn verify(db: &DatabaseConnection) {
+pub async fn verify(db: &DatabaseConnection, registry: Uuid, participant: Uuid) {
     let now = chrono::Utc::now().timestamp();
     let authority = SpaceOwnerAuthority::confirmed(
         CentralIdentity {
@@ -97,7 +97,7 @@ pub async fn verify(db: &DatabaseConnection) {
     )
     .unwrap();
     let a = SpaceRef {
-        registry_instance_id: id(10),
+        registry_instance_id: registry,
         space_id: id(11),
     };
     let b = SpaceRef {
@@ -108,8 +108,8 @@ pub async fn verify(db: &DatabaseConnection) {
         space_id: id(13),
         ..a.clone()
     };
-    let mut ca = command(a.clone(), "alpha");
-    let mut cb = command(b.clone(), "beta");
+    let mut ca = command(a.clone(), participant, "alpha");
+    let mut cb = command(b.clone(), participant, "beta");
     for command in [&ca, &cb] {
         assert!(
             infra::space_owner::apply(db, command, &authority)
@@ -119,7 +119,7 @@ pub async fn verify(db: &DatabaseConnection) {
                 .is_none()
         );
     }
-    let mut standalone = command(c.clone(), "standalone");
+    let mut standalone = command(c.clone(), participant, "standalone");
     standalone.revision = 1;
     let ack = infra::space_owner::apply(db, &standalone, &authority)
         .await
@@ -145,7 +145,13 @@ pub async fn verify(db: &DatabaseConnection) {
             .is_err()
     );
     // Keep the canonical project in both spaces; owner lifecycle never rewrites this set.
-    db.execute_unprepared("INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000011')").await.unwrap();
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO tracker_project_spaces(project_id,registry_instance_id,space_id) VALUES($1,$2,$3)",
+        [id(1).into(), a.registry_instance_id.into(), a.space_id.into()],
+    ))
+    .await
+    .unwrap();
     let project = shared::ProjectId::from_uuid(id(1));
     let before = infra::project_spaces::get(db, project).await.unwrap();
     for task in [id(201), id(202), id(203)] {

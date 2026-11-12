@@ -447,15 +447,7 @@ impl TaskSourceRepository for PostgresSdlcRepository {
         let observed_at = super::lifecycle::now(&tx).await?;
         let current = current.map(|receipt| domain::sdlc_lifecycle::LifecycleReadback {
             observed_at,
-            runtime_state: if receipt
-                .lease
-                .as_ref()
-                .is_some_and(|l| l.expires_at <= observed_at)
-            {
-                domain::sdlc_lifecycle::RuntimeState::Unknown
-            } else {
-                receipt.task.runtime
-            },
+            runtime_state: receipt.task.runtime,
             receipt,
         });
         let missing_policy = tx.query_one(statement(
@@ -483,7 +475,9 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             && let Some(assignment) = current.receipt.assignment.as_ref()
         {
             *workspace_preparation_commit = match assignment.stage {
-                domain::sdlc_lifecycle::LifecycleStage::Development => Some(binding.base_commit.clone()),
+                domain::sdlc_lifecycle::LifecycleStage::Development => {
+                    Some(binding.base_commit.clone())
+                }
                 domain::sdlc_lifecycle::LifecycleStage::Rework => {
                     // Follow the immutable accepted predecessor chain from the
                     // finding, rather than trusting the current Git branch head.

@@ -1,11 +1,154 @@
 # Стратегия тестирования Task Tracker
 
+## Current Execution And Reviewer Handoff
+
+The 2026-11-11 source regressions cover the current delivery execution key after
+reservation/retry, absent delivery authority before reservation, preserved PM
+history, and safe typed Start/proposal errors. Agent Start, Completed and
+application-owned next-stage/Ready are different actions.
+
+Current PostgreSQL selectors cover the merged main linear policy:
+Review -> Testing -> Deployment for both verdicts, without a new Rework cycle,
+and both archived Review verdicts. Plan authorization118 follows main linear117
+in both registered lineages. Upgrade fixtures preserve prior ledger timestamps;
+archive readback does not manufacture a new transition.
+Each ignored selector requires its own fresh *_lifecycle_test or
+*_pdlc4_compat_test database and a verified nonzero test count.
+
+Archive readback must not run the current transition policy again or create
+another assignment. New completion still requires exact current proof and
+must not accept an archived terminal Review shape. Model/Advisor inputs and
+criteria are unchanged; these mechanical checks are not live-agent acceptance.
+
+### Integrated Main Qualification
+
+Frozen tree `896e986cf6aa834beeafe019a0ae03ae672cd375` preserves main's linear
+Reviewer -> Testing -> Deployment policy and adds no alternate transition mode.
+The unpublished duplicate Reviewer migration is withdrawn; plan authorization118
+follows the existing main linear117 in both lineages. Explicit predecessor test
+tails remain old until their tested upgrade, without changing applied SQL.
+
+Current functional checks pass: 841 backend native tests, 64 CLI tests and 36
+distinct PostgreSQL scenarios. The compiled ignored inventory is 111, not 111 new
+passes. The 26 addressed scenarios are supplemented by ten existing configured
+Start/CLI, authorization, idempotency and predecessor-history cases. They close
+the initially unexercised configured-start scope; expectations are unchanged.
+This is not a rerun of the earlier 114-case qualification under the old policy.
+
+Standard LLVM coverage is 53282/68369 lines (77.93298%), 77405/103841 regions
+(74.54185%) and 4225/6017 functions (70.21772%), above the unchanged 75/65/60 gates.
+The original five exclusions and external Base supplier exclusion remain the
+same; no Tracker file or test is newly excluded. The initial 74.24417% line result
+remains separate evidence, not relabelled as passing.
+
+The notification fixture awaits its own server shutdown and removes only its
+successfully created disposable database after both pools close. PostgreSQL's
+disconnect acknowledgement race is handled by its native DROP WITH FORCE, not
+by retries, sleeps or production changes. The other 25 PG results and unchanged
+objects remain applicable; the corrected exact notification case passes once.
+
+Terminal receipt: `tracker217-integrated-896e986cf6aa-final-qualification.json`.
+Owned helper cleanup is verified; no task containers, networks, volumes or active
+execution sessions remain. Earlier failed and intermediate receipts are unchanged.
+Strict workspace/all-target backend Clippy and Rustfmt also pass on this tree.
+Source DTOs, API registration, tracked OpenAPI and frontend inputs are unchanged;
+the previous actual Rust schema generation and six Chromium checks retain their
+scope. These local source checks do not claim installation or live-agent acceptance.
+
+### Earlier Policy Checkpoint
+
+The earlier frozen tree `fc3301f166e437d096cd934851d0b5a7b45959ef` passed all12 selected
+local source gates:841 backend native tests, eight exact PostgreSQL scenarios,
+strict workspace/all-target backend Clippy, Rustfmt and actual Rust OpenAPI
+generation. The native run has112 ignored tests, not counted as passes; each
+selected PostgreSQL gate separately reports exactly one pass. API72 includes
+all three `stage_start_*` regressions.
+
+Receipt: `sdlc-qa-tracker-status-b2467d46d8ef-result.json`, `passed=true`,
+`cleanup_verified=true`, journal `cleaned`. Backend SDK is `ed61ec63`; independent
+CLI supplier is `5f5bcb5e`. QA uses Rust1.88.0, debug0/incremental0 and that
+toolchain's bundled LLD; production profiles and dependencies are unchanged.
+Those results precede forward118 and its fixture regressions; they do not
+qualify the later SQL change. Current qualification is recorded separately below.
+
+The generated572588-byte OpenAPI matches the frozen tracked blob and checkout
+byte-for-byte: SHA256
+`ad30dd5f67443b342f7031f0f94361cd0a5d64dac159407095f9985b88291902`.
+CLI64 and frontend897, typecheck/lint/build are reused from unchanged sources
+and pins qualified in [PR214](https://github.com/FerrPOINT/task-tracker/pull/214).
+They are not new UI or live checks. Hosted Actions, installation and seven-agent
+runtime acceptance have not been performed for this candidate.
+
+The browser fixture is separately qualified on tree
+`c36ef772ce1b778c15e58ed58d8d5f2bd57bd6e0`: all six Chromium smoke cases pass
+with one worker and zero retries. The SSO fixture supplies separate signed
+access/ID tokens and the pinned UI's typed application-access decision; project
+administration cases use a consistent administrative actor. Selectors follow
+the actual accessible controls. Product authorization and all six scenarios'
+business assertions are unchanged.
+
+Receipt `tracker217-playwright-eed2fa640d3c/result.json` records format, lint,
+fixture typecheck/build, six executed tests, screenshots at375/1920/2560,
+unchanged source inputs, closed preview port and verified scratch cleanup.
+This is synthetic browser qualification, not live Auth/backend acceptance.
+### Pre-Integration Composite Qualification
+
+This checkpoint precedes the merged main linear policy. It is retained evidence,
+not proof of the later integrated candidate.
+
+Frozen tree `5cd1a8629b50422039fe7d8c9280fcaadf6fa42e` combines 842 native
+backend passes, 64 CLI passes and 114 distinct PostgreSQL passes. The 112 unchanged
+PG cases retain their executed evidence; notification and the updated HTTP SDLC
+case each have a new exact pass. This is a composite qualification, not a claim
+that an earlier failed full command passed. Both118 upgrade lineages are included.
+
+Only four server-test files changed after the instrumented baseline. Compiler
+dependency metadata and 214 unchanged ELF checksums prove the reuse boundary.
+Superseded test objects and raw profiles were removed by LLVM binary identity
+before rebuilding the changed case. Its settled historical fixture preserves
+GET 200/ACL/no-write/restart coverage without restoring retired HTTP writers;
+ledger and receipt timestamps use the same exact PostgreSQL clock value.
+
+Standard LLVM coverage is 61950/68525 lines (90.40496%), 91717/103990 regions
+(88.19790%) and 4564/6017 functions (75.85175%), above the existing 75/65/60 gates.
+The original five exclusions remain; only the external `/src/services-base/`
+supplier prefix is additionally excluded. No Tracker source is newly excluded.
+Strict workspace/all-target backend Clippy and Rustfmt pass.
+Fresh Rust OpenAPI generation matches the tracked 572588 bytes exactly, SHA256
+`ad30dd5f67443b342f7031f0f94361cd0a5d64dac159407095f9985b88291902`.
+
+Receipt: `tracker217-final-5cd1a8629b50-qualified-result.json`. Earlier failures
+remain separate evidence. No model calls, runtime installation or live-agent
+acceptance are claimed by these source checks.
+
+### Plan Content Authorization
+
+Forward118 restores the plan-table dispatch overwritten by native-artifacts113.
+The existing `content_writes_require_current_actor_role_and_active_admitted_space_through_commit`
+case is the ordinary repository regression: valid active-space writes must pass
+without admitting a foreign actor or an archived-only space. Do not change the
+fixture's role to bypass a dispatch error.
+
+`native_artifact_content_port_is_exact_and_rechecked_at_commit` exercises both
+plan tables under active admission and the existing native scope, including
+foreign-task/author and read-only refusals. Its sealed attachment INSERT and
+deferred commit checks remain separate. These direct SQL-port assertions do not
+claim a complete live Architect run.
+
+The two118 upgrade cases require separate fresh owned *_pdlc4_compat_test
+databases. Both registered lineages must preserve the function OID and previous
+ledger entries and make a repeated up inert. Historical migration SQL is not
+rewritten. The newly changed SQL requires fresh qualification; the earlier841/8
+source results above are not evidence for118.
+
 ## Agent Stage Status: 2026-11-07
 
 Source qualification covers explicit agent Start/InProgress, recorded Completed
 and application-owned next-stage/Ready. PM Draft/Completed hands off through the
 existing atomic Analysis queue; delivery requires native terminal verification.
-Final DevOps and rework-limit outcomes without handoff retain Completed. Owner
+The current linear flow advances Reviewer to Tester and Tester to DevOps for
+either verdict, without entering Rework or incrementing the cycle. Final DevOps
+retains Deployment/Completed. Owner
 consent, assignment/fence checks, exact replay and preserved history remain gates.
 There is no new autoAdvance flag or Analyst-disable requirement for acceptance;
 Analysis/Ready is the normal handoff and the Analyst may subsequently run.
@@ -26,6 +169,17 @@ All897 frontend tests and typecheck pass on the unchanged frontend tree of main.
 Unselected ignored tests are not passes. Earlier failures retain their original
 results. Source qualification used no model calls; installation and live-agent
 acceptance remain open. The dated section below records the previous contract.
+
+Новые Architect proposal/Complete требуют сохранённую decomposition revision с
+точным hash и requirements binding даже до первого плана. Регрессия
+`decomposition_architect_requires_current_role_fence_and_requirements` проверяет
+отказ opaque/missing references без изменений состояния; успешные all-role,
+rework и critical fixtures сохраняют план через repository API. На исходниках
+`0ad2841c8820d3040ad0402b9b648290532f6d5e` пройдены девять адресных
+PostgreSQL-сценариев (Architect, все роли, Rework, ограничения Reviewer/Tester и
+четыре critical-сценария), полный backend-набор и Clippy с запретом warnings.
+Workspace rustfmt проверен отдельно. Временные QA-ресурсы убраны; вызовов модели
+не было. Установка и живая приёмка Analyst/Architect остаются отдельными gates.
 
 ## Native Retained Read Scope: Forward114
 
@@ -486,7 +640,10 @@ HTTP fixture дополнительно проверяет 409 для созда
 связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
 после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.
 
-## Initial PM Stops At Backlog (21 October 2026)
+## Historical: Initial PM Stops At Backlog (21 October 2026)
+
+Superseded by the explicit agent status and system-owned handoff contract above.
+The following records the earlier source qualification, not current routing.
 
 New source policy: exact owner confirmation publishes Backlog/Ready; accepted PM
 completion separately retains the current terminal/Workflow/lease receipt.

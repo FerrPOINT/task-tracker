@@ -1,5 +1,39 @@
 # API v1 Specification — Task Tracker
 
+## SDLC JSON Rejections And Current Execution
+
+The existing stage-starts and delivery-proposals POST routes preserve extractor
+HTTP statuses (422 for an invalid DTO, 400 for syntax, 415 for content type).
+They return the existing error.code/message JSON envelope and Cache-Control:
+no-store instead of an unstructured extractor body. Messages describe the known
+request contract without echoing arbitrary field names, values or documents.
+They do not repair or resubmit the request.
+
+Configured delivery context.workflow_task_key identifies the current reserved
+assignment.execution.key; it is absent while no delivery assignment exists.
+The retained PM key and historical operation responses are unchanged. No new
+route, request/response field or database column is introduced.
+
+## Untimed Delivery Binding (Source Candidate)
+
+The existing lifecycle routes and fence fields are unchanged. Current `receipt.lease`
+contains `lease_id`, `version`, `holder_subject`, and `claimed_at`; ownership has no
+heartbeat or expiry. New receipts omit both archival time fields. Saved operation
+readbacks retain their original dates and hashes and are not current authority.
+Current mutations require the exact `expected_lease_version`; heartbeat is no longer
+a current command. Native Unknown still blocks unsafe continuation or capacity release.
+Namespace execution metadata no longer publishes `workspace_preparation_expires_at`;
+the existing preparation commit is exposed only for the exact current Developer assignment.
+Generic CLI JSON consumers need no new command; agent/Hermes images are unchanged.
+This source change is not installed or live-qualified by this documentation.
+
+Старые Analysis writers удалены из HTTP router и OpenAPI: `POST .../analysis-reservation`,
+`POST .../analysis-reservation/heartbeat` и `POST .../analysis-result` больше не
+исполняются. Текущая запись выполняется через существующий `POST .../sdlc/lifecycle`,
+без legacy fallback. GET резервации, configuration-preflight и original-key
+readback результата сохранены с прежними проверками доступа; исторические данные
+не переписываются. Configured PM completion остаётся зарегистрированным.
+
 ## Embedded Decomposition
 
 Управление планом: `GET/POST /api/v1/issues/{id}/decomposition`,

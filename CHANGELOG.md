@@ -1,5 +1,72 @@
 # Changelog
 
+## 2026-11-11: Current Execution And System Reviewer Handoff
+
+- Forward118 restores plan-table authorization lost when native-artifacts113
+  replaced the shared SQL dispatch. Existing ordinary and narrow native guards
+  remain intact; applied SQL, data and migration ledger are not rewritten.
+  Both upgrade lineages preserve function identity and the prior migration ledger.
+- Delivery context exposes the reserved execution key, never the retained PM key;
+  an unassigned stage exposes no delivery key. Historical PM data stays unchanged.
+- Keep the merged main policy: both Reviewer verdicts advance to Testing/Ready,
+  both Tester verdicts to Deployment/Ready. Findings remain in the result;
+  archived operations do not trigger new work. No alternate routing policy.
+- Start/proposal JSON rejection uses the existing safe error envelope with the
+  expected contract, preserving HTTP status and hiding untrusted body contents.
+- Integrated main functional qualification: 841 backend native, 64 CLI and 36
+  PostgreSQL scenarios pass; coverage is 77.93% lines, 74.54% regions and 70.22%
+  functions, above the existing gates. Current Start/ACL/replay and both histories
+  are tested without restoring the unpublished duplicate Reviewer policy.
+  Strict all-target backend Clippy and Rustfmt pass on the integrated source.
+  The remaining notification cleanup correction is test-only; production
+  behavior and original expectations are unchanged.
+- Pre-integration composite qualification: 842 native backend, 64 CLI and114
+  distinct PostgreSQL scenarios PASS; these results precede the later linear
+  policy integration and are not its qualification.
+  Coverage passes at 90.40% lines, 88.20% regions and 75.85% functions. Strict Clippy
+  and Rustfmt pass; fresh Rust OpenAPI generation matches the tracked schema.
+  Unchanged results are reused only with compiler-input proof;
+  earlier failures are not relabelled. Frontend897 qualification is reused from
+  unchanged PR214 sources and pins; see
+  [verification scope](docs/TESTING.md#current-execution-and-reviewer-handoff).
+- Source qualified, not installed. Hosted Actions and live-agent acceptance remain
+  separate; publication does not activate retained operator-owned snapshots.
+- Browser fixtures follow the pinned SSO/application-access contract and current
+  accessible controls. All six Chromium scenarios pass without retries; format,
+  lint, typecheck and build pass. No product Auth or business assertion changes.
+
+## 2026-11-11: Корректное Повторное Использование Cargo Target
+
+- Umbrella Dockerfile обновляет времена исходников перед сборкой, чтобы смена
+  SDK не использовала устаревшие артефакты из общего target-кэша.
+
+## 2026-11-10: Линейное Завершение Ролей Без Rework
+
+- Reviewer передаёт работу Tester при approved и rework; Tester передаёт DevOps
+  при passed и rework. Реальные findings и typed verdict сохраняются, cycle не
+  увеличивается. После DevOps сохраняется финальный Deployment/Completed.
+- Агентские Start/InProgress и proposal/Completed, настоящий Fleet terminal,
+  освобождение ресурсов и исходные operation receipts сохраняются. Forward117
+  обновляет SQL guard будущих переходов без изменения старой истории.
+## 2026-11-10: Объединённые Истории Main И Назначений Без Срока
+
+- Обе опубликованные миграции116 зарегистрированы под исходными полными именами.
+  Reviewer завершает Review без автоматического назначения следующей роли;
+  текущий delivery binding сохраняет точные identity/holder/version без сроков.
+- Обновление из каждой истории сохраняет строки и прежние записи ledger.
+  Применённые SQL и receipts неизменны; новой convergence migration или
+  ветки исполнения по времени нет.
+
+## 2026-11-10: Untimed Delivery Binding — Source Candidate
+
+- Canonical delivery retains assignment/holder/version fencing without heartbeat
+  or expiry authority. Current projection omits archival dates; historical
+  operation results and PM execution leases remain unchanged.
+- Forward116 preserves existing rows, explicit terminal settlement, capacity and
+  current routing/identity guards. New commands require an exact binding version.
+- Source candidate only: focused qualification, coordinated Fleet consumer,
+  generated OpenAPI, installation and live continuation remain separate gates.
+
 ## 2026-11-07: Agent Stage Status: Source Qualified, Not Installed
 
 - Agents explicitly Start the current assignment as InProgress and finish it as

@@ -194,7 +194,11 @@ async fn post(client: &Client, url: &str, token: &str, body: &Value, status: u16
     let actual = response.status().as_u16();
     let text = response.text().await.unwrap();
     assert_eq!(actual, status, "{url}: {text}");
-    serde_json::from_str(&text).unwrap_or(Value::Null)
+    if text.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_str(&text).expect("nonempty POST response must be valid JSON")
+    }
 }
 
 fn human_token(
@@ -688,10 +692,36 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     post(&client, &answer_url, "sdlc_pat_owner", &answer, 403).await;
     let mut unsafe_version = answer.clone();
     unsafe_version["expected_question_version"] = json!(9007199254740992i64);
-    post(&client, &answer_url, &owner, &unsafe_version, 422).await;
     let mut spoof = answer.clone();
     spoof["author_subject"] = json!("operator");
-    post(&client, &answer_url, &owner, &spoof, 422).await;
+    let before_invalid_answers = [
+        count(&db, "sdlc_answers").await,
+        count(&db, "sdlc_outbox").await,
+        count(&db, "sdlc_idempotency").await,
+        count(&db, "issue_status_history").await,
+    ];
+    // Axum rejects these DTO shapes before the JSON AppError handler runs.
+    for invalid in [&unsafe_version, &spoof] {
+        let response = client
+            .post(&answer_url)
+            .bearer_auth(&owner)
+            .json(invalid)
+            .send()
+            .await
+            .unwrap();
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap();
+        assert_eq!(status, 422, "{answer_url}: {body}");
+        assert_eq!(
+            [
+                count(&db, "sdlc_answers").await,
+                count(&db, "sdlc_outbox").await,
+                count(&db, "sdlc_idempotency").await,
+                count(&db, "issue_status_history").await,
+            ],
+            before_invalid_answers
+        );
+    }
     let mut stale = answer.clone();
     stale["expected_question_version"] = json!(2);
     post(&client, &answer_url, &owner, &stale, 409).await;
@@ -1162,14 +1192,13 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &routing_ready,
     )
     .await;
-    let (reserved_task, reserved_head) = analysis_reservation::check(
+    let (retained_reservation, retained_operations) = analysis_reservation::check(
         &db,
         &client,
         &restarted,
         task,
         &routing_actors,
         &routing_ready,
-        &fleet_stub,
     )
     .await;
     unavailable.store(true, Ordering::SeqCst);
@@ -1189,22 +1218,49 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     handle.await.unwrap();
     unavailable.store(false, Ordering::SeqCst);
     let (reservation_restart, stop, handle) = start_tracker(config).await;
-    let persisted = client
-        .get(format!(
-            "{reservation_restart}/api/v1/issues/{reserved_task}/sdlc/analysis-reservation"
-        ))
-        .bearer_auth("sdlc_pat_reservation_reader")
-        .send()
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
-    assert_eq!(persisted["current"], reserved_head);
-    assert_eq!(persisted["lease_state"], "expired");
+    let mut persisted = analysis_reservation::read(
+        &client,
+        &format!("{reservation_restart}/api/v1/issues/{task}/sdlc/analysis-reservation"),
+        "sdlc_pat_reservation_reader",
+        200,
+    )
+    .await;
+    assert!(
+        persisted
+            .as_object_mut()
+            .unwrap()
+            .remove("observed_at")
+            .is_some()
+    );
+    assert_eq!(persisted, retained_reservation);
+    assert!(persisted["current"].is_null());
+    assert_eq!(persisted["lease_state"], "unreserved");
+    assert_eq!(persisted["reason"], "pm_quiescence_unverified");
     assert_eq!(persisted["reconciliation_needed"], true);
-    assert_eq!(persisted["capacity_held"], true);
-    println!("ANALYSIS_RESERVATION restart durable readback passed");
+    assert_eq!(persisted["capacity_held"], false);
+    assert_eq!(persisted["dispatch_allowed"], false);
+    let retained_url = format!("{reservation_restart}/api/v1/issues/{task}/sdlc");
+    assert_eq!(
+        analysis_intent::read(&client, &retained_url, &owner, 200).await,
+        intent
+    );
+    assert_eq!(
+        routing_policy::snapshot(&client, &reservation_restart, task, &owner).await,
+        routing_snapshot
+    );
+    for (path, expected) in retained_operations {
+        assert_eq!(
+            analysis_reservation::read(
+                &client,
+                &format!("{reservation_restart}{path}"),
+                "sdlc_pat_reservation_reader",
+                200,
+            )
+            .await,
+            expected,
+        );
+    }
+    println!("ANALYSIS_RESERVATION restart retained history/no manufactured authority passed");
     fleet_handle.abort();
     assert!(fleet_handle.await.unwrap_err().is_cancelled());
     stop.send(()).unwrap();

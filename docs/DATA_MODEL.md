@@ -1,5 +1,21 @@
 # Дата-модель Task Tracker
 
+## Untimed Delivery Binding
+
+Обе опубликованные миграции116 сохраняют полные имена: Reviewer terminal и
+untimed delivery binding. Независимые патчи функций допускают оба порядка
+обновления без переписывания применённой миграции, строки или receipt.
+
+Forward116 меняет только current projection и действующие SQL guards. Binding
+остаётся в `sdlc_delivery_heads.execution`; `sdlc_delivery_tasks` — существующий view.
+Current view исключает архивные heartbeat/expiry, сохраняя assignment, holder,
+lease ID и version, включая ранее сохранённые versions. Новые записи не содержат
+временных полей. Операции, raw heads до следующего обычного изменения, hashes,
+assignment history и PM execution leases миграция не переписывает.
+Запись текущего binding неизменна до явного завершения/terminal reconciliation;
+переход от архивного представления допускает только удаление двух временных полей,
+без смены holder, identity или version. Capacity не освобождается по времени.
+
 ## Встроенная Декомпозиция
 
 Migration 0113 добавляет `issue_plan_revisions` и `issue_plan_operations`.
@@ -28,7 +44,9 @@ Stage и status — разные поля. Целевые переходы: аг
 Новый PM receipt относится к Draft/Completed; приложение сохраняет отдельную
 Analysis/Ready queue. Assignment/lease/binding нового delivery до резервирования
 отсутствуют; старый PM receipt не становится текущим назначением Analyst.
-Rework limit без handoff и финальный DevOps сохраняют Completed.
+Текущая линейная передача не выбирает Rework и не увеличивает cycle. Reviewer
+и Tester передают работу дальше при обоих verdict; финальный DevOps сохраняет
+Deployment/Completed. Старые cycle и принятые результаты остаются в истории.
 
 Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
 Его forward112 связывает autoqueue с completion-транзакцией; сохранённые

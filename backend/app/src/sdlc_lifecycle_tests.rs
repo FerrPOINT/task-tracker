@@ -216,113 +216,115 @@ fn proposed(task: &mut LifecycleTask) {
 }
 
 #[test]
-fn one_task_traverses_all_six_delivery_roles_and_completes_only_after_devops() {
-    let mut state = task();
-    let original_id = state.task_id;
-    let snapshot = state.routing.clone();
-    let outcomes = [
+fn review_preserves_both_verdicts_and_queues_testing_without_rework() {
+    for verdict in [ReviewVerdict::Approved, ReviewVerdict::Rework] {
+        for cycle in 0..=MAX_REWORK_CYCLES {
+            let mut state = task();
+            state.stage = LifecycleStage::Review;
+            state.cycle = cycle;
+            let routing = state.routing.clone();
+            proposed(&mut state);
+            accept_result(
+                &mut state,
+                &DeliveryResult::Reviewer {
+                    verdict,
+                    report: artifact("review"),
+                },
+            )
+            .unwrap();
+            assert_eq!(state.stage, LifecycleStage::Testing);
+            assert_eq!(state.status, LifecycleStatus::Ready);
+            assert_eq!(state.runtime, RuntimeState::Queued);
+            assert_eq!(
+                state.waiting_reason.as_deref(),
+                Some("queued_for_assignment")
+            );
+            assert_eq!(state.cycle, cycle);
+            assert_eq!(state.routing, routing);
+            let settled = serde_json::to_value(&state).unwrap();
+            assert!(
+                accept_result(
+                    &mut state,
+                    &DeliveryResult::Reviewer {
+                        verdict,
+                        report: artifact("review")
+                    },
+                )
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&state).unwrap(), settled);
+        }
+    }
+}
+
+#[test]
+fn other_roles_preserve_their_existing_handoff() {
+    let cases = [
         (
+            LifecycleStage::Analysis,
             DeliveryResult::Analyst {
                 analysis: artifact("analysis"),
             },
             LifecycleStage::Architecture,
         ),
         (
+            LifecycleStage::Architecture,
             DeliveryResult::Architect {
                 design: artifact("design"),
             },
             LifecycleStage::Development,
         ),
-        (developer(), LifecycleStage::Review),
         (
-            DeliveryResult::Reviewer {
-                verdict: ReviewVerdict::Approved,
-                report: artifact("review"),
-            },
-            LifecycleStage::Testing,
+            LifecycleStage::Development,
+            developer(),
+            LifecycleStage::Review,
         ),
+        (LifecycleStage::Rework, developer(), LifecycleStage::Review),
         (
+            LifecycleStage::Testing,
             DeliveryResult::Tester {
                 verdict: TestVerdict::Passed,
                 report: artifact("test"),
             },
             LifecycleStage::Deployment,
         ),
-        (
-            DeliveryResult::DevOps {
-                deployment: artifact("deploy"),
-                verification: artifact("health"),
-            },
-            LifecycleStage::Deployment,
-        ),
     ];
-    for (i, (output, next)) in outcomes.iter().enumerate() {
+    for (from, output, to) in cases {
+        let mut state = task();
+        state.stage = from;
         proposed(&mut state);
-        accept_result(&mut state, output).unwrap();
-        assert_eq!(state.task_id, original_id);
-        assert_eq!(state.routing, snapshot);
-        assert_eq!(state.stage, *next);
-        assert_eq!(
-            state.status,
-            if i == 5 {
-                LifecycleStatus::Completed
-            } else {
-                LifecycleStatus::Ready
-            }
-        );
+        accept_result(&mut state, &output).unwrap();
+        assert_eq!(state.stage, to);
+        assert_eq!(state.status, LifecycleStatus::Ready);
+        assert_eq!(state.runtime, RuntimeState::Queued);
     }
-    assert_eq!(state.version, 7);
-    assert_eq!(state.runtime, RuntimeState::Terminal);
 }
 
 #[test]
-fn review_and_testing_rework_both_return_to_developer_then_repeat_review_and_testing() {
-    for source in [LifecycleStage::Review, LifecycleStage::Testing] {
-        let mut state = task();
-        state.stage = source;
-        let rejected = if source == LifecycleStage::Review {
-            DeliveryResult::Reviewer {
-                verdict: ReviewVerdict::Rework,
-                report: artifact("review"),
-            }
-        } else {
-            DeliveryResult::Tester {
-                verdict: TestVerdict::Rework,
-                report: artifact("test"),
-            }
-        };
-        for cycle in 1..=MAX_REWORK_CYCLES {
-            state.stage = source;
-            proposed(&mut state);
-            accept_result(&mut state, &rejected).unwrap();
-            assert_eq!(state.stage, LifecycleStage::Rework);
-            assert_eq!(state.stage.role(), Some(DeliveryRole::Developer));
-            assert_eq!(state.cycle, cycle);
-            proposed(&mut state);
-            accept_result(&mut state, &developer()).unwrap();
-            assert_eq!(state.stage, LifecycleStage::Review);
+fn testing_preserves_both_verdicts_and_queues_devops_without_rework() {
+    for verdict in [TestVerdict::Passed, TestVerdict::Rework] {
+        for cycle in [0, 1, MAX_REWORK_CYCLES] {
+            let mut state = task();
+            state.stage = LifecycleStage::Testing;
+            state.cycle = cycle;
             proposed(&mut state);
             accept_result(
                 &mut state,
-                &DeliveryResult::Reviewer {
-                    verdict: ReviewVerdict::Approved,
-                    report: artifact("review-again"),
+                &DeliveryResult::Tester {
+                    verdict,
+                    report: artifact("test"),
                 },
             )
             .unwrap();
-            assert_eq!(state.stage, LifecycleStage::Testing);
+            assert_eq!(state.stage, LifecycleStage::Deployment);
+            assert_eq!(state.status, LifecycleStatus::Ready);
+            assert_eq!(state.runtime, RuntimeState::Queued);
+            assert_eq!(
+                state.waiting_reason.as_deref(),
+                Some("queued_for_assignment")
+            );
+            assert_eq!(state.cycle, cycle);
         }
-        state.stage = source;
-        proposed(&mut state);
-        accept_result(&mut state, &rejected).unwrap();
-        assert_eq!(state.stage, source);
-        assert_eq!(state.cycle, 3);
-        assert_eq!(state.status, LifecycleStatus::Completed);
-        assert_eq!(state.runtime, RuntimeState::Terminal);
-        assert_eq!(
-            state.waiting_reason.as_deref(),
-            Some("rework_limit_reached")
-        );
     }
 }
 

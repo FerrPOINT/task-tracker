@@ -43,6 +43,10 @@ mod m20261103_0000113_decomposition;
 mod m20261104_0000113_native_task_artifacts;
 mod m20261106_0000114_native_read_scope_attenuation;
 mod m20261107_0000115_agent_stage_status;
+mod m20261108_0000116_reviewer_terminal;
+mod m20261110_0000116_untimed_delivery_binding;
+mod m20261110_0000117_linear_delivery;
+mod m20261111_0000118_plan_content_dispatch;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -160,6 +164,10 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261104_0000113_native_task_artifacts::Migration),
             Box::new(m20261106_0000114_native_read_scope_attenuation::Migration),
             Box::new(m20261107_0000115_agent_stage_status::Migration),
+            Box::new(m20261108_0000116_reviewer_terminal::Migration),
+            Box::new(m20261110_0000116_untimed_delivery_binding::Migration),
+            Box::new(m20261110_0000117_linear_delivery::Migration),
+            Box::new(m20261111_0000118_plan_content_dispatch::Migration),
         ]
     }
 }

@@ -145,6 +145,23 @@ jobs:
             grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
             docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker tracker_pm_candidates_test
           done
+      - name: Linear delivery and retained archives (isolated PostgreSQL)
+        env:
+          TT_LIFECYCLE_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/reviewer_lifecycle_test
+        run: |
+          set -euo pipefail
+          for case_name in review_and_test_findings_advance_to_devops_without_rework approved_review_and_passed_testing_finish_after_devops_and_replay approved_review_archive_survives_forward_upgrade_without_starting_tester rework_review_archive_survives_forward_upgrade_without_starting_developer; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker reviewer_lifecycle_test
+            cargo test --locked -p infra --lib "$case_name" -- --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker reviewer_lifecycle_test
+          done
+          for case_name in plan_dispatch_upgrades_published_117_preserving_ledger plan_dispatch_upgrades_project_repository_117_preserving_ledger; do
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker plan_dispatch_pdlc4_compat_test
+            TT_PROJECT_COMPAT_TEST_DATABASE_URL=postgres://tasktracker@127.0.0.1:5432/plan_dispatch_pdlc4_compat_test cargo test --locked -p migration --lib "$case_name" -- --ignored --test-threads=1 | tee "$RUNNER_TEMP/$case_name.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$case_name.log"
+            docker exec ${{ job.services.postgres.id }} dropdb -U tasktracker plan_dispatch_pdlc4_compat_test
+          done
       - name: Explicit configured Analysis start (isolated PostgreSQL)
         if: github.event_name == 'workflow_dispatch' && (!cancelled())
         env:

@@ -3,6 +3,7 @@
 //! Run: cargo test -p infra --test fk_regression -- --include-ignored --test-threads=1
 use migration::MigratorTrait;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
+use uuid::Uuid;
 
 fn base_db_url() -> String {
     std::env::var("TT_TEST_DATABASE_URL").unwrap_or_else(|_| {
@@ -34,15 +35,34 @@ async fn db() -> DatabaseConnection {
     db
 }
 
+async fn author(db: &DatabaseConnection) -> Uuid {
+    let id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO users (id, central_sub, email, username, display_name, password_hash, is_active) VALUES ($1, $2, $3, $4, 'FK fixture', '!', true)",
+        vec![
+            id.into(),
+            id.to_string().into(),
+            format!("fk-{id}@example.test").into(),
+            format!("fk-{id}").into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    id
+}
+
 /// Orphan comment (issue_id pointing nowhere) must be rejected by the FK.
 #[tokio::test]
 #[ignore = "requires docker test stack"]
 async fn fk_rejects_orphan_comment() {
     let db = db().await;
+    let author = author(&db).await;
     let err = db
-        .execute(Statement::from_string(
+        .execute(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "INSERT INTO comments (id, issue_id, author_id, body, created_at, updated_at) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000dead', '00000000-0000-0000-0000-00000000beef', 'x', NOW(), NOW())",
+            "INSERT INTO comments (id, issue_id, author_id, body, created_at, updated_at) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000dead', $1, 'x', NOW(), NOW())",
+            vec![author.into()],
         ))
         .await;
     assert!(err.is_err(), "orphan comment must be rejected");
@@ -58,18 +78,28 @@ async fn fk_rejects_orphan_comment() {
 #[ignore = "requires docker test stack"]
 async fn fk_rejects_orphan_issue_project() {
     let db = db().await;
-    let err = db
-        .execute(Statement::from_string(
+    let reporter = author(&db).await;
+    let status: Uuid = db
+        .query_one(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
-            "INSERT INTO issues (id, project_id, key, issue_type, status_id, summary, priority, reporter_id, position, time_spent_seconds, created_at, updated_at, labels) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000dead', 'ZZZ-1', 'task', '00000000-0000-0000-0000-000000000001', 'x', 'medium', '00000000-0000-0000-0000-00000000beef', 0, 0, NOW(), NOW(), '{}')",
+            "SELECT id FROM statuses WHERE is_default=true ORDER BY id LIMIT 1",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "id")
+        .unwrap();
+    let err = db
+        .execute(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "INSERT INTO issues (id, project_id, key, issue_type, status_id, summary, priority, reporter_id, position, time_spent_seconds, created_at, updated_at, labels) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-00000000dead', 'ZZZ-1', 'task', $1, 'x', 'medium', $2, 0, 0, NOW(), NOW(), '{}')",
+            vec![status.into(), reporter.into()],
         ))
         .await;
     assert!(err.is_err(), "orphan issue must be rejected");
     let msg = err.err().unwrap().to_string();
     assert!(
-        msg.contains("fk_issues_project")
-            || msg.contains("fk_issues_reporter")
-            || msg.contains("fk_issues_status"),
+        msg.contains("fk_issues_project"),
         "expected FK violation, got: {msg}"
     );
 }

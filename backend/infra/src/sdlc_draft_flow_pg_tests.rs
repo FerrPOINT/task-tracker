@@ -412,6 +412,7 @@ async fn draft_flow_seed() {
         agent_id: reservation.assignment.agent_id,
         assignment_version: reservation.assignment.version,
     };
+    crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &fence).await;
     let document: RequirementsDocument = parse(
         json!({"goal":"Atomic flow","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],
         "acceptance_criteria":["Accept"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]}),
@@ -523,10 +524,15 @@ async fn draft_flow_seed() {
         repo.analysis_intent(task, &owner).await,
         Err(AppError::NotFound(_))
     ));
-    crate::sdlc::configured_test_support::complete_pm(&repo, task, &owner, &pm, &reservation).await;
-    assert_eq!(repo.read(task, &owner).await.unwrap().stage, Stage::Backlog);
-    // Standalone routing-shape checks import a synthetic technical snapshot.
-    // This fixture is not an assertion that PM publication starts Analyst.
+    let completed =
+        crate::sdlc::configured_test_support::complete_pm(&repo, task, &owner, &pm, &reservation)
+            .await;
+    assert_eq!(completed.stage, Stage::Draft);
+    assert_eq!(completed.status, LifecycleStatus::Completed);
+    let queued = repo.read(task, &owner).await.unwrap();
+    assert_eq!(queued.stage, Stage::Analysis);
+    assert_eq!(queued.status, Some(LifecycleStatus::Ready));
+    // Read the real completion-owned queue; requirements publication alone did not create it.
     let intent = crate::sdlc::seed_analysis_fixture(&db, task, &owner).await;
     assert_eq!(intent.workflow, "single-task-v1:analyst");
     for version in [json!(1), json!(3), json!("2"), json!(null)] {
