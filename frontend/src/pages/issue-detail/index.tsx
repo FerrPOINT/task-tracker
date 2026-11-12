@@ -69,8 +69,14 @@ function parseIssueTab(value: string | null): IssueTab {
   return issueTabs.find((tab) => tab === value) ?? issueTabs[0]
 }
 
-export function IssueDetailPage({ decompositionPanel }: { decompositionPanel?: ReactNode } = {}) {
+type IssueDetailPageProps = { decompositionPanel?: ReactNode }
+
+export function IssueDetailPage(props: IssueDetailPageProps = {}) {
   const { id = '' } = useParams()
+  return <IssueDetail key={id} id={id} {...props} />
+}
+
+function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: string }) {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')

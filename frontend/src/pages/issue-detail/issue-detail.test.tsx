@@ -181,6 +181,9 @@ function LocationProbe() {
       <button type="button" onClick={() => navigate(-1)}>
         Back in history
       </button>
+      <button type="button" onClick={() => navigate('/issues/i2')}>
+        Next issue
+      </button>
     </>
   )
 }
@@ -262,6 +265,25 @@ describe('IssueDetailPage', () => {
     expect(mockUseIssue).toHaveBeenCalledWith('TT-1')
     expect(mockWorklogs).toHaveBeenCalledWith('i1')
     expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/TT-1?tab=sdlc')
+  })
+
+  it('keeps drafts and dialogs scoped to the current issue route', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />))
+    await user.click(screen.getByRole('button', { name: /редактировать задачу|edit issue/i }))
+    fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
+      target: { value: 'Unsaved title for the first issue' },
+    })
+    mockUseIssue.mockReturnValue({
+      data: { ...issueData, id: 'i2', summary: 'Second issue', description: 'Second description' },
+      isLoading: false,
+      error: null,
+    })
+    await user.click(screen.getByRole('button', { name: 'Next issue' }))
+    expect(screen.getByRole('heading', { name: 'Second issue' })).toBeVisible()
+    expect(screen.getByText('Second description')).toBeVisible()
+    expect(screen.queryByDisplayValue('Unsaved title for the first issue')).not.toBeInTheDocument()
+    expect(mockUseUpdateIssue.mock.results[0]?.value.mutate).not.toHaveBeenCalled()
   })
 
   it('renders loading state while the issue itself loads', () => {
