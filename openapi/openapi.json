@@ -14608,7 +14608,6 @@
             "type": "object",
             "required": [
               "fence",
-              "terminal",
               "recovery",
               "idempotency_key",
               "operation"
@@ -14620,6 +14619,16 @@
               "idempotency_key": {
                 "type": "string"
               },
+              "never_submitted": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NeverSubmittedObservation"
+                  }
+                ]
+              },
               "operation": {
                 "type": "string",
                 "enum": [
@@ -14630,7 +14639,14 @@
                 "$ref": "#/components/schemas/RecoveryDisposition"
               },
               "terminal": {
-                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RuntimeTerminalObservation"
+                  }
+                ]
               }
             }
           },
@@ -18081,6 +18097,26 @@
         },
         "additionalProperties": false
       },
+      "NeverSubmittedObservation": {
+        "type": "object",
+        "required": [
+          "assignment_hash",
+          "reservation_key",
+          "reservation_payload_sha256"
+        ],
+        "properties": {
+          "assignment_hash": {
+            "type": "string"
+          },
+          "reservation_key": {
+            "type": "string"
+          },
+          "reservation_payload_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "NotificationListResponse": {
         "type": "object",
         "required": [
@@ -20314,6 +20350,20 @@
                 "type": "string",
                 "enum": [
                   "stop"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "disposition"
+            ],
+            "properties": {
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "retry_unsubmitted"
                 ]
               }
             }
@@ -22627,6 +22677,12 @@
                 "type": "string",
                 "enum": [
                   "blocked"
+                ]
+              },
+              "workspace_preparation_commit": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               }
             }
