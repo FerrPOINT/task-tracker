@@ -1,38 +1,36 @@
 # CI / CD — Task Tracker
 
-## 1. Пайплайн (`.github/workflows/ci.yml`)
+## 1. Выполнение проверок
 
-Триггеры: push и pull_request в `main`.
+GitHub Actions workflows удалены из репозитория. Автоматических запусков на
+push/PR и hosted CI badge нет. Проверки выполняются локально или в согласованном
+Forge pipeline; отсутствие GitHub jobs не является результатом тестирования.
 
-| Job | Что делает |
-|-----|-----------|
-| `backend` | `cargo fmt --check`, `cargo clippy --workspace -D warnings`, `cargo test --workspace` (in-memory стек, без БД) |
-| `openapi-check` | `cargo run -p api --bin gen-openapi` → сверка с закоммиченным `openapi/openapi.json` (дрейф = fail) |
-| `migrations` | postgres-service в CI; применяет все миграции SeaORM на чистую БД и проверяет статус |
-| `coverage` | `cargo-llvm-cov`, порог 60% |
-| `infra-db-tests` | postgres-service; docker-backed тесты `infra/tests/repos.rs` + `infra/tests/fk_regression.rs` (`--include-ignored`) |
-| `audit` | `cargo audit` (RustSec advisory) |
-| `frontend` | `pnpm install`, `pnpm build`, `pnpm test -- --run` (vitest) |
-| `e2e` | поднимает compose-стек (postgres, redis, backend), ждёт health, прогоняет `e2e/smoke.spec.ts` (chromium) |
+Backend fmt/clippy/tests, OpenAPI drift, frontend typecheck/lint/tests/build,
+coverage, аудит зависимостей, PostgreSQL/migration и browser gates сохраняются.
+Область и фактический результат каждого прогона фиксируются для точного commit.
+Канонические команды и требования — в [TESTING](TESTING.md).
 
 ## 2. Локальный эквивалент перед пушем
 
 ```bash
 cd backend
-cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace -- --test-threads=1
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace -- --test-threads=1
 cd ../frontend
 pnpm typecheck && pnpm lint && pnpm test -- --run && pnpm build
 # E2E против живого стека
 pnpm exec playwright test --project=chromium
 ```
 
-## 3. Известные ограничения CI (не покрыто)
+## 3. Отдельные gates
 
-- E2E гоняет только `smoke.spec.ts` на chromium — полные спеки и firefox/webkit — локально;
-- `cargo deny` (лицензии/дубликаты) не подключён.
-
-(Закрыто в этом цикле: frontend lint/typecheck добавлены в job `frontend`; readiness — retry-цикл до 60с вместо `sleep 20`; docker-backed интеграционные тесты — отдельный job `infra-db-tests`.)
+Native tests не заменяют PostgreSQL и migration checks. Игнорируемые сценарии
+SDLC/start/restore/populated upgrade выполняются явно на собственных тестовых БД
+по [TESTING](TESTING.md), с проверкой фактического числа выполненных cases.
+Browser smoke не заменяет остальные Playwright suites и live-приёмку.
+Удаление GitHub orchestration не меняет security/data и release gates.
 
 ## References
 
