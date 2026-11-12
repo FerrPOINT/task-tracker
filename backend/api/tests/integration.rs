@@ -2152,7 +2152,7 @@ async fn sse_stream_receives_issue_events() {
 #[tokio::test]
 async fn sse_stream_hides_project_events_from_non_members() {
     let (url, client) = spawn_server().await;
-    let owner_token = login_token(&url, &client).await;
+    login_token(&url, &client).await;
     let (_outsider_id, outsider_token) = register_user(
         &url,
         &client,
