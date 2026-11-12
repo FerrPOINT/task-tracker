@@ -221,6 +221,11 @@ pub trait IssueService: Send + Sync {
         requester: UserId,
     ) -> Result<IssueDto, AppError>;
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError>;
+    async fn get_details(
+        &self,
+        id: IssueId,
+        requester: UserId,
+    ) -> Result<crate::dto::IssueDetailDto, AppError>;
     async fn update(
         &self,
         id: IssueId,

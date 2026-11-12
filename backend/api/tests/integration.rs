@@ -946,6 +946,18 @@ async fn board_success_and_move() {
         .unwrap();
     assert_eq!(projection["stage"], "Draft");
     assert!(projection.get("status").is_none());
+    assert_eq!(projection["enrolled"], false);
+    // The ordinary authorized detail and board publish the same lifecycle.
+    // Absence of a process is not inferred from a private endpoint's 403.
+    let detail = client
+        .get(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(detail.status(), 200);
+    let detail: serde_json::Value = detail.json().await.unwrap();
+    assert_eq!(detail["lifecycle"], *projection);
 }
 
 #[tokio::test]

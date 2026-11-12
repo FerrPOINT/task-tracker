@@ -131,6 +131,13 @@ pub struct IssueResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct IssueDetailResponse {
+    #[serde(flatten)]
+    pub issue: IssueResponse,
+    pub lifecycle: domain::sdlc_lifecycle::SdlcBoardTask,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IssueListResponse {
     pub issues: Vec<IssueResponse>,
 }

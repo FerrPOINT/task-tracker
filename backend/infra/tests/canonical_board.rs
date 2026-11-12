@@ -65,12 +65,14 @@ async fn canonical_board_reads_only_authorized_project_and_selected_issues() {
         .iter()
         .find(|t| t.issue_id == ids[0].as_uuid())
         .unwrap();
+    assert!(native.enrolled);
     assert_eq!(native.stage, LifecycleStage::Review);
     assert_eq!(native.status, Some(LifecycleStatus::InProgress));
     let draft = selected
         .iter()
         .find(|t| t.issue_id == ids[1].as_uuid())
         .unwrap();
+    assert!(draft.enrolled);
     assert_eq!(draft.stage, LifecycleStage::Draft);
     assert_eq!(draft.status, None);
     assert!(repo.sdlc_tasks(project, &[]).await.unwrap().is_empty());

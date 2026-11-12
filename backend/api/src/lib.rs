@@ -323,6 +323,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         dto::CreateProjectRequest,
         dto::UpdateProjectRequest,
         dto::IssueResponse,
+        dto::IssueDetailResponse,
         dto::IssueListResponse,
         dto::CreateIssueRequest,
         dto::UpdateIssueRequest,

@@ -136,11 +136,14 @@ fn board_projection_preserves_native_progress_without_promoting_legacy_done() {
         .collect();
     let native = SdlcBoardTask {
         issue_id: issues[0].id.parse().unwrap(),
+        enrolled: true,
         stage: LifecycleStage::Review,
         status: Some(LifecycleStatus::InProgress),
     };
     let projected = project_board_tasks(&issues, vec![native]).unwrap();
     assert_eq!(projected.len(), issues.len());
+    assert!(projected[0].enrolled);
+    assert!(!projected[1].enrolled);
     assert_eq!(projected[0].stage, LifecycleStage::Review);
     assert_eq!(projected[0].status, Some(LifecycleStatus::InProgress));
     assert_eq!(projected[1].stage, LifecycleStage::Draft);

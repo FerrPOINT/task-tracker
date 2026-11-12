@@ -1,5 +1,15 @@
 # API v1 Specification — Task Tracker
 
+## Lifecycle on the ordinary issue read
+
+GET /api/v1/issues/{id} returns IssueDetailResponse: the existing issue fields
+plus lifecycle { issue_id, enrolled, stage, status? }. The authorized detail and
+board share the same server projection. enrolled=false means that no persisted
+SDLC process exists; the card remains Draft without a fabricated execution status.
+enrolled=true is not permission to read private SDLC context. Those routes keep
+their independent authorization and report real denials. Create/update receipts
+retain IssueResponse; no existing idempotency receipt or database row is rewritten.
+
 Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
 project source-policy CAS, explicit owner Draft enrollment and typed readback.
 Migration/schema and Forge source verification qualification are required.

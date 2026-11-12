@@ -103,6 +103,12 @@ pub struct IssueDto {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+/// Lifecycle metadata on the authorized detail read, separate from mutation receipts.
+pub struct IssueDetailDto {
+    pub issue: IssueDto,
+    pub lifecycle: domain::sdlc_lifecycle::SdlcBoardTask,
+}
+
 impl IssueDto {
     pub fn from_issue(
         issue: Issue,

@@ -100,6 +100,8 @@ pub enum LifecycleStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcBoardTask {
     pub issue_id: Uuid,
+    /// A persisted SDLC process exists; this does not grant access to private context.
+    pub enrolled: bool,
     pub stage: LifecycleStage,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LifecycleStatus>,

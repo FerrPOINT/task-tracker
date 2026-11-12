@@ -380,6 +380,7 @@ pub(crate) fn project_board_tasks(
                 Some(task) => task,
                 None => SdlcBoardTask {
                     issue_id: issue.id.parse().map_err(AppError::internal)?,
+                    enrolled: false,
                     stage: LifecycleStage::Draft,
                     status: None,
                 },
