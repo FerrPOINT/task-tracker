@@ -233,7 +233,13 @@ describe('IssueDetailPage', () => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
-
+    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseDeleteIssue.mockReturnValue({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      error: null,
+    })
     mockComments.mockReturnValue({
       data: commentData,
       isLoading: false,
