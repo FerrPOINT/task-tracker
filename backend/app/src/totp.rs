@@ -106,13 +106,24 @@ impl TotpService {
             / TOTP_STEP_SECONDS) as i64
     }
 
-    /// Verify a 6-digit code within ±1 step, replay-protected by last_used_step.
+    /// Preserve the public predicate while consuming the actual matched step.
     pub fn verify(
         &self,
         secret_b32: &str,
         code: &str,
         last_used_step: i64,
     ) -> Result<bool, AppError> {
+        Ok(self
+            .matching_step(secret_b32, code, last_used_step)?
+            .is_some())
+    }
+
+    fn matching_step(
+        &self,
+        secret_b32: &str,
+        code: &str,
+        last_used_step: i64,
+    ) -> Result<Option<i64>, AppError> {
         let now = self.current_step();
         for delta in [0i64, -1, 1] {
             let step = now + delta;
@@ -121,10 +132,10 @@ impl TotpService {
             }
             let expected = Self::code_for_step(secret_b32, step)?;
             if constant_time_eq(expected.as_bytes(), code.as_bytes()) {
-                return Ok(true);
+                return Ok(Some(step));
             }
         }
-        Ok(false)
+        Ok(None)
     }
 
     fn generate_recovery_codes() -> Vec<String> {
@@ -168,17 +179,17 @@ impl TotpService {
             return Err(AppError::conflict("totp already enabled"));
         }
         let secret = self.decrypt_secret(&record.secret_cipher)?;
-        if !self.verify(&secret, code, record.last_used_step)? {
-            return Err(AppError::invalid_input("invalid totp code"));
-        }
+        let step = self
+            .matching_step(&secret, code, record.last_used_step)?
+            .ok_or_else(|| AppError::invalid_input("invalid totp code"))?;
         let codes = Self::generate_recovery_codes();
         let hashed: Vec<String> = codes.iter().map(|c| Self::hash_recovery_code(c)).collect();
-        let step = self.current_step();
         self.repos
             .totp
             .confirm_enable(
                 user_id,
-                &serde_json::to_string(&hashed).unwrap_or_default(),
+                &record.secret_cipher,
+                &serde_json::to_string(&hashed).map_err(AppError::internal)?,
                 step,
             )
             .await?;
@@ -193,11 +204,19 @@ impl TotpService {
         if !record.enabled {
             return Err(AppError::conflict("totp not enabled"));
         }
-        let ok = self.check_code_or_recovery(&record, code)?;
+        let ok = self.consume_code(&record, code).await?;
         if !ok {
             return Err(AppError::invalid_input("invalid totp or recovery code"));
         }
-        self.repos.totp.disable(user_id).await
+        if !self
+            .repos
+            .totp
+            .disable(user_id, &record.secret_cipher)
+            .await?
+        {
+            return Err(AppError::conflict("totp enrollment changed"));
+        }
+        Ok(())
     }
 
     /// Second-factor check used by login after a valid password: a valid TOTP
@@ -212,53 +231,27 @@ impl TotpService {
         if !record.enabled {
             return Ok(true);
         }
-        let secret = self.decrypt_secret(&record.secret_cipher)?;
-        let step = self.current_step();
-        if self.verify(&secret, code, record.last_used_step)? {
-            self.repos.totp.mark_used_step(user_id, step).await?;
-            return Ok(true);
-        }
-        if self.try_consume_recovery(&record, code).await? {
-            return Ok(true);
-        }
-        Ok(false)
+        self.consume_code(&record, code).await
     }
 
-    fn check_code_or_recovery(
+    async fn consume_code(
         &self,
         record: &domain::TotpConfig,
         code: &str,
     ) -> Result<bool, AppError> {
         let secret = self.decrypt_secret(&record.secret_cipher)?;
-        if self.verify(&secret, code, record.last_used_step)? {
-            return Ok(true);
+        if let Some(step) = self.matching_step(&secret, code, record.last_used_step)? {
+            return self
+                .repos
+                .totp
+                .mark_used_step(record.user_id, &record.secret_cipher, step)
+                .await;
         }
-        // Recovery codes are checked without consuming here; disable clears
-        // everything anyway.
-        let hashed = Self::hash_recovery_code(code);
-        let stored: Vec<String> = serde_json::from_str(&record.recovery_codes).unwrap_or_default();
-        Ok(stored.iter().any(|h| h == &hashed))
-    }
-
-    async fn try_consume_recovery(
-        &self,
-        record: &domain::TotpConfig,
-        code: &str,
-    ) -> Result<bool, AppError> {
-        let hashed = Self::hash_recovery_code(code);
-        let stored: Vec<String> = serde_json::from_str(&record.recovery_codes).unwrap_or_default();
-        let remaining: Vec<String> = stored.iter().filter(|h| *h != &hashed).cloned().collect();
-        if remaining.len() == stored.len() {
-            return Ok(false);
-        }
+        let hash = Self::hash_recovery_code(code);
         self.repos
             .totp
-            .update_recovery_codes(
-                record.user_id,
-                &serde_json::to_string(&remaining).unwrap_or_default(),
-            )
-            .await?;
-        Ok(true)
+            .consume_recovery_code(record.user_id, &record.secret_cipher, &hash)
+            .await
     }
 
     /// Does this user require a second factor at login?

@@ -37,6 +37,16 @@ pub(crate) fn status_at(
     Some(issue.status_id)
 }
 
+fn history_by_issue(
+    history: Vec<domain::IssueStatusHistory>,
+) -> std::collections::HashMap<shared::IssueId, Vec<domain::IssueStatusHistory>> {
+    let mut grouped = std::collections::HashMap::<_, Vec<_>>::new();
+    for entry in history {
+        grouped.entry(entry.issue_id).or_default().push(entry);
+    }
+    grouped
+}
+
 pub struct ReportServiceImpl {
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
@@ -103,7 +113,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .filter(|s| s.category == StatusCategory::Done || s.is_closed)
             .map(|s| s.id)
             .collect();
-        let history = self.history.list_by_project(project_id).await?;
+        let history = history_by_issue(self.history.list_by_project(project_id).await?);
 
         let mut result = Vec::new();
         for sprint in &closed {
@@ -120,9 +130,13 @@ impl crate::context::ReportService for ReportServiceImpl {
             let completed = issues
                 .iter()
                 .filter(|i| {
-                    status_at(i, &history, sprint_end)
-                        .map(|status_id| done_status_ids.contains(&status_id))
-                        .unwrap_or(false)
+                    status_at(
+                        i,
+                        history.get(&i.id).map(Vec::as_slice).unwrap_or(&[]),
+                        sprint_end,
+                    )
+                    .map(|status_id| done_status_ids.contains(&status_id))
+                    .unwrap_or(false)
                 })
                 .count();
             result.push(crate::context::VelocitySprintDto {
@@ -155,7 +169,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         let total = issues.len();
 
         let statuses = self.statuses.list_all().await?;
-        let history = self.history.list_by_project(project_id).await?;
+        let history = history_by_issue(self.history.list_by_project(project_id).await?);
 
         let start = sprint.start_date.unwrap_or_else(shared::now);
         let end = sprint
@@ -171,11 +185,13 @@ impl crate::context::ReportService for ReportServiceImpl {
             let remaining = issues
                 .iter()
                 .filter(|issue| {
-                    status_at(issue, &history, current)
-                        .map(|status_id| {
-                            self.category_of(status_id, &statuses) != StatusCategory::Done
-                        })
-                        .unwrap_or(false)
+                    status_at(
+                        issue,
+                        history.get(&issue.id).map(Vec::as_slice).unwrap_or(&[]),
+                        current,
+                    )
+                    .map(|status_id| self.category_of(status_id, &statuses) != StatusCategory::Done)
+                    .unwrap_or(false)
                 })
                 .count();
             points.push(crate::context::BurndownPointDto {
@@ -211,12 +227,12 @@ impl crate::context::ReportService for ReportServiceImpl {
             .issues
             .list_unbounded(IssueQuery::project(project_id))
             .await?;
-        let history = self.history.list_by_project(project_id).await?;
+        let history = history_by_issue(self.history.list_by_project(project_id).await?);
         let statuses = self.statuses.list_all().await?;
 
         // Build a sorted list of all dates from history entries + issue created_at
         let mut dates: Vec<shared::Timestamp> = Vec::new();
-        for h in &history {
+        for h in history.values().flatten() {
             dates.push(h.changed_at);
         }
         for issue in &issues {
@@ -229,7 +245,11 @@ impl crate::context::ReportService for ReportServiceImpl {
         for &date in &dates {
             let (mut todo, mut in_progress, mut done) = (0usize, 0usize, 0usize);
             for issue in &issues {
-                let Some(status_id) = status_at(issue, &history, date) else {
+                let Some(status_id) = status_at(
+                    issue,
+                    history.get(&issue.id).map(Vec::as_slice).unwrap_or(&[]),
+                    date,
+                ) else {
                     continue;
                 };
                 match self.category_of(status_id, &statuses) {
@@ -261,7 +281,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .issues
             .list_unbounded(IssueQuery::project(project_id))
             .await?;
-        let history = self.history.list_by_project(project_id).await?;
+        let history = history_by_issue(self.history.list_by_project(project_id).await?);
         let statuses = self.statuses.list_all().await?;
         let done_status_ids: Vec<StatusId> = statuses
             .iter()
@@ -276,14 +296,14 @@ impl crate::context::ReportService for ReportServiceImpl {
 
         let mut result = Vec::new();
         for issue in &issues {
-            let issue_history: Vec<_> = history.iter().filter(|h| h.issue_id == issue.id).collect();
+            let issue_history = history.get(&issue.id).map(Vec::as_slice).unwrap_or(&[]);
             let explicit_started_at = issue_history
                 .iter()
                 .filter(|h| in_progress_status_ids.contains(&h.to_status_id))
                 .min_by_key(|h| h.changed_at)
                 .map(|h| h.changed_at);
             let legacy_started_at = explicit_started_at.or_else(|| {
-                status_at(issue, &history, issue.created_at)
+                status_at(issue, issue_history, issue.created_at)
                     .filter(|status_id| in_progress_status_ids.contains(status_id))
                     .map(|_| issue.created_at)
             });

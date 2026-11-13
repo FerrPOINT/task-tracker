@@ -1,7 +1,7 @@
 use crate::memory::{
     MemoryAuditLogRepository, MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository,
     MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemorySystemSettingRepository, MemoryUnitOfWork, MemoryUserRepository, MemoryWorklogRepository,
+    MemorySystemSettingRepository, MemoryUnitOfWork, MemoryUserRepository,
 };
 use crate::{
     AuditLog, AuditLogRepository, Board, BoardRepository, EventBus, Issue, IssueQuery,
@@ -424,9 +424,21 @@ async fn memory_system_setting_repository_replaces_existing_keys() {
 async fn memory_worklog_repository_page_respects_limit_offset_and_order() {
     use crate::entities::Worklog;
 
-    let repo = MemoryWorklogRepository::default();
-    let issue = IssueId::new();
+    let issues = MemoryIssueRepository::default();
     let author = UserId::new();
+    let issue = Issue::create(
+        &sample_project(author),
+        1,
+        IssueType::Task,
+        StatusId::new(),
+        "Worklog page",
+        None,
+        author,
+        Priority::Medium,
+    );
+    issues.save(&issue).await.unwrap();
+    let issue = issue.id;
+    let repo = issues.worklog_repository();
     let base = shared::now();
     for i in 0..5u64 {
         let w = Worklog {

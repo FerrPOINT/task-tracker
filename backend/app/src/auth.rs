@@ -73,6 +73,17 @@ impl JwtAuthService {
         }
     }
 
+    async fn local_password_user(&self, cmd: &LoginCommand) -> Result<User, AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            return Err(AppError::Unauthorized);
+        }
+        let user = self.users.get_by_email(&cmd.email).await?;
+        if !user.is_active || !verify_password(&cmd.password, &user.password_hash)? {
+            return Err(AppError::Unauthorized);
+        }
+        Ok(user)
+    }
+
     async fn registration_allowed(&self) -> Result<bool, AppError> {
         match self.system_settings.get(REGISTRATION_SETTING_KEY).await {
             Ok(setting) => Ok(!matches!(setting.value, serde_json::Value::Bool(false))),
@@ -85,6 +96,14 @@ impl JwtAuthService {
 
 #[async_trait]
 impl crate::context::AuthService for JwtAuthService {
+    async fn authenticate_password(&self, cmd: LoginCommand) -> Result<User, AppError> {
+        self.local_password_user(&cmd).await
+    }
+
+    async fn complete_password_login(&self, verified_user: User) -> Result<AuthDto, AppError> {
+        self.issue_tokens(verified_user).await
+    }
+
     async fn issue_session(&self, user_id: UserId) -> Result<AuthDto, AppError> {
         let user = self.users.get_by_id(user_id).await?;
         if !user.is_active {
@@ -136,19 +155,7 @@ impl crate::context::AuthService for JwtAuthService {
             });
         }
 
-        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
-            return Err(AppError::Unauthorized);
-        }
-
-        let user = self.users.get_by_email(&cmd.email).await?;
-        if !verify_password(&cmd.password, &user.password_hash)? {
-            return Err(AppError::Unauthorized);
-        }
-        // Deactivated accounts must not receive new tokens.
-        if !user.is_active {
-            return Err(AppError::Unauthorized);
-        }
-
+        let user = self.local_password_user(&cmd).await?;
         self.issue_tokens(user).await
     }
 
@@ -294,12 +301,20 @@ impl crate::context::AuthService for JwtAuthService {
 }
 
 impl JwtAuthService {
-    async fn issue_tokens(&self, mut user: User) -> Result<AuthDto, AppError> {
+    async fn issue_tokens(&self, user: User) -> Result<AuthDto, AppError> {
         let access = create_access_token(&self.config, user.id)?;
         let refresh = create_refresh_token(&self.config, user.id)?;
         let token_hash = hash_refresh_token(&refresh);
-        user.refresh_token_hash = Some(token_hash.into());
-        self.users.save(&user).await?;
+        // Do not save the password-time profile: it may predate a block, reset,
+        // or privilege change. The repository atomically validates the credential.
+        let user = self
+            .users
+            .set_refresh_token_if_password_matches(
+                user.id,
+                user.password_hash.as_ref(),
+                &token_hash,
+            )
+            .await?;
         let expires_in = self.config.access_token_ttl_minutes * 60;
 
         Ok(AuthDto {

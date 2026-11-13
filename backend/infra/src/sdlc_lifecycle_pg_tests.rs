@@ -255,7 +255,7 @@ async fn legacy_analysis_ordinal_head(db: &DatabaseConnection) -> (i64, bool) {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_replay() {
+async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_replay() {
     let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").expect("isolated database required");
     let db = Database::connect(&url).await.unwrap();
     let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
@@ -298,7 +298,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'LC','Lifecycle',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
     exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Lifecycle','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
     exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>'owner'",vec![project.into()]).await.unwrap();
-    let mut repo = PostgresSdlcRepository::connect(
+    let repo = PostgresSdlcRepository::connect(
         &url,
         SdlcConfig {
             instance_id: "lifecycle-test".into(),
@@ -331,7 +331,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
             project,
             &owner,
             CreateDraftCommand {
-                interaction_protocol: None,
+                interaction_protocol: Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Lifecycle fixture".into(),
                 description: "Synthetic acceptance fixture".into(),
@@ -552,7 +552,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
             project,
             &owner,
             CreateDraftCommand {
-                interaction_protocol: None,
+                interaction_protocol: Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                 title: "Concurrent PM allocator fixture".into(),
                 description: "Synthetic owner input".into(),
                 idempotency_key: "other-pm-draft".into(),
@@ -1114,17 +1114,22 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
         serde_json::to_value(reserved).unwrap()
     );
     assert_eq!(pm_ordinal_head(&db).await, before_replay);
-    assert!(matches!(
-        repo.lifecycle_command(
+    // The retired rollout toggle no longer disables current assignments.
+    // A fresh queue operation must preserve the existing owner and custody.
+    let (same_assignment, replayed) = repo
+        .lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::EnsureQueued {
-                idempotency_key: "disabled-new".into()
-            }
+                idempotency_key: "preserve-current-assignment".into(),
+            },
         )
-        .await,
-        Err(AppError::Unavailable(_))
-    ));
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(same_assignment, retry);
+    assert_eq!(pm_ordinal_head(&db).await, before_replay);
+    assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
     repo.lifecycle_read(task, &reader).await.unwrap();
     assert_eq!(
         repo.lifecycle_read(task, &reader).await.unwrap().receipt,

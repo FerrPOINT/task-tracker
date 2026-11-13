@@ -12,12 +12,8 @@
     "stage": "Stage",
     "reason": "Waiting reason",
     "noReason": "No waiting reason",
-    "instance": "Tracker instance",
-    "project": "Project ref",
-    "root": "Root task ref",
-    "owner": "Owner subject",
-    "intent": "Analysis intent",
-    "awaitingAdmission": "Queued, awaiting admission",
+    "intent": "Analysis request",
+    "awaitingAdmission": "Analysis was queued. Execution start is not confirmed by this record.",
     "intentRef": "Intent ref",
     "confirmationRef": "Confirmation ref",
     "revision": "Revision",
@@ -26,21 +22,22 @@
     "cycleAttempt": "Cycle / attempt",
     "createdAt": "Created",
     "requirements": "Requirements",
-    "noContext": "No SDLC context",
+    "noContext": "This task is not connected to the development process.",
+    "notEnrolled": "No SDLC process is registered for this task. Its ordinary description remains editable.",
     "noRequirements": "Requirements have not been published",
-    "noIntent": "Analysis intent was not found; queue state is not verified",
+    "noIntent": "The analysis request could not be verified. Refresh task state.",
     "confirmUnavailable": "Owner confirmation is unavailable",
     "acknowledge": "I confirm the requirements of revision {{revision}}",
     "confirm": "Confirm requirements",
     "confirming": "Confirming requirements",
-    "confirmationSaved": "Requirements confirmation saved; refreshing queue state",
+    "confirmationSaved": "This requirements version has been confirmed. Refreshing task state.",
     "publication": {
-      "title": "SDLC publication",
-      "loading": "Loading published routing policy",
-      "absent": "No published routing policy. Confirmation remains without routing enrollment.",
-      "preparation": "Frozen references for seven roles are preparation only. Native readiness and dispatch are not granted.",
-      "references": "Seven-role policy references",
-      "select": "Publish with routing policy version {{version}}",
+      "title": "Execution configuration",
+      "loading": "Loading project execution configuration",
+      "absent": "No project execution configuration is published. Requirements can be confirmed without enrolling one.",
+      "preparation": "This configuration pins the settings for seven roles to the task. Selecting it does not start the agents.",
+      "references": "Configuration technical details",
+      "select": "Use execution configuration version {{version}}",
       "stale": "The selected policy is not current or its source is unavailable. Refresh and explicitly review the choice.",
       "agent": "Agent reference",
       "effectiveRevision": "Effective configuration revision",
@@ -58,10 +55,9 @@
         "devops": "Operations"
       }
     },
-    "history": "SDLC events",
-    "afterCursor": "After sequence {{cursor}}",
-    "noEvents": "No events after this sequence",
-    "eventPin": "Event reference and hash",
+    "history": "Development history",
+    "noEvents": "There are no events on this page.",
+    "eventPin": "Technical event details",
     "eventRef": "Event ref",
     "previous": "Previous events",
     "next": "Next events",
@@ -71,7 +67,7 @@
       "404": "The requested SDLC resource was not found",
       "409": "The revision or retained SDLC binding is inconsistent; refresh required",
       "422": "The SDLC request was rejected",
-      "503": "SDLC or Central Auth is unavailable",
+      "503": "Development process data is temporarily unavailable.",
       "unknown": "The SDLC result could not be received; refresh required"
     },
     "reasons": {
@@ -121,8 +117,72 @@
     },
     "technicalDetails": "Technical details",
     "revisionDetails": "Revision details",
-    "reasonCode": "Waiting reason code",
-    "unknownReason": "Unrecognized waiting reason; see technical details for the code."
+    "unknownReason": "Unrecognized waiting reason; see technical details for the code.",
+    "overview": {
+      "title": "Development progress",
+      "now": "Now",
+      "state": "Stage state",
+      "unknownState": "State is not recognized"
+    },
+    "nextStep": {
+      "title": "Your next step",
+      "confirm": "Review the requirements below. Confirmation records this version; it does not start execution.",
+      "owner": "Requirements can be confirmed by the task owner after the required checks pass.",
+      "answer": "Review the open questions below. Required questions are marked.",
+      "none": "No actions are available to your account in this tab right now."
+    },
+    "status": {
+      "Ready": "Waiting to start",
+      "InProgress": "In progress",
+      "Completed": "Stage completed"
+    },
+    "execution": {
+      "title": "Execution",
+      "notPublished": "Execution details have not been published for this task.",
+      "refreshRequired": "Refresh task state before reading execution details.",
+      "loading": "Loading execution state",
+      "assignee": "Assigned role",
+      "unassigned": "No current assignee is confirmed",
+      "assignment": "Assignment ID",
+      "copy": "Copy execution diagnostics",
+      "preparing": "The task is being prepared. Its stage state is shown above.",
+      "backlog": "The task is in the backlog. The next stage has not been confirmed as started."
+    },
+    "runtime": {
+      "queued": "Queued; execution has not started",
+      "reserved": "Assignee prepared; start is not confirmed",
+      "running": "Running",
+      "terminal": "Execution ended; see the accepted result",
+      "unknown": "Execution outcome is not confirmed"
+    },
+    "results": {
+      "title": "Results",
+      "open": "View accepted result",
+      "close": "Hide result",
+      "detail": "Accepted stage result",
+      "loading": "Loading accepted result",
+      "accepted": "The stage result was accepted. This does not confirm completion of the entire task.",
+      "empty": "No accepted stage result has been published.",
+      "materials": "Linked documents, pull requests and checks are available in the task materials sections.",
+      "reference": "Result ID",
+      "copy": "Copy result diagnostics",
+      "verdict": {
+        "approved": "Review approved",
+        "passed": "Checks passed",
+        "rework": "Changes requested"
+      },
+      "materialsTitle": "Task materials"
+    },
+    "questions": {
+      "loading": "Loading task questions",
+      "notFound": "The task requests answers, but no open questions were received. Refresh task state.",
+      "required": "An answer is required before requirements can be confirmed.",
+      "options": "Choose an answer",
+      "answer": "Your answer",
+      "submit": "Send answer",
+      "saving": "Saving answer"
+    },
+    "eventSequence": "Event sequence"
   },
   "navigation": {
     "projects": "Projects",
@@ -237,7 +297,6 @@
     "done": "Done",
     "lead": "Lead",
     "createProject": "Create project",
-    "archived": "Archived",
     "manage": "Manage project",
     "managementUnavailable": "Project management is unavailable",
     "deleteDescription": "The project “{{name}}” and all its issues will be permanently deleted.",

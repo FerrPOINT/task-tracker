@@ -5,9 +5,9 @@ use domain::{
     MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
     MemoryIssueLinkRepository, MemoryIssueRepository, MemoryIssueStatusHistoryRepository,
     MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectMemberRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
-    Notification, NotificationRepository, Project, ProjectRepository, SprintRepository,
-    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
+    NotificationRepository, Project, ProjectRepository, SprintRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -136,6 +136,7 @@ async fn spawn_server_for_password_reset() -> (
     users.save(&user).await.unwrap();
     let resets = Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default());
     let emails = Arc::new(CapturedEmails::default());
+    let issues = Arc::new(MemoryIssueRepository::default());
     let repos = Arc::new(domain::Repositories {
         users,
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
@@ -144,11 +145,11 @@ async fn spawn_server_for_password_reset() -> (
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(MemoryProjectRepository::default()),
-        issues: Arc::new(MemoryIssueRepository::default()),
+        issues: issues.clone(),
         boards: Arc::new(MemoryBoardRepository::default()),
         sprints: Arc::new(MemorySprintRepository::default()),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: Arc::new(domain::MemoryStatusRepository::new(vec![])),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -306,7 +307,7 @@ async fn spawn_server_with_notifications()
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -2613,7 +2614,7 @@ async fn spawn_server_with_reports() -> (
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -3568,7 +3569,7 @@ async fn spawn_server_with_memory_repos() -> (String, FixtureClient) {
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -4683,6 +4684,81 @@ async fn member_reads_nine_stage_board_without_enabling_automation() {
     assert!(board.get("columns").is_none());
 }
 
+#[tokio::test]
+async fn ordinary_detail_and_board_share_lifecycle_without_changing_mutation_receipts() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let id =
+        create_issue_in_project(&url, &client, &token, "TT", &test_user().id.to_string()).await;
+    let board: serde_json::Value = client
+        .get(format!("{url}/api/v1/projects/TT/board"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let projection = board["sdlc"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["issue_id"] == id)
+        .unwrap();
+    assert_eq!(projection["enrolled"], false);
+    assert_eq!(projection["stage"], "Draft");
+    assert!(projection.get("status").is_none());
+    let detail: serde_json::Value = client
+        .get(format!("{url}/api/v1/issues/{id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(detail["lifecycle"], *projection);
+    let mutation = client
+        .patch(format!("{url}/api/v1/issues/{id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"summary":"ordinary edited","description":"kept editable"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mutation.status(), 200);
+    let mutation: serde_json::Value = mutation.json().await.unwrap();
+    assert!(mutation.get("lifecycle").is_none());
+    let fresh: serde_json::Value = client
+        .get(format!("{url}/api/v1/issues/{id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fresh["lifecycle"], detail["lifecycle"]);
+    assert_eq!(fresh["description"], "kept editable");
+    let (_, outsider) = register_user(
+        &url,
+        &client,
+        "detail-outsider@example.test",
+        "detailoutsider",
+        "Outsider",
+    )
+    .await;
+    assert_eq!(
+        client
+            .get(format!("{url}/api/v1/issues/{id}"))
+            .bearer_auth(&outsider)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+}
+
 // 13. issue_link_delete_denied_for_outsider — B cannot delete A's link (SEC-1)
 #[tokio::test]
 async fn issue_link_delete_denied_for_outsider() {
@@ -5035,10 +5111,19 @@ async fn search_status_filter_applied() {
 async fn issues_endpoint_applies_jql_filter() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
+    let board = client
+        .ctx
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let status = board.columns[0].id.to_string();
     let high = client
         .seed_issue(serde_json::json!({
             "project_key": "TT",
             "issue_type": "task",
+            "status_id": status,
             "priority": "high",
             "summary": "jql route high priority",
         }))
@@ -5048,6 +5133,7 @@ async fn issues_endpoint_applies_jql_filter() {
         .seed_issue(serde_json::json!({
             "project_key": "TT",
             "issue_type": "task",
+            "status_id": status,
             "priority": "medium",
             "summary": "jql route medium priority",
         }))

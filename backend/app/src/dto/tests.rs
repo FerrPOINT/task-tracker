@@ -158,6 +158,7 @@ fn unified_board_preserves_legacy_cards_without_claiming_sdlc_progress() {
         let board = board
             .with_sdlc_tasks(vec![SdlcBoardTask {
                 issue_id: ids[2].parse().unwrap(),
+                enrolled: true,
                 stage: LifecycleStage::Testing,
                 status: Some(LifecycleStatus::InProgress),
             }])
@@ -176,10 +177,32 @@ fn unified_board_preserves_legacy_cards_without_claiming_sdlc_progress() {
             original
         );
         for (_, task) in &board.cards[..2] {
+            assert!(!task.enrolled);
             assert_eq!(task.stage, LifecycleStage::Draft);
             assert_eq!(task.status, None);
         }
         assert_eq!(board.cards[2].1.stage, LifecycleStage::Testing);
+        assert!(board.cards[2].1.enrolled);
         assert_eq!(board.cards[2].1.status, Some(LifecycleStatus::InProgress));
     }
+}
+
+#[test]
+fn native_draft_is_enrolled_even_without_a_status() {
+    use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+    let id = uuid::Uuid::new_v4();
+    let native = super::project_issue_lifecycle(
+        id,
+        Some(SdlcBoardTask {
+            issue_id: id,
+            enrolled: true,
+            stage: LifecycleStage::Draft,
+            status: None,
+        }),
+    );
+    let ordinary = super::project_issue_lifecycle(id, None);
+    assert!(native.enrolled);
+    assert!(!ordinary.enrolled);
+    assert_eq!(native.stage, ordinary.stage);
+    assert_eq!(native.status, ordinary.status);
 }

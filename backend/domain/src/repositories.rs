@@ -48,24 +48,38 @@ pub trait SystemSettingRepository: Send + Sync {
 
 #[async_trait]
 pub trait TotpRepository: Send + Sync {
-    /// Existing row or a disabled default (enrollment not started).
     async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError>;
-    /// Insert/overwrite the encrypted secret as unconfirmed.
+    /// Never replace an enabled enrollment, including concurrent setup requests.
     async fn upsert_unconfirmed(
         &self,
         user_id: UserId,
         secret_cipher: &str,
     ) -> Result<(), AppError>;
-    /// Flip enabled with recovery codes and replay cursor.
     async fn confirm_enable(
         &self,
         user_id: UserId,
+        expected_secret_cipher: &str,
         recovery_codes_json: &str,
         step: i64,
     ) -> Result<(), AppError>;
-    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError>;
-    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError>;
-    async fn disable(&self, user_id: UserId) -> Result<(), AppError>;
+    /// Consume only the verified enrollment and matched step, once.
+    async fn mark_used_step(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        step: i64,
+    ) -> Result<bool, AppError>;
+    async fn consume_recovery_code(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        code_hash: &str,
+    ) -> Result<bool, AppError>;
+    async fn disable(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+    ) -> Result<bool, AppError>;
 }
 
 #[async_trait]
@@ -145,8 +159,22 @@ pub trait UserRepository: Send + Sync {
         Err(AppError::Unauthorized)
     }
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
+    /// Sparse lookup: absent profiles are omitted, storage failures are propagated.
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError>;
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
+    /// Issue a session only for the still-active credential that was verified.
+    /// Updates session fields only and returns the current profile.
+    async fn set_refresh_token_if_password_matches(
+        &self,
+        _user_id: UserId,
+        _expected_password_hash: &str,
+        _new_hash: &str,
+    ) -> Result<User, AppError> {
+        Err(AppError::Unavailable(
+            "session_issuance_not_supported".into(),
+        ))
+    }
     /// Atomic single-use rotation: replace the stored refresh-token hash
     /// with `new_hash` ONLY if the row still holds `expected_hash`.
     /// Returns Ok(()) on success and Unauthorized when the token was
@@ -413,6 +441,13 @@ pub trait ProjectRepository: Send + Sync {
         Ok(())
     }
     async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError>;
+    async fn get_by_ids(&self, ids: &[ProjectId]) -> Result<Vec<Project>, AppError> {
+        let mut projects = Vec::with_capacity(ids.len());
+        for id in ids {
+            projects.push(self.get_by_id(*id).await?);
+        }
+        Ok(projects)
+    }
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
     async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
     async fn save(&self, project: &Project) -> Result<ProjectId, AppError>;
@@ -752,8 +787,17 @@ pub trait WorklogRepository: Send + Sync {
         offset: u64,
     ) -> Result<Vec<Worklog>, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError>;
+    /// Atomically change the worklog and its issue's derived time values.
+    /// Errors after COMMIT submission must not be compensated by another command.
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError>;
+    /// Delete and recompute the same issue aggregate in one transaction.
     async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
+}
+
+#[derive(Debug)]
+pub enum AttachmentSaveError {
+    NotCommitted(AppError),
+    Unknown(AppError),
 }
 
 #[async_trait]
@@ -800,7 +844,10 @@ pub trait AttachmentRepository: Send + Sync {
     }
     async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
-    async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
+    async fn save(
+        &self,
+        attachment: &crate::Attachment,
+    ) -> Result<AttachmentId, AttachmentSaveError>;
     async fn delete(&self, id: AttachmentId) -> Result<(), AppError>;
 }
 
@@ -923,7 +970,10 @@ impl AttachmentRepository for StubAttachmentRepository {
     async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError> {
         Ok(vec![])
     }
-    async fn save(&self, _attachment: &crate::Attachment) -> Result<AttachmentId, AppError> {
+    async fn save(
+        &self,
+        _attachment: &crate::Attachment,
+    ) -> Result<AttachmentId, AttachmentSaveError> {
         Ok(AttachmentId::new())
     }
     async fn delete(&self, _id: AttachmentId) -> Result<(), AppError> {
@@ -1014,6 +1064,9 @@ impl WorklogRepository for StubWorklogRepository {
 pub struct StubUserRepository;
 #[async_trait]
 impl UserRepository for StubUserRepository {
+    async fn get_by_ids(&self, _ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        Ok(Vec::new())
+    }
     async fn rotate_refresh_token(
         &self,
         _user_id: UserId,
@@ -1048,9 +1101,9 @@ impl UserRepository for StubUserRepository {
 pub struct StubTotpRepository;
 #[async_trait]
 impl TotpRepository for StubTotpRepository {
-    async fn get(&self, _user_id: UserId) -> Result<TotpConfig, AppError> {
+    async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError> {
         Ok(TotpConfig {
-            user_id: _user_id,
+            user_id,
             secret_cipher: "".into(),
             enabled: false,
             confirmed_at: None,
@@ -1058,29 +1111,30 @@ impl TotpRepository for StubTotpRepository {
             recovery_codes: "[]".into(),
         })
     }
-    async fn upsert_unconfirmed(
-        &self,
-        _user_id: UserId,
-        _secret_cipher: &str,
-    ) -> Result<(), AppError> {
-        Ok(())
+    async fn upsert_unconfirmed(&self, _: UserId, _: &str) -> Result<(), AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn confirm_enable(
-        &self,
-        _user_id: UserId,
-        _recovery_codes_json: &str,
-        _step: i64,
-    ) -> Result<(), AppError> {
-        Ok(())
+    async fn confirm_enable(&self, _: UserId, _: &str, _: &str, _: i64) -> Result<(), AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn mark_used_step(&self, _user_id: UserId, _step: i64) -> Result<(), AppError> {
-        Ok(())
+    async fn mark_used_step(&self, _: UserId, _: &str, _: i64) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn update_recovery_codes(&self, _user_id: UserId, _json: &str) -> Result<(), AppError> {
-        Ok(())
+    async fn consume_recovery_code(&self, _: UserId, _: &str, _: &str) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
-    async fn disable(&self, _user_id: UserId) -> Result<(), AppError> {
-        Ok(())
+    async fn disable(&self, _: UserId, _: &str) -> Result<bool, AppError> {
+        Err(AppError::Internal(
+            "TOTP enrollment store unavailable".into(),
+        ))
     }
 }
 

@@ -1,7 +1,7 @@
 use super::sdlc::service;
 use axum::{
     Extension, Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::get,
 };
@@ -17,6 +17,14 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
         .route(
             "/issues/{id}/sdlc/analysis-reservation/configuration-preflight",
             get(configuration_preflight),
+        )
+        .route(
+            "/issues/{id}/sdlc/analysis-reservation/operations",
+            get(operation_by_key),
+        )
+        .route(
+            "/issues/{id}/sdlc/analysis-result/operations",
+            get(result_operation_by_key),
         )
         .route(
             "/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
@@ -39,6 +47,31 @@ fn no_store() -> HeaderMap {
     let mut h = HeaderMap::new();
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h
+}
+
+#[derive(serde::Deserialize)]
+pub struct OriginalOperationKey {
+    pub idempotency_key: String,
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-reservation/operations",operation_id="read_analysis_reservation_operation_by_key",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Query)),responses((status=200,body=AnalysisReservationOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn operation_by_key(
+    state: State<Arc<app::AppContext>>,
+    actor: Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Query(query): Query<OriginalOperationKey>,
+) -> Result<(HeaderMap, Json<AnalysisReservationOperation>), AppError> {
+    operation(state, actor, Path((task, query.idempotency_key))).await
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-result/operations",operation_id="read_analysis_result_operation_by_key",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Query)),responses((status=200,body=AnalysisResultOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn result_operation_by_key(
+    state: State<Arc<app::AppContext>>,
+    actor: Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Query(query): Query<OriginalOperationKey>,
+) -> Result<(HeaderMap, Json<AnalysisResultOperation>), AppError> {
+    result_operation(state, actor, Path((task, query.idempotency_key))).await
 }
 #[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight",operation_id="read_analysis_configuration_preflight",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=domain::sdlc_configuration::AnalysisConfigurationPreflight),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
 pub async fn configuration_preflight(
@@ -233,6 +266,17 @@ mod tests {
             ),
             (
                 "GET",
+                "analysis-reservation/operations?idempotency_key=original%2Fkey",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                "GET",
+                "analysis-result/operations?idempotency_key=original%2Fkey",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            ("GET", "analysis-result/operations", StatusCode::BAD_REQUEST),
+            (
+                "GET",
                 "pm-draft-completion",
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
@@ -302,6 +346,8 @@ mod tests {
             "/api/v1/issues/{id}/sdlc/analysis-reservation",
             "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
             "/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
+            "/api/v1/issues/{id}/sdlc/analysis-reservation/operations",
+            "/api/v1/issues/{id}/sdlc/analysis-result/operations",
             "/api/v1/issues/{id}/sdlc/pm-draft-completion",
             "/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",
         ] {

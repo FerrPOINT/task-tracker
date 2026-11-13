@@ -48,7 +48,6 @@ import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import {
-  useBoard,
   useUpdateIssue,
   useDeleteIssue,
   useSprints,
@@ -98,14 +97,13 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
     onCopied: () => toast.success(t('issue.keyCopied')),
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
-  const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const customFieldsQuery = useProjectCustomFields(issueQuery.data?.project_key ?? '')
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
   // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
   const taskId = issueQuery.data?.id ?? ''
-  const { snapshot: taskSnapshot } = useSdlcSnapshot(taskId)
+  const { snapshot: taskSnapshot } = useSdlcSnapshot(taskId, issueQuery.data?.lifecycle)
   const worklogsQuery = useWorklogs(taskId)
   const create = useCreateWorklog(taskId)
   const update = useUpdateWorklog(taskId)
@@ -143,7 +141,7 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
 
   const issue = issueQuery.data
   const worklogs = worklogsQuery.data ?? []
-  const lifecycle = boardQuery.data?.sdlc?.tasks.find((task) => task.issue_id === issue.id)
+  const lifecycle = issue.lifecycle
   const showCustomFields = customFieldsQuery.data?.length !== 0 || customFieldsQuery.isError
 
   const handleLogWork = () => {
@@ -302,10 +300,13 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
           }
           details={
             <Card>
-              <CardHeader>
+              <CardHeader density="compact">
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-[var(--shell-page-block-gap)] text-sm">
+              <CardContent
+                density="compact"
+                className="grid gap-[var(--shell-page-block-gap)] text-sm"
+              >
                 <IssueMetaEditor
                   issue={issue}
                   sprints={sprintsQuery.data ?? []}
@@ -321,7 +322,7 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
           activity={
             <div className="flex min-w-0 flex-col gap-[var(--shell-page-block-gap)] lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+                <TabsList className="grid! w-full grid-cols-2 gap-1 sm:grid-cols-4">
                   <TabsTrigger value="comments">{t('issue.discussion')}</TabsTrigger>
                   <TabsTrigger ref={worklogTabRef} value="worklog">
                     {t('timeTracking.worklog.title')}
@@ -366,7 +367,21 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
                     (decompositionPanel ?? <DecompositionPanel issueId={issue.id} />)}
                 </TabsContent>
                 <TabsContent value="sdlc" style={issueTabPanelStyle}>
-                  <SdlcPanel key={issue.id} issueId={issue.id} />
+                  <SdlcPanel
+                    key={issue.id}
+                    issueId={issue.id}
+                    lifecycle={issue.lifecycle}
+                    materials={
+                      import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+                        <ActionGroup>
+                          <TextLink href="#task-documents">Документы задачи</TextLink>
+                          <TextLink href="#task-repositories">
+                            Пуллреквесты, коммиты и проверки
+                          </TextLink>
+                        </ActionGroup>
+                      ) : undefined
+                    }
+                  />
                 </TabsContent>
               </Tabs>
             </div>
@@ -375,30 +390,34 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
             <>
               {showCustomFields && (
                 <Card>
-                  <CardHeader>
+                  <CardHeader density="compact">
                     <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent density="compact">
                     <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
               )}
               <Card>
-                <CardContent className="grid gap-4">
+                <CardContent density="compact" className="grid gap-4">
                   <LinkEditor issueId={issue.id} currentKey={issue.key} />
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                    <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                    <div id="task-documents" tabIndex={-1}>
+                      <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                    </div>
                   )}
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                    <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                    <div id="task-repositories" tabIndex={-1}>
+                      <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                    </div>
                   )}
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader>
+                <CardHeader density="compact">
                   <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent density="compact">
                   <TimeTrackingPanel
                     timeSpentSeconds={issue.time_spent_seconds}
                     originalEstimateSeconds={issue.original_estimate_seconds ?? null}

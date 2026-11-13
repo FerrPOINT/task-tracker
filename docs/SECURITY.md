@@ -21,14 +21,28 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 - В legacy-режиме без Central Auth пароли по-прежнему хешируются Argon2id, а
   локальные access/refresh, password reset и ранее реализованный TOTP работают по
   прежним контрактам.
+- Выдача локальной сессии атомарно проверяет активность и тот же password hash,
+  который был проверен до MFA; меняет только refresh hash и время обновления.
+  Параллельная блокировка или смена пароля запрещает вход, профиль и роль не
+  перезаписываются устаревшим снимком. OIDC использует отдельный вход по identity.
+- Standalone password login сначала проверяет пароль без выпуска токенов,
+  затем MFA и только после успеха выдаёт одну сессию. Отсутствующий/неверный
+  второй фактор не меняет прежний refresh token.
+- TOTP сохраняет фактически совпавший шаг, включая допустимый следующий.
+  Условная SQL-запись расходует шаг или recovery hash ровно один раз и привязана
+  к проверенному enrollment. Два расходования разных recovery codes не
+  восстанавливают друг друга. Setup не заменяет включённый enrollment;
+  disable требует одноразовый фактор и не удаляет новое конкурентное enrollment.
 - SAML/LDAP — не реализовано (future).
 
 ## 3. Authorization
 
-- В центральном режиме любой активный вошедший пользователь имеет доступ ко
-  всем проектам и пользовательским операциям. Исторические локальные роли и
-  memberships сохраняются, но не ограничивают людей. Dashboard не показывает
-  их как настройку доступа; исполнителей выбирают из активного центрального каталога.
+- Центральная identity не заменяет допуск к приложению и данным. При активной
+  политике пространств запрос использует подтверждённый project/space scope;
+  локальная роль не обходит его. Полномочия администрирования и обычной работы
+  разделяются общим контрактом [приложений](HUMAN_APPLICATION_ACCESS.md).
+  Совместимость режима без активной политики описана у владельца
+  [пространств](PROJECT_SPACES_V2.md), а не как безусловное право на все проекты.
 - Личные API-токены проверяются Central Auth по audience, сроку, отзыву и scope
   `task-tracker:read` / `task-tracker:write`.
 - Runner/service/runtime credentials остаются отдельной машинной границей и не
@@ -37,7 +51,7 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 
 ### SDLC: Strict Project And Assignment Boundary
 
-SDLC routes do not inherit the ordinary central-mode project bypass above.
+SDLC routes also retain their explicit project and assignment boundary.
 They recheck active central-subject identity and explicit project ownership or
 membership. Business answers and exact-revision confirmation require the owner
 human session; an operator cannot consent for that owner.

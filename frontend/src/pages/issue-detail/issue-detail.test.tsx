@@ -38,6 +38,7 @@ vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
 
 const issueData = {
   id: 'i1',
+  lifecycle: { issue_id: 'i1', enrolled: true, stage: 'Development', status: 'Ready' },
   key: 'TT-1',
   summary: 'Test issue summary',
   description: 'Test issue description',
@@ -83,7 +84,7 @@ vi.mock('@/shared/api/hooks', () => ({
           'Rework',
           'Deployment',
         ],
-        tasks: [{ issue_id: issueData.id, stage: 'Development', status: 'Ready' }],
+        tasks: [{ issue_id: issueData.id, enrolled: true, stage: 'Development', status: 'Ready' }],
       },
       issues: [],
       project_id: 'p1',
@@ -264,7 +265,36 @@ describe('IssueDetailPage', () => {
     expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
     expect(mockUseIssue).toHaveBeenCalledWith('TT-1')
     expect(mockWorklogs).toHaveBeenCalledWith('i1')
+    expect(mockTaskSnapshot).toHaveBeenCalledWith('i1', issueData.lifecycle)
     expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/TT-1?tab=sdlc')
+  })
+
+  it('keeps an ordinary task editable while its private snapshot query is disabled', async () => {
+    const lifecycle = { issue_id: issueData.id, enrolled: false, stage: 'Draft' }
+    mockUseIssue.mockReturnValue({
+      data: { ...issueData, lifecycle },
+      isLoading: false,
+      error: null,
+    })
+    // React Query reports pending without loading for a disabled query.
+    mockTaskSnapshot.mockReturnValue({
+      snapshot: { data: undefined, isPending: true, isLoading: false, error: null },
+    })
+    const mutateAsync = vi.fn().mockResolvedValue({ ...issueData, description: 'Edited normally' })
+    mockUseUpdateIssue.mockReturnValue({ mutateAsync, isPending: false })
+    render(wrapper(<IssueDetailPage />))
+    expect(mockTaskSnapshot).toHaveBeenCalledWith(issueData.id, lifecycle)
+    expect(screen.getByText('Test issue description')).toBeVisible()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /редактировать задачу|edit issue/i }))
+    fireEvent.change(screen.getByDisplayValue('Test issue description'), {
+      target: { value: 'Edited normally' },
+    })
+    await user.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    expect(mutateAsync).toHaveBeenCalledWith({
+      summary: 'Test issue summary',
+      description: 'Edited normally',
+    })
   })
 
   it('keeps drafts and dialogs scoped to the current issue route', async () => {

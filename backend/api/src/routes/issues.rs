@@ -5,7 +5,10 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::dto::{IssueListResponse, IssueResponse, SearchQuery, TrashQuery, UpdateIssueRequest};
+use crate::dto::{
+    IssueDetailResponse, IssueListResponse, IssueResponse, SearchQuery, TrashQuery,
+    UpdateIssueRequest,
+};
 use app::auth::UserClaims;
 use app::commands::UpdateIssueCommand;
 use axum::Extension;
@@ -94,14 +97,14 @@ fn parse_optional_uuid(
     get,
     path = "/api/v1/issues/{id}",
     params(("id" = String, Path, description = "Issue UUID or key (PROJ-1)")),
-    responses((status = 200, body = IssueResponse)),
+    responses((status = 200, body = IssueDetailResponse)),
     security(("bearer" = []))
 )]
 pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
-) -> Result<Json<IssueResponse>, AppError> {
+) -> Result<Json<IssueDetailResponse>, AppError> {
     let issue_id = ctx
         .services
         .issue
@@ -117,8 +120,11 @@ pub async fn get_issue(
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let i = ctx.services.issue.get_by_id(issue_id, requester).await?;
-    Ok(Json(map_issue(i)))
+    let detail = ctx.services.issue.get_details(issue_id, requester).await?;
+    Ok(Json(IssueDetailResponse {
+        issue: map_issue(detail.issue),
+        lifecycle: detail.lifecycle,
+    }))
 }
 
 #[utoipa::path(

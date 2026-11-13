@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 import {
   ActionGroup,
-  EmptyState,
+  ResourceListDescription,
   Table,
   TableHeader,
   TableBody,
@@ -88,7 +88,7 @@ export function WorklogTab({
     <>
       {deleteDialog}
       {worklogs.length === 0 ? (
-        <EmptyState message={t('timeTracking.worklog.empty')} />
+        <ResourceListDescription>{t('timeTracking.worklog.empty')}</ResourceListDescription>
       ) : (
         <div className="grid gap-[var(--shell-page-block-gap)]">
           <Card data-testid="worklog-table" className="hidden 2xl:block">

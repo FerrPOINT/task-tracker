@@ -567,7 +567,6 @@ export function useUpdateIssue(id: string) {
   return useMutation({
     mutationFn: (input: Parameters<typeof updateIssue>[1]) => updateIssue(id, input),
     onSuccess: (data) => {
-      qc.setQueryData(['issue', data.id], data)
       invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })
@@ -601,7 +600,6 @@ export function useRestoreIssue() {
     mutationFn: restoreIssue,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['trash'] })
-      qc.setQueryData(['issue', data.id], data)
       invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })

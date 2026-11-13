@@ -28,6 +28,36 @@ pub struct MemoryUserRepository {
 
 #[async_trait]
 impl UserRepository for MemoryUserRepository {
+    async fn get_by_ids(&self, ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        let ids: std::collections::HashSet<_> = ids.iter().copied().collect();
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|user| ids.contains(&user.id))
+            .cloned()
+            .collect())
+    }
+
+    async fn set_refresh_token_if_password_matches(
+        &self,
+        user_id: UserId,
+        expected_password_hash: &str,
+        new_hash: &str,
+    ) -> Result<User, AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .iter_mut()
+            .find(|u| {
+                u.id == user_id && u.is_active && u.password_hash.as_ref() == expected_password_hash
+            })
+            .ok_or(AppError::Unauthorized)?;
+        user.refresh_token_hash = Some(new_hash.to_string().into());
+        user.updated_at = shared::now();
+        Ok(user.clone())
+    }
+
     async fn rotate_refresh_token(
         &self,
         user_id: UserId,
@@ -197,6 +227,14 @@ pub struct MemoryIssueRepository {
 }
 
 impl MemoryIssueRepository {
+    /// Share the same issue owner with the in-memory worklog adapter.
+    pub fn worklog_repository(&self) -> MemoryWorklogRepository {
+        MemoryWorklogRepository {
+            worklogs: Arc::new(Mutex::new(Vec::new())),
+            issues: self.issues.clone(),
+        }
+    }
+
     pub fn with_shared_stores(
         history: Arc<Mutex<Vec<IssueStatusHistory>>>,
         project_ids: Arc<Mutex<Vec<ProjectId>>>,
@@ -405,7 +443,11 @@ impl IssueRepository for MemoryIssueRepository {
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError> {
         let mut issues = self.issues.lock().unwrap();
         if let Some(idx) = issues.iter().position(|i| i.id == issue.id) {
+            let spent = issues[idx].time_spent_seconds;
+            let remaining = issues[idx].remaining_estimate_seconds;
             issues[idx] = issue.clone();
+            issues[idx].time_spent_seconds = spent;
+            issues[idx].remaining_estimate_seconds = remaining;
         } else {
             issues.push(issue.clone());
         }
@@ -919,19 +961,21 @@ impl CommentRepository for MemoryCommentRepository {
 
 pub struct MemoryWorklogRepository {
     worklogs: Arc<Mutex<Vec<Worklog>>>,
+    issues: Arc<Mutex<Vec<Issue>>>,
 }
 
 impl MemoryWorklogRepository {
-    pub fn new() -> Self {
-        Self {
-            worklogs: Arc::new(Mutex::new(Vec::new())),
+    fn sync_time(issue: &mut Issue, worklogs: &[Worklog]) {
+        let spent = worklogs
+            .iter()
+            .filter(|w| w.issue_id == issue.id)
+            .map(|w| w.duration_seconds)
+            .sum();
+        issue.time_spent_seconds = spent;
+        if let Some(original) = issue.original_estimate_seconds {
+            issue.remaining_estimate_seconds = Some((original - spent).max(0));
         }
-    }
-}
-
-impl Default for MemoryWorklogRepository {
-    fn default() -> Self {
-        Self::new()
+        issue.updated_at = shared::now();
     }
 }
 
@@ -971,18 +1015,40 @@ impl WorklogRepository for MemoryWorklogRepository {
     }
 
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError> {
+        let mut issues = self.issues.lock().unwrap();
+        let owner = issues
+            .iter_mut()
+            .find(|issue| issue.id == worklog.issue_id && issue.deleted_at.is_none())
+            .ok_or_else(|| AppError::not_found("issue", worklog.issue_id))?;
         let mut worklogs = self.worklogs.lock().unwrap();
         if let Some(idx) = worklogs.iter().position(|w| w.id == worklog.id) {
+            if worklogs[idx].issue_id != worklog.issue_id
+                || worklogs[idx].author_id != worklog.author_id
+            {
+                return Err(AppError::conflict("worklog owner changed"));
+            }
             worklogs[idx] = worklog.clone();
         } else {
             worklogs.push(worklog.clone());
         }
+        Self::sync_time(owner, &worklogs);
         Ok(worklog.id)
     }
 
     async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
+        let mut issues = self.issues.lock().unwrap();
         let mut worklogs = self.worklogs.lock().unwrap();
+        let issue_id = worklogs
+            .iter()
+            .find(|worklog| worklog.id == id)
+            .map(|worklog| worklog.issue_id)
+            .ok_or_else(|| AppError::not_found("worklog", id))?;
+        let owner = issues
+            .iter_mut()
+            .find(|issue| issue.id == issue_id && issue.deleted_at.is_none())
+            .ok_or_else(|| AppError::not_found("issue", issue_id))?;
         worklogs.retain(|w| w.id != id);
+        Self::sync_time(owner, &worklogs);
         Ok(())
     }
 }
@@ -1089,7 +1155,10 @@ impl crate::AttachmentRepository for MemoryAttachmentRepository {
             .collect())
     }
 
-    async fn save(&self, attachment: &crate::Attachment) -> Result<shared::AttachmentId, AppError> {
+    async fn save(
+        &self,
+        attachment: &crate::Attachment,
+    ) -> Result<shared::AttachmentId, crate::AttachmentSaveError> {
         let mut items = self.attachments.lock().unwrap();
         if let Some(idx) = items.iter().position(|a| a.id == attachment.id) {
             items[idx] = attachment.clone();
@@ -1995,6 +2064,9 @@ impl TotpRepository for MemoryTotpRepository {
         secret_cipher: &str,
     ) -> Result<(), AppError> {
         let mut rows = self.rows.lock().unwrap();
+        if rows.iter().any(|r| r.user_id == user_id && r.enabled) {
+            return Err(AppError::conflict("totp already enabled"));
+        }
         rows.retain(|r| r.user_id != user_id);
         rows.push(TotpConfig {
             user_id,
@@ -2006,45 +2078,84 @@ impl TotpRepository for MemoryTotpRepository {
         });
         Ok(())
     }
-
     async fn confirm_enable(
         &self,
         user_id: UserId,
+        expected_secret_cipher: &str,
         recovery_codes_json: &str,
         step: i64,
     ) -> Result<(), AppError> {
         let mut rows = self.rows.lock().unwrap();
         let row = rows
             .iter_mut()
-            .find(|r| r.user_id == user_id)
-            .ok_or_else(|| AppError::not_found("totp", user_id))?;
+            .find(|r| {
+                r.user_id == user_id
+                    && !r.enabled
+                    && r.secret_cipher.as_ref() == expected_secret_cipher
+                    && r.last_used_step < step
+            })
+            .ok_or_else(|| AppError::conflict("totp enrollment changed"))?;
         row.enabled = true;
         row.confirmed_at = Some(shared::now());
         row.recovery_codes = recovery_codes_json.into();
         row.last_used_step = step;
         Ok(())
     }
-
-    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError> {
+    async fn mark_used_step(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        step: i64,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
-            row.last_used_step = step;
-        }
-        Ok(())
+        let Some(row) = rows.iter_mut().find(|r| {
+            r.user_id == user_id
+                && r.enabled
+                && r.secret_cipher.as_ref() == expected_secret_cipher
+                && r.last_used_step < step
+        }) else {
+            return Ok(false);
+        };
+        row.last_used_step = step;
+        Ok(true)
     }
-
-    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError> {
+    async fn consume_recovery_code(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+        code_hash: &str,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
-            row.recovery_codes = json.into();
+        let Some(row) = rows.iter_mut().find(|r| {
+            r.user_id == user_id && r.enabled && r.secret_cipher.as_ref() == expected_secret_cipher
+        }) else {
+            return Ok(false);
+        };
+        let mut codes: Vec<String> =
+            serde_json::from_str(&row.recovery_codes).map_err(AppError::internal)?;
+        let before = codes.len();
+        codes.retain(|c| c != code_hash);
+        if codes.len() == before {
+            return Ok(false);
         }
-        Ok(())
+        row.recovery_codes = serde_json::to_string(&codes)
+            .map_err(AppError::internal)?
+            .into();
+        Ok(true)
     }
-
-    async fn disable(&self, user_id: UserId) -> Result<(), AppError> {
+    async fn disable(
+        &self,
+        user_id: UserId,
+        expected_secret_cipher: &str,
+    ) -> Result<bool, AppError> {
         let mut rows = self.rows.lock().unwrap();
-        rows.retain(|r| r.user_id != user_id);
-        Ok(())
+        let before = rows.len();
+        rows.retain(|r| {
+            !(r.user_id == user_id
+                && r.enabled
+                && r.secret_cipher.as_ref() == expected_secret_cipher)
+        });
+        Ok(rows.len() != before)
     }
 }
 

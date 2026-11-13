@@ -19,7 +19,7 @@ import {
   ResourceListRow,
   Checkbox,
 } from '@pdlc/ui/ui'
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Check, RefreshCw } from 'lucide-react'
@@ -33,7 +33,11 @@ import {
   type ConfirmCommand,
   type RoutingPolicy,
 } from '@/api/sdlc'
+import { SdlcQuestions } from './SdlcQuestions'
+import { SdlcExecution } from './SdlcExecution'
+import { SdlcResult } from './SdlcResult'
 import { useSdlcTask } from '../model/use-sdlc'
+import type { IssueDetail } from '@/api/issue'
 import {
   canConfirmRequirementsContext,
   isRequirementsReviewContext,
@@ -42,9 +46,9 @@ import {
 const documentFields = [
   'goal',
   'scope',
+  'acceptance_criteria',
   'exclusions',
   'scenarios',
-  'acceptance_criteria',
   'constraints',
   'dependencies',
   'assumptions',
@@ -76,12 +80,24 @@ const eventLabels = {
   'analysis.result_accepted': 'analysisResultAccepted',
 } satisfies Record<MetadataEvent['event_type'], string>
 
-export function SdlcPanel({ issueId }: { issueId: string }) {
+export function SdlcPanel({
+  issueId,
+  lifecycle,
+  materials,
+}: {
+  issueId: string
+  lifecycle: IssueDetail['lifecycle']
+  materials?: ReactNode
+}) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [cursors, setCursors] = useState(['0'])
   const after = cursors[cursors.length - 1] ?? '0'
-  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(issueId, after)
+  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(
+    issueId,
+    after,
+    lifecycle,
+  )
   const [acknowledgedPin, setAcknowledgedPin] = useState<string | null>(null)
   const [publication, setPublication] = useState<{ pin: string; policy: RoutingPolicy } | null>(
     null,
@@ -130,10 +146,14 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     await refreshDescription()
     if (result.data && !result.error) {
       await metadata.refetch()
+      await qc.invalidateQueries({ queryKey: [...queryKey, 'questions'] })
+      await qc.invalidateQueries({ queryKey: [...queryKey, 'lifecycle'] })
+      await qc.invalidateQueries({ queryKey: [...queryKey, 'result'] })
       if (canConfirmRequirementsContext(result.data.context)) await routingPolicy.refetch()
     }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
+  if (lifecycle.enrolled === false) return <EmptyState message={t('sdlc.notEnrolled')} />
   if (snapshot.isPending) return <LoadingState message={t('sdlc.loading')} />
   if (accessDenied || (snapshot.error && !snapshot.data)) {
     return (
@@ -196,7 +216,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     <ContentSection asChild dividers="none">
       <section aria-label={t('sdlc.title')} className="min-w-0 text-sm">
         <SectionHeader
-          title={t('sdlc.title')}
+          title={t('sdlc.overview.title')}
           className="mb-3"
           actions={
             <Button
@@ -224,78 +244,101 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
         {snapshot.error && (
           <ErrorState message={errorMessage(snapshot.error)} onRetry={() => void refresh()} />
         )}
-        <dl className="mb-4 min-w-0">
-          <DescriptionItem layout="inline" label={t('sdlc.stage')}>
-            {t(`board.sdlcStage.${context.stage}`)}
-          </DescriptionItem>
-          <DescriptionItem layout="inline" label={t('sdlc.reason')}>
-            {context.waiting_reason
-              ? t(`sdlc.reasons.${context.waiting_reason}`, {
-                  defaultValue: t('sdlc.unknownReason'),
-                })
-              : t('sdlc.noReason')}
-          </DescriptionItem>
-        </dl>
-        <Disclosure summary={t('sdlc.technicalDetails')}>
-          <dl className="min-w-0">
-            <DescriptionItem layout="inline" label={t('sdlc.instance')}>
-              {context.tracker_instance_id}
+        <section aria-label={t('sdlc.overview.now')} className="mb-4">
+          <SectionHeader level={3} title={t('sdlc.overview.now')} className="mb-2" />
+          <dl>
+            <DescriptionItem layout="inline" label={t('sdlc.stage')}>
+              {t(`board.sdlcStage.${context.stage}`)}
             </DescriptionItem>
-            <DescriptionItem layout="inline" label={t('sdlc.project')}>
-              {context.project_id}
-            </DescriptionItem>
-            <DescriptionItem layout="inline" label={t('sdlc.root')}>
-              {context.root_task_id}
-            </DescriptionItem>
-            <DescriptionItem layout="inline" label={t('sdlc.owner')}>
-              {context.owner_subject}
-            </DescriptionItem>
-            {context.waiting_reason && (
-              <DescriptionItem layout="inline" label={t('sdlc.reasonCode')}>
-                {context.waiting_reason}
+            {context.status && (
+              <DescriptionItem layout="inline" label={t('sdlc.overview.state')}>
+                {t(`sdlc.status.${context.status}`, {
+                  defaultValue: t('sdlc.overview.unknownState'),
+                })}
               </DescriptionItem>
             )}
+            <DescriptionItem layout="inline" label={t('sdlc.reason')}>
+              {context.waiting_reason
+                ? t(`sdlc.reasons.${context.waiting_reason}`, {
+                    defaultValue: t('sdlc.unknownReason'),
+                  })
+                : t('sdlc.noReason')}
+            </DescriptionItem>
           </dl>
-        </Disclosure>
+          <SdlcExecution
+            key={queryKey[2]}
+            context={context}
+            queryKey={queryKey}
+            enabled={!snapshot.error && !snapshot.isFetching}
+          />
+        </section>
+        <section aria-label={t('sdlc.nextStep.title')} className="mb-4">
+          <SectionHeader level={3} title={t('sdlc.nextStep.title')} className="mb-2" />
+          <p>
+            {t(
+              context.permissions.can_answer
+                ? 'sdlc.nextStep.answer'
+                : isRequirementsReviewContext(context)
+                  ? context.permissions.can_confirm
+                    ? 'sdlc.nextStep.confirm'
+                    : 'sdlc.nextStep.owner'
+                  : 'sdlc.nextStep.none',
+            )}
+          </p>
+          {context.permissions.can_answer && (
+            <SdlcQuestions
+              key={queryKey[2]}
+              context={context}
+              queryKey={queryKey}
+              enabled={!snapshot.error && !snapshot.isFetching}
+              onChanged={refresh}
+            />
+          )}
+        </section>
 
         {context.stage === 'Analysis' &&
+          context.status == null &&
           (intent ? (
-            <ContentSection asChild dividers="both">
-              <section aria-label={t('sdlc.intent')} className="mb-5">
-                <SectionHeader level={3} title={<>{t('sdlc.intent')}</>} className="mb-2" />
-                <p className="mb-3 font-medium text-text-primary">
-                  {intent.stage} / {intent.status} · {t('sdlc.awaitingAdmission')}
-                </p>
-                <dl>
-                  <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
-                    {intent.intent_id}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.confirmationRef')}>
-                    {intent.confirmation_id}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.revision')}>
-                    {intent.requirement_revision}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label="SHA-256">
-                    {intent.content_hash}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.operationKey')}>
-                    {intent.operation_key}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.routing')}>
-                    {intent.role} / {intent.workflow} / {intent.mode} / {intent.scope}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.cycleAttempt')}>
-                    {intent.cycle} / {intent.attempt}
-                  </DescriptionItem>
-                  <DescriptionItem layout="inline" label={t('sdlc.createdAt')}>
-                    <time dateTime={intent.created_at}>
-                      {new Date(intent.created_at).toLocaleString()}
-                    </time>
-                  </DescriptionItem>
-                </dl>
-              </section>
-            </ContentSection>
+            <Disclosure summary={t('sdlc.intent')}>
+              <ContentSection asChild dividers="both">
+                <section aria-label={t('sdlc.intent')} className="mb-5">
+                  <SectionHeader level={3} title={<>{t('sdlc.intent')}</>} className="mb-2" />
+                  <p className="mb-3 font-medium text-text-primary">
+                    {t('sdlc.awaitingAdmission')}
+                  </p>
+                  <Disclosure summary={t('sdlc.technicalDetails')}>
+                    <dl>
+                      <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
+                        {intent.intent_id}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.confirmationRef')}>
+                        {intent.confirmation_id}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.revision')}>
+                        {intent.requirement_revision}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label="SHA-256">
+                        {intent.content_hash}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.operationKey')}>
+                        {intent.operation_key}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.routing')}>
+                        {intent.role} / {intent.workflow} / {intent.mode} / {intent.scope}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.cycleAttempt')}>
+                        {intent.cycle} / {intent.attempt}
+                      </DescriptionItem>
+                      <DescriptionItem layout="inline" label={t('sdlc.createdAt')}>
+                        <time dateTime={intent.created_at}>
+                          {new Date(intent.created_at).toLocaleString()}
+                        </time>
+                      </DescriptionItem>
+                    </dl>
+                  </Disclosure>
+                </section>
+              </ContentSection>
+            </Disclosure>
           ) : (
             <ErrorState message={t('sdlc.noIntent')} onRetry={() => void snapshot.refetch()} />
           ))}
@@ -311,33 +354,31 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               }
               className="mb-2"
             />
-            <Disclosure summary={t('sdlc.revisionDetails')}>
-              <dl className="mb-4">
-                <DescriptionItem layout="inline" label="SHA-256">
-                  {requirements.content_hash}
-                </DescriptionItem>
-              </dl>
-            </Disclosure>
-            {documentFields.map((field) => (
-              <div key={field} className="mb-4 min-w-0">
-                <SectionHeader
-                  level={4}
-                  title={<>{t(`sdlc.document.${field}`)}</>}
-                  className="mb-1"
-                />
-                {typeof requirements[field] === 'string' ? (
-                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    {requirements[field]}
-                  </p>
-                ) : (
-                  <ul className="list-inside list-disc space-y-1 [overflow-wrap:anywhere]">
-                    {(requirements[field] as string[]).map((item, index) => (
-                      <li key={index}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+            {documentFields
+              .filter((field) => {
+                const value = requirements[field]
+                return typeof value === 'string' ? value.trim().length > 0 : value.length > 0
+              })
+              .map((field) => (
+                <div key={field} className="mb-4 min-w-0">
+                  <SectionHeader
+                    level={4}
+                    title={<>{t(`sdlc.document.${field}`)}</>}
+                    className="mb-1"
+                  />
+                  {typeof requirements[field] === 'string' ? (
+                    <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      {requirements[field]}
+                    </p>
+                  ) : (
+                    <ul className="list-inside list-disc space-y-1 [overflow-wrap:anywhere]">
+                      {(requirements[field] as string[]).map((item, index) => (
+                        <li key={index}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             {isRequirementsReviewContext(context) && (
               <Fieldset separated legend={t('sdlc.confirm')} legendVisuallyHidden>
                 {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
@@ -496,11 +537,38 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                 )}
               </Fieldset>
             )}
+            <Disclosure summary={t('sdlc.revisionDetails')}>
+              <dl className="mb-4">
+                <DescriptionItem layout="inline" label="SHA-256">
+                  {requirements.content_hash}
+                </DescriptionItem>
+              </dl>
+            </Disclosure>
           </section>
         ) : (
           <EmptyState message={t('sdlc.noRequirements')} />
         )}
 
+        <section aria-label={t('sdlc.results.title')} className="my-4 min-w-0">
+          <SectionHeader level={3} title={t('sdlc.results.title')} className="mb-2" />
+          {context.previous_result_id ? (
+            <SdlcResult
+              key={queryKey[2] + context.previous_result_id}
+              issueId={issueId}
+              resultId={context.previous_result_id}
+              queryKey={queryKey}
+              enabled={!snapshot.error && !snapshot.isFetching}
+            />
+          ) : (
+            <p className="text-text-muted">{t('sdlc.results.empty')}</p>
+          )}
+        </section>
+        {materials && (
+          <section aria-label={t('sdlc.results.materialsTitle')} className="my-4">
+            <SectionHeader level={3} title={t('sdlc.results.materialsTitle')} className="mb-2" />
+            {materials}
+          </section>
+        )}
         <ContentSection asChild dividers="start">
           <section className="mt-4 min-w-0" aria-label={t('sdlc.history')}>
             <SectionHeader level={3} title={<>{t('sdlc.history')}</>} className="mb-2" />
@@ -526,9 +594,6 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               <LoadingState message={t('sdlc.loading')} />
             ) : metadata.data && !metadata.error ? (
               <>
-                <p className="mb-2 text-text-muted">
-                  {t('sdlc.afterCursor', { cursor: metadata.data.after })}
-                </p>
                 {metadata.data.events.length === 0 ? (
                   <EmptyState message={t('sdlc.noEvents')} />
                 ) : (
@@ -542,28 +607,47 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                             </ResourceListTitle>
                             <ResourceListDescription asChild>
                               <p>
-                                #{event.sequence} · {new Date(event.created_at).toLocaleString()}
+                                <time dateTime={event.created_at}>
+                                  {new Date(event.created_at).toLocaleString()}
+                                </time>
                               </p>
                             </ResourceListDescription>
                             {event.event_type === 'analysis.intent_created' && (
                               <dl>
-                                <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
-                                  {event.payload.resource.intent_id}
-                                </DescriptionItem>
                                 <DescriptionItem layout="inline" label={t('sdlc.revision')}>
                                   {event.payload.resource.requirement_revision}
                                 </DescriptionItem>
                               </dl>
                             )}
+                            {event.event_type === 'delivery.result_accepted' &&
+                              event.payload.resource.result_id && (
+                                <SdlcResult
+                                  key={queryKey[2]}
+                                  issueId={issueId}
+                                  resultId={event.payload.resource.result_id}
+                                  queryKey={queryKey}
+                                  enabled={
+                                    !snapshot.error && !metadata.error && !metadata.isFetching
+                                  }
+                                />
+                              )}
                             <Disclosure
                               className="min-w-0"
                               tone="muted"
                               summary={<>{t('sdlc.eventPin')}</>}
                             >
                               <dl>
+                                <DescriptionItem layout="inline" label={t('sdlc.eventSequence')}>
+                                  {event.sequence}
+                                </DescriptionItem>
                                 <DescriptionItem layout="inline" label={t('sdlc.eventRef')}>
                                   {event.event_id}
                                 </DescriptionItem>
+                                {event.event_type === 'analysis.intent_created' && (
+                                  <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
+                                    {event.payload.resource.intent_id}
+                                  </DescriptionItem>
+                                )}
                                 <DescriptionItem layout="inline" label="SHA-256">
                                   {event.metadata_sha256}
                                 </DescriptionItem>

@@ -1,5 +1,31 @@
 # API v1 Specification — Task Tracker
 
+GET `/api/v1/issues/{id}` возвращает `IssueDetailResponse`: прежние поля
+`IssueResponse` и обязательный `lifecycle` из той же проекции, что у доски.
+`lifecycle.enrolled=true` означает существующий сохранённый SDLC-процесс;
+обычная задача имеет `false`, начальную Draft и не получает выдуманный status.
+Этот признак не даёт доступа к приватному SDLC context. PATCH/restore и другие
+mutation receipts сохраняют `IssueResponse`; клиент перечитывает detail после
+изменения, не заменяя его неполным receipt. Отсутствующая metadata — ошибка
+контракта, а не неявное отсутствие процесса.
+
+## Retained Analysis Operation Keys
+
+The CLI reads an original analysis reservation/result operation through
+`GET /api/v1/issues/{id}/sdlc/analysis-reservation/operations?idempotency_key=...`
+and `GET /api/v1/issues/{id}/sdlc/analysis-result/operations?idempotency_key=...`.
+The key is one UTF-8 query value. Its original bytes, including `/`, are retained;
+the shared Base client continues to reject encoded slash in URL paths. These
+routes call the existing readback owner with the same access checks and no-store
+response. They never submit or retry a command.
+
+Tracker owns the temporary compatibility paths ending in
+`operations/{idempotency_key}`. They remain read-only for already published CLI
+artifacts. Remove those two paths only after the supported Fleet/CLI cohort has
+been updated and its active clients are verified to use the query contract;
+their removal belongs to that explicit contract rollout. There is no transport
+fallback or alternate operation store.
+
 ## SDLC JSON Rejections And Current Execution
 
 The existing stage-starts and delivery-proposals POST routes preserve extractor
@@ -2373,3 +2399,12 @@ as other agent business commands. Historical delivery grants can read retained
 results; they cannot authorize a new proposal. Global `admin` scope does not
 turn a service account into an assigned producer. Standard scopes for other
 products remain compatible with the ordinary CLI credential.
+
+## SSE: разрыв последовательности invalidation
+
+`GET /api/v1/events` сохраняет именованные `tracker` события и проверки
+видимости. При отставании подписчика broadcast stream выдаёт отдельное событие
+`resync_required` с `data: {}` без resource IDs. Клиент перечитывает только
+активные разрешённые запросы. То же перечитывание выполняется при первом open
+и reconnect через существующий Base authenticated transport. Gap не является
+снимком данных и не разрешает доступ к ресурсам другого пользователя.

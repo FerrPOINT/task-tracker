@@ -18,6 +18,14 @@ use crate::context::filters::SearchFilters;
 pub trait AuthService: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError>;
+    /// Standalone password verification only: no token issuance or session writes.
+    /// The returned credential snapshot stays internal; complete MFA before
+    /// passing it to complete_password_login. Never serialize its password hash.
+    async fn authenticate_password(&self, cmd: LoginCommand) -> Result<domain::User, AppError>;
+    async fn complete_password_login(
+        &self,
+        verified_user: domain::User,
+    ) -> Result<AuthDto, AppError>;
     /// Issue a fresh session for an already-authenticated external identity
     /// (OIDC callback; SYSTEM_ADMIN 4.2). Requires the user to be active and
     /// not TOTP-gated (TOTP applies to password logins only).
@@ -221,6 +229,11 @@ pub trait IssueService: Send + Sync {
         requester: UserId,
     ) -> Result<IssueDto, AppError>;
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError>;
+    async fn get_details(
+        &self,
+        id: IssueId,
+        requester: UserId,
+    ) -> Result<crate::dto::IssueDetailDto, AppError>;
     async fn update(
         &self,
         id: IssueId,

@@ -6,10 +6,10 @@ use domain::{
     Issue, IssueQuery, IssueRepository, Label, LabelRepository, MemoryAttachmentRepository,
     MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
     MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
-    Notification, NotificationRepository, Project, ProjectMemberRepository, ProjectQuery,
-    ProjectRepository, Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
-    UserNotificationSettingsRepository, UserRepository, WorklogRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
+    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
+    Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, LabelId,
@@ -121,7 +121,9 @@ impl domain::FileStorage for RecordingStorage {
     }
 }
 
-struct FailingAttachmentSaveRepository;
+struct FailingAttachmentSaveRepository {
+    unknown: bool,
+}
 
 #[async_trait::async_trait]
 impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
@@ -136,8 +138,13 @@ impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
     async fn save(
         &self,
         _attachment: &domain::Attachment,
-    ) -> Result<shared::AttachmentId, AppError> {
-        Err(AppError::Internal("metadata insert failed".into()))
+    ) -> Result<shared::AttachmentId, domain::AttachmentSaveError> {
+        let error = AppError::Internal("metadata insert failed".into());
+        Err(if self.unknown {
+            domain::AttachmentSaveError::Unknown(error)
+        } else {
+            domain::AttachmentSaveError::NotCommitted(error)
+        })
     }
 
     async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
@@ -149,6 +156,9 @@ struct FailingUserRepository;
 
 #[async_trait::async_trait]
 impl UserRepository for FailingUserRepository {
+    async fn get_by_ids(&self, _ids: &[UserId]) -> Result<Vec<User>, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
     async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
         Err(AppError::Internal("failing user repo".into()))
     }
@@ -262,7 +272,7 @@ impl domain::AttachmentRepository for FailingAttachmentDeleteRepository {
     async fn save(
         &self,
         _attachment: &domain::Attachment,
-    ) -> Result<shared::AttachmentId, AppError> {
+    ) -> Result<shared::AttachmentId, domain::AttachmentSaveError> {
         Ok(self.attachment.id)
     }
 
@@ -374,7 +384,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(domain::StubCommentRepository),
-        worklogs: Arc::new(domain::StubWorklogRepository),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(domain::MemoryProjectMemberRepository::default()),
         statuses: Arc::new(domain::MemoryStatusRepository::new(statuses_from_board(
             &board,
@@ -1951,6 +1961,9 @@ fn failing_context() -> AppContext {
     struct FailingUserRepository;
     #[async_trait::async_trait]
     impl UserRepository for FailingUserRepository {
+        async fn get_by_ids(&self, _ids: &[UserId]) -> Result<Vec<User>, AppError> {
+            Err(AppError::Internal("x".into()))
+        }
         async fn rotate_refresh_token(
             &self,
             _user_id: shared::UserId,
@@ -2147,6 +2160,7 @@ async fn unified_board_reads_saved_stages_without_automation_and_checks_project_
             self.reads.fetch_add(1, Ordering::SeqCst);
             Ok(vec![SdlcBoardTask {
                 issue_id: self.task.as_uuid(),
+                enrolled: true,
                 stage: LifecycleStage::Testing,
                 status: Some(LifecycleStatus::InProgress),
             }])
@@ -2227,6 +2241,90 @@ async fn unified_board_reads_saved_stages_without_automation_and_checks_project_
 async fn dashboard_get_propagates_repo_error() {
     let ctx = failing_context();
     assert_internal(ctx.services.dashboard.get_dashboard(UserId::new()).await);
+}
+
+#[tokio::test]
+async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authorization() {
+    use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Projection {
+        rows: Vec<SdlcBoardTask>,
+        reads: Arc<AtomicUsize>,
+    }
+    #[async_trait::async_trait]
+    impl BoardRepository for Projection {
+        async fn sdlc_tasks(
+            &self,
+            _: ProjectId,
+            _: &[IssueId],
+        ) -> Result<Vec<SdlcBoardTask>, AppError> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            Ok(self.rows.clone())
+        }
+        async fn get_by_id(&self, id: shared::BoardId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_by_id(id).await
+        }
+        async fn get_default_by_project(&self, id: ProjectId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_default_by_project(id).await
+        }
+        async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError> {
+            domain::StubBoardRepository
+                .get_default_by_project_key(key)
+                .await
+        }
+        async fn save(&self, board: &Board) -> Result<(), AppError> {
+            domain::StubBoardRepository.save(board).await
+        }
+    }
+
+    let (base, owner) = ctx_with_demo_data().await;
+    let issue = create_demo_issue(&base, &owner, "Detail lifecycle contract").await;
+    let native = SdlcBoardTask {
+        issue_id: issue.as_uuid(),
+        enrolled: true,
+        stage: LifecycleStage::Draft,
+        status: None,
+    };
+    let foreign = SdlcBoardTask {
+        issue_id: uuid::Uuid::new_v4(),
+        ..native.clone()
+    };
+    for (rows, enrolled) in [
+        (vec![], Some(false)),
+        (vec![native.clone()], Some(true)),
+        (vec![foreign], None),
+        (vec![native.clone(), native.clone()], None),
+    ] {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let repos = Arc::new(domain::Repositories {
+            boards: Arc::new(Projection {
+                rows,
+                reads: reads.clone(),
+            }),
+            ..(*base.repos).clone()
+        });
+        let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+        let result = ctx.services.issue.get_details(issue, owner.id).await;
+        if let Some(enrolled) = enrolled {
+            let detail = result.unwrap();
+            assert_eq!(detail.lifecycle.enrolled, enrolled);
+            assert_eq!(detail.lifecycle.issue_id, issue.as_uuid());
+            assert_eq!(detail.lifecycle.stage, LifecycleStage::Draft);
+            assert_eq!(detail.lifecycle.status, None);
+        } else {
+            assert!(matches!(result, Err(AppError::Internal(_))));
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+        assert!(
+            ctx.services
+                .issue
+                .get_details(issue, UserId::new())
+                .await
+                .is_err()
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[tokio::test]
@@ -3081,7 +3179,6 @@ async fn watcher_receives_issue_update_notification() {
 async fn watcher_receives_worklog_logged_notification() {
     let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let repos = Arc::new(domain::Repositories {
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -4211,32 +4308,44 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
         )
         .await
         .unwrap();
-    let storage = Arc::new(RecordingStorage::default());
-    let service = AttachmentServiceImpl::new(
-        Arc::new(FailingAttachmentSaveRepository),
-        ctx.repos.issues.clone(),
-        storage.clone(),
-        Arc::new(domain::StubWatcherRepository),
-        ctx.events.clone(),
-        Arc::new(domain::StubNotificationRepository),
-        Arc::new(domain::StubUserNotificationSettingsRepository),
-        ctx.authz.clone(),
-    );
+    for unknown in [false, true] {
+        let storage = Arc::new(RecordingStorage::default());
+        let service = AttachmentServiceImpl::new(
+            Arc::new(FailingAttachmentSaveRepository { unknown }),
+            ctx.repos.issues.clone(),
+            storage.clone(),
+            Arc::new(domain::StubWatcherRepository),
+            ctx.events.clone(),
+            Arc::new(domain::StubNotificationRepository),
+            Arc::new(domain::StubUserNotificationSettingsRepository),
+            ctx.authz.clone(),
+        );
 
-    let err = service
-        .upload(
-            issue.id.parse().unwrap(),
-            user.id,
-            "report.txt",
-            "text/plain",
-            b"payload".to_vec(),
-        )
-        .await
-        .unwrap_err();
+        let err = service
+            .upload(
+                issue.id.parse().unwrap(),
+                user.id,
+                "report.txt",
+                "text/plain",
+                b"payload".to_vec(),
+            )
+            .await
+            .unwrap_err();
 
-    assert!(matches!(err, AppError::Internal(_)));
-    assert_eq!(storage.file_count(), 0);
-    assert_eq!(storage.delete_count(), 1);
+        if unknown {
+            assert!(matches!(err, AppError::Unavailable(_)));
+            assert_eq!(
+                storage.file_count(),
+                1,
+                "unknown commit must retain the bytes"
+            );
+            assert_eq!(storage.delete_count(), 0);
+        } else {
+            assert!(matches!(err, AppError::Internal(_)));
+            assert_eq!(storage.file_count(), 0);
+            assert_eq!(storage.delete_count(), 1);
+        }
+    }
 }
 
 #[tokio::test]
@@ -5133,7 +5242,6 @@ async fn project_delete_deletes_issue_attachment_files() {
 async fn worklog_create_rejects_spoofed_author() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let repos = Arc::new(domain::Repositories {
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -5239,7 +5347,7 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let worklogs = base_ctx.repos.worklogs.clone();
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
@@ -5308,7 +5416,7 @@ async fn worklog_list_propagates_author_directory_error() {
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let worklogs = base_ctx.repos.worklogs.clone();
     worklogs
         .save(&domain::Worklog {
             id: shared::WorklogId::new(),
@@ -5339,87 +5447,72 @@ async fn worklog_list_propagates_author_directory_error() {
     assert_internal(ctx.services.worklog.list(issue_id, owner.id, None, 0).await);
 }
 
-struct SaveFailIssueRepository {
-    inner: Arc<dyn IssueRepository>,
+struct FailingWorklogRepository {
+    inner: Arc<dyn domain::WorklogRepository>,
+    fail: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[async_trait::async_trait]
-impl IssueRepository for SaveFailIssueRepository {
-    async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
+impl domain::WorklogRepository for FailingWorklogRepository {
+    async fn get_by_id(&self, id: shared::WorklogId) -> Result<domain::Worklog, AppError> {
         self.inner.get_by_id(id).await
     }
-
-    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError> {
-        self.inner.get_by_id_include_deleted(id).await
+    async fn list_by_issue(&self, id: IssueId) -> Result<Vec<domain::Worklog>, AppError> {
+        self.inner.list_by_issue(id).await
     }
-
-    async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
-        self.inner.get_by_key(key).await
-    }
-
-    async fn change_status_atomic(
+    async fn list_by_issue_page(
         &self,
-        issue_id: IssueId,
-        project_id: ProjectId,
-        from_status_id: StatusId,
-        to_status_id: StatusId,
-        actor_id: UserId,
-        guard: &domain::TransitionGuard,
-    ) -> Result<(), AppError> {
-        self.inner
-            .change_status_atomic(
-                issue_id,
-                project_id,
-                from_status_id,
-                to_status_id,
-                actor_id,
-                guard,
-            )
-            .await
+        id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<domain::Worklog>, AppError> {
+        self.inner.list_by_issue_page(id, limit, offset).await
     }
-
-    async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
-        self.inner.list(query).await
+    async fn save(&self, item: &domain::Worklog) -> Result<shared::WorklogId, AppError> {
+        if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AppError::Internal(
+                "atomic worklog transaction failed".into(),
+            ));
+        }
+        self.inner.save(item).await
     }
-
-    async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
-        Err(AppError::Internal("issue save failed".into()))
-    }
-
-    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+    async fn delete(&self, id: shared::WorklogId) -> Result<(), AppError> {
+        if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(AppError::Internal(
+                "atomic worklog transaction failed".into(),
+            ));
+        }
         self.inner.delete(id).await
-    }
-
-    async fn restore(&self, id: IssueId) -> Result<(), AppError> {
-        self.inner.restore(id).await
-    }
-
-    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
-        self.inner.purge(id).await
     }
 }
 
-async fn ctx_with_issue_save_failure_for_worklogs() -> (AppContext, User, IssueId) {
+async fn ctx_with_worklog_write_failure() -> (
+    AppContext,
+    User,
+    IssueId,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let issue_id = create_demo_issue(&base_ctx, &owner, "worklog rollback").await;
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let fail = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let repos = Arc::new(domain::Repositories {
-        issues: Arc::new(SaveFailIssueRepository {
-            inner: base_ctx.repos.issues.clone(),
+        worklogs: Arc::new(FailingWorklogRepository {
+            inner: base_ctx.repos.worklogs.clone(),
+            fail: fail.clone(),
         }),
-        worklogs,
         ..(*base_ctx.repos).clone()
     });
     (
         AppContext::new(test_config(), repos, Arc::new(TestStorage::default())),
         owner,
         issue_id,
+        fail,
     )
 }
 
 #[tokio::test]
-async fn worklog_create_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_create_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, _fail) = ctx_with_worklog_write_failure().await;
 
     assert_internal(
         ctx.services
@@ -5448,8 +5541,8 @@ async fn worklog_create_rolls_back_when_issue_time_sync_fails() {
 }
 
 #[tokio::test]
-async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_update_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, fail) = ctx_with_worklog_write_failure().await;
     let worklog = domain::Worklog {
         id: shared::WorklogId::new(),
         issue_id,
@@ -5460,7 +5553,9 @@ async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
+    fail.store(false, std::sync::atomic::Ordering::SeqCst);
     ctx.repos.worklogs.save(&worklog).await.unwrap();
+    fail.store(true, std::sync::atomic::Ordering::SeqCst);
 
     assert_internal(
         ctx.services
@@ -5486,8 +5581,8 @@ async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
 }
 
 #[tokio::test]
-async fn worklog_delete_rolls_back_when_issue_time_sync_fails() {
-    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+async fn worklog_delete_propagates_atomic_store_failure() {
+    let (ctx, owner, issue_id, fail) = ctx_with_worklog_write_failure().await;
     let worklog = domain::Worklog {
         id: shared::WorklogId::new(),
         issue_id,
@@ -5498,7 +5593,9 @@ async fn worklog_delete_rolls_back_when_issue_time_sync_fails() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
+    fail.store(false, std::sync::atomic::Ordering::SeqCst);
     ctx.repos.worklogs.save(&worklog).await.unwrap();
+    fail.store(true, std::sync::atomic::Ordering::SeqCst);
 
     assert_internal(ctx.services.worklog.delete(worklog.id, owner.id).await);
 
