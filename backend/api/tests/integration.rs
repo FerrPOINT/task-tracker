@@ -5,9 +5,9 @@ use domain::{
     MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
     MemoryIssueLinkRepository, MemoryIssueRepository, MemoryIssueStatusHistoryRepository,
     MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectMemberRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
-    Notification, NotificationRepository, Project, ProjectRepository, SprintRepository,
-    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
+    NotificationRepository, Project, ProjectRepository, SprintRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -136,6 +136,7 @@ async fn spawn_server_for_password_reset() -> (
     users.save(&user).await.unwrap();
     let resets = Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default());
     let emails = Arc::new(CapturedEmails::default());
+    let issues = Arc::new(MemoryIssueRepository::default());
     let repos = Arc::new(domain::Repositories {
         users,
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
@@ -144,11 +145,11 @@ async fn spawn_server_for_password_reset() -> (
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(MemoryProjectRepository::default()),
-        issues: Arc::new(MemoryIssueRepository::default()),
+        issues: issues.clone(),
         boards: Arc::new(MemoryBoardRepository::default()),
         sprints: Arc::new(MemorySprintRepository::default()),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: Arc::new(domain::MemoryStatusRepository::new(vec![])),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -306,7 +307,7 @@ async fn spawn_server_with_notifications()
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -2613,7 +2614,7 @@ async fn spawn_server_with_reports() -> (
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -3568,7 +3569,7 @@ async fn spawn_server_with_memory_repos() -> (String, FixtureClient) {
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -5035,10 +5036,19 @@ async fn search_status_filter_applied() {
 async fn issues_endpoint_applies_jql_filter() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
+    let board = client
+        .ctx
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let status = board.columns[0].id.to_string();
     let high = client
         .seed_issue(serde_json::json!({
             "project_key": "TT",
             "issue_type": "task",
+            "status_id": status,
             "priority": "high",
             "summary": "jql route high priority",
         }))
@@ -5048,6 +5058,7 @@ async fn issues_endpoint_applies_jql_filter() {
         .seed_issue(serde_json::json!({
             "project_key": "TT",
             "issue_type": "task",
+            "status_id": status,
             "priority": "medium",
             "summary": "jql route medium priority",
         }))

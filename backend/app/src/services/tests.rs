@@ -6,10 +6,10 @@ use domain::{
     Issue, IssueQuery, IssueRepository, Label, LabelRepository, MemoryAttachmentRepository,
     MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
     MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
-    Notification, NotificationRepository, Project, ProjectMemberRepository, ProjectQuery,
-    ProjectRepository, Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
-    UserNotificationSettingsRepository, UserRepository, WorklogRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
+    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
+    Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, LabelId,
@@ -3094,7 +3094,6 @@ async fn watcher_receives_issue_update_notification() {
 async fn watcher_receives_worklog_logged_notification() {
     let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let repos = Arc::new(domain::Repositories {
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -5158,7 +5157,6 @@ async fn project_delete_deletes_issue_attachment_files() {
 async fn worklog_create_rejects_spoofed_author() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let repos = Arc::new(domain::Repositories {
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -5264,7 +5262,7 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let worklogs = base_ctx.repos.worklogs.clone();
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
@@ -5333,7 +5331,7 @@ async fn worklog_list_propagates_author_directory_error() {
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
-    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let worklogs = base_ctx.repos.worklogs.clone();
     worklogs
         .save(&domain::Worklog {
             id: shared::WorklogId::new(),
@@ -5365,7 +5363,7 @@ async fn worklog_list_propagates_author_directory_error() {
 }
 
 struct FailingWorklogRepository {
-    inner: MemoryWorklogRepository,
+    inner: Arc<dyn domain::WorklogRepository>,
     fail: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -5414,7 +5412,7 @@ async fn ctx_with_worklog_write_failure() -> (
     let fail = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let repos = Arc::new(domain::Repositories {
         worklogs: Arc::new(FailingWorklogRepository {
-            inner: MemoryWorklogRepository::default(),
+            inner: base_ctx.repos.worklogs.clone(),
             fail: fail.clone(),
         }),
         ..(*base_ctx.repos).clone()

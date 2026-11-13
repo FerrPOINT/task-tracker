@@ -5,8 +5,8 @@ use domain::{
     MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
     MemoryIssueRepository, MemoryIssueStatusHistoryRepository, MemoryLabelRepository,
     MemoryNotificationRepository, MemoryProjectMemberRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Project,
-    ProjectRepository, StatusCategory, User, UserRepository,
+    MemorySprintRepository, MemoryUserRepository, Project, ProjectRepository, StatusCategory, User,
+    UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -177,7 +177,7 @@ async fn spawn_server_with_notifications()
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),

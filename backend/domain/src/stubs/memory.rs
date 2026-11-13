@@ -231,7 +231,7 @@ impl MemoryIssueRepository {
     pub fn worklog_repository(&self) -> MemoryWorklogRepository {
         MemoryWorklogRepository {
             worklogs: Arc::new(Mutex::new(Vec::new())),
-            issues: Some(self.issues.clone()),
+            issues: self.issues.clone(),
         }
     }
 
@@ -961,18 +961,10 @@ impl CommentRepository for MemoryCommentRepository {
 
 pub struct MemoryWorklogRepository {
     worklogs: Arc<Mutex<Vec<Worklog>>>,
-    // None is a standalone raw worklog fixture. Service tests use the shared
-    // adapter returned by MemoryIssueRepository::worklog_repository.
-    issues: Option<Arc<Mutex<Vec<Issue>>>>,
+    issues: Arc<Mutex<Vec<Issue>>>,
 }
 
 impl MemoryWorklogRepository {
-    pub fn new() -> Self {
-        Self {
-            worklogs: Arc::new(Mutex::new(Vec::new())),
-            issues: None,
-        }
-    }
     fn sync_time(issue: &mut Issue, worklogs: &[Worklog]) {
         let spent = worklogs
             .iter()
@@ -984,12 +976,6 @@ impl MemoryWorklogRepository {
             issue.remaining_estimate_seconds = Some((original - spent).max(0));
         }
         issue.updated_at = shared::now();
-    }
-}
-
-impl Default for MemoryWorklogRepository {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -1029,16 +1015,11 @@ impl WorklogRepository for MemoryWorklogRepository {
     }
 
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError> {
-        let mut issues = self.issues.as_ref().map(|store| store.lock().unwrap());
-        let owner = match issues.as_mut() {
-            Some(items) => Some(
-                items
-                    .iter_mut()
-                    .find(|i| i.id == worklog.issue_id && i.deleted_at.is_none())
-                    .ok_or_else(|| AppError::not_found("issue", worklog.issue_id))?,
-            ),
-            None => None,
-        };
+        let mut issues = self.issues.lock().unwrap();
+        let owner = issues
+            .iter_mut()
+            .find(|issue| issue.id == worklog.issue_id && issue.deleted_at.is_none())
+            .ok_or_else(|| AppError::not_found("issue", worklog.issue_id))?;
         let mut worklogs = self.worklogs.lock().unwrap();
         if let Some(idx) = worklogs.iter().position(|w| w.id == worklog.id) {
             if worklogs[idx].issue_id != worklog.issue_id
@@ -1050,29 +1031,24 @@ impl WorklogRepository for MemoryWorklogRepository {
         } else {
             worklogs.push(worklog.clone());
         }
-        if let Some(owner) = owner {
-            Self::sync_time(owner, &worklogs);
-        }
+        Self::sync_time(owner, &worklogs);
         Ok(worklog.id)
     }
 
     async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
-        let mut issues = self.issues.as_ref().map(|store| store.lock().unwrap());
+        let mut issues = self.issues.lock().unwrap();
         let mut worklogs = self.worklogs.lock().unwrap();
-        let issue_id = worklogs.iter().find(|w| w.id == id).map(|w| w.issue_id);
-        let owner = match (issues.as_mut(), issue_id) {
-            (Some(items), Some(issue_id)) => Some(
-                items
-                    .iter_mut()
-                    .find(|i| i.id == issue_id && i.deleted_at.is_none())
-                    .ok_or_else(|| AppError::not_found("issue", issue_id))?,
-            ),
-            _ => None,
-        };
+        let issue_id = worklogs
+            .iter()
+            .find(|worklog| worklog.id == id)
+            .map(|worklog| worklog.issue_id)
+            .ok_or_else(|| AppError::not_found("worklog", id))?;
+        let owner = issues
+            .iter_mut()
+            .find(|issue| issue.id == issue_id && issue.deleted_at.is_none())
+            .ok_or_else(|| AppError::not_found("issue", issue_id))?;
         worklogs.retain(|w| w.id != id);
-        if let Some(owner) = owner {
-            Self::sync_time(owner, &worklogs);
-        }
+        Self::sync_time(owner, &worklogs);
         Ok(())
     }
 }
