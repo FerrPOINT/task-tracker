@@ -50,7 +50,11 @@ async fn worklog_and_aggregate_are_atomic_and_stale_issue_writes_preserve_spent_
         author_id uuid NOT NULL,started_at timestamptz NOT NULL,duration_seconds bigint NOT NULL,
         description text,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);"#))
       .execute(&root).await.unwrap();
-    let scoped = format!("{url}&options=-csearch_path%3D{schema}");
+    let mut scoped = reqwest::Url::parse(&url).unwrap();
+    scoped
+        .query_pairs_mut()
+        .append_pair("options", &format!("-csearch_path={schema}"));
+    let scoped = scoped.to_string();
     let db = Database::connect(&scoped).await.unwrap();
     let connection_pool = db.get_postgres_connection_pool().clone();
     let repos = SeaOrmRepositories::new(db);

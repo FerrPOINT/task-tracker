@@ -27,7 +27,11 @@ async fn one_time_factors_and_enrollment_changes_are_atomic() {
         CREATE TABLE {schema}.totp(user_id uuid PRIMARY KEY,secret_cipher text NOT NULL,enabled boolean NOT NULL,
         confirmed_at timestamptz,last_used_step bigint NOT NULL,recovery_codes text NOT NULL,
         created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);")).execute(&root).await.unwrap();
-    let scoped = format!("{url}&options=-csearch_path%3D{schema}");
+    let mut scoped = reqwest::Url::parse(&url).unwrap();
+    scoped
+        .query_pairs_mut()
+        .append_pair("options", &format!("-csearch_path={schema}"));
+    let scoped = scoped.to_string();
     let db = Database::connect(&scoped).await.unwrap();
     let connections = db.get_postgres_connection_pool().clone();
     let repo = TotpRepo::new(db);

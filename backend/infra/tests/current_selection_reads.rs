@@ -37,7 +37,11 @@ async fn sparse_user_batches_and_project_history_keep_identity_errors_and_scope(
     .execute(&root)
     .await
     .unwrap();
-    let scoped = format!("{url}&options=-csearch_path%3D{schema}");
+    let mut scoped = reqwest::Url::parse(&url).unwrap();
+    scoped
+        .query_pairs_mut()
+        .append_pair("options", &format!("-csearch_path={schema}"));
+    let scoped = scoped.to_string();
     let db = Database::connect(&scoped).await.unwrap();
     let pool = db.get_postgres_connection_pool().clone();
     let repo = SeaOrmRepositories::new(db);

@@ -33,9 +33,11 @@ async fn session_write_preserves_identity_and_waits_for_credential_changes() {
     .execute(&root)
     .await
     .unwrap();
-    let db = Database::connect(format!("{url}&options=-csearch_path%3D{schema}"))
-        .await
-        .unwrap();
+    let mut scoped = reqwest::Url::parse(&url).unwrap();
+    scoped
+        .query_pairs_mut()
+        .append_pair("options", &format!("-csearch_path={schema}"));
+    let db = Database::connect(scoped.to_string()).await.unwrap();
     let pool = db.get_postgres_connection_pool().clone();
     let repo = SeaOrmRepositories::new(db).users;
     let id = UserId::new();

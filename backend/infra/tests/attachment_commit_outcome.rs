@@ -223,7 +223,11 @@ async fn metadata_commit_acknowledgement_is_resolved_before_blob_cleanup_is_allo
     drop(repositories);
     connection_pool.close().await;
     drop(proxy);
-    let direct = format!("{url}&options=-csearch_path%3D{schema}");
+    let mut direct = reqwest::Url::parse(&url).unwrap();
+    direct
+        .query_pairs_mut()
+        .append_pair("options", &format!("-csearch_path={schema}"));
+    let direct = direct.to_string();
     let db = Database::connect(direct).await.unwrap();
     let connection_pool = db.get_postgres_connection_pool().clone();
     let repositories = SeaOrmRepositories::new(db);
