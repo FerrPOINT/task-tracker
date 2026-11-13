@@ -1,5 +1,16 @@
+import {
+  lifecycleContext,
+  lifecycleReadback,
+  ownerQuestion,
+  acceptedResult,
+  resultId,
+} from './test-fixtures/lifecycle'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getSdlcLifecycle,
+  getSdlcQuestions,
+  answerSdlcQuestion,
+  getSdlcResult,
   confirmRequirements,
   getSdlcMetadata,
   getSdlcRoutingPolicy,
@@ -417,4 +428,132 @@ describe('SDLC generated API adapter', () => {
     GET.mockResolvedValue(success({ ...page, has_more: true }))
     await expect(getSdlcMetadata(task, '0')).rejects.toMatchObject({ status: 409 })
   })
+})
+
+describe('current SDLC execution and accepted results', () => {
+  beforeEach(() => GET.mockReset())
+  it('reads current execution through the existing route with cancellation', async () => {
+    const data = lifecycleReadback()
+    GET.mockResolvedValueOnce(success(data))
+    const abort = new AbortController()
+    await expect(getSdlcLifecycle(lifecycleContext, abort.signal)).resolves.toEqual(data)
+    expect(GET).toHaveBeenCalledWith('/api/v1/issues/{id}/sdlc/lifecycle', {
+      params: { path: { id: task } },
+      signal: abort.signal,
+    })
+  })
+  it.each(['task_id', 'owner_subject', 'stage', 'status'] as const)(
+    'rejects execution from a different %s instead of mixing snapshots',
+    async (field) => {
+      const data = lifecycleReadback()
+      const invalid = {
+        ...data,
+        receipt: { ...data.receipt, task: { ...data.receipt.task, [field]: 'different' } },
+      }
+      GET.mockResolvedValueOnce(success(invalid))
+      await expect(getSdlcLifecycle(lifecycleContext)).rejects.toMatchObject({ status: 409 })
+    },
+  )
+  it.each([401, 403, 404, 503])('preserves lifecycle read failure %s', async (status) => {
+    GET.mockResolvedValueOnce({ response: { status } })
+    await expect(getSdlcLifecycle(lifecycleContext)).rejects.toMatchObject({ status })
+  })
+  it('reads one accepted result by its original ID', async () => {
+    const data = acceptedResult()
+    GET.mockResolvedValueOnce(success(data))
+    await expect(getSdlcResult(task, resultId)).resolves.toEqual(data)
+    expect(GET).toHaveBeenCalledWith('/api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}', {
+      params: { path: { id: task, result_id: resultId } },
+      signal: undefined,
+    })
+  })
+  it.each(['task_id', 'result_id'])('rejects a result with a different %s', async (field) => {
+    const data = acceptedResult()
+    GET.mockResolvedValueOnce(
+      success({ ...data, receipt: { ...data.receipt, [field]: task + 'x' } }),
+    )
+    await expect(getSdlcResult(task, resultId)).rejects.toMatchObject({ status: 409 })
+  })
+  it('preserves a result access denial', async () => {
+    GET.mockResolvedValueOnce({ response: { status: 403 } })
+    await expect(getSdlcResult(task, resultId)).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+it('does not read the retained Analysis-intent protocol for a current running lifecycle', async () => {
+  GET.mockReset()
+  const current = { ...context, status: 'InProgress' as const }
+  GET.mockResolvedValueOnce(success(current)).mockResolvedValueOnce(success(requirements))
+  await expect(getSdlcSnapshot(task)).resolves.toEqual({
+    context: current,
+    requirements,
+    intent: null,
+  })
+  expect(GET.mock.calls.map((call) => call[0])).toEqual([
+    '/api/v1/issues/{id}/sdlc/context',
+    '/api/v1/issues/{id}/sdlc/requirements/{revision}',
+  ])
+})
+
+describe('owner question API boundary', () => {
+  beforeEach(() => {
+    GET.mockReset()
+    POST.mockReset()
+  })
+  it('reads questions with an abortable request and rejects a foreign task', async () => {
+    const q = ownerQuestion()
+    const signal = new AbortController().signal
+    GET.mockResolvedValueOnce(success({ questions: [q] }))
+    await expect(getSdlcQuestions(lifecycleContext, signal)).resolves.toEqual([q])
+    expect(GET).toHaveBeenCalledWith('/api/v1/issues/{id}/sdlc/clarifications', {
+      params: { path: { id: task } },
+      signal,
+    })
+    GET.mockResolvedValueOnce(success({ questions: [{ ...q, task_id: confirmation }] }))
+    await expect(getSdlcQuestions(lifecycleContext)).rejects.toMatchObject({ status: 409 })
+  })
+  it('sends the original owner command and verifies its receipt', async () => {
+    const q = ownerQuestion()
+    const command = {
+      expected_question_version: q.version,
+      requirement_revision: q.requirement_revision,
+      selected_option_ids: [],
+      text: 'Pickup',
+      idempotency_key: 'original-answer-key',
+    }
+    const answer = {
+      id: confirmation,
+      question_id: q.id,
+      question_version: q.version,
+      requirement_revision: q.requirement_revision,
+      selected_option_ids: [],
+      text: 'Pickup',
+      author_subject: lifecycleContext.owner_subject,
+      created_at: '2026-11-12T10:01:00Z',
+    }
+    POST.mockResolvedValueOnce(success(answer))
+    await expect(answerSdlcQuestion(lifecycleContext, q, command)).resolves.toEqual(answer)
+    expect(POST).toHaveBeenCalledWith(
+      '/api/v1/issues/{id}/sdlc/clarifications/{question_id}/answers',
+      {
+        params: { path: { id: task, question_id: q.id } },
+        body: command,
+      },
+    )
+    POST.mockResolvedValueOnce(success({ ...answer, author_subject: 'someone-else' }))
+    await expect(answerSdlcQuestion(lifecycleContext, q, command)).rejects.toMatchObject({
+      status: 409,
+    })
+  })
+  it('does not mask a missing configuration or a failed question read', async () => {
+    GET.mockResolvedValueOnce({ response: { status: 503 } })
+    await expect(getSdlcQuestions(lifecycleContext)).rejects.toMatchObject({ status: 503 })
+  })
+})
+
+it('keeps the existing frozen routing validation for current execution', async () => {
+  const data = lifecycleReadback()
+  data.receipt.task.routing.policy.native_ready = true
+  GET.mockResolvedValueOnce(success(data))
+  await expect(getSdlcLifecycle(lifecycleContext)).rejects.toMatchObject({ status: 409 })
 })

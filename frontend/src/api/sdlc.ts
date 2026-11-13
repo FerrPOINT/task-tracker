@@ -4,6 +4,10 @@ import type { components } from './generated'
 export type SdlcContext = components['schemas']['SdlcContext']
 export type RequirementsRevision = components['schemas']['RequirementsRevision']
 export type AnalysisIntent = components['schemas']['AnalysisIntent']
+export type SdlcQuestion = components['schemas']['Question']
+export type SdlcAnswerCommand = components['schemas']['AnswerCommand']
+export type LifecycleReadback = components['schemas']['LifecycleReadback']
+export type DeliveryInput = components['schemas']['DeliveryInput']
 export type Confirmation = components['schemas']['Confirmation']
 export type MetadataEvent = components['schemas']['MetadataEvent']
 export type MetadataPage = components['schemas']['MetadataPage']
@@ -190,7 +194,7 @@ export async function getSdlcSnapshot(
   }
 
   let intent: AnalysisIntent | null = null
-  if (context.stage === 'Analysis') {
+  if (context.stage === 'Analysis' && context.status == null) {
     const result = await api.GET('/api/v1/issues/{id}/sdlc/analysis-intent', {
       params: { path: { id } },
       signal,
@@ -290,6 +294,96 @@ export async function getSdlcMetadata(
     !/^(0|[1-9][0-9]*)$/.test(data.next_after) ||
     (data.has_more && BigInt(data.next_after) <= BigInt(after)) ||
     data.events.some((event) => event.task_id !== id)
+  )
+    throw new SdlcRequestError(409)
+  return data
+}
+
+export async function getSdlcLifecycle(
+  context: SdlcContext,
+  signal?: AbortSignal,
+): Promise<LifecycleReadback> {
+  const { data, response } = await api.GET('/api/v1/issues/{id}/sdlc/lifecycle', {
+    params: { path: { id: context.task_id } },
+    signal,
+  })
+  if (!data) throw new SdlcRequestError(response.status)
+  const task = data.receipt.task
+  if (
+    task.task_id !== context.task_id ||
+    task.owner_subject !== context.owner_subject ||
+    task.stage !== context.stage ||
+    task.status !== context.status ||
+    task.routing.task_id !== context.task_id ||
+    task.routing.root_task_id !== context.root_task_id ||
+    task.routing.project_id !== context.project_id ||
+    task.routing.tracker_instance_id !== context.tracker_instance_id ||
+    (task.previous_result_id ?? null) !== (context.previous_result_id ?? null) ||
+    !isRoutingPolicy(task.routing.policy, context) ||
+    task.routing.contract_version !== task.routing.policy.contract_version ||
+    (context.requirement_revision != null &&
+      task.routing.requirement_revision !== context.requirement_revision) ||
+    (context.content_hash != null && task.routing.content_hash !== context.content_hash) ||
+    data.runtime_state !== task.runtime
+  )
+    throw new SdlcRequestError(409)
+  return data
+}
+
+export async function getSdlcResult(
+  id: string,
+  resultId: string,
+  signal?: AbortSignal,
+): Promise<DeliveryInput> {
+  const { data, response } = await api.GET(
+    '/api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}',
+    {
+      params: { path: { id, result_id: resultId } },
+      signal,
+    },
+  )
+  if (!data) throw new SdlcRequestError(response.status)
+  if (data.receipt.task_id !== id || data.receipt.result_id !== resultId)
+    throw new SdlcRequestError(409)
+  return data
+}
+
+export async function getSdlcQuestions(
+  context: SdlcContext,
+  signal?: AbortSignal,
+): Promise<SdlcQuestion[]> {
+  const { data, response } = await api.GET('/api/v1/issues/{id}/sdlc/clarifications', {
+    params: { path: { id: context.task_id } },
+    signal,
+  })
+  if (!data) throw new SdlcRequestError(response.status)
+  if (
+    data.questions.some(
+      (q) => q.task_id !== context.task_id || q.root_task_id !== context.root_task_id,
+    )
+  )
+    throw new SdlcRequestError(409)
+  return data.questions
+}
+
+export async function answerSdlcQuestion(
+  context: SdlcContext,
+  question: SdlcQuestion,
+  command: SdlcAnswerCommand,
+) {
+  const { data, response } = await api.POST(
+    '/api/v1/issues/{id}/sdlc/clarifications/{question_id}/answers',
+    {
+      params: { path: { id: context.task_id, question_id: question.id } },
+      body: command,
+    },
+  )
+  if (!data) throw new SdlcRequestError(response.status)
+  if (
+    data.question_id !== question.id ||
+    data.question_version !== command.expected_question_version ||
+    data.requirement_revision !== command.requirement_revision ||
+    data.author_subject !== context.owner_subject
   )
     throw new SdlcRequestError(409)
   return data

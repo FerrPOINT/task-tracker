@@ -8,7 +8,7 @@ vi.mock('@pdlc/ui/auth', async (original) => ({
   ...(await original<object>()),
   useApplicationAccess: () => applicationAccessFixture(accessActor),
 }))
-import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -116,6 +116,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
+  afterEach(() => vi.unstubAllEnvs())
   beforeEach(() => {
     fixture.status = 'Ready'
     fixture.failed = false
@@ -153,20 +154,26 @@ describe('ProjectBoardPage', () => {
     )
   })
 
-  it.each([
-    ['Ready', 'Ожидает выполнения'],
-    ['InProgress', 'В работе'],
-    ['Completed', 'Этап завершён'],
-  ] as const)('shows %s as the current stage state on the linked card', (status, label) => {
-    fixture.status = status
-    render(wrapper(<ProjectBoardPage />))
-    const card = screen.getByRole('link', { name: 'TT-1 Do work' })
-    expect(card).toHaveAttribute('href', '/issues/i1')
-    expect(within(card).getByRole('heading', { name: 'Do work' })).toBeInTheDocument()
-    expect(within(card).getByText(label)).toBeInTheDocument()
-    expect(within(card).queryByText('Готово', { exact: true })).not.toBeInTheDocument()
-    expect(within(card).queryByText('Задача', { exact: true })).not.toBeInTheDocument()
-    expect(within(card).queryByRole('img')).not.toBeInTheDocument()
+  describe.each([
+    ['false', '/issues/i1'],
+    ['true', '/issues/i1?project_scope=all'],
+  ] as const)('namespace enabled=%s', (namespace, href) => {
+    it.each([
+      ['Ready', 'Ожидает выполнения'],
+      ['InProgress', 'В работе'],
+      ['Completed', 'Этап завершён'],
+    ] as const)('shows %s as the current stage state on the linked card', (status, label) => {
+      vi.stubEnv('VITE_NAMESPACE_ENABLED', namespace)
+      fixture.status = status
+      render(wrapper(<ProjectBoardPage />))
+      const card = screen.getByRole('link', { name: 'TT-1 Do work' })
+      expect(card).toHaveAttribute('href', href)
+      expect(within(card).getByRole('heading', { name: 'Do work' })).toBeInTheDocument()
+      expect(within(card).getByText(label)).toBeInTheDocument()
+      expect(within(card).queryByText('Готово', { exact: true })).not.toBeInTheDocument()
+      expect(within(card).queryByText('Задача', { exact: true })).not.toBeInTheDocument()
+      expect(within(card).queryByRole('img')).not.toBeInTheDocument()
+    })
   })
   it('does not invent an operational status when the lifecycle has none', () => {
     fixture.status = undefined
