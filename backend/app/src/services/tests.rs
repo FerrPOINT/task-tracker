@@ -2254,7 +2254,11 @@ async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authoriz
     }
     #[async_trait::async_trait]
     impl BoardRepository for Projection {
-        async fn sdlc_tasks(&self, _: ProjectId, _: &[IssueId]) -> Result<Vec<SdlcBoardTask>, AppError> {
+        async fn sdlc_tasks(
+            &self,
+            _: ProjectId,
+            _: &[IssueId],
+        ) -> Result<Vec<SdlcBoardTask>, AppError> {
             self.reads.fetch_add(1, Ordering::SeqCst);
             Ok(self.rows.clone())
         }
@@ -2265,7 +2269,9 @@ async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authoriz
             domain::StubBoardRepository.get_default_by_project(id).await
         }
         async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError> {
-            domain::StubBoardRepository.get_default_by_project_key(key).await
+            domain::StubBoardRepository
+                .get_default_by_project_key(key)
+                .await
         }
         async fn save(&self, board: &Board) -> Result<(), AppError> {
             domain::StubBoardRepository.save(board).await
@@ -2275,9 +2281,15 @@ async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authoriz
     let (base, owner) = ctx_with_demo_data().await;
     let issue = create_demo_issue(&base, &owner, "Detail lifecycle contract").await;
     let native = SdlcBoardTask {
-        issue_id: issue.as_uuid(), enrolled: true, stage: LifecycleStage::Draft, status: None,
+        issue_id: issue.as_uuid(),
+        enrolled: true,
+        stage: LifecycleStage::Draft,
+        status: None,
     };
-    let foreign = SdlcBoardTask { issue_id: uuid::Uuid::new_v4(), ..native.clone() };
+    let foreign = SdlcBoardTask {
+        issue_id: uuid::Uuid::new_v4(),
+        ..native.clone()
+    };
     for (rows, enrolled) in [
         (vec![], Some(false)),
         (vec![native.clone()], Some(true)),
@@ -2286,7 +2298,10 @@ async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authoriz
     ] {
         let reads = Arc::new(AtomicUsize::new(0));
         let repos = Arc::new(domain::Repositories {
-            boards: Arc::new(Projection { rows, reads: reads.clone() }),
+            boards: Arc::new(Projection {
+                rows,
+                reads: reads.clone(),
+            }),
             ..(*base.repos).clone()
         });
         let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -2301,7 +2316,13 @@ async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authoriz
             assert!(matches!(result, Err(AppError::Internal(_))));
         }
         assert_eq!(reads.load(Ordering::SeqCst), 1);
-        assert!(ctx.services.issue.get_details(issue, UserId::new()).await.is_err());
+        assert!(
+            ctx.services
+                .issue
+                .get_details(issue, UserId::new())
+                .await
+                .is_err()
+        );
         assert_eq!(reads.load(Ordering::SeqCst), 1);
     }
 }

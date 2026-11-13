@@ -191,12 +191,15 @@ fn unified_board_preserves_legacy_cards_without_claiming_sdlc_progress() {
 fn native_draft_is_enrolled_even_without_a_status() {
     use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
     let id = uuid::Uuid::new_v4();
-    let native = super::project_issue_lifecycle(id, Some(SdlcBoardTask {
-        issue_id: id,
-        enrolled: true,
-        stage: LifecycleStage::Draft,
-        status: None,
-    }));
+    let native = super::project_issue_lifecycle(
+        id,
+        Some(SdlcBoardTask {
+            issue_id: id,
+            enrolled: true,
+            stage: LifecycleStage::Draft,
+            status: None,
+        }),
+    );
     let ordinary = super::project_issue_lifecycle(id, None);
     assert!(native.enrolled);
     assert!(!ordinary.enrolled);

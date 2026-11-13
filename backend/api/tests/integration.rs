@@ -4688,35 +4688,75 @@ async fn member_reads_nine_stage_board_without_enabling_automation() {
 async fn ordinary_detail_and_board_share_lifecycle_without_changing_mutation_receipts() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
-    let id = create_issue_in_project(&url, &client, &token, "TT", &test_user().id.to_string()).await;
+    let id =
+        create_issue_in_project(&url, &client, &token, "TT", &test_user().id.to_string()).await;
     let board: serde_json::Value = client
         .get(format!("{url}/api/v1/projects/TT/board"))
         .bearer_auth(&token)
-        .send().await.unwrap().json().await.unwrap();
-    let projection = board["sdlc"]["tasks"].as_array().unwrap().iter()
-        .find(|task| task["issue_id"] == id).unwrap();
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let projection = board["sdlc"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["issue_id"] == id)
+        .unwrap();
     assert_eq!(projection["enrolled"], false);
     assert_eq!(projection["stage"], "Draft");
     assert!(projection.get("status").is_none());
     let detail: serde_json::Value = client
         .get(format!("{url}/api/v1/issues/{id}"))
         .bearer_auth(&token)
-        .send().await.unwrap().json().await.unwrap();
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(detail["lifecycle"], *projection);
-    let mutation = client.patch(format!("{url}/api/v1/issues/{id}"))
+    let mutation = client
+        .patch(format!("{url}/api/v1/issues/{id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"summary":"ordinary edited","description":"kept editable"}))
-        .send().await.unwrap();
+        .send()
+        .await
+        .unwrap();
     assert_eq!(mutation.status(), 200);
     let mutation: serde_json::Value = mutation.json().await.unwrap();
     assert!(mutation.get("lifecycle").is_none());
-    let fresh: serde_json::Value = client.get(format!("{url}/api/v1/issues/{id}"))
-        .bearer_auth(&token).send().await.unwrap().json().await.unwrap();
+    let fresh: serde_json::Value = client
+        .get(format!("{url}/api/v1/issues/{id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(fresh["lifecycle"], detail["lifecycle"]);
     assert_eq!(fresh["description"], "kept editable");
-    let (_, outsider) = register_user(&url, &client, "detail-outsider@example.test", "detailoutsider", "Outsider").await;
-    assert_eq!(client.get(format!("{url}/api/v1/issues/{id}"))
-        .bearer_auth(&outsider).send().await.unwrap().status(), 403);
+    let (_, outsider) = register_user(
+        &url,
+        &client,
+        "detail-outsider@example.test",
+        "detailoutsider",
+        "Outsider",
+    )
+    .await;
+    assert_eq!(
+        client
+            .get(format!("{url}/api/v1/issues/{id}"))
+            .bearer_auth(&outsider)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
 }
 
 // 13. issue_link_delete_denied_for_outsider — B cannot delete A's link (SEC-1)
