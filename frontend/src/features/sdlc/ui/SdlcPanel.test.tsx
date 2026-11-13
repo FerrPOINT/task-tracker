@@ -17,6 +17,7 @@ import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 import { SdlcPanel } from './SdlcPanel'
 import { useSdlcSnapshot } from '../model/use-sdlc'
+import type { IssueDetail } from '@/api/issue'
 import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
@@ -122,14 +123,18 @@ const event: MetadataEvent = {
   },
 }
 
-function mount(issueId = task) {
+function nativeLifecycle(issueId: string): IssueDetail['lifecycle'] {
+  return { issue_id: issueId, enrolled: true, stage: 'Draft' }
+}
+
+function mount(issueId = task, lifecycle = nativeLifecycle(issueId)) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const result = render(
     <ThemeProvider>
       <QueryClientProvider client={client}>
-        <SdlcPanel key={issueId} issueId={issueId} />
+        <SdlcPanel key={issueId} issueId={issueId} lifecycle={lifecycle} />
       </QueryClientProvider>
     </ThemeProvider>,
   )
@@ -155,6 +160,33 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   afterEach(() => {
     cleanup()
     useAuthStore.getState().logout()
+  })
+
+  it.each([task, 'ordinary-with-a-different-id'])(
+    'does not query private SDLC resources for ordinary task %s',
+    async (issueId) => {
+      mount(issueId, { issue_id: issueId, enrolled: false, stage: 'Draft' })
+      expect(screen.getByText(/No SDLC process is registered/)).toBeVisible()
+      expect(getSdlcSnapshot).not.toHaveBeenCalled()
+      expect(getSdlcMetadata).not.toHaveBeenCalled()
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+    },
+  )
+
+  it('reads a persisted Draft even though its stage matches an ordinary task', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        requirement_revision: null,
+        permissions: { can_answer: false, can_confirm: false },
+      },
+      requirements: null,
+      intent: null,
+    })
+    mount()
+    await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledWith(task, expect.anything()))
+    expect(screen.queryByText(/No SDLC process is registered/)).not.toBeInTheDocument()
   })
 
   it('leads with the current stage and the owner action instead of protocol identifiers', async () => {
@@ -198,7 +230,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
 
   it('refreshes the task description reader with the SDLC panel without changing routing admission', async () => {
     function DescriptionReadback() {
-      const { snapshot } = useSdlcSnapshot(task)
+      const { snapshot } = useSdlcSnapshot(task, nativeLifecycle(task))
       return <output aria-label="task brief">{snapshot.data?.requirements?.goal}</output>
     }
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -206,7 +238,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       <ThemeProvider>
         <QueryClientProvider client={client}>
           <DescriptionReadback />
-          <SdlcPanel issueId={task} />
+          <SdlcPanel issueId={task} lifecycle={nativeLifecycle(task)} />
         </QueryClientProvider>
       </ThemeProvider>,
     )

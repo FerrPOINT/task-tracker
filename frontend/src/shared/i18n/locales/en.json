@@ -23,6 +23,7 @@
     "createdAt": "Created",
     "requirements": "Requirements",
     "noContext": "This task is not connected to the development process.",
+    "notEnrolled": "No SDLC process is registered for this task. Its ordinary description remains editable.",
     "noRequirements": "Requirements have not been published",
     "noIntent": "The analysis request could not be verified. Refresh task state.",
     "confirmUnavailable": "Owner confirmation is unavailable",

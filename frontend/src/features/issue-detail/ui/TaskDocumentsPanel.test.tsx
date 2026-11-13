@@ -3,13 +3,14 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { TaskDocumentsPanel } from './TaskDocumentsPanel'
+const urls = vi.hoisted(() => ({ wiki: 'http://wiki.test' }))
 const ref = {
   registry_instance_id: '11111111-1111-4111-8111-111111111111',
   namespace_id: '22222222-2222-4222-8222-222222222222',
 }
 vi.mock('@pdlc/ui/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@pdlc/ui/ui')>()),
-  usePlatformServices: () => ({ services: [{ key: 'wiki', ui_url: 'http://wiki.test' }] }),
+  usePlatformServices: () => ({ services: [{ key: 'wiki', ui_url: urls.wiki }] }),
 }))
 vi.mock('@/widgets/namespace-context', () => ({
   useNamespaceContext: () => ({
@@ -28,6 +29,7 @@ vi.mock('@/api/client', () => ({
 }))
 afterEach(cleanup)
 it.each([true, false])('preserves all=%s across the revision and project links', async (all) => {
+  urls.wiki = 'https://dev.test/wiki' + (all ? '/' : '')
   const search = `?registry_instance_id=${ref.registry_instance_id}&namespace_id=${ref.namespace_id}${all ? '&project_scope=all' : ''}`
   render(
     <MemoryRouter initialEntries={['/issues/task' + search]}>
@@ -49,5 +51,8 @@ it.each([true, false])('preserves all=%s across the revision and project links',
     expect(url.searchParams.get('namespace_id')).toBe(ref.namespace_id)
   }
   expect(new URL(overview.getAttribute('href')!).searchParams.get('task_id')).toBe('task')
-  expect(new URL(revision.getAttribute('href')!).pathname).toBe('/documents/doc/revisions/revision')
+  expect(new URL(revision.getAttribute('href')!).pathname).toBe(
+    '/wiki/documents/doc/revisions/revision',
+  )
+  expect(new URL(overview.getAttribute('href')!).pathname).toBe('/wiki/namespace')
 })

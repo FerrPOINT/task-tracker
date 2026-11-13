@@ -37,6 +37,7 @@ import { SdlcQuestions } from './SdlcQuestions'
 import { SdlcExecution } from './SdlcExecution'
 import { SdlcResult } from './SdlcResult'
 import { useSdlcTask } from '../model/use-sdlc'
+import type { IssueDetail } from '@/api/issue'
 import {
   canConfirmRequirementsContext,
   isRequirementsReviewContext,
@@ -79,12 +80,24 @@ const eventLabels = {
   'analysis.result_accepted': 'analysisResultAccepted',
 } satisfies Record<MetadataEvent['event_type'], string>
 
-export function SdlcPanel({ issueId, materials }: { issueId: string; materials?: ReactNode }) {
+export function SdlcPanel({
+  issueId,
+  lifecycle,
+  materials,
+}: {
+  issueId: string
+  lifecycle: IssueDetail['lifecycle']
+  materials?: ReactNode
+}) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [cursors, setCursors] = useState(['0'])
   const after = cursors[cursors.length - 1] ?? '0'
-  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(issueId, after)
+  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(
+    issueId,
+    after,
+    lifecycle,
+  )
   const [acknowledgedPin, setAcknowledgedPin] = useState<string | null>(null)
   const [publication, setPublication] = useState<{ pin: string; policy: RoutingPolicy } | null>(
     null,
@@ -140,6 +153,7 @@ export function SdlcPanel({ issueId, materials }: { issueId: string; materials?:
     }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
+  if (lifecycle.enrolled === false) return <EmptyState message={t('sdlc.notEnrolled')} />
   if (snapshot.isPending) return <LoadingState message={t('sdlc.loading')} />
   if (accessDenied || (snapshot.error && !snapshot.data)) {
     return (

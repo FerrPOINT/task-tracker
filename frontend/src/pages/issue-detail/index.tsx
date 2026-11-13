@@ -48,7 +48,6 @@ import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import {
-  useBoard,
   useUpdateIssue,
   useDeleteIssue,
   useSprints,
@@ -98,14 +97,13 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
     onCopied: () => toast.success(t('issue.keyCopied')),
     onCopyError: () => toast.error(t('issue.copyFailed')),
   })
-  const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const customFieldsQuery = useProjectCustomFields(issueQuery.data?.project_key ?? '')
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
   // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
   const taskId = issueQuery.data?.id ?? ''
-  const { snapshot: taskSnapshot } = useSdlcSnapshot(taskId)
+  const { snapshot: taskSnapshot } = useSdlcSnapshot(taskId, issueQuery.data?.lifecycle)
   const worklogsQuery = useWorklogs(taskId)
   const create = useCreateWorklog(taskId)
   const update = useUpdateWorklog(taskId)
@@ -143,7 +141,7 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
 
   const issue = issueQuery.data
   const worklogs = worklogsQuery.data ?? []
-  const lifecycle = boardQuery.data?.sdlc?.tasks.find((task) => task.issue_id === issue.id)
+  const lifecycle = issue.lifecycle
   const showCustomFields = customFieldsQuery.data?.length !== 0 || customFieldsQuery.isError
 
   const handleLogWork = () => {
@@ -305,7 +303,10 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
               <CardHeader density="compact">
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
-              <CardContent density="compact" className="grid gap-[var(--shell-page-block-gap)] text-sm">
+              <CardContent
+                density="compact"
+                className="grid gap-[var(--shell-page-block-gap)] text-sm"
+              >
                 <IssueMetaEditor
                   issue={issue}
                   sprints={sprintsQuery.data ?? []}
@@ -369,6 +370,7 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
                   <SdlcPanel
                     key={issue.id}
                     issueId={issue.id}
+                    lifecycle={issue.lifecycle}
                     materials={
                       import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
                         <ActionGroup>
