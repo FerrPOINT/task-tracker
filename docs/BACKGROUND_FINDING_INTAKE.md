@@ -1,5 +1,17 @@
 # Передача фоновой находки в Tracker
 
+## Интеграционный кандидат — 2026-11-14
+
+[Draft PR #229](https://github.com/FerrPOINT/task-tracker/pull/229) переносит intake
+на текущий main, сохраняя released migration identity и актуальные untimed
+ownership/configured-CLI правила. Rust/Clippy, PostgreSQL и runtime-приёмка
+этого кандидата ещё не подтверждены; результаты 2026-11-10 ниже исторические.
+
+Backend-only source projection сохраняет конечное окно owner project-access.
+Подтверждённый SDK persistent service root не создаёт собственного срока;
+finite credential может только сократить окно владельца. Добавлен тест finite
+и persistent introspection через реальный Auth bridge; его исполнение ещё открыто.
+
 ## Установлено в sdlc3 — 2026-11-10
 
 Tracker backend и web обновлены штатным Base Build/Apply из чистых committed
