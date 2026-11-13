@@ -231,6 +231,10 @@ pub fn require_central_administrator() -> Result<(), AppError> {
 }
 
 #[cfg(test)]
+#[path = "authz_verified_fixture.rs"]
+mod verified_fixture;
+
+#[cfg(test)]
 mod central_role_tests {
     use super::*;
     #[tokio::test]
@@ -238,19 +242,15 @@ mod central_role_tests {
         let actor = UserId::new();
         let other = UserId::new();
         assert!(!central_administrator(actor).unwrap());
-        for (role, expected) in [("user", false), ("admin", true), ("operator", false)] {
-            let context = pdlc_auth_core::AuthContext {
-                user_id: "central-identity".into(),
-                role: Some(role.into()),
-                email: None,
-                scopes: Default::default(),
-                session_id: Some("synthetic-session".into()),
-                token: String::new(),
-            };
+        for (prefix,role,expected) in [
+            ("TRACKER_ROLE_USER_FIXTURE","user",false),
+            ("TRACKER_ROLE_ADMIN_FIXTURE","admin",true),
+            ("TRACKER_ROLE_OPERATOR_FIXTURE","operator",false),
+        ] {
+            let fixture = verified_fixture::identity(prefix,role).await;
             pdlc_auth_core::human_request::with_human_request(
                 actor.as_uuid(),
-                &context,
-                None,
+                &fixture.verified,
                 async {
                     assert_eq!(central_administrator(actor).unwrap(), expected);
                     assert!(central_administrator(other).is_err());

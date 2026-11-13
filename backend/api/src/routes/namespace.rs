@@ -835,12 +835,7 @@ pub async fn owner_v2_auth(mut req: Request, next: Next) -> Result<Response, Sta
     if !may_apply_space_owner_v2(&verified.context, registered) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let validity = shared::space_access::AdmissionValidity::confirmed(
-        verified.lifetime.source_observed_at,
-        verified.lifetime.local_valid_until(),
-        i64::MAX,
-    )
-    .ok_or(StatusCode::UNAUTHORIZED)?;
+    let validity = verified.confirmation_validity().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let authority = shared::space_lifecycle::SpaceOwnerAuthority::confirmed(
         shared::space_access::CentralIdentity {
             issuer: verified.issuer,

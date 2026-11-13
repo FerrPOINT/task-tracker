@@ -3,7 +3,7 @@ use domain::identity_memberships::IdentityMembershipPage;
 use pdlc_auth_core::service_bridge::VerifiedCentralToken;
 use shared::{
     AppError,
-    space_access::{AdmissionValidity, CentralIdentity},
+    space_access::CentralIdentity,
     space_lifecycle::SpaceOwnerAuthority,
 };
 use uuid::Uuid;
@@ -63,21 +63,18 @@ pub async fn page(
     if !actor.lifetime.is_current() || !permitted(actor, config) {
         return Err(AppError::Forbidden);
     }
-    let validity = AdmissionValidity::confirmed(
-        actor.lifetime.source_observed_at,
-        actor.lifetime.local_valid_until(),
-        i64::MAX,
-    )
-    .ok_or(AppError::Unauthorized)?;
-    let proof = SpaceOwnerAuthority::confirmed(
+    let validity = actor.confirmation_validity().map_err(|_| AppError::Unauthorized)?;
+    let mut proof = SpaceOwnerAuthority::confirmed(
         CentralIdentity {
             issuer: actor.issuer.clone(),
             subject: ctx.user_id.clone(),
         },
         validity,
     )
-    .ok_or(AppError::Unauthorized)?
-    .restrict_deadline(actor.lifetime.monotonic_deadline());
+    .ok_or(AppError::Unauthorized)?;
+    if let Some(deadline) = actor.lifetime.monotonic_deadline() {
+        proof = proof.restrict_deadline(deadline);
+    }
     let result = repos
         .members
         .identity_memberships(subject, limit, offset)
