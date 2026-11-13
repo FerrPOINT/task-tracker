@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   ActionGroup,
-  EmptyState,
+  ResourceListDescription,
   LoadingState,
   ConfirmDialog,
   Button,
@@ -177,7 +177,7 @@ export function CommentList({
 }: CommentListProps) {
   const { t } = useTranslation()
   if (comments.length === 0) {
-    return <EmptyState message={t('comments.empty')} />
+    return <ResourceListDescription>{t('comments.empty')}</ResourceListDescription>
   }
   return (
     <div className="grid gap-[var(--shell-page-block-gap)]">

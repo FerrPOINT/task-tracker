@@ -302,10 +302,10 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
           }
           details={
             <Card>
-              <CardHeader>
+              <CardHeader density="compact">
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-[var(--shell-page-block-gap)] text-sm">
+              <CardContent density="compact" className="grid gap-[var(--shell-page-block-gap)] text-sm">
                 <IssueMetaEditor
                   issue={issue}
                   sprints={sprintsQuery.data ?? []}
@@ -321,7 +321,7 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
           activity={
             <div className="flex min-w-0 flex-col gap-[var(--shell-page-block-gap)] lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+                <TabsList className="grid! w-full grid-cols-2 gap-1 sm:grid-cols-4">
                   <TabsTrigger value="comments">{t('issue.discussion')}</TabsTrigger>
                   <TabsTrigger ref={worklogTabRef} value="worklog">
                     {t('timeTracking.worklog.title')}
@@ -375,16 +375,16 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
             <>
               {showCustomFields && (
                 <Card>
-                  <CardHeader>
+                  <CardHeader density="compact">
                     <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent density="compact">
                     <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
               )}
               <Card>
-                <CardContent className="grid gap-4">
+                <CardContent density="compact" className="grid gap-4">
                   <LinkEditor issueId={issue.id} currentKey={issue.key} />
                   {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
                     <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
@@ -395,10 +395,10 @@ function IssueDetail({ id, decompositionPanel }: IssueDetailPageProps & { id: st
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader>
+                <CardHeader density="compact">
                   <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent density="compact">
                   <TimeTrackingPanel
                     timeSpentSeconds={issue.time_spent_seconds}
                     originalEstimateSeconds={issue.original_estimate_seconds ?? null}
