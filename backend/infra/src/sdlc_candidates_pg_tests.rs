@@ -4,6 +4,10 @@ use super::*;
 mod agent_stage_status_tests;
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
+#[path = "sdlc_background_intake_pg_tests.rs"]
+mod background_finding_tests;
+#[path = "sdlc_background_history_pg_tests.rs"]
+mod background_history_tests;
 #[path = "sdlc_configured_cli_pg_tests.rs"]
 mod configured_cli_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
@@ -76,6 +80,12 @@ impl Fixture {
     }
 
     async fn new_with_identity(steps: Option<u32>, owner_subject: &str, instance_id: &str) -> Self {
+        Self::new_with_history::<migration::Migrator>(steps, owner_subject, instance_id).await
+    }
+
+    async fn new_with_history<M: MigratorTrait>(
+        steps: Option<u32>, owner_subject: &str, instance_id: &str,
+    ) -> Self {
         let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
             .expect("fresh disposable candidates DB required");
         let db = Database::connect(&url).await.unwrap();
@@ -90,7 +100,7 @@ impl Fixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        migration::Migrator::up(&db, steps).await.unwrap();
+        M::up(&db, steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [

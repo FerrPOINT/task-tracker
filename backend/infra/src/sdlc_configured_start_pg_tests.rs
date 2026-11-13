@@ -104,6 +104,26 @@ fn with_completion_transaction_column(
                 .is_none()
         );
     }
+    for row in before
+        .get_mut("sdlc_draft_creations")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+    {
+        for column in [
+            "finding_intake",
+            "finding_intake_result",
+            "intake_transaction_id",
+            "finding_workflow_ordinal",
+        ] {
+            assert!(
+                row.as_object_mut()
+                    .unwrap()
+                    .insert(column.into(), Json::Null)
+                    .is_none()
+            );
+        }
+    }
     before
 }
 

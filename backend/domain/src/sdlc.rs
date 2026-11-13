@@ -935,6 +935,19 @@ pub trait SdlcRepository: Send + Sync {
         after: Option<Uuid>,
         limit: u16,
     ) -> Result<ProjectDirectory, AppError>;
+    async fn intake_finding(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        operation: Uuid,
+        command: crate::background_intake::FindingIntake,
+    ) -> Result<(crate::background_intake::FindingIntakeReceipt, bool), AppError>;
+    async fn finding_intake_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        operation: Uuid,
+    ) -> Result<crate::background_intake::FindingIntakeReceipt, AppError>;
     async fn create_draft(
         &self,
         project: Uuid,

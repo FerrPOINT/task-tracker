@@ -811,6 +811,175 @@
         ]
       }
     },
+    "/api/v1/background/projects": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "operationId": "background_project_list",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPage"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/background/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "operationId": "background_project_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundProject"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/background/projects/{project_id}/intake-fields": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "operationId": "background_project_intake_fields",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomFieldListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/background/projects/{project_id}/task-states": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "operationId": "background_project_task_states",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tasks",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundTaskStates"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/comments/{id}": {
       "delete": {
         "tags": [
@@ -6928,6 +7097,147 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/sdlc/finding-intakes/{operation_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "finding_intake_operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingIntakeReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "intake_finding",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingIntake"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingIntakeReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingIntakeReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/sdlc/routing-policy": {
       "get": {
         "tags": [
@@ -11591,6 +11901,80 @@
           }
         }
       },
+      "BackgroundProject": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "can_manage",
+          "can_triage",
+          "can_create_tasks"
+        ],
+        "properties": {
+          "can_create_tasks": {
+            "type": "boolean"
+          },
+          "can_manage": {
+            "type": "boolean"
+          },
+          "can_triage": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "BackgroundTaskState": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "completed"
+        ],
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BackgroundTaskStates": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "tracker_instance_id",
+          "observed_at",
+          "tasks"
+        ],
+        "properties": {
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackgroundTaskState"
+            }
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "BacklogResponse": {
         "type": "object",
         "required": [
@@ -13942,6 +14326,134 @@
             }
           }
         }
+      },
+      "FindingApplication": {
+        "type": "string",
+        "enum": [
+          "fleet-control"
+        ]
+      },
+      "FindingDestination": {
+        "type": "string",
+        "enum": [
+          "Draft",
+          "Backlog"
+        ]
+      },
+      "FindingIntake": {
+        "type": "object",
+        "required": [
+          "source",
+          "destination",
+          "kind",
+          "title",
+          "description",
+          "expected",
+          "criteria",
+          "evidence"
+        ],
+        "properties": {
+          "criteria": {
+            "type": "string"
+          },
+          "custom_fields": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/FindingDestination"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/FindingOrigin"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FindingIntakeReceipt": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "task_key",
+          "destination",
+          "request"
+        ],
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/FindingDestination"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request": {
+            "$ref": "#/components/schemas/FindingIntake"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_key": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FindingKind": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "refactoring"
+        ]
+      },
+      "FindingOrigin": {
+        "type": "object",
+        "required": [
+          "application",
+          "finding_id",
+          "finding_revision"
+        ],
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/FindingApplication"
+          },
+          "finding_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finding_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "IdentityMembershipPage": {
         "type": "object",
@@ -19387,6 +19899,26 @@
           },
           "user_id": {
             "type": "string"
+          }
+        }
+      },
+      "ProjectPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackgroundProject"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

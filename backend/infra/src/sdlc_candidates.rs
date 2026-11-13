@@ -8,6 +8,7 @@ use domain::sdlc_routing::TaskRoutingSnapshot;
 const CANDIDATES_SQL: &str = r#"
 SELECT t.state, s.payload AS routing, d.receipt,
        (started.task_id IS NOT NULL OR reviewed.operation_id IS NOT NULL) AS configured_started,
+       (finding_start.task_id IS NOT NULL) AS human_finding_started,
        COALESCE(sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state),false) AS pm_completed
 FROM sdlc_tasks t
 JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND issue.deleted_at IS NULL
@@ -25,6 +26,14 @@ LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
        AND (started.actor_subject=t.owner_subject OR
             (started.actor_subject=completed.actor_subject AND started.transaction_id=completed.transaction_id
              AND started.idempotency_key='pm-analysis:'||completed.completion_id::text)))
+LEFT JOIN sdlc_delivery_operations finding_start ON finding_start.task_id=t.task_id
+ AND finding_start.command->>'operation'='start_finding_analysis' AND s.generation=1
+ AND finding_start.result->'task'->'routing'=s.payload AND finding_start.actor_subject=t.owner_subject
+ AND sdlc_finding_intake_origin(t.task_id,t.state)
+ AND EXISTS(SELECT 1 FROM sdlc_draft_creations creation WHERE creation.task_id=t.task_id
+    AND creation.project_id=t.project_id AND creation.actor_subject=t.owner_subject
+    AND creation.intake_transaction_id=finding_start.transaction_id
+    AND creation.finding_intake_result->>'operation_id'=finding_start.command->>'intake_operation_id')
 LEFT JOIN sdlc_task_routing_generations generation ON generation.task_id=t.task_id AND generation.snapshot_id=s.snapshot_id
 LEFT JOIN sdlc_critical_pm_lifecycle_operations reviewed ON reviewed.operation_id=generation.operation_id
  AND reviewed.kind='complete' AND reviewed.configured_completion_id=generation.configured_completion_id
@@ -33,8 +42,9 @@ WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb
   AND (t.state->>'interaction_protocol' IS DISTINCT FROM 'configured-cli-v1'
-       OR ((started.task_id IS NOT NULL OR reviewed.operation_id IS NOT NULL) AND d.task_id IS NOT NULL
-           AND sdlc_current_configured_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)))
+       OR (d.task_id IS NOT NULL AND (finding_start.task_id IS NOT NULL OR
+           ((started.task_id IS NOT NULL OR reviewed.operation_id IS NOT NULL)
+            AND sdlc_current_configured_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)))))
   AND ($3::uuid IS NULL OR t.task_id>$3)
   AND s.payload->'contract_version'='2'::jsonb AND s.payload->'policy'->'contract_version'='2'::jsonb
   AND s.requirement_revision::text=t.state->'revisions'->-1->>'revision'
@@ -113,9 +123,19 @@ impl PostgresSdlcRepository {
             let item = app::sdlc_candidates::candidate(
                 &state,
                 current.as_ref(),
-                row.try_get::<bool>("", "pm_completed").map_err(map_db)?,
-                row.try_get::<bool>("", "configured_started")
-                    .map_err(map_db)?,
+                if row
+                    .try_get::<bool>("", "human_finding_started")
+                    .map_err(map_db)?
+                {
+                    app::sdlc_candidates::CandidateOrigin::HumanFinding
+                } else {
+                    app::sdlc_candidates::CandidateOrigin::Pm {
+                        completed: row.try_get::<bool>("", "pm_completed").map_err(map_db)?,
+                        configured_started: row
+                            .try_get::<bool>("", "configured_started")
+                            .map_err(map_db)?,
+                    }
+                },
             )?
             .ok_or_else(|| AppError::conflict("delivery candidate projection inconsistent"))?;
             items.push(item);

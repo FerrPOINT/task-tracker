@@ -129,15 +129,28 @@ mod tests {
         );
         assert!(restored.contains("tracker_authorize_project_content_before_configured_comments"));
         let current_ledger = ledger(&db).await;
+        let appended = [
+            Migration.name(),
+            "m20261109_0000116_background_finding_intake",
+        ];
+        for name in appended {
+            assert_eq!(
+                current_ledger
+                    .iter()
+                    .filter(|(version, _)| version == name)
+                    .count(),
+                1
+            );
+        }
         assert_eq!(
             current_ledger
                 .iter()
-                .filter(|(name, _)| name != Migration.name())
+                .filter(|(name, _)| !appended.contains(&name.as_str()))
                 .cloned()
                 .collect::<Vec<_>>(),
             original_ledger,
         );
-        assert_eq!(current_ledger.len(), original_ledger.len() + 1);
+        assert_eq!(current_ledger.len(), original_ledger.len() + appended.len());
         crate::Migrator::up(&db, None).await.unwrap();
         assert_eq!(definition(&db).await, (oid, restored));
         assert_eq!(ledger(&db).await, current_ledger);

@@ -140,13 +140,44 @@ fn fixture() -> (TaskState, LifecycleReceipt) {
 #[test]
 fn consent_alone_never_discovers_analyst_before_actual_pm_completion() {
     let (state, _) = fixture();
-    assert!(candidate(&state, None, false, false).unwrap().is_none());
-    let ready = candidate(&state, None, true, false).unwrap().unwrap();
+    assert!(
+        candidate(
+            &state,
+            None,
+            CandidateOrigin::Pm {
+                completed: false,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .is_none()
+    );
+    let ready = candidate(
+        &state,
+        None,
+        CandidateOrigin::Pm {
+            completed: true,
+            configured_started: false,
+        },
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(ready.next_operation, CandidateOperation::EnsureQueued);
     assert_eq!(ready.task_version, None);
     let mut legacy = state.clone();
     legacy.retained_fields.remove("flow");
-    assert!(candidate(&legacy, None, true, false).unwrap().is_none());
+    assert!(
+        candidate(
+            &legacy,
+            None,
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .is_none()
+    );
     for stage in [
         Stage::Draft,
         Stage::Backlog,
@@ -155,16 +186,34 @@ fn consent_alone_never_discovers_analyst_before_actual_pm_completion() {
     ] {
         let mut early = state.clone();
         early.stage = stage;
-        assert!(candidate(&early, None, true, false).unwrap().is_none());
+        assert!(
+            candidate(
+                &early,
+                None,
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 }
 
 #[test]
 fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
     let (state, head) = fixture();
-    let ready = candidate(&state, Some(&head), false, false)
-        .unwrap()
-        .unwrap();
+    let ready = candidate(
+        &state,
+        Some(&head),
+        CandidateOrigin::Pm {
+            completed: false,
+            configured_started: false,
+        },
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(ready.next_operation, CandidateOperation::Reserve);
     assert_eq!(ready.task_version, Some(7));
     for runtime in [
@@ -176,23 +225,47 @@ fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
         let mut wrong = head.clone();
         wrong.task.runtime = runtime;
         assert!(
-            candidate(&state, Some(&wrong), true, false)
-                .unwrap()
-                .is_none()
+            candidate(
+                &state,
+                Some(&wrong),
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .is_none()
         );
     }
     for status in [LifecycleStatus::InProgress, LifecycleStatus::Completed] {
         let mut wrong = head.clone();
         wrong.task.status = status;
         assert!(
-            candidate(&state, Some(&wrong), true, false)
-                .unwrap()
-                .is_none()
+            candidate(
+                &state,
+                Some(&wrong),
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .is_none()
         );
     }
     let mut wrong = head.clone();
     wrong.task.version = 0;
-    assert!(candidate(&state, Some(&wrong), true, false).is_err());
+    assert!(
+        candidate(
+            &state,
+            Some(&wrong),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .is_err()
+    );
     let mut assigned = head.clone();
     assigned.assignment = Some(serde_json::from_value(json!({"assignment_id":Uuid::new_v4(),
         "execution_id":Uuid::new_v4(),"task_id":state.task_id,"owner_subject":"owner","role":"analyst",
@@ -200,13 +273,30 @@ fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
         "routing":head.task.routing,"previous_result_id":null,"fencing_token":1,"lease_id":Uuid::new_v4(),
         "assignment_hash":"a".repeat(64)})).unwrap());
     assert!(
-        candidate(&state, Some(&assigned), true, false)
-            .unwrap()
-            .is_none()
+        candidate(
+            &state,
+            Some(&assigned),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .is_none()
     );
     let mut wrong = state.clone();
     wrong.root_task_id = Uuid::new_v4();
-    assert!(candidate(&wrong, Some(&head), true, false).is_err());
+    assert!(
+        candidate(
+            &wrong,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .is_err()
+    );
     for stage in [
         Stage::Analysis,
         Stage::Architecture,
@@ -221,10 +311,17 @@ fn only_ready_queued_unassigned_heads_produce_reserve_with_actual_cas() {
         state.stage = stage;
         head.task.stage = LifecycleStage::from_legacy(stage);
         assert_eq!(
-            candidate(&state, Some(&head), true, false)
-                .unwrap()
-                .unwrap()
-                .next_operation,
+            candidate(
+                &state,
+                Some(&head),
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .unwrap()
+            .next_operation,
             CandidateOperation::Reserve
         );
     }
@@ -250,13 +347,29 @@ fn configured_cli_pm_never_opts_in_to_downstream_discovery() {
         state.stage = stage;
         head.task.stage = LifecycleStage::from_legacy(stage);
         assert!(
-            candidate(&state, None, true, false).unwrap().is_none(),
+            candidate(
+                &state,
+                None,
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .is_none(),
             "{stage:?}"
         );
         assert!(
-            candidate(&state, Some(&head), true, false)
-                .unwrap()
-                .is_none(),
+            candidate(
+                &state,
+                Some(&head),
+                CandidateOrigin::Pm {
+                    completed: true,
+                    configured_started: false
+                }
+            )
+            .unwrap()
+            .is_none(),
             "{stage:?}"
         );
     }
@@ -264,17 +377,31 @@ fn configured_cli_pm_never_opts_in_to_downstream_discovery() {
     state.stage = Stage::Analysis;
     head.task.stage = LifecycleStage::Analysis;
     assert_eq!(
-        candidate(&state, None, true, false)
-            .unwrap()
-            .unwrap()
-            .next_operation,
+        candidate(
+            &state,
+            None,
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .unwrap()
+        .next_operation,
         CandidateOperation::EnsureQueued
     );
     assert_eq!(
-        candidate(&state, Some(&head), true, false)
-            .unwrap()
-            .unwrap()
-            .next_operation,
+        candidate(
+            &state,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .unwrap()
+        .next_operation,
         CandidateOperation::Reserve
     );
 }
@@ -286,21 +413,53 @@ fn configured_discovery_requires_explicit_start_current_completion_and_head() {
         .retained_fields
         .insert("interaction_protocol".into(), json!("configured-cli-v1"));
     assert!(
-        candidate(&state, Some(&head), true, false)
-            .unwrap()
-            .is_none()
+        candidate(
+            &state,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: false
+            }
+        )
+        .unwrap()
+        .is_none()
     );
     assert!(
-        candidate(&state, Some(&head), false, true)
-            .unwrap()
-            .is_none()
+        candidate(
+            &state,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: false,
+                configured_started: true
+            }
+        )
+        .unwrap()
+        .is_none()
     );
-    assert!(candidate(&state, None, true, true).unwrap().is_none());
+    assert!(
+        candidate(
+            &state,
+            None,
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: true
+            }
+        )
+        .unwrap()
+        .is_none()
+    );
     assert_eq!(
-        candidate(&state, Some(&head), true, true)
-            .unwrap()
-            .unwrap()
-            .next_operation,
+        candidate(
+            &state,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: true,
+                configured_started: true
+            }
+        )
+        .unwrap()
+        .unwrap()
+        .next_operation,
         CandidateOperation::Reserve
     );
 }
@@ -334,4 +493,44 @@ fn uuid_keyset_uses_last_returned_not_lookahead_and_empty_pages_have_null_cursor
     assert!(page(&query, vec![item(7), item(2)]).is_err());
     assert!(page(&query, vec![item(2), item(2)]).is_err());
     assert!(page(&query, vec![item(1), item(2), item(3), item(4)]).is_err());
+}
+
+#[test]
+fn verified_human_finding_origin_is_distinct_from_pm_completion_and_requires_a_head() {
+    let (mut state, head) = fixture();
+    state
+        .retained_fields
+        .insert("interaction_protocol".into(), json!("configured-cli-v1"));
+    assert!(
+        candidate(&state, Some(&head), CandidateOrigin::HumanFinding)
+            .unwrap()
+            .is_none()
+    );
+    state
+        .retained_fields
+        .insert("finding_intake_operation".into(), json!(Uuid::new_v4()));
+    assert!(
+        candidate(&state, None, CandidateOrigin::HumanFinding)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        candidate(&state, Some(&head), CandidateOrigin::HumanFinding)
+            .unwrap()
+            .unwrap()
+            .next_operation,
+        CandidateOperation::Reserve
+    );
+    assert!(
+        candidate(
+            &state,
+            Some(&head),
+            CandidateOrigin::Pm {
+                completed: false,
+                configured_started: true
+            }
+        )
+        .unwrap()
+        .is_none()
+    );
 }
