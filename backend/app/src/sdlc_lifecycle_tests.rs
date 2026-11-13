@@ -17,13 +17,41 @@ fn historical_unsubmitted_observation_decodes_but_cannot_release_current_ownersh
     validate_command(&command).unwrap();
     assert!(validate_active_command(&command).is_err());
     assert!(serde_json::to_value(&command).unwrap().get("terminal").is_none());
-    for field in ["never_submitted", "recovery"] {
-        let mut wrong = raw.clone();
-        wrong[field] = if field == "recovery" { serde_json::json!({"disposition":"stop"}) } else { serde_json::Value::Null };
-        let command: LifecycleCommand = serde_json::from_value(wrong).unwrap();
-        assert!(validate_command(&command).is_err());
-    }
+    let mut stop = raw.clone();
+    stop["recovery"] = serde_json::json!({"disposition":"stop"});
+    let command: LifecycleCommand = serde_json::from_value(stop.clone()).unwrap();
+    validate_command(&command).unwrap();
+    validate_active_command(&command).unwrap();
+    stop["never_submitted"] = serde_json::Value::Null;
+    assert!(validate_command(&serde_json::from_value(stop).unwrap()).is_err());
+}
 
+#[test]
+fn never_submitted_stop_keeps_stage_inputs_without_retry_or_native_identity() {
+    let mut state = task();
+    state.runtime = RuntimeState::Reserved;
+    state.status = LifecycleStatus::Ready;
+    let before = state.clone();
+    stop_never_submitted(&mut state).unwrap();
+    let mut expected = before.clone();
+    expected.version += 1;
+    expected.runtime = RuntimeState::Terminal;
+    expected.waiting_reason = Some("cancelled_before_submission".into());
+    assert_eq!(state, expected);
+    for runtime in [RuntimeState::Queued, RuntimeState::Running, RuntimeState::Unknown, RuntimeState::Terminal] {
+        let mut wrong = before.clone();
+        wrong.runtime = runtime;
+        let original = wrong.clone();
+        assert!(stop_never_submitted(&mut wrong).is_err());
+        assert_eq!(wrong, original);
+    }
+    for status in [LifecycleStatus::InProgress, LifecycleStatus::Completed] {
+        let mut wrong = before.clone();
+        wrong.status = status;
+        let original = wrong.clone();
+        assert!(stop_never_submitted(&mut wrong).is_err());
+        assert_eq!(wrong, original);
+    }
 }
 
 #[test]

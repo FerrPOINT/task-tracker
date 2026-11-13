@@ -30,9 +30,18 @@ Reserve не принимает `lease_seconds`; новые `heartbeat` и `retr
 
 Unsubmitted assignment сохраняется для обычного продолжения того же назначения.
 Само отсутствие Tracker binding не доказывает отсутствие native POST или lost ACK.
-Освобождение использует прежние accepted result и `reconcile` с настоящим terminal
-receipt. Known terminal Stop сохраняет прежние fence/project/holder проверки;
-unknown native outcome требует исходного readback. Нового cancel API/CLI нет.
+Освобождение использует accepted result, `reconcile` с настоящим terminal receipt
+или явный Stop доказанно неотправленной работы. В последнем случае Fleet сначала
+атомарно запрещает dispatch своего запуска, затем отправляет существующий
+`reconcile`: `terminal` отсутствует, `recovery.disposition: stop`,
+`never_submitted` содержит исходные `assignment_hash`, `reservation_key` и
+`reservation_payload_sha256`. Tracker проверяет holder/fence, исходный Reserve,
+его hash и assignment, Ready/Reserved, отсутствие binding и наличие capacity hold.
+Одна транзакция сохраняет reconciliation, освобождает custody и переводит runtime
+в Terminal с `waiting_reason: cancelled_before_submission`. Стадия и история
+сохраняются; автоматического retry нет. Повтор читает исходный ключ даже после
+освобождения назначения. Unknown native outcome требует прежнего readback.
+Нового cancel API/CLI нет.
 
 Namespace source публикует `execution.workspace_preparation_authorized` и только
 при этом proof — `workspace_preparation_commit`. Старое поле

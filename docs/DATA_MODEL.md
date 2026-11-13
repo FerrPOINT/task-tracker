@@ -17,10 +17,13 @@ timestamps. Только в текущем JSON `sdlc_delivery_heads.execution` 
 использует прежний projection permit. IDs, holder, version, fencing, assignment
 hash, capacity hold и business state сохраняются. Historical PM/Analysis не меняются.
 
-Ownership не продлевается и не истекает. Старые heartbeat/never-submitted keys
-доступны для read/replay; новые действия запрещены. Нового отменяющего контракта
-нет: binding отсутствует и при неизвестном native POST. Capacity освобождают
-прежние accepted result/known terminal Stop с исходными проверками и журналами.
+Ownership не продлевается и не истекает. Старые heartbeat/retry_unsubmitted keys
+доступны для read/replay; новые heartbeat и автоматическое освобождение запрещены.
+Forward118 допускает `reconcile/stop` с подтверждением Fleet об отмене до отправки.
+Те же immutable reconciliation/operation ledgers проверяют исходный Reserve,
+assignment/fence/holder и отсутствие принятого binding; hold и текущая custody
+освобождаются в этой же транзакции. Одного отсутствия binding недостаточно.
+Новых таблиц нет; прежние receipts и исторические retry-строки не переписываются.
 
 ## Встроенная Декомпозиция
 

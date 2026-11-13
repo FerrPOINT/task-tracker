@@ -1221,6 +1221,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::Reconcile {
                 fence: expected,
                 terminal,
+                never_submitted,
                 recovery,
                 ..
             } => {
@@ -1251,11 +1252,47 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     return Err(AppError::conflict("actual terminal differs from bound run"));
                 }
                 let old_assignment = assignment.assignment_id;
+                if let Some(observation) = never_submitted {
+                    let (reservation_hash, original) = operation(
+                        &tx, task, actor, &observation.reservation_key,
+                    ).await?.ok_or_else(|| AppError::conflict("original reservation absent"))?;
+                    // Older operations retain their hash/result without the command.
+                    // Reconstruct the exact Reserve from its immutable result, rather
+                    // than accepting any no-op operation returning this assignment.
+                    let reserve = LifecycleCommand::Reserve {
+                        expected_task_version: original.task.version.checked_sub(1).ok_or_else(corrupt)?,
+                        machine_subject: assignment.machine_subject.clone(),
+                        idempotency_key: observation.reservation_key.clone(),
+                    };
+                    let bound = tx.query_one(statement(
+                        "SELECT EXISTS(SELECT 1 FROM sdlc_delivery_run_bindings WHERE assignment_id=$1) AS bound",
+                        vec![old_assignment.into()],
+                    )).await.map_err(map_db)?.ok_or_else(corrupt)?
+                        .try_get::<bool>("", "bound").map_err(map_db)?;
+                    let hold = tx.query_one(statement(
+                        "SELECT assignment_id FROM sdlc_delivery_holds WHERE assignment_id=$1 FOR UPDATE",
+                        vec![old_assignment.into()],
+                    )).await.map_err(map_db)?;
+                    if !matches!(recovery, RecoveryDisposition::Stop)
+                        || observation.assignment_hash != assignment.assignment_hash
+                        || reservation_hash != observation.reservation_payload_sha256
+                        || reservation_hash != app::sdlc::canonical_hash(&reserve)?
+                        || original.assignment.as_ref() != Some(assignment)
+                        || original.task.runtime != RuntimeState::Reserved
+                        || original.task.status != LifecycleStatus::Ready
+                        || original.binding.is_some() || original.result.is_some()
+                        || receipt.binding.is_some() || receipt.result.is_some() || bound || hold.is_none()
+                    {
+                        return Err(AppError::conflict("never-submitted reservation differs or run is bound"));
+                    }
+                    app::sdlc_lifecycle::stop_never_submitted(&mut receipt.task)?;
+                } else {
+                    app::sdlc_lifecycle::reconcile_terminal(
+                        &mut receipt.task, terminal.as_ref().ok_or_else(corrupt)?, recovery,
+                    )?;
+                }
                 exec(&tx,"INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
                     vec![old_assignment.into(),task.into(),json_value(&command)?]).await?;
-                app::sdlc_lifecycle::reconcile_terminal(
-                    &mut receipt.task, terminal.as_ref().ok_or_else(corrupt)?, recovery,
-                )?;
                 exec(
                     &tx,
                     "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1",

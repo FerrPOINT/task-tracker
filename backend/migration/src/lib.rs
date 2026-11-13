@@ -45,6 +45,7 @@ mod m20261106_0000114_native_read_scope_attenuation;
 mod m20261107_0000115_agent_stage_status;
 mod m20261112_0000116_delivery_unsubmitted_recovery;
 mod m20261112_0000117_persistent_delivery_ownership;
+mod m20261113_0000118_delivery_unsent_stop;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -164,6 +165,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261107_0000115_agent_stage_status::Migration),
             Box::new(m20261112_0000116_delivery_unsubmitted_recovery::Migration),
             Box::new(m20261112_0000117_persistent_delivery_ownership::Migration),
+            Box::new(m20261113_0000118_delivery_unsent_stop::Migration),
         ]
     }
 }

@@ -334,7 +334,7 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
         } => {
             if let Some(observation) = never_submitted {
                 if terminal.is_some()
-                    || !matches!(recovery, RecoveryDisposition::RetryUnsubmitted)
+                    || !matches!(recovery, RecoveryDisposition::Stop | RecoveryDisposition::RetryUnsubmitted)
                     || !sha256(&observation.assignment_hash)
                     || !sha256(&observation.reservation_payload_sha256)
                 {
@@ -837,6 +837,20 @@ pub fn reconcile_terminal(
             .into(),
         );
     }
+    Ok(())
+}
+
+/// Fleet has atomically cancelled its original, provably unsent reservation.
+/// Storage validates that reservation and excludes a bound run before calling.
+pub fn stop_never_submitted(task: &mut LifecycleTask) -> Result<(), AppError> {
+    if task.runtime != RuntimeState::Reserved || task.status != LifecycleStatus::Ready {
+        return Err(AppError::conflict("unstarted reserved work required"));
+    }
+    task.version = task.version.checked_add(1)
+        .filter(|v| *v <= MAX_SAFE_VERSION)
+        .ok_or_else(|| AppError::conflict("task version exhausted"))?;
+    task.runtime = RuntimeState::Terminal;
+    task.waiting_reason = Some("cancelled_before_submission".into());
     Ok(())
 }
 

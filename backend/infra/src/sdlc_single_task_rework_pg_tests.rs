@@ -32,6 +32,146 @@ struct OriginalStep {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn human_stop_of_unsent_reservation_releases_custody_once_without_native_or_retry() {
+    let (f, queued) = ReworkFixture::new().await;
+    let reserve = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsent:reserve".into(),
+    };
+    let (reserved, _) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
+    let assignment = reserved.assignment.as_ref().unwrap();
+    let stop = LifecycleCommand::Reconcile {
+        fence: delivery_fence(&reserved), terminal: None,
+        never_submitted: Some(NeverSubmittedObservation {
+            assignment_hash: assignment.assignment_hash.clone(),
+            reservation_key: reserve.key().into(),
+            reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
+        }), recovery: RecoveryDisposition::Stop, idempotency_key: "unsent:stop".into(),
+    };
+    let original = f.journal_snapshot().await;
+    for field in ["assignment_hash", "reservation_key", "reservation_payload_sha256"] {
+        let mut raw = serde_json::to_value(&stop).unwrap();
+        raw["never_submitted"][field] = json!(if field == "reservation_key" { "foreign:reserve".into() } else { "b".repeat(64) });
+        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, parse(raw)).await.is_err());
+        assert_eq!(f.journal_snapshot().await, original);
+    }
+    let foreign = actor("foreign-scheduler", false, vec![]);
+    assert!(matches!(f.repo.lifecycle_command(f.task, &foreign, stop.clone()).await, Err(AppError::Forbidden)));
+    let no_op = LifecycleCommand::EnsureQueued { idempotency_key: "unsent:reserved-no-op".into() };
+    let (same, _) = f.repo.lifecycle_command(f.task, &f.scheduler, no_op.clone()).await.unwrap();
+    assert_eq!(same, reserved);
+    let mut wrong = stop.clone();
+    if let LifecycleCommand::Reconcile { never_submitted: Some(proof), .. } = &mut wrong {
+        proof.reservation_key = no_op.key().into();
+        proof.reservation_payload_sha256 = app::sdlc::canonical_hash(&no_op).unwrap();
+    }
+    let before_wrong = f.journal_snapshot().await;
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, wrong).await.is_err());
+    assert_eq!(f.journal_snapshot().await, before_wrong);
+    f.assert_current(&reserved).await;
+    let (stopped, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, stop.clone()).await.unwrap();
+    assert!(!duplicate);
+    assert_eq!(stopped.task.runtime, RuntimeState::Terminal);
+    assert_eq!(stopped.task.waiting_reason.as_deref(), Some("cancelled_before_submission"));
+    assert_eq!(stopped.task.stage, queued.task.stage);
+    assert_eq!(stopped.task.routing, queued.task.routing);
+    assert_eq!(stopped.task.previous_result_id, queued.task.previous_result_id);
+    assert_eq!(stopped.task.transient_retries, queued.task.transient_retries);
+    assert!(stopped.assignment.is_none() && stopped.lease.is_none() && stopped.binding.is_none() && stopped.result.is_none());
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
+    assert_eq!(count(&f.db, "sdlc_delivery_run_bindings").await, 0);
+    assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 1);
+    let after = f.journal_snapshot().await;
+    let (same, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, stop).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(same, stopped);
+    let (old, duplicate) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve).await.unwrap();
+    assert!(duplicate);
+    assert_eq!(old, reserved);
+    assert_eq!(f.journal_snapshot().await, after);
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
+        expected_task_version: stopped.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsent:cannot-redispatch".into(),
+    }).await.is_err());
+    f.assert_current(&stopped).await;
+    // A separate, explicit intervention may queue work; cancellation itself did not.
+    let (queued, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::EnsureQueued {
+        idempotency_key: "unsent:explicit-queue".into(),
+    }).await.unwrap();
+    let reserve = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsent:second-reserve".into(),
+    };
+    let (reserved, _) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
+    let (bound, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::BindRun {
+        fence: delivery_fence(&reserved), binding: RunBinding {
+            chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+            machine_subject: f.producers["analyst"].subject.clone(), dispatch_receipt: artifact("accepted-native"),
+        }, idempotency_key: "unsent:known-bind".into(),
+    }).await.unwrap();
+    let wrong = LifecycleCommand::Reconcile {
+        fence: delivery_fence(&bound), terminal: None,
+        never_submitted: Some(NeverSubmittedObservation {
+            assignment_hash: reserved.assignment.as_ref().unwrap().assignment_hash.clone(),
+            reservation_key: reserve.key().into(),
+            reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
+        }), recovery: RecoveryDisposition::Stop, idempotency_key: "unsent:bound-cannot-stop-as-unsent".into(),
+    };
+    let before_wrong = f.journal_snapshot().await;
+    assert!(f.repo.lifecycle_command(f.task, &f.scheduler, wrong).await.is_err());
+    assert_eq!(f.journal_snapshot().await, before_wrong);
+    assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 1);
+    f.assert_current(&bound).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn unsent_stop_and_bind_run_serialize_without_releasing_accepted_custody() {
+    let (f, queued) = ReworkFixture::new().await;
+    let reserve = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()),
+        idempotency_key: "unsent-race:reserve".into(),
+    };
+    let (reserved, _) = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap();
+    let stop = LifecycleCommand::Reconcile {
+        fence: delivery_fence(&reserved), terminal: None,
+        never_submitted: Some(NeverSubmittedObservation {
+            assignment_hash: reserved.assignment.as_ref().unwrap().assignment_hash.clone(),
+            reservation_key: reserve.key().into(),
+            reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
+        }), recovery: RecoveryDisposition::Stop, idempotency_key: "unsent-race:stop".into(),
+    };
+    let bind = LifecycleCommand::BindRun {
+        fence: delivery_fence(&reserved),
+        binding: RunBinding {
+            chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+            machine_subject: f.producers["analyst"].subject.clone(), dispatch_receipt: artifact("race-native"),
+        }, idempotency_key: "unsent-race:bind".into(),
+    };
+    let (stopped, bound) = tokio::join!(
+        f.repo.lifecycle_command(f.task, &f.scheduler, stop.clone()),
+        f.repo.lifecycle_command(f.task, &f.scheduler, bind.clone()),
+    );
+    assert_ne!(stopped.is_ok(), bound.is_ok());
+    if let Ok((running, _)) = bound {
+        assert_eq!(running.task.runtime, RuntimeState::Running);
+        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, stop).await.is_err());
+        assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 1);
+        assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
+        f.assert_current(&running).await;
+    } else {
+        assert!(f.repo.lifecycle_command(f.task, &f.scheduler, bind).await.is_err());
+        assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
+        assert_eq!(count(&f.db, "sdlc_delivery_run_bindings").await, 0);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
 async fn assignment_persists_across_old_deadline_and_restart_until_result_or_known_terminal_stop() {
     let (mut f, queued) = ReworkFixture::configured_before_persistent_ownership().await;
     let output = DeliveryResult::Analyst { analysis: artifact("persistent-analysis") };
