@@ -56,6 +56,7 @@ export function acceptedResult(): DeliveryInput {
     source: 'delivery',
     receipt: {
       result_id: resultId,
+      previous_result_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       assignment_id: lifecycleTask,
       task_id: lifecycleTask,
       terminal: {

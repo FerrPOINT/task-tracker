@@ -590,8 +590,10 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
                     _ => panic!("unexpected synthetic credential"),
                 };
                 let now = chrono::Utc::now();
+                let persistent = headers["authorization"] == "Bearer sdlc_pat_scheduler_scope_write";
                 HttpJson(json!({"sub":subject,"email":"scheduler-scope@example.test","subject_role":"service_account",
-                    "scopes":scopes,"observed_at":now,"expires_at":now+chrono::Duration::seconds(300)}))
+                    "scopes":scopes,"observed_at":now,
+                    "expires_at":if persistent {None} else {Some(now+chrono::Duration::seconds(300))}}))
             }))
         .route("/auth/access/decisions", post(
             |State(state): State<Arc<RwLock<Authority>>>, headers: HeaderMap, HttpJson(request): HttpJson<Json>| async move {
@@ -644,7 +646,15 @@ async fn configured_scheduler_reserve_and_bind_keep_native_owner_and_space_guard
         ),
         "the separate write-only credential cannot enter a GET request"
     );
+    assert!(write.lifetime.source_expires_at.is_none());
+    assert!(write.lifetime.local_valid_until().is_none());
+    assert!(write.lifetime.monotonic_deadline().is_none());
+    assert!(read.lifetime.source_expires_at.is_some());
     let scope = |proof| NativeRequest::verified(proof, true, true).unwrap();
+    let confirmed = scope(&write);
+    assert!(confirmed.validity().unwrap().valid_until > write.lifetime.source_observed_at);
+    assert!(write.lifetime.source_expires_at.is_none(),
+        "request confirmation must never become a fabricated root credential expiry");
 
     async fn denied(
         label: &str,

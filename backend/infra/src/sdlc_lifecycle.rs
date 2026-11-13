@@ -1083,15 +1083,38 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         authorize_read(&tx, &state, actor).await?;
         let row = tx.query_one(statement(
-            "SELECT payload,false AS legacy FROM sdlc_delivery_results WHERE task_id=$1 AND result_id=$2
-             UNION ALL SELECT payload,true AS legacy FROM sdlc_analysis_results WHERE task_id=$1 AND result_id=$2",
+            "SELECT r.payload,false AS legacy,a.payload AS assignment
+             FROM sdlc_delivery_results r LEFT JOIN sdlc_delivery_assignments a
+               ON a.assignment_id=r.assignment_id AND a.task_id=r.task_id
+             WHERE r.task_id=$1 AND r.result_id=$2
+             UNION ALL SELECT payload,true AS legacy,NULL::jsonb AS assignment
+             FROM sdlc_analysis_results WHERE task_id=$1 AND result_id=$2",
             vec![task.into(),result_id.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("delivery result", result_id))?;
         let payload = row.try_get::<Json>("", "payload").map_err(map_db)?;
         let result = if row.try_get::<bool>("", "legacy").map_err(map_db)? {
             DeliveryInput::LegacyAnalysis(serde_json::from_value(payload).map_err(|_| corrupt())?)
         } else {
-            DeliveryInput::Delivery(serde_json::from_value(payload).map_err(|_| corrupt())?)
+            let result: AcceptedDeliveryResult = serde_json::from_value(payload).map_err(|_| corrupt())?;
+            let payload = row.try_get::<Option<Json>>("", "assignment").map_err(map_db)?
+                .ok_or_else(corrupt)?;
+            // Null is the legitimate initial input. An absent field is not proof
+            // that an immutable assignment had no predecessor.
+            if payload.get("previous_result_id").is_none() {
+                return Err(corrupt());
+            }
+            let assignment: DeliveryAssignment = serde_json::from_value(payload).map_err(|_| corrupt())?;
+            if result.result_id != result_id || result.task_id != task
+                || assignment.task_id != task || assignment.assignment_id != result.assignment_id
+                || assignment.stage != result.previous_stage
+                || app::sdlc_lifecycle::assignment_hash(&assignment)? != assignment.assignment_hash
+            {
+                return Err(corrupt());
+            }
+            DeliveryInput::Delivery(AcceptedDeliveryInput {
+                result,
+                previous_result_id: assignment.previous_result_id,
+            })
         };
         tx.commit().await.map_err(map_db)?;
         Ok(result)

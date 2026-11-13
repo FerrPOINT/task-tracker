@@ -2422,3 +2422,23 @@ ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
 No new table, permit family, task tree or scheduler is introduced.
+
+## Delivery result input projection
+
+The accepted output and mutation receipt keep their immutable original stored
+shape. The existing lifecycle result GET returns that output flattened with
+required nullable `previous_result_id`, read from the result's original immutable
+assignment. An explicit null is the legitimate initial input. Missing or
+inconsistent assignment provenance is an error; the current task cursor is not
+a source for historical result inputs. This projection does not rewrite stored
+results, assignments, receipts or operation hashes.
+
+## Operator root lifetime and request confirmation
+
+The effective Auth SDK is selected by `.namespace-base-revision`. An explicitly
+persistent service root retains `source_expires_at = None`; missing lifetime
+fields remain invalid. Existing namespace/native REST confirmation is a separate
+fixed proof from the original verified observation, supplied by the canonical
+SDK `confirmation_validity()` helper. It never becomes a credential expiry or
+an accepted assignment/runtime timer. Finite child, human, namespace and
+application proof bounds continue to intersect the original owner clocks.

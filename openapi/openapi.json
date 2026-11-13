@@ -10644,6 +10644,29 @@
   },
   "components": {
     "schemas": {
+      "AcceptedDeliveryInput": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AcceptedDeliveryResult"
+          },
+          {
+            "type": "object",
+            "required": [
+              "previous_result_id"
+            ],
+            "properties": {
+              "previous_result_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            }
+          }
+        ],
+        "description": "Read projection of immutable accepted output and its original assignment input.\nMutation receipts keep the original stored AcceptedDeliveryResult shape."
+      },
       "AcceptedDeliveryResult": {
         "type": "object",
         "required": [
@@ -13360,7 +13383,7 @@
             ],
             "properties": {
               "receipt": {
-                "$ref": "#/components/schemas/AcceptedDeliveryResult"
+                "$ref": "#/components/schemas/AcceptedDeliveryInput"
               },
               "source": {
                 "type": "string",

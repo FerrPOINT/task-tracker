@@ -508,10 +508,20 @@ pub struct AcceptedDeliveryResult {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+/// Read projection of immutable accepted output and its original assignment input.
+/// Mutation receipts keep the original stored AcceptedDeliveryResult shape.
+#[derive(Clone, Debug, Serialize, PartialEq, utoipa::ToSchema)]
+pub struct AcceptedDeliveryInput {
+    #[serde(flatten)]
+    pub result: AcceptedDeliveryResult,
+    #[schema(required = true, nullable = true)]
+    pub previous_result_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
 #[serde(tag = "source", content = "receipt", rename_all = "snake_case")]
 pub enum DeliveryInput {
-    Delivery(AcceptedDeliveryResult),
+    Delivery(AcceptedDeliveryInput),
     LegacyAnalysis(crate::sdlc_reservation::AnalysisResultReceipt),
 }
 
