@@ -256,7 +256,7 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_kno
     f.assert_current(&reserved).await;
     assert_eq!(count(&f.db, "sdlc_delivery_reconciliations").await, 0);
     // The same assignment can bind, start and complete after the former deadline.
-    let initial = f.finish_reserved(&queued, output, 0, reserve.clone(), reserved.clone()).await;
+    let initial = f.finish_reserved(&queued, output, 0, reserve.clone(), reserved.clone(), false).await;
     let completed = initial.completed.clone();
     assert_eq!(count(&f.db, "sdlc_delivery_holds").await, 0);
     assert_eq!(completed.task.stage, LifecycleStage::Architecture);
@@ -275,8 +275,11 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_kno
         let DeliveryInput::Delivery(actual) = f.repo
             .lifecycle_result(f.task, &f.reader, accepted.result_id).await.unwrap()
         else { panic!("expected retained delivery result"); };
-        assert_eq!(&actual, accepted);
+        assert_eq!(&actual.result, accepted);
         assert_eq!(actual.previous_result_id, assignment.previous_result_id);
+        let mut expected_projection = serde_json::to_value(accepted).unwrap();
+        expected_projection["previous_result_id"] = json!(assignment.previous_result_id);
+        assert_eq!(serde_json::to_value(&actual).unwrap(), expected_projection);
     }
     assert_eq!(f.journal_snapshot().await, history_before_read);
     let (next, _) = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
@@ -386,7 +389,7 @@ async fn complete_initial_pm(
 impl ReworkFixture {
     async fn new() -> (Self, LifecycleReceipt) {
         Self::with_draft_protocol(None, None, "owner", "scheduler",
-            Some(InteractionProtocol::ConfiguredCliV1), None, false).await
+            Some(InteractionProtocol::ConfiguredCliV1), None, false, false).await
     }
 
     async fn configured_before_persistent_ownership() -> (Self, LifecycleReceipt) {
@@ -399,6 +402,7 @@ impl ReworkFixture {
             Some(migration::InstalledOwnershipMigrator::migrations().iter().position(|step|
                 step.name() == "m20261112_0000117_persistent_delivery_ownership").unwrap().try_into().unwrap()),
             true,
+            false,
         )
         .await
     }
@@ -430,7 +434,7 @@ impl ReworkFixture {
         let registered = migration::Migrator::migrations();
         let steps = registered.iter().position(|m| m.name() == name).unwrap() + 1;
         Self::with_draft_protocol(source, document, owner_subject, scheduler_subject,
-            Some(InteractionProtocol::ConfiguredCliV1), Some(steps.try_into().unwrap()), false).await
+            Some(InteractionProtocol::ConfiguredCliV1), Some(steps.try_into().unwrap()), false, tail.is_none()).await
     }
 
     async fn with_draft_protocol(
@@ -441,6 +445,7 @@ impl ReworkFixture {
         interaction_protocol: Option<InteractionProtocol>,
         migration_steps: Option<u32>,
         installed_ownership: bool,
+        upgrade_after_pm: bool,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
@@ -577,7 +582,7 @@ impl ReworkFixture {
             1
         );
         // Upgrade populated PM/history/routing data, without rewriting old receipts.
-        if tail.is_none() {
+        if upgrade_after_pm {
             migration::Migrator::up(&db, None).await.unwrap();
         }
         assert_eq!(self::pm_history(&db, task).await, pm_history);
@@ -703,7 +708,7 @@ impl ReworkFixture {
             .await
             .unwrap();
         assert!(!replayed);
-        self.finish_reserved(queued, output, index, reserve, reserved).await
+        self.finish_reserved(queued, output, index, reserve, reserved, released_review).await
     }
 
     async fn finish_reserved(
@@ -713,6 +718,7 @@ impl ReworkFixture {
         index: usize,
         reserve: LifecycleCommand,
         reserved: LifecycleReceipt,
+        released_review: bool,
     ) -> OriginalStep {
         let producer = self.producers[output.role().key()].clone();
         assert_eq!(reserved.task.version, queued.task.version + 1);
