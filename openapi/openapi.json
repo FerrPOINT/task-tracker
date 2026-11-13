@@ -13420,48 +13420,6 @@
           }
         ]
       },
-      "DeliveryOwnership": {
-        "type": "object",
-        "description": "Stable assignment ownership. Timestamps survive historical receipt readback;\ncurrent ownership has no expiration and does not depend on a renewal timer.",
-        "required": [
-          "lease_id",
-          "version",
-          "holder_subject",
-          "claimed_at",
-          "heartbeat_at"
-        ],
-        "properties": {
-          "claimed_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "heartbeat_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "holder_subject": {
-            "type": "string"
-          },
-          "lease_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "version": {
-            "type": "integer",
-            "format": "int64",
-            "maximum": 9007199254740991,
-            "minimum": 1
-          }
-        },
-        "additionalProperties": false
-      },
       "DeliveryProposalReceipt": {
         "type": "object",
         "required": [
@@ -14461,6 +14419,28 @@
           {
             "type": "object",
             "description": "Historical operation decoding/replay only; new renewals are rejected.",
+            "required": [
+              "fence",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "heartbeat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "fence",
               "binding",
