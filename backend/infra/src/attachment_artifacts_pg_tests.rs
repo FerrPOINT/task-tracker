@@ -318,6 +318,10 @@ async fn prepare_standalone_analyst_tool_fixture() {
     let input_path = std::env::var("TT_ANALYST_TOOLS_INPUT").expect("explicit fixture input");
     let output_path = std::env::var("TT_ANALYST_TOOLS_OUTPUT").expect("explicit fixture output");
     let input: Json = serde_json::from_slice(&std::fs::read(input_path).unwrap()).unwrap();
+    let queue_for_fleet = input
+        .get("queue_for_fleet")
+        .map(|value| value.as_bool().expect("queue_for_fleet must be boolean"))
+        .unwrap_or(false);
     let owner_subject = input["owner_subject"].as_str().unwrap();
     Uuid::parse_str(owner_subject).unwrap();
     let tracker_instance = input["tracker_instance_id"].as_str().unwrap();
@@ -422,7 +426,12 @@ async fn prepare_standalone_analyst_tool_fixture() {
     let name = input["scenario"].as_str().unwrap();
     assert!(["complete", "partial", "missing"].contains(&name));
     let mut history_probe = json!(null);
-    for historical in [true, false] {
+    let histories: &[bool] = if queue_for_fleet {
+        &[false]
+    } else {
+        &[true, false]
+    };
+    for &historical in histories {
         let label = if historical { "history" } else { name };
         let task = f
             .draft(
@@ -440,6 +449,35 @@ async fn prepare_standalone_analyst_tool_fixture() {
             false,
         )
         .await;
+        if queue_for_fleet {
+            // This fixture stops at the durable queue; Fleet owns reservation and binding.
+            crate::sdlc::configured_test_support::complete_pm(
+                &f.repo,
+                task,
+                &f.owner,
+                &actor(
+                    &pm.assignment.machine_subject,
+                    false,
+                    &["task-tracker:read", "task-tracker:write"],
+                ),
+                &pm,
+            )
+            .await;
+            let state = f.repo.read(task, &f.owner).await.unwrap();
+            assert_eq!(state.stage, Stage::Analysis);
+            assert_eq!(state.status, Some(LifecycleStatus::Ready));
+            let queued = f
+                .repo
+                .lifecycle_read(task, &f.reader)
+                .await
+                .unwrap()
+                .receipt;
+            assert!(queued.assignment.is_none());
+            assert!(queued.binding.is_none());
+            cases[name] = json!({"task_id":task,"state":state,
+                "workflow_task_key":state.retained_fields["workflow_task_key"]});
+            continue;
+        }
         // Synthetic PM terminal evidence still uses the enabled completion-owned handoff.
         let pm_actor = actor(
             &pm.assignment.machine_subject,
@@ -656,6 +694,7 @@ async fn prepare_standalone_analyst_tool_fixture() {
         .unwrap();
     let foreign = foreign.task_id;
     let output = json!({"scope":"synthetic operator preparation; no Fleet/native/PM acceptance",
+        "queue_for_fleet":queue_for_fleet,
         "project_id":f.project,"owner_subject":owner_subject,"instance_id":f.repo.config.instance_id,"cases":cases,"history_probe":history_probe,"foreign_task_id":foreign});
     std::fs::write(output_path, serde_json::to_vec_pretty(&output).unwrap()).unwrap();
 }
