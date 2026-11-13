@@ -1,5 +1,16 @@
 # Owner SDLC UI v1
 
+## Пользовательский экран без технических выгрузок
+
+История показывает, что произошло и когда. Идентификаторы, SHA-256, номера
+записей, operation keys и ссылки между служебными сущностями не отображаются,
+в том числе внутри раскрывающихся блоков. Требования сохраняют содержание и
+номер версии, заявка на анализ — понятное состояние ожидания, публикация —
+семь названий ролей и выбранную версию. Exact hash/CAS/idempotency/ACL проверки
+остаются в существующем API adapter и mutation; пользователь не сверяет хеши
+вручную. Прошлые датированные screenshots с раскрытыми refs ниже — история
+проверок, а не актуальное требование интерфейса.
+
 ## Ordinary task versus an enrolled process
 
 The normal issue detail explicitly supplies lifecycle metadata from the same
@@ -160,8 +171,9 @@ matches its policy family, task/root/project/instance, confirmation and requirem
 pin before accepting the Analyst workflow. It never substitutes current project
 defaults. Snapshot404 preserves only an un-routed legacy intent; a profile intent
 without its frozen snapshot, mismatches and other read failures remain errors.
-The UI displays package references for v1 or instruction references for v2,
-without granting native readiness, dispatch or owner confirmation.
+The adapter validates package references for v1 or instruction references for v2.
+The user-facing panel shows role names and queued state, without technical IDs or
+digests and without granting native readiness, dispatch or owner confirmation.
 
 Consumer source `03c9a1e` integrated as `2235c5d` passes **133 focused tests** in
 `src/api/sdlc.test.ts` and `src/features/sdlc/ui/SdlcPanel.test.tsx`, full frontend
@@ -246,8 +258,8 @@ pin и exact routing version/hash либо legacy omission. Unknown POST не р
 автоматически; пока fresh context readback не получен, cached permissions не
 разрешают повторную запись. Новый credential/revision/hash не наследует согласие.
 
-Названия семи ролей и labels локализованы; technical IDs, package/catalog refs и
-hash доступны в явно раскрываемом details. Refs означают только preparation,
+Названия семи ролей локализованы. Технические IDs, package/catalog refs и hash
+не выводятся ни открыто, ни в скрытых details. Серверные refs сохраняют смысл preparation,
 `verification:declared`, `native_ready:false`, `dispatch_allowed:false`.
 Response guard использует generated aliases и проверяет project/instance/version,
 pinned package commit/catalog3, exact role/profile/key mapping и отсутствие
@@ -310,8 +322,8 @@ Operation identity remains Tracker-issued and authoritative; the browser's
 confirmation idempotency key is not an assignment operation key or fence.
 
 The UI consumes all eleven generated metadata event variants, including
-`analysis.intent_created` and `analysis.assignment_reserved`, as historical events. It displays actual event ref,
-sequence, timestamp, metadata hash and Analysis intent/revision references.
+`analysis.intent_created` and `analysis.assignment_reserved`, as historical events. It displays the event name and timestamp only; record IDs,
+sequence numbers, metadata hashes and intent references remain protocol data.
 It never interprets an event as assignment acceptance, a run or terminal success.
 
 ## State And Freshness
