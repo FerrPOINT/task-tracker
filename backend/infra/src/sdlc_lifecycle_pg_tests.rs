@@ -1173,6 +1173,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
                 .0;
         }
         let assignment = cursor.assignment.as_ref().unwrap();
+        let assignment_input = assignment.previous_result_id;
         let execution = assignment.execution.as_ref().unwrap();
         execution.validate().unwrap();
         assert!(execution_keys.insert(execution.key.clone()));
@@ -1418,7 +1419,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             history_after_handoff
         );
         assert_eq!(count(&db, "sdlc_outbox").await, outbox_after_handoff);
-        previous_input = assignment.previous_result_id;
+        previous_input = assignment_input;
         previous_accepted = cursor.result.clone();
         assert!(previous_accepted.is_some());
         previous_producer = Some(role_producer);
