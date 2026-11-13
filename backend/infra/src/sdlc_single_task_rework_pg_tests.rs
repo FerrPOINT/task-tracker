@@ -485,7 +485,7 @@ impl ReworkFixture {
             else {
                 panic!("expected accepted delivery predecessor");
             };
-            assert_eq!(&actual, previous);
+            assert_eq!(&actual.result, previous);
         }
         let proposal_command = SubmitDeliveryProposal {
             fence: fence.clone(),
@@ -690,7 +690,7 @@ impl ReworkFixture {
         else {
             panic!("expected retained delivery result");
         };
-        assert_eq!(&actual_result, expected_result);
+        assert_eq!(&actual_result.result, expected_result);
         let (reserved, replayed) = self
             .repo
             .lifecycle_command(self.task, &self.scheduler, original.reserve.clone())

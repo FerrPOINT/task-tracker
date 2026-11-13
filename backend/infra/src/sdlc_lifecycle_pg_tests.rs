@@ -1156,6 +1156,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         },
     ];
     let mut previous_accepted: Option<AcceptedDeliveryResult> = None;
+    let mut previous_input = None;
     let mut previous_producer: Option<Principal> = None;
     for (i, result) in outputs.into_iter().enumerate() {
         let role_producer = producers[result.role().key()].clone();
@@ -1226,6 +1227,14 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             );
             let operations_before = count(&db, "sdlc_delivery_operations").await;
             let outbox_before = count(&db, "sdlc_outbox").await;
+            let retained_sql = "SELECT jsonb_build_object('result',r.payload,'assignment',a.payload) AS retained
+                FROM sdlc_delivery_results r JOIN sdlc_delivery_assignments a USING(assignment_id)
+                WHERE r.task_id=$1 AND r.result_id=$2";
+            let retained_before: Json = db.query_one(statement(retained_sql,
+                vec![task.into(),expected.result_id.into()])).await.unwrap().unwrap()
+                .try_get("", "retained").unwrap();
+            assert!(retained_before["result"].get("previous_result_id").is_none(),
+                "the read projection must not rewrite immutable accepted results");
             let input = repo
                 .lifecycle_result(task, &role_producer, expected.result_id)
                 .await
@@ -1233,7 +1242,14 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             let DeliveryInput::Delivery(actual) = input else {
                 panic!("expected accepted delivery predecessor");
             };
-            assert_eq!(actual, *expected);
+            assert_eq!(actual.result, *expected);
+            assert_eq!(actual.previous_result_id, previous_input);
+            assert_ne!(actual.previous_result_id, cursor.task.previous_result_id,
+                "the current cursor is not the accepted result's original input");
+            let retained_after: Json = db.query_one(statement(retained_sql,
+                vec![task.into(),expected.result_id.into()])).await.unwrap().unwrap()
+                .try_get("", "retained").unwrap();
+            assert_eq!(retained_after,retained_before);
             assert_eq!(
                 serde_json::to_value(
                     repo.lifecycle_result(task, &owner, expected.result_id)
@@ -1241,7 +1257,9 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
                         .unwrap()
                 )
                 .unwrap(),
-                serde_json::to_value(DeliveryInput::Delivery(expected.clone())).unwrap()
+                serde_json::to_value(DeliveryInput::Delivery(AcceptedDeliveryInput {
+                    result: expected.clone(), previous_result_id: previous_input,
+                })).unwrap()
             );
             assert!(matches!(
                 repo.lifecycle_result(
@@ -1400,6 +1418,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             history_after_handoff
         );
         assert_eq!(count(&db, "sdlc_outbox").await, outbox_after_handoff);
+        previous_input = assignment.previous_result_id;
         previous_accepted = cursor.result.clone();
         assert!(previous_accepted.is_some());
         previous_producer = Some(role_producer);

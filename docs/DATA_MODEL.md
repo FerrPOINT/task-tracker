@@ -2422,3 +2422,13 @@ ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
 No new table, permit family, task tree or scheduler is introduced.
+
+## Delivery result input projection
+
+The accepted output and mutation receipt keep their immutable original stored
+shape. The existing lifecycle result GET returns that output flattened with
+required nullable `previous_result_id`, read from the result's original immutable
+assignment. An explicit null is the legitimate initial input. Missing or
+inconsistent assignment provenance is an error; the current task cursor is not
+a source for historical result inputs. This projection does not rewrite stored
+results, assignments, receipts or operation hashes.

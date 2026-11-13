@@ -2408,3 +2408,11 @@ products remain compatible with the ordinary CLI credential.
 активные разрешённые запросы. То же перечитывание выполняется при первом open
 и reconnect через существующий Base authenticated transport. Gap не является
 снимком данных и не разрешает доступ к ресурсам другого пользователя.
+
+## Immutable delivery predecessor
+
+`GET /api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}` keeps the existing
+authorization and `{source, receipt}` envelope. Delivery receipts additionally
+expose required nullable `previous_result_id` from the original assignment that
+produced that accepted result. The legacy analysis variant and mutation receipts
+retain their original shapes. Stored history is not rewritten by this read.
