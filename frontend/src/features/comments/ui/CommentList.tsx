@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   ActionGroup,
-  ResourceListDescription,
   LoadingState,
   ConfirmDialog,
   Button,

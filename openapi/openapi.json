@@ -1351,7 +1351,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IssueResponse"
+                  "$ref": "#/components/schemas/IssueDetailResponse"
                 }
               }
             }
@@ -13996,6 +13996,24 @@
           "configured-cli-v1"
         ]
       },
+      "IssueDetailResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/IssueResponse"
+          },
+          {
+            "type": "object",
+            "required": [
+              "lifecycle"
+            ],
+            "properties": {
+              "lifecycle": {
+                "$ref": "#/components/schemas/SdlcBoardTask"
+              }
+            }
+          }
+        ]
+      },
       "IssueLinkListResponse": {
         "type": "object",
         "required": [
@@ -20821,9 +20839,14 @@
         "type": "object",
         "required": [
           "issue_id",
+          "enrolled",
           "stage"
         ],
         "properties": {
+          "enrolled": {
+            "type": "boolean",
+            "description": "A persisted process exists; this grants no access to private SDLC context."
+          },
           "issue_id": {
             "type": "string",
             "format": "uuid"
