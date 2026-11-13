@@ -225,3 +225,44 @@ pub(super) async fn delivery_comment(
     .await
     .unwrap();
 }
+
+/// Publish a synthetic Architect plan through the real owner API for ledger fixtures.
+pub(super) async fn architect_design(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    actor: &Principal,
+    head: &domain::sdlc_lifecycle::LifecycleReceipt,
+) -> domain::sdlc_lifecycle::ArtifactReceipt {
+    use domain::decomposition::{DecompositionRepository, PlanContent, PlanSection, PlanSource, SavePlan};
+    let assignment = head.assignment.as_ref().unwrap();
+    let current = repo.read_plan(task, actor).await.unwrap();
+    let (saved, _) = repo.save_plan(task, actor, SavePlan {
+        expected_revision: current.plan.as_ref().map_or(0, |plan| plan.revision),
+        idempotency_key: format!("fixture:architect-plan:{}", assignment.execution_id),
+        reason: "Synthetic plan for the current assigned stage".into(),
+        fence: Some(MachineFence {
+            assignment_id: assignment.assignment_id,
+            execution_id: assignment.execution_id,
+            agent_id: assignment.agent_id,
+            assignment_version: assignment.fencing_token,
+        }),
+        content: PlanContent {
+            overview: "Exercise the existing project contract".into(),
+            source: Some(PlanSource {
+                analysis_result_id: assignment.previous_result_id,
+                ..current.current_source.unwrap()
+            }),
+            sections: vec![PlanSection {
+                id: assignment.assignment_id,
+                title: "Implementation".into(),
+                description: "Apply the accepted project requirements".into(),
+                criteria: "Verify the requested behavior and neighboring failure".into(),
+                requirements: "Accepted task requirements".into(),
+            }],
+        },
+    }).await.unwrap();
+    domain::sdlc_lifecycle::ArtifactReceipt {
+        reference: format!("/api/v1/issues/{task}/decomposition/revisions/{}", saved.result.revision),
+        sha256: saved.result.content_sha256,
+    }
+}

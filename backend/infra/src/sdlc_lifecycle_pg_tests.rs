@@ -1262,6 +1262,13 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             &format!("role-{i}-start"),
         )
         .await;
+        let result = if matches!(result, DeliveryResult::Architect { .. }) {
+            DeliveryResult::Architect {
+                design: crate::sdlc::configured_test_support::architect_design(
+                    &repo, task, &role_producer, &started,
+                ).await,
+            }
+        } else { result };
         if let Some(expected) = &previous_accepted {
             assert_eq!(assignment.previous_result_id, Some(expected.result_id));
             assert!(

@@ -608,6 +608,13 @@ impl ReworkFixture {
         )
         .await;
         self.assert_current(&started).await;
+        let output = if matches!(output, DeliveryResult::Architect { .. }) {
+            DeliveryResult::Architect {
+                design: crate::sdlc::configured_test_support::architect_design(
+                    &self.repo, self.task, &producer, &started,
+                ).await,
+            }
+        } else { output };
         if let Some(previous) = &queued.result {
             assert_eq!(assignment.previous_result_id, Some(previous.result_id));
             let DeliveryInput::Delivery(actual) = self

@@ -221,6 +221,13 @@ available against a real server. Workflow's final instruction must execute
 these calls, reconcile unknown acceptance using readback, then exit the runtime.
 It must not merely tell an operator that work is complete.
 
+Architect `design` references this task's immutable
+`/api/v1/issues/{task}/decomposition/revisions/{revision}` with the canonical
+content SHA256. Tracker checks the saved revision, task and sealed requirements
+at proposal and again in atomic Complete. A missing plan or an attachment cannot
+replace that contract. Historical reads remain unchanged. Fleet passes the
+receipt unchanged to Complete and does not download the plan as an attachment.
+
 Role outputs are:
 
 | role | Required result |

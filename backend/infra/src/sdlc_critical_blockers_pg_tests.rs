@@ -101,6 +101,7 @@ struct Running {
     head: LifecycleReceipt,
     producer: Principal,
     evidence: domain::attachment_artifact::AttachmentArtifact,
+    design: Option<ArtifactReceipt>,
 }
 
 fn fence(head: &LifecycleReceipt) -> DeliveryFence {
@@ -239,11 +240,17 @@ async fn output(
         .unwrap()
         .unwrap()
         .artifact();
+    let design = if head.task.stage == LifecycleStage::Architecture {
+        Some(crate::sdlc::configured_test_support::architect_design(
+            &f.repo, task, &producer, &head,
+        ).await)
+    } else { None };
     Running {
         task,
         head,
         producer,
         evidence,
+        design,
     }
 }
 
@@ -253,7 +260,7 @@ fn result(r: &Running) -> DeliveryResult {
             analysis: r.evidence.receipt.clone(),
         },
         LifecycleStage::Architecture => DeliveryResult::Architect {
-            design: r.evidence.receipt.clone(),
+            design: r.design.clone().expect("Architect fixture must publish its plan"),
         },
         _ => panic!("fixture supports only its actual Analyst/Architect assignments"),
     }

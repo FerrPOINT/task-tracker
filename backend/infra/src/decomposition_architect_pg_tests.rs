@@ -192,6 +192,22 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
         "plan:start",
     )
     .await;
+    let missing_plan = SubmitDeliveryProposal {
+        fence: delivery_fence(&running),
+        workflow_receipt: artifact("synthetic-missing-plan-workflow"),
+        result: DeliveryResult::Architect { design: artifact("attachment-cannot-replace-plan") },
+        idempotency_key: "plan:missing-plan".into(),
+    };
+    assert!(matches!(f.repo.submit_delivery_proposal(f.task, architect, missing_plan.clone()).await,
+        Err(AppError::Conflict(message)) if message == "Architect result must reference this task's plan revision"));
+    let mut dangling = missing_plan;
+    dangling.result = DeliveryResult::Architect { design: ArtifactReceipt {
+        reference: format!("/api/v1/issues/{}/decomposition/revisions/1", f.task),
+        sha256: "a".repeat(64),
+    }};
+    assert!(matches!(f.repo.submit_delivery_proposal(f.task, architect, dangling).await,
+        Err(AppError::Conflict(message)) if message == "Architect plan revision is absent"));
+    assert_eq!(f.repo.lifecycle_read(f.task, &f.reader).await.unwrap().receipt, running);
     assert!(
         f.repo
             .save_plan(f.task, &f.owner, command.clone())
@@ -414,4 +430,27 @@ async fn decomposition_architect_requires_current_role_fence_and_requirements() 
         completed,
         "proposal records Completed but does not hand off the stage"
     );
+    let binding = completed.binding.as_ref().unwrap();
+    let complete = LifecycleCommand::Complete {
+        fence: delivery_fence(&completed),
+        terminal: TerminalReceipt {
+            chat_id: binding.chat_id,
+            run_id: binding.run_id,
+            fleet_receipt: artifact("synthetic-plan-native-terminal"),
+            workflow_receipt: accepted.workflow_receipt.clone(),
+            output_sha256: accepted.output_sha256.clone(),
+        },
+        result: accepted.result.clone(),
+        idempotency_key: "plan:complete".into(),
+    };
+    let (handed_off, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, complete.clone()).await.unwrap();
+    assert!(!replayed);
+    assert_eq!((handed_off.task.stage, handed_off.task.status, handed_off.task.runtime),
+        (LifecycleStage::Development, LifecycleStatus::Ready, RuntimeState::Queued));
+    assert_eq!(handed_off.result.as_ref().unwrap().output, accepted.result);
+    let (original, replayed) = f.repo.lifecycle_command(f.task, &f.scheduler, complete).await.unwrap();
+    assert!(replayed);
+    assert_eq!(original, handed_off);
+    assert_eq!(f.repo.plan_revision(f.task, &f.owner, 1).await.unwrap().content_sha256, saved.result.content_sha256);
+    eprintln!("TRACKER_ARCHITECT_PLAN_OWNER=missing_attachment_and_dangling_denied_foreign_task_revision_hash_denied_original_complete_replayed");
 }
