@@ -1,7 +1,6 @@
 use super::*;
 use chrono::{Duration, TimeZone, Utc};
 use domain::attachment_artifact::{ArtifactBinding, AttachmentArtifact};
-
 use domain::sdlc_routing::{
     RoleRoute, RoleRoutes, RoutingPolicy, RoutingVerification, TaskRoutingSnapshot,
 };
@@ -88,13 +87,13 @@ impl Fixture {
             },
             created_at: now,
         };
-        let lease = DeliveryOwnership {
+        let lease = DeliveryBinding {
             lease_id: Uuid::new_v4(),
             version: 1,
             holder_subject: "scheduler".into(),
             claimed_at: now,
-            heartbeat_at: now,
-            expires_at: Some(now + Duration::seconds(30)),
+            heartbeat_at: None,
+            expires_at: None,
         };
         let mut assignment = DeliveryAssignment {
             machine_subject: Some(PRODUCER.into()),
@@ -497,7 +496,7 @@ fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runt
             5 => f.current.task.owner_subject = "another-owner".into(),
             6 => f.current.task.runtime = RuntimeState::Unknown,
             7 => f.current.task.runtime = RuntimeState::Terminal,
-            8 => unreachable!(),
+            8 => f.current.lease.as_mut().unwrap().version += 1,
             9 => f.current.lease.as_mut().unwrap().holder_subject = "agent".into(),
             _ => f.current.task.routing.contract_version = 1,
         }
@@ -563,14 +562,12 @@ fn prepare_and_hold_validation_failure_has_no_partial_change_or_accepted_proposa
 }
 
 #[test]
-fn historical_ownership_version_still_requires_exact_scheduler_cas() {
+fn changed_binding_version_requires_an_exact_fresh_handoff_fence() {
     let mut f = Fixture::new(LifecycleStage::Architecture);
     let blocker = f.hold();
     let stale = f.handoff(&blocker);
     let lease = f.current.lease.as_mut().unwrap();
     lease.version += 1;
-    lease.heartbeat_at += Duration::seconds(10);
-    lease.expires_at = lease.expires_at.map(|expiry| expiry + Duration::seconds(10));
     assert!(return_to_pm(&f.current, &blocker, &f.scheduler, &f.config, &stale).is_err());
     assert!(
         return_to_pm(
@@ -585,18 +582,18 @@ fn historical_ownership_version_still_requires_exact_scheduler_cas() {
 }
 
 #[test]
-fn retained_producer_fence_survives_historical_ownership_versions() {
+fn producer_fence_must_match_current_version_and_clock_does_not_grant_authority() {
     let mut f = Fixture::new(LifecycleStage::Architecture);
     let lease = f.current.lease.as_mut().unwrap();
     lease.version += 2;
-    lease.heartbeat_at += Duration::seconds(10);
-    lease.expires_at = lease.expires_at.map(|expiry| expiry + Duration::seconds(10));
     f.now += Duration::seconds(11);
+    assert!(f.plan().is_err());
+    f.proposal.fence.expected_lease_version = 3;
     let retained = f.proposal.clone();
     let change = f.plan().unwrap();
     assert_eq!(change.blocker.proposal, retained);
     assert_eq!(change.lifecycle.lease, f.current.lease);
-    assert_eq!(change.blocker.proposal.fence.expected_lease_version, 1);
+    assert_eq!(change.blocker.proposal.fence.expected_lease_version, 3);
     assert_eq!(change.lifecycle.lease.as_ref().unwrap().version, 3);
     f.current = change.lifecycle;
     assert!(
@@ -643,7 +640,7 @@ fn empty_and_single_options_hold_with_permanent_identity_without_scheduler_imper
 }
 
 #[test]
-fn matching_terminal_may_release_expired_custody_but_expiry_never_proves_terminal() {
+fn matching_terminal_may_release_unknown_custody_but_elapsed_time_never_proves_terminal() {
     let mut f = Fixture::new(LifecycleStage::Architecture);
     let blocker = f.hold();
     f.now += Duration::seconds(60);
@@ -774,8 +771,7 @@ fn legacy_lifecycle_wire_is_unchanged() {
     assert_eq!(serde_json::to_value(old).unwrap(), command);
     let f = Fixture::new(LifecycleStage::Analysis);
     let heartbeat = json!({"operation":"heartbeat", "fence":f.proposal.fence, "idempotency_key":"legacy-heartbeat"});
-    let old: LifecycleCommand = serde_json::from_value(heartbeat.clone()).unwrap();
-    assert_eq!(serde_json::to_value(old).unwrap(), heartbeat);
+    assert!(serde_json::from_value::<LifecycleCommand>(heartbeat).is_err());
 }
 
 #[test]

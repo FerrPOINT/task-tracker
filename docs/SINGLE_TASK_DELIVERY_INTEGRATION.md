@@ -78,3 +78,33 @@ Producer сериализовал синтетические fixtures насто
 Открыты: additive SQL на заполненной истории, scoped credentials, heartbeat/tool
 races и expiry recovery, canonical stage/status projection, PM feedback resume,
 profile-aware Workflow/routing, реальные Forge receipts и сквозной цикл.
+
+## Reviewer: завершение выполненного ревью
+
+Reviewer читает назначенную Task, обсуждение и материалы с существующими правами.
+После принятого финального отчёта Workflow он публикует обычный комментарий Task,
+проверяет сохранённую операцию и подаёт прежний typed result proposal. Fleet
+подтверждает настоящий native terminal и выполняет существующий Complete.
+Оба вердикта `approved` и `rework` сохраняются как Review / Completed / Terminal
+с `review_completed`; обнаруженные дефекты не являются сбоем выполненного ревью.
+Назначение, lease и binding освобождаются. Следующая роль, переход в Testing/Rework
+и автоматический повтор этой доработкой не создаются.
+
+DeliveryFence собирается из свежего lifecycle непосредственно перед Start;
+heartbeat может обновить `lease.version`, сохранив назначение. Неизвестную запись
+сверяют по исходному ключу. `Completed` не разрешает повторно начинать стадию.
+После освобождения назначения QA читает сохранённые данные как оператор, а не
+повторяет assignment-bound команды роли. Workflow terminal receipt и proposal
+проверяются существующими read-only операциями владельцев.
+
+Все фазы Reviewer относятся к одному назначению и native run. Принятый
+промежуточный отчёт с `complete=false` требует продолжения следующей фазы;
+успешный Start не завершает работу. Машинные UUID берутся из структурированных
+ответов и передаются в CLI без ручного перепечатывания.
+
+SDK backend/CLI закреплён на Base `5f5bcb5e41d7289ded05bca72b212d58e49c445d`;
+namespace/UI pins сохранены. Operation keys со слешем проверяются как целый ключ,
+защита от обхода пути сохраняется. Совместимая поставка включает Forge backend/UI/CLI
+с обязательной основной Task, Workflow, Fleet и полный пакет skills Base.
+Паспорт поставки фиксирует точные исходники, образы и доказательства;
+реализация, проверка, установка и полная Fleet-приёмка отмечаются отдельно.

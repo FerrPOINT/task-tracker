@@ -77,13 +77,7 @@ impl SpaceActor {
             issuer: actor.issuer.clone(),
             subject: actor.context.user_id.clone(),
         };
-        let expiry = actor.lifetime.local_valid_until().min(
-            actor
-                .lifetime
-                .source_observed_at
-                .checked_add(AdmissionValidity::MAX_AGE_SECONDS)
-                .ok_or(AppError::Forbidden)?,
-        );
+        let expiry = actor.confirmation_validity().map_err(|_| AppError::Forbidden)?.valid_until;
         admission.validity = admission
             .validity
             .attenuate(expiry)
@@ -95,9 +89,11 @@ impl SpaceActor {
         {
             return Err(AppError::Forbidden);
         }
-        let window = SpaceOwnerAuthority::confirmed(identity.clone(), admission.validity)
-            .ok_or(AppError::Forbidden)?
-            .restrict_deadline(actor.lifetime.monotonic_deadline());
+        let mut window = SpaceOwnerAuthority::confirmed(identity.clone(), admission.validity)
+            .ok_or(AppError::Forbidden)?;
+        if let Some(deadline) = actor.lifetime.monotonic_deadline() {
+            window = window.restrict_deadline(deadline);
+        }
         Ok(Self {
             user,
             identity,
@@ -321,15 +317,12 @@ impl CentralRequestContext {
         {
             return Err(AppError::Forbidden);
         }
-        let validity = AdmissionValidity::confirmed(
-            actor.lifetime.source_observed_at,
-            actor.lifetime.local_valid_until(),
-            i64::MAX,
-        )
-        .ok_or(AppError::Forbidden)?;
-        let identity_window = SpaceOwnerAuthority::confirmed(identity, validity)
-            .ok_or(AppError::Forbidden)?
-            .restrict_deadline(actor.lifetime.monotonic_deadline());
+        let validity = actor.confirmation_validity().map_err(|_| AppError::Forbidden)?;
+        let mut identity_window = SpaceOwnerAuthority::confirmed(identity, validity)
+            .ok_or(AppError::Forbidden)?;
+        if let Some(deadline) = actor.lifetime.monotonic_deadline() {
+            identity_window = identity_window.restrict_deadline(deadline);
+        }
         // Capture once from the verified source request; no bearer value or
         // repeated token introspection is needed by the read-only catalog relay.
         let catalog_origin =

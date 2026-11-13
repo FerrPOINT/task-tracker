@@ -108,6 +108,33 @@ describe('CommentItem', () => {
 })
 
 describe('CommentForm', () => {
+  it('keeps cancellation unavailable until an in-flight write settles', async () => {
+    let finish: (() => void) | undefined
+    const onCancel = vi.fn()
+    render(
+      <Wrapper>
+        <CommentForm
+          onSubmit={() =>
+            new Promise<void>((resolve) => {
+              finish = resolve
+            })
+          }
+          onCancel={onCancel}
+        />
+      </Wrapper>,
+    )
+    fireEvent.change(screen.getByPlaceholderText(/напишите/i), {
+      target: { value: 'Pending comment' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /сохранить/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /сохранить/i })).toBeDisabled())
+    expect(screen.getByRole('button', { name: /отмена/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /отмена/i }))
+    expect(onCancel).not.toHaveBeenCalled()
+    finish?.()
+    await waitFor(() => expect(screen.getByRole('button', { name: /отмена/i })).toBeEnabled())
+  })
+
   it('does not submit the same comment twice while the mutation is pending', async () => {
     let resolveSubmit: (() => void) | undefined
     const onSubmit = vi.fn(

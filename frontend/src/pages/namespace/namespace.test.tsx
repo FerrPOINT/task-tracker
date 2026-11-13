@@ -55,7 +55,7 @@ it.each(['active', 'archived'])(
     const nav = screen.getByRole('navigation', { name: 'Разделы проекта' })
     expect(nav).toHaveClass('base-section-navigation')
     const links = within(nav).getAllByRole('link')
-    expect(links).toHaveLength(state === 'active' ? 3 : 2)
+    expect(links).toHaveLength(2)
     for (const link of links) {
       expect(link).toHaveClass('base-section-navigation-item')
       const url = new URL(link.getAttribute('href')!, 'https://test.invalid')
@@ -63,7 +63,7 @@ it.each(['active', 'archived'])(
       expect(url.searchParams.get('namespace_id')).toBe(ref.namespace_id)
       expect(url.searchParams.get('project_scope')).toBe('all')
     }
-    expect(screen.queryByRole('link', { name: 'Создать задачу' }) !== null).toBe(state === 'active')
+    expect(screen.queryByRole('link', { name: 'Создать задачу' })).not.toBeInTheDocument()
     const user = userEvent.setup()
     await user.tab()
     expect(links[0]).toHaveFocus()

@@ -309,7 +309,7 @@ pub enum SdlcCommand {
         #[arg(long)]
         task: Uuid,
     },
-    /// Scheduler-owned Analysis queue/reservations; assigned Analyst uses context and result propose
+    /// Read Analysis preflight and retained history; assigned Analyst uses context and result propose
     Analysis {
         #[command(subcommand)]
         command: SdlcAnalysisCommand,
@@ -353,12 +353,12 @@ pub enum SdlcAnalysisCommand {
         #[arg(long)]
         task: Uuid,
     },
-    /// Claim, heartbeat or read the prepared Analysis reservation
+    /// Read retained Analysis reservation state and operations
     Reservation {
         #[command(subcommand)]
         command: SdlcAnalysisReservationCommand,
     },
-    /// Submit or read the Tracker-authoritative Analysis terminal result
+    /// Read retained Tracker-authoritative Analysis terminal result operations
     Result {
         #[command(subcommand)]
         command: SdlcAnalysisResultCommand,
@@ -372,20 +372,6 @@ pub enum SdlcAnalysisReservationCommand {
         #[arg(long)]
         task: Uuid,
     },
-    /// Reserve Analysis capacity with a strict JSON payload from a file or stdin
-    Reserve {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long, value_name = "PATH|-")]
-        from_file: String,
-    },
-    /// Renew Analysis reservation with a strict JSON payload from a file or stdin
-    Heartbeat {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long, value_name = "PATH|-")]
-        from_file: String,
-    },
     /// Read a retained Analysis reservation operation by idempotency key
     Operation {
         #[arg(long)]
@@ -397,16 +383,6 @@ pub enum SdlcAnalysisReservationCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcAnalysisResultCommand {
-    /// Scheduler-only terminal acceptance; this does not upload an Analyst document
-    #[command(
-        after_long_help = "Assigned Analyst saves analysis.md with `task-tracker attachment upload`.\nAfter accepted Workflow completion and the final comment, use\n`task-tracker sdlc result propose --task TASK_UUID --from-file -`.\nThis scheduler operation requires independent scheduler authority; never borrow it."
-    )]
-    Submit {
-        #[arg(long)]
-        task: Uuid,
-        #[arg(long, value_name = "PATH|-")]
-        from_file: String,
-    },
     /// Read a retained Analysis result operation by idempotency key
     Operation {
         #[arg(long)]
@@ -630,40 +606,19 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
                 SdlcAnalysisReservationCommand::Read { task } => {
                     api.get(&sdlc_path(task, "/analysis-reservation")).await
                 }
-                SdlcAnalysisReservationCommand::Reserve { task, from_file } => {
-                    api.post(
-                        &sdlc_path(task, "/analysis-reservation"),
-                        json_input(&from_file)?,
-                    )
-                    .await
-                }
-                SdlcAnalysisReservationCommand::Heartbeat { task, from_file } => {
-                    api.post(
-                        &sdlc_path(task, "/analysis-reservation/heartbeat"),
-                        json_input(&from_file)?,
-                    )
-                    .await
-                }
                 SdlcAnalysisReservationCommand::Operation { task, key } => {
                     api.get(&sdlc_path(
                         task,
-                        &format!("/analysis-reservation/operations/{}", enc(&key)),
+                        &format!("/analysis-reservation/operations?idempotency_key={}", enc(&key)),
                     ))
                     .await
                 }
             },
             SdlcAnalysisCommand::Result { command } => match command {
-                SdlcAnalysisResultCommand::Submit { task, from_file } => {
-                    api.post(
-                        &sdlc_path(task, "/analysis-result"),
-                        json_input(&from_file)?,
-                    )
-                    .await
-                }
                 SdlcAnalysisResultCommand::Operation { task, key } => {
                     api.get(&sdlc_path(
                         task,
-                        &format!("/analysis-result/operations/{}", enc(&key)),
+                        &format!("/analysis-result/operations?idempotency_key={}", enc(&key)),
                     ))
                     .await
                 }

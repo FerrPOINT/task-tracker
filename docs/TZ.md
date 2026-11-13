@@ -14,6 +14,15 @@ Reserve proof в существующем Reconcile/Stop. Отсутствие n
 ничего не доказывает. Tracker освобождает capacity один раз без новой попытки;
 сохранённые требования, источник, назначение и результаты остаются в истории.
 
+Страница задачи: название и описание доступны сразу; при наличии текущей
+ревизии SDLC цель, область работ и критерии читаются из неё с указанием ревизии.
+Второго описания на странице нет. Карандаш у заголовка SDLC-задачи меняет только
+заголовок; требования сохраняют свой процесс PM и согласования. Вложения видны
+под описанием при любой выбранной вкладке.
+Метки, связи и дополнительные свойства относятся к задаче и вынесены из
+обсуждения и журнала работ. Десктоп сохраняет боковую колонку 320 px и общий
+ритм отступов 20 px; мобильная версия не требует горизонтальной прокрутки.
+
 ## Встроенная Декомпозиция
 
 [Управление встроенной декомпозицией](contracts/task-decomposition.md) реализовано
@@ -202,10 +211,13 @@ Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIF
 Strict project membership and central task-owner identity apply to this slice,
 independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
 verification is distinct from Fleet/Workflow integration and real PM acceptance;
-The B-SDLC-05 owner issue-detail SDLC tab now implements exact confirmation and
-real intent/readback with typed metadata history, loading/access/error/stale/empty
-states. It labels Analysis/Ready as queued awaiting admission, not a run or success.
-[UI scope and checks](SDLC_UI_V1.md). No live autonomous flow is claimed.
+The owner issue-detail SDLC tab presents current stage/runtime, permitted owner
+actions, requirements, accepted results and translated history. Current execution
+comes from lifecycle readback; retained Analysis intent is historical provenance.
+Exact confirmation and routing opt-in keep their existing version/hash contract.
+Technical identifiers remain in collapsed details. Loading, access, unavailable,
+stale and empty states stay distinct. [UI scope and checks](SDLC_UI_V1.md).
+This source UI contract does not claim a configured or accepted live autonomous flow.
 
 Assignment-scoped PM PATs do not inherit generic legacy user authority. The
 legacy API refuses them before profile linking; SDLC permits only canonical

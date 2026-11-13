@@ -203,6 +203,12 @@ describe('shared api hooks', () => {
     })
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const detail = {
+      id: 'issue-1',
+      lifecycle: { issue_id: 'issue-1', enrolled: true, stage: 'Draft' },
+    }
+    client.setQueryData(['issue', 'issue-1'], detail)
+    client.setQueryData(['issue', 'issue-1', undefined, undefined], detail)
     const { result } = renderHook(() => useUpdateIssue('issue-1'), {
       wrapper: wrapper(client),
     })
@@ -212,6 +218,9 @@ describe('shared api hooks', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+    expect(client.getQueryData(['issue', 'issue-1'])).toEqual(detail)
+    expect(client.getQueryData(['issue', 'issue-1', undefined, undefined])).toEqual(detail)
   })
 
   it('invalidates reports when a sprint lifecycle mutation changes report scope', async () => {

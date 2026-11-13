@@ -4,6 +4,10 @@
 use super::*;
 #[path = "decomposition_architect_pg_tests.rs"]
 mod decomposition_tests;
+#[path = "reviewer_handoff_pg_tests.rs"]
+mod reviewer_handoff_tests;
+#[path = "untimed_delivery_binding_pg_tests.rs"]
+mod untimed_binding_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -188,6 +192,7 @@ async fn assignment_persists_across_old_deadline_and_restart_until_result_or_kno
     f.repo.delivery_reserve(&tx, &f.scheduler, &mut historical, queued.task.version,
         Some(f.producers["analyst"].subject.as_str())).await.unwrap();
     let lease = historical.lease.as_mut().unwrap();
+    lease.heartbeat_at = Some(lease.claimed_at);
     lease.expires_at = Some(lease.claimed_at + chrono::Duration::seconds(30));
     PostgresSdlcRepository::save_delivery_projection(&tx, &f.scheduler, &historical, false).await.unwrap();
     let event_id = Uuid::now_v7();
@@ -380,7 +385,8 @@ async fn complete_initial_pm(
 
 impl ReworkFixture {
     async fn new() -> (Self, LifecycleReceipt) {
-        Self::with_architect_inputs(None, None).await
+        Self::with_draft_protocol(None, None, "owner", "scheduler",
+            Some(InteractionProtocol::ConfiguredCliV1), None, false).await
     }
 
     async fn configured_before_persistent_ownership() -> (Self, LifecycleReceipt) {
@@ -390,8 +396,9 @@ impl ReworkFixture {
             "owner",
             "scheduler",
             Some(InteractionProtocol::ConfiguredCliV1),
-            Some(migration::Migrator::migrations().iter().position(|step|
+            Some(migration::InstalledOwnershipMigrator::migrations().iter().position(|step|
                 step.name() == "m20261112_0000117_persistent_delivery_ownership").unwrap().try_into().unwrap()),
+            true,
         )
         .await
     }
@@ -409,7 +416,21 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
-        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, Some(InteractionProtocol::ConfiguredCliV1), None).await
+        Self::with_schema_tail(source, document, owner_subject, scheduler_subject, None).await
+    }
+
+    async fn with_schema_tail(
+        source: Option<domain::sdlc_source::VerifiedSource>,
+        document: Option<RequirementsDocument>,
+        owner_subject: &str,
+        scheduler_subject: &str,
+        tail: Option<&str>,
+    ) -> (Self, LifecycleReceipt) {
+        let name = tail.unwrap_or("m20261108_0000116_reviewer_terminal");
+        let registered = migration::Migrator::migrations();
+        let steps = registered.iter().position(|m| m.name() == name).unwrap() + 1;
+        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject,
+            Some(InteractionProtocol::ConfiguredCliV1), Some(steps.try_into().unwrap()), false).await
     }
 
     async fn with_draft_protocol(
@@ -419,6 +440,7 @@ impl ReworkFixture {
         scheduler_subject: &str,
         interaction_protocol: Option<InteractionProtocol>,
         migration_steps: Option<u32>,
+        installed_ownership: bool,
     ) -> (Self, LifecycleReceipt) {
         let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL")
             .expect("fresh isolated rework database required");
@@ -433,7 +455,11 @@ impl ReworkFixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        migration::Migrator::up(&db, migration_steps).await.unwrap();
+        if installed_ownership {
+            migration::InstalledOwnershipMigrator::up(&db, migration_steps).await.unwrap();
+        } else {
+            migration::Migrator::up(&db, migration_steps).await.unwrap();
+        }
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [
@@ -550,6 +576,11 @@ impl ReworkFixture {
                 .len(),
             1
         );
+        // Upgrade populated PM/history/routing data, without rewriting old receipts.
+        if tail.is_none() {
+            migration::Migrator::up(&db, None).await.unwrap();
+        }
+        assert_eq!(self::pm_history(&db, task).await, pm_history);
         let mut producers = std::collections::HashMap::new();
         for role in [
             "analyst",
@@ -642,6 +673,17 @@ impl ReworkFixture {
         queued: &LifecycleReceipt,
         output: DeliveryResult,
         index: usize,
+    ) -> OriginalStep {
+        self.step_with_released_review(queued, output, index, false)
+            .await
+    }
+
+    async fn step_with_released_review(
+        &self,
+        queued: &LifecycleReceipt,
+        output: DeliveryResult,
+        index: usize,
+        released_review: bool,
     ) -> OriginalStep {
         assert_eq!(queued.task.status, LifecycleStatus::Ready);
         assert_eq!(queued.task.runtime, RuntimeState::Queued);
@@ -750,8 +792,8 @@ impl ReworkFixture {
         self.assert_current(&started).await;
         let output = if matches!(output, DeliveryResult::Architect { .. }) {
             DeliveryResult::Architect {
-                design: crate::sdlc::configured_test_support::architect_design(
-                    &self.repo, self.task, &producer, &started,
+                design: crate::sdlc::configured_test_support::save_architect_plan(
+                    &self.repo, self.task, &producer, &started, &format!("rework:{index}:plan"),
                 ).await,
             }
         } else { output };
@@ -765,7 +807,7 @@ impl ReworkFixture {
             else {
                 panic!("expected accepted delivery predecessor");
             };
-            assert_eq!(&actual, previous);
+            assert_eq!(&actual.result, previous);
         }
         let proposal_command = SubmitDeliveryProposal {
             fence: fence.clone(),
@@ -835,17 +877,44 @@ impl ReworkFixture {
             result: output.clone(),
             idempotency_key: format!("rework:{index}:complete"),
         };
+        if matches!(output, DeliveryResult::Reviewer { .. }) {
+            let LifecycleCommand::Complete { terminal, .. } = &complete else {
+                unreachable!()
+            };
+            for next in ["Review", "Rework"] {
+                let result_id = Uuid::new_v4();
+                let invalid = json!({"result_id":result_id,"assignment_id":assignment.assignment_id,
+                    "task_id":self.task,"terminal":terminal,"output":output,
+                    "previous_stage":"Review","next_stage":next,"next_status":"Ready",
+                    "cycle":proposed.task.cycle,"created_at":Utc::now()});
+                let rejected = self.db.execute(statement(
+                    "INSERT INTO sdlc_delivery_results(result_id,assignment_id,task_id,payload) VALUES($1,$2,$3,$4)",
+                    vec![result_id.into(),assignment.assignment_id.into(),self.task.into(),invalid.into()],
+                )).await.unwrap_err();
+                assert!(
+                    rejected
+                        .to_string()
+                        .contains("SDLC result requires exact live bound execution")
+                );
+            }
+        }
         assert!(matches!(
             self.repo
                 .lifecycle_command(self.task, &producer, complete.clone())
                 .await,
             Err(AppError::Forbidden)
         ));
-        let (completed, replayed) = self
-            .repo
-            .lifecycle_command(self.task, &self.scheduler, complete.clone())
-            .await
-            .unwrap();
+        let (completed, replayed) = if released_review {
+            (
+                reviewer_handoff_tests::complete_released_review(self, &proposed, &complete).await,
+                false,
+            )
+        } else {
+            self.repo
+                .lifecycle_command(self.task, &self.scheduler, complete.clone())
+                .await
+                .unwrap_or_else(|error| panic!("Complete step {index} failed: {error}"))
+        };
         assert!(!replayed);
         assert_eq!(completed.task.version, proposed.task.version + 1);
         assert_eq!(completed.task.routing, self.frozen);
@@ -943,7 +1012,7 @@ impl ReworkFixture {
         else {
             panic!("expected retained delivery result");
         };
-        assert_eq!(&actual_result, expected_result);
+        assert_eq!(&actual_result.result, expected_result);
         let (reserved, replayed) = self
             .repo
             .lifecycle_command(self.task, &self.scheduler, original.reserve.clone())
@@ -1027,308 +1096,149 @@ fn reviewer(verdict: ReviewVerdict) -> DeliveryResult {
     }
 }
 
-fn tester(verdict: TestVerdict) -> DeliveryResult {
-    DeliveryResult::Tester {
-        verdict,
-        report: artifact("rework-test-report"),
-    }
-}
-
-async fn assert_rework_limit_stays_completed(testing: bool) {
-    let (fixture, mut cursor) = ReworkFixture::new().await;
-    let mut index = 0;
-    for output in [
+async fn through_review(
+    fixture: &ReworkFixture,
+    mut cursor: LifecycleReceipt,
+) -> (LifecycleReceipt, Vec<OriginalStep>) {
+    let mut originals = Vec::new();
+    for (index, output) in [
         DeliveryResult::Analyst {
-            analysis: artifact("rework-limit-analysis"),
+            analysis: artifact("review-analysis"),
         },
         DeliveryResult::Architect {
-            design: artifact("rework-limit-design"),
+            design: artifact("review-design"),
         },
         developer(),
-    ] {
-        cursor = fixture.step(&cursor, output, index).await.completed;
-        index += 1;
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let original = fixture.step(&cursor, output, index).await;
+        cursor = original.completed.clone();
+        originals.push(original);
     }
-    for cycle in 1..=MAX_REWORK_CYCLES {
-        cursor = fixture
-            .step(&cursor, reviewer(ReviewVerdict::Rework), index)
-            .await
-            .completed;
-        index += 1;
-        assert_eq!(cursor.task.stage, LifecycleStage::Rework);
-        assert_eq!(cursor.task.cycle, cycle);
-        cursor = fixture.step(&cursor, developer(), index).await.completed;
-        index += 1;
-    }
-    if testing {
-        cursor = fixture
-            .step(&cursor, reviewer(ReviewVerdict::Approved), index)
-            .await
-            .completed;
-        index += 1;
-    }
-    let stage = if testing {
-        LifecycleStage::Testing
-    } else {
-        LifecycleStage::Review
-    };
-    assert_eq!(cursor.task.stage, stage);
-    assert_eq!(cursor.task.cycle, MAX_REWORK_CYCLES);
-    let queued_before: i64 = fixture
-        .db
-        .query_one(statement(
-            "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.queued'",
-            vec![fixture.task.into()],
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get("", "n")
-        .unwrap();
-    let original = fixture
+    assert_eq!(cursor.task.stage, LifecycleStage::Review);
+    (cursor, originals)
+}
+
+async fn assert_linear_delivery(verdict: ReviewVerdict, testing: TestVerdict) {
+    let (fixture, queued) = ReworkFixture::new().await;
+    let (mut cursor, mut originals) = through_review(&fixture, queued).await;
+    let queued_before: i64 = fixture.db.query_one(statement(
+        "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.queued'",
+        vec![fixture.task.into()],
+    )).await.unwrap().unwrap().try_get("", "n").unwrap();
+    let original = fixture.step(&cursor, reviewer(verdict), 3).await;
+    cursor = original.completed.clone();
+    originals.push(original);
+    assert_eq!(cursor.task.stage, LifecycleStage::Testing);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+    assert_eq!(
+        cursor.task.waiting_reason.as_deref(),
+        Some("queued_for_assignment")
+    );
+    assert_eq!(cursor.task.cycle, 0);
+    assert!(cursor.assignment.is_none() && cursor.lease.is_none() && cursor.binding.is_none());
+    let tested = fixture
         .step(
             &cursor,
-            if testing {
-                tester(TestVerdict::Rework)
-            } else {
-                reviewer(ReviewVerdict::Rework)
+            DeliveryResult::Tester {
+                verdict: testing,
+                report: artifact("linear-test-report"),
             },
-            index,
+            4,
         )
         .await;
-    let completed = &original.completed;
-    assert_eq!(completed.task.stage, stage);
-    assert_eq!(completed.task.cycle, MAX_REWORK_CYCLES);
-    assert_eq!(completed.task.status, LifecycleStatus::Completed);
-    assert_eq!(completed.task.runtime, RuntimeState::Terminal);
-    assert_eq!(
-        completed.task.waiting_reason.as_deref(),
-        Some("rework_limit_reached")
-    );
-    assert!(completed.assignment.is_none());
-    assert!(completed.lease.is_none());
-    assert!(completed.binding.is_none());
-    assert_eq!(count(&fixture.db, "sdlc_delivery_holds").await, 0);
-    let queued_after: i64 = fixture
-        .db
-        .query_one(statement(
-            "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.queued'",
-            vec![fixture.task.into()],
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get("", "n")
-        .unwrap();
-    assert_eq!(queued_after, queued_before);
-    let before_retry = fixture.journal_snapshot().await;
-    assert!(matches!(
-        fixture
-            .repo
-            .lifecycle_command(
-                fixture.task,
-                &fixture.scheduler,
-                LifecycleCommand::Reserve {
-                    expected_task_version: completed.task.version,
-                    machine_subject: Some(fixture.producers["developer"].subject.clone()),
-                    idempotency_key: "rework-limit:no-next-assignment".into(),
-                },
-            )
-            .await,
-        Err(AppError::Conflict(_))
-    ));
-    fixture.assert_original_replays(&original).await;
-    assert_eq!(fixture.journal_snapshot().await, before_retry);
-    fixture.assert_current(completed).await;
-}
-
-#[tokio::test]
-#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn reviewer_rework_limit_keeps_completed_without_handoff_or_queue() {
-    assert_rework_limit_stays_completed(false).await;
-}
-
-#[tokio::test]
-#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn tester_rework_limit_keeps_completed_without_handoff_or_queue() {
-    assert_rework_limit_stays_completed(true).await;
-}
-
-#[tokio::test]
-#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn one_task_persists_review_and_testing_rework_then_repeats_gates_before_devops() {
-    let (fixture, mut cursor) = ReworkFixture::new().await;
-    assert_eq!(MAX_REWORK_CYCLES, 3);
-    // Exercise all three allowed cycles, then complete the same task. Separate
-    // real-PG regressions cover the fourth rejection for Reviewer and Tester.
-    let stages = [
-        (
-            DeliveryResult::Analyst {
-                analysis: artifact("rework-analysis"),
-            },
-            LifecycleStage::Analysis,
-            LifecycleStage::Architecture,
-            0,
-        ),
-        (
-            DeliveryResult::Architect {
-                design: artifact("rework-design"),
-            },
-            LifecycleStage::Architecture,
-            LifecycleStage::Development,
-            0,
-        ),
-        (
-            developer(),
-            LifecycleStage::Development,
-            LifecycleStage::Review,
-            0,
-        ),
-        (
-            reviewer(ReviewVerdict::Rework),
-            LifecycleStage::Review,
-            LifecycleStage::Rework,
-            1,
-        ),
-        (
-            developer(),
-            LifecycleStage::Rework,
-            LifecycleStage::Review,
-            1,
-        ),
-        (
-            reviewer(ReviewVerdict::Approved),
-            LifecycleStage::Review,
-            LifecycleStage::Testing,
-            1,
-        ),
-        (
-            tester(TestVerdict::Rework),
-            LifecycleStage::Testing,
-            LifecycleStage::Rework,
-            2,
-        ),
-        (
-            developer(),
-            LifecycleStage::Rework,
-            LifecycleStage::Review,
-            2,
-        ),
-        (
-            reviewer(ReviewVerdict::Rework),
-            LifecycleStage::Review,
-            LifecycleStage::Rework,
-            3,
-        ),
-        (
-            developer(),
-            LifecycleStage::Rework,
-            LifecycleStage::Review,
-            3,
-        ),
-        (
-            reviewer(ReviewVerdict::Approved),
-            LifecycleStage::Review,
-            LifecycleStage::Testing,
-            3,
-        ),
-        (
-            tester(TestVerdict::Passed),
-            LifecycleStage::Testing,
-            LifecycleStage::Deployment,
-            3,
-        ),
-        (
+    cursor = tested.completed.clone();
+    originals.push(tested);
+    assert_eq!(cursor.task.stage, LifecycleStage::Deployment);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+    assert_eq!(cursor.task.cycle, 0);
+    let deployed = fixture
+        .step(
+            &cursor,
             DeliveryResult::DevOps {
-                deployment: artifact("rework-deployment"),
-                verification: artifact("rework-health-acceptance"),
+                deployment: artifact("linear-deployment"),
+                verification: artifact("linear-verification"),
             },
-            LifecycleStage::Deployment,
-            LifecycleStage::Deployment,
-            3,
-        ),
-    ];
-    let mut originals = Vec::new();
-    let mut assignments = std::collections::HashSet::new();
-    let mut executions = std::collections::HashSet::new();
-    let mut keys = std::collections::HashSet::new();
-    let mut results = std::collections::HashSet::new();
-    for (index, (output, from, to, cycle)) in stages.into_iter().enumerate() {
-        assert_eq!(cursor.task.stage, from);
-        let original = fixture.step(&cursor, output, index).await;
-        let assignment = original.reserved.assignment.as_ref().unwrap();
-        assert!(assignments.insert(assignment.assignment_id));
-        assert!(executions.insert(assignment.execution_id));
-        assert!(keys.insert(assignment.execution.as_ref().unwrap().key.clone()));
-        cursor = original.completed.clone();
-        assert_eq!(cursor.task.stage, to);
-        assert_eq!(cursor.task.cycle, cycle);
-        assert!(results.insert(cursor.result.as_ref().unwrap().result_id));
-        assert_eq!(cursor.task.transient_retries, 0);
-        assert_eq!(cursor.task.resume_chat_id, None);
-        if index == 12 {
-            assert_eq!(cursor.task.status, LifecycleStatus::Completed);
-            assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
-            assert_eq!(cursor.task.waiting_reason, None);
-        } else {
-            assert_eq!(cursor.task.status, LifecycleStatus::Ready);
-            assert_eq!(cursor.task.runtime, RuntimeState::Queued);
-            assert_eq!(
-                cursor.task.waiting_reason.as_deref(),
-                Some("queued_for_assignment")
-            );
-        }
-        originals.push(original);
-        assert_eq!(
-            count(&fixture.db, "sdlc_delivery_assignments").await,
-            (index + 1) as i64
-        );
-        assert_eq!(
-            count(&fixture.db, "sdlc_delivery_results").await,
-            (index + 1) as i64
-        );
-        assert_eq!(
-            count(&fixture.db, "sdlc_delivery_proposals").await,
-            (index + 1) as i64
-        );
-    }
-    assert_eq!(cursor.task.cycle, MAX_REWORK_CYCLES);
-    for identities in [&assignments, &executions, &results] {
-        assert_eq!(identities.len(), 13);
-    }
-    assert_eq!(keys.len(), 13);
-    assert_eq!(count(&fixture.db, "sdlc_pm_executions").await, 1);
-    assert_eq!(count(&fixture.db, "sdlc_pm_completions").await, 0);
+            5,
+        )
+        .await;
+    cursor = deployed.completed.clone();
+    originals.push(deployed);
+    assert_eq!(cursor.task.stage, LifecycleStage::Deployment);
+    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
+    assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
+    assert_eq!(cursor.task.waiting_reason, None);
+    assert_eq!(cursor.task.cycle, 0);
+    assert!(cursor.assignment.is_none() && cursor.lease.is_none() && cursor.binding.is_none());
+    let queued_after: i64 = fixture.db.query_one(statement(
+        "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.queued'",
+        vec![fixture.task.into()],
+    )).await.unwrap().unwrap().try_get("", "n").unwrap();
+    assert_eq!(queued_after, queued_before);
+    let accepted_events: i64 = fixture.db.query_one(statement(
+        "SELECT count(*) AS n FROM sdlc_outbox WHERE task_id=$1 AND event_type='delivery.result_accepted'",
+        vec![fixture.task.into()],
+    )).await.unwrap().unwrap().try_get("", "n").unwrap();
+    assert_eq!(accepted_events, i64::try_from(originals.len()).unwrap());
+    assert_settled_replays(&fixture, &cursor, &originals).await;
+}
+
+async fn assert_settled_replays(
+    fixture: &ReworkFixture,
+    cursor: &LifecycleReceipt,
+    originals: &[OriginalStep],
+) {
+    let settled = fixture.journal_snapshot().await;
+    // A fresh repository instance reads durable state and replays the original operation.
+    let restarted = PostgresSdlcRepository::connect(
+        &std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").unwrap(),
+        fixture.repo.config.clone(),
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        count(&fixture.db, "sdlc_configured_pm_completions").await,
-        1
+        restarted
+            .lifecycle_read(fixture.task, &fixture.reader)
+            .await
+            .unwrap()
+            .receipt,
+        *cursor
     );
-    assert_eq!(count(&fixture.db, "sdlc_task_routing_snapshots").await, 1);
-    assert_eq!(count(&fixture.db, "sdlc_task_routing_generations").await, 0);
-    assert_eq!(count(&fixture.db, "sdlc_analysis_reservations").await, 0);
-    assert_eq!(count(&fixture.db, "sdlc_delivery_holds").await, 0);
-    let terminal_history = fixture.journal_snapshot().await;
-    // Historical proposal/command replay must retain the original cycle and stage,
-    // even after later assignments and final completion on the SAME task.
-    for original in &originals {
+    for original in originals {
         fixture.assert_original_replays(original).await;
     }
-    assert!(matches!(
-        fixture
-            .repo
-            .lifecycle_command(
-                fixture.task,
-                &fixture.scheduler,
-                LifecycleCommand::Reserve {
-                    expected_task_version: cursor.task.version,
+    for role in ["reviewer", "developer", "tester", "devops"] {
+        assert!(matches!(
+            restarted
+                .lifecycle_command(
+                    fixture.task,
+                    &fixture.scheduler,
+                    LifecycleCommand::Reserve {
+                        expected_task_version: cursor.task.version,
+                        machine_subject: Some(fixture.producers[role].subject.clone()),
+                        idempotency_key: format!("review:after-completed:{role}"),
+                    }
+                )
+                .await,
+            Err(AppError::Conflict(_))
+        ));
+    }
+    assert_eq!(fixture.journal_snapshot().await, settled);
+    fixture.assert_current(cursor).await;
+}
 
-                    machine_subject: Some(fixture.producers["developer"].subject.clone()),
-                    idempotency_key: "rework:after-completed:reserve".into(),
-                }
-            )
-            .await,
-        Err(AppError::Conflict(_))
-    ));
-    assert_eq!(fixture.journal_snapshot().await, terminal_history);
-    fixture.assert_current(&cursor).await;
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn review_and_test_findings_advance_to_devops_without_rework() {
+    assert_linear_delivery(ReviewVerdict::Rework, TestVerdict::Rework).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn approved_review_and_passed_testing_finish_after_devops_and_replay() {
+    assert_linear_delivery(ReviewVerdict::Approved, TestVerdict::Passed).await;
 }

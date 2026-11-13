@@ -123,7 +123,12 @@ fn historical_result_predecessor_is_enriched_without_rewriting_payload() {
     payload.as_object_mut().unwrap().remove("previous_result_id");
     let before=payload.clone();
     assert!(serde_json::from_value::<AcceptedDeliveryResult>(payload.clone()).unwrap().previous_result_id.is_none());
-    assert_eq!(accepted_result_readback(&payload,expected.task_id,expected.result_id,&assignment).unwrap(),expected);
+    let readback = AcceptedDeliveryInput {
+        result: accepted_result_readback(&payload,expected.task_id,expected.result_id,&assignment).unwrap(),
+        previous_result_id: assignment.previous_result_id,
+    };
+    assert!(readback.result.previous_result_id.is_none());
+    assert_eq!(serde_json::to_value(readback).unwrap(),serde_json::to_value(expected).unwrap());
     assert_eq!(payload,before,"the immutable historical payload must not be rewritten");
 }
 
@@ -326,7 +331,7 @@ async fn legacy_analysis_ordinal_head(db: &DatabaseConnection) -> (i64, bool) {
 
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
-async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay() {
+async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_replay() {
     let url = std::env::var("TT_LIFECYCLE_TEST_DATABASE_URL").expect("isolated database required");
     let db = Database::connect(&url).await.unwrap();
     let row = db.query_one(statement("SELECT current_database() AS name,to_regclass('public.seaql_migrations') IS NULL AS fresh",vec![])).await.unwrap().unwrap();
@@ -369,7 +374,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'LC','Lifecycle',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
     exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Lifecycle','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
     exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>'owner'",vec![project.into()]).await.unwrap();
-    let mut repo = PostgresSdlcRepository::connect(
+    let repo = PostgresSdlcRepository::connect(
         &url,
         SdlcConfig {
             instance_id: "lifecycle-test".into(),
@@ -402,7 +407,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             project,
             &owner,
             CreateDraftCommand {
-                interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
+                interaction_protocol: Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                 flow: Some(DraftFlow::SingleTaskV1),
                 title: "Lifecycle fixture".into(),
                 description: "Synthetic acceptance fixture".into(),
@@ -431,6 +436,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     );
     let hash = app::sdlc::canonical_hash(&document).unwrap();
     crate::sdlc::configured_test_support::start_pm(&repo, task, &pm, &pm_fence).await;
+    assert_eq!(
+        repo.context(task, &pm)
+            .await
+            .unwrap()
+            .workflow_task_key
+            .as_deref(),
+        Some(reservation.execution.key.as_str())
+    );
     repo.execute(
         task,
         &pm,
@@ -506,6 +519,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     assert_eq!(after_pm.status, Some(LifecycleStatus::Ready));
     assert_eq!(after_pm.owner_subject, owner.subject);
     assert_eq!(after_pm.root_task_id, task);
+    let queued_context = repo.context(task, &owner).await.unwrap();
+    assert!(queued_context.assignment.is_none());
+    assert!(queued_context.workflow_task_key.is_none());
     let automatic = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     assert_eq!(automatic.task.stage, LifecycleStage::Analysis);
     assert_eq!(automatic.task.status, LifecycleStatus::Ready);
@@ -612,7 +628,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             project,
             &owner,
             CreateDraftCommand {
-                interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
+                interaction_protocol: Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                 title: "Concurrent PM allocator fixture".into(),
                 description: "Synthetic owner input".into(),
                 idempotency_key: "other-pm-draft".into(),
@@ -655,6 +671,19 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let expected_ordinals: std::collections::HashSet<_> = [gap + 1, gap + 2].into_iter().collect();
     assert_eq!(allocated_ordinals, expected_ordinals);
     assert_ne!(allocated.key, other_pm.execution.key);
+    let delivery_context = repo.context(task, &producer).await.unwrap();
+    assert_eq!(
+        delivery_context.workflow_task_key.as_deref(),
+        Some(allocated.key.as_str())
+    );
+    assert_eq!(
+        delivery_context.assignment.as_ref().unwrap().execution_id,
+        reserved.assignment.as_ref().unwrap().execution_id
+    );
+    assert_eq!(
+        repo.read(task, &owner).await.unwrap().retained_fields["workflow_task_key"],
+        after_pm.retained_fields["workflow_task_key"]
+    );
     let allocation_head = gap + 2;
     assert_eq!(pm_ordinal_head(&db).await, allocation_head);
     let changed = LifecycleCommand::Reserve {
@@ -776,27 +805,52 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let output = DeliveryResult::Analyst {
         analysis: artifact("analysis"),
     };
-    let (_, _, started) = start_delivery(&repo, task, &producer, &bound, &output, "start-analysis-0").await;
-    let heartbeat = LifecycleCommand::Heartbeat {
-        fence: stale.clone(),
-        idempotency_key: "heartbeat-0".into(),
-    };
-    let outbox_before_heartbeat = count(&db, "sdlc_outbox").await;
-    let operations_before_heartbeat = count(&db, "sdlc_delivery_operations").await;
-    let mirror_source_before_heartbeat: Vec<Json> = repo
-        .metadata_outbox(task, &owner, 0, 100).await.unwrap().into_iter()
-        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap()).collect();
-    assert!(matches!(repo.lifecycle_command(task, &scheduler, heartbeat.clone()).await,
-        Err(AppError::Conflict(message)) if message == "assignment ownership persists until result or confirmed terminal reconciliation"));
-    assert_eq!(repo.lifecycle_read(task, &reader).await.unwrap().receipt, started);
-    assert_eq!(started.lease.as_ref().unwrap().version, 1);
-    assert_eq!(started.lease.as_ref().unwrap().expires_at, None);
-    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations_before_heartbeat);
-    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat);
-    let mirror_source_after_heartbeat: Vec<Json> = repo
-        .metadata_outbox(task, &owner, 0, 100).await.unwrap().into_iter()
-        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap()).collect();
-    assert_eq!(mirror_source_after_heartbeat, mirror_source_before_heartbeat);
+    start_delivery(&repo, task, &producer, &bound, &output, "start-analysis-0").await;
+    let outbox_before_read = count(&db, "sdlc_outbox").await;
+    let operations_before_read = count(&db, "sdlc_delivery_operations").await;
+    let mirror_source_before_read: Vec<Json> = repo
+        .metadata_outbox(task, &owner, 0, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
+        .collect();
+    let current = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+    assert_eq!(current.lease.as_ref().unwrap().version, 1);
+    assert!(current.lease.as_ref().unwrap().heartbeat_at.is_none());
+    assert!(current.lease.as_ref().unwrap().expires_at.is_none());
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read);
+    assert_eq!(
+        count(&db, "sdlc_delivery_operations").await,
+        operations_before_read
+    );
+    let mirror_source_after_read: Vec<Json> = repo
+        .metadata_outbox(task, &owner, 0, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
+        .collect();
+    assert_eq!(mirror_source_after_read, mirror_source_before_read);
+    let mut future_fence = stale.clone();
+    future_fence.expected_lease_version += 1;
+    assert!(
+        repo.lifecycle_command(
+            task,
+            &scheduler,
+            LifecycleCommand::BindRun {
+                fence: future_fence,
+                binding: binding.clone(),
+                idempotency_key: "wrong-version".into(),
+            }
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+        current
+    );
     let proposal_command = SubmitDeliveryProposal {
         fence: stale.clone(),
         workflow_receipt: artifact("workflow"),
@@ -811,31 +865,67 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         "analysis:final-comment",
     )
     .await;
-    let (concurrent_heartbeat, concurrent_proposal) = tokio::join!(
-        repo.lifecycle_command(
-            task,
-            &scheduler,
-            LifecycleCommand::Heartbeat {
-                fence: delivery_fence(&started),
-                idempotency_key: "concurrent-heartbeat".into(),
-            }
-        ),
+    let (concurrent_replay, concurrent_proposal) = tokio::join!(
+        repo.submit_delivery_proposal(task, &producer, proposal_command.clone()),
         repo.submit_delivery_proposal(task, &producer, proposal_command.clone())
     );
-    assert!(matches!(concurrent_heartbeat, Err(AppError::Conflict(_))));
-    let (proposal, _) = concurrent_proposal.unwrap();
+    let (proposal, replayed) = concurrent_proposal.unwrap();
+    let (same, other_replayed) = concurrent_replay.unwrap();
+    assert_eq!(
+        serde_json::to_value(&proposal).unwrap(),
+        serde_json::to_value(&same).unwrap()
+    );
+    assert_ne!(replayed, other_replayed);
     let after_proposal = repo.lifecycle_read(task, &producer).await.unwrap().receipt;
     assert_eq!(after_proposal.task.stage, LifecycleStage::Analysis);
     assert_eq!(after_proposal.task.status, LifecycleStatus::Completed);
     assert_eq!(after_proposal.task.runtime, RuntimeState::Running);
     assert_eq!(after_proposal.assignment, reserved.assignment);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
-    // Only the proposal is committed; rejected heartbeat commands create no facts.
-    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
-    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations_before_heartbeat);
-    assert!(repo.lifecycle_command(task, &scheduler, heartbeat).await.is_err());
-    assert!(repo.lifecycle_operation(task, &reader, "heartbeat-0").await.is_err());
-    assert_eq!(repo.lifecycle_read(task, &reader).await.unwrap().receipt.lease, started.lease);
+    // Duplicate delivery produces one business event and no ownership renewal.
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read + 1);
+    let operations_after_race = count(&db, "sdlc_delivery_operations").await;
+    let original_reserve = repo
+        .lifecycle_command(task, &scheduler, reserve.clone())
+        .await
+        .unwrap();
+    assert!(original_reserve.1);
+    assert_eq!(original_reserve.0.lease.as_ref().unwrap().version, 1);
+    assert_eq!(
+        serde_json::to_value(&original_reserve.0).unwrap(),
+        serde_json::to_value(&reserved).unwrap()
+    );
+    assert_eq!(
+        count(&db, "sdlc_delivery_operations").await,
+        operations_after_race
+    );
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_read + 1);
+    assert_eq!(
+        repo.lifecycle_operation(task, &reader, "reserve-0")
+            .await
+            .unwrap()
+            .lease
+            .as_ref()
+            .unwrap()
+            .version,
+        1
+    );
+    assert!(
+        repo.lifecycle_operation(task, &scheduler, "reserve-0")
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        repo.lifecycle_read(task, &reader)
+            .await
+            .unwrap()
+            .receipt
+            .lease
+            .as_ref()
+            .unwrap()
+            .version,
+        1
+    );
     assert_eq!(
         proposal.output_sha256,
         app::sdlc::canonical_hash(&output).unwrap()
@@ -851,7 +941,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .await
             .is_err()
     );
-    // Reads preserve current ownership; elapsed time never grants another assignment.
+    // Crossing the old heartbeat window must not change current custody or runtime state.
+    db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
     let lease_operations_before_receipt = count(&db, "sdlc_pm_lease_operations").await;
     let outbox_before_receipt = count(&db, "sdlc_outbox").await;
     assert_eq!(
@@ -866,6 +957,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let fresh = repo.lifecycle_read(task, &reader).await.unwrap();
     assert_eq!(fresh.runtime_state, RuntimeState::Running);
     assert_eq!(fresh.receipt.task.runtime, RuntimeState::Running);
+    assert_eq!(fresh.receipt, after_proposal);
+    let mut uncertain = fresh.receipt.task.clone();
+    uncertain.runtime = RuntimeState::Unknown;
+    let before_unknown = uncertain.clone();
+    app::sdlc_lifecycle::ensure_queued(&mut uncertain).unwrap();
+    assert_eq!(uncertain, before_unknown);
+    let mut bad_completion_fence = stale.clone();
+    bad_completion_fence.expected_lease_version += 1;
     let terminal = TerminalReceipt {
         chat_id: binding.chat_id,
         run_id: binding.run_id,
@@ -873,22 +972,26 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         workflow_receipt: proposal.workflow_receipt,
         output_sha256: proposal.output_sha256,
     };
-    let mut wrong_fence = stale.clone();
-    wrong_fence.expected_lease_version += 1;
-    assert!(
+    assert!(matches!(
         repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::Complete {
-                fence: wrong_fence,
+                fence: bad_completion_fence,
                 terminal,
                 result: output,
-                idempotency_key: "wrong-fence-complete".into()
+                idempotency_key: "bad-fence-complete".into()
             }
         )
-        .await
-        .is_err()
+        .await,
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
+        fresh.receipt
     );
+    assert_eq!(count(&db, "sdlc_delivery_results").await, 0);
+    assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
     let reconcile = LifecycleCommand::Reconcile {
         fence: stale,
         terminal: Some(RuntimeTerminalObservation {
@@ -937,6 +1040,25 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await
         .unwrap();
     assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
+    let retry_context = repo.context(task, &producer).await.unwrap();
+    assert_eq!(
+        retry_context.workflow_task_key.as_deref(),
+        Some(
+            retry
+                .assignment
+                .as_ref()
+                .unwrap()
+                .execution
+                .as_ref()
+                .unwrap()
+                .key
+                .as_str()
+        )
+    );
+    assert_ne!(
+        retry_context.workflow_task_key,
+        delivery_context.workflow_task_key
+    );
     assert_ne!(
         retry.assignment.as_ref().unwrap().execution,
         reserved.assignment.as_ref().unwrap().execution
@@ -1070,28 +1192,27 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         serde_json::to_value(reserved).unwrap()
     );
     assert_eq!(pm_ordinal_head(&db).await, before_replay);
-    assert_eq!(
-        repo.lifecycle_command(
+    // The retired rollout toggle no longer disables current assignments.
+    // A fresh queue operation must preserve the existing owner and custody.
+    let (same_assignment, replayed) = repo
+        .lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::EnsureQueued {
-                idempotency_key: "already-reserved-noop".into()
-            }
+                idempotency_key: "preserve-current-assignment".into(),
+            },
         )
-        .await.unwrap().0,
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(same_assignment, retry);
+    assert_eq!(pm_ordinal_head(&db).await, before_replay);
+    assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
+    repo.lifecycle_read(task, &reader).await.unwrap();
+    assert_eq!(
+        repo.lifecycle_read(task, &reader).await.unwrap().receipt,
         retry
     );
-    repo.lifecycle_read(task, &reader).await.unwrap();
-    let before_heartbeat = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
-    assert!(repo.lifecycle_command(
-        task,
-        &scheduler,
-        LifecycleCommand::Heartbeat {
-            fence: delivery_fence(&retry),
-            idempotency_key: "disabled-heartbeat".into(),
-        },
-    ).await.is_err());
-    assert_eq!(repo.lifecycle_read(task, &reader).await.unwrap().receipt, before_heartbeat);
     let mut cursor = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     let mut ready_ids = Vec::new();
     let mut execution_keys = std::collections::HashSet::new();
@@ -1111,16 +1232,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             verdict: ReviewVerdict::Approved,
             report: artifact("review"),
         },
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Passed,
-            report: artifact("tests"),
-        },
-        DeliveryResult::DevOps {
-            deployment: artifact("deployment"),
-            verification: artifact("verification"),
-        },
     ];
     let mut previous_accepted: Option<AcceptedDeliveryResult> = None;
+    let mut previous_input = None;
     let mut previous_producer: Option<Principal> = None;
     for (i, result) in outputs.into_iter().enumerate() {
         let role_producer = producers[result.role().key()].clone();
@@ -1137,6 +1251,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                 .0;
         }
         let assignment = cursor.assignment.as_ref().unwrap();
+        let assignment_input = assignment.previous_result_id;
         let execution = assignment.execution.as_ref().unwrap();
         execution.validate().unwrap();
         assert!(execution_keys.insert(execution.key.clone()));
@@ -1171,11 +1286,18 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await;
         let result = if matches!(result, DeliveryResult::Architect { .. }) {
             DeliveryResult::Architect {
-                design: crate::sdlc::configured_test_support::architect_design(
-                    &repo, task, &role_producer, &started,
-                ).await,
+                design: crate::sdlc::configured_test_support::save_architect_plan(
+                    &repo,
+                    task,
+                    &role_producer,
+                    &started,
+                    &format!("role-{i}-plan"),
+                )
+                .await,
             }
-        } else { result };
+        } else {
+            result
+        };
         if let Some(expected) = &previous_accepted {
             assert_eq!(assignment.previous_result_id, Some(expected.result_id));
             assert!(
@@ -1184,6 +1306,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             );
             let operations_before = count(&db, "sdlc_delivery_operations").await;
             let outbox_before = count(&db, "sdlc_outbox").await;
+            let retained_sql = "SELECT jsonb_build_object('result',r.payload,'assignment',a.payload) AS retained
+                FROM sdlc_delivery_results r JOIN sdlc_delivery_assignments a USING(assignment_id)
+                WHERE r.task_id=$1 AND r.result_id=$2";
+            let retained_before: Json = db.query_one(statement(retained_sql,
+                vec![task.into(),expected.result_id.into()])).await.unwrap().unwrap()
+                .try_get("", "retained").unwrap();
+            assert_eq!(retained_before["result"], serde_json::to_value(expected).unwrap(),
+                "the accepted receipt retains its producer's exact predecessor representation");
             let input = repo
                 .lifecycle_result(task, &role_producer, expected.result_id)
                 .await
@@ -1191,7 +1321,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             let DeliveryInput::Delivery(actual) = input else {
                 panic!("expected accepted delivery predecessor");
             };
-            assert_eq!(actual, *expected);
+            assert_eq!(actual.result, *expected);
+            assert_eq!(actual.previous_result_id, previous_input);
+            assert_ne!(actual.previous_result_id, cursor.task.previous_result_id,
+                "the current cursor is not the accepted result's original input");
+            let retained_after: Json = db.query_one(statement(retained_sql,
+                vec![task.into(),expected.result_id.into()])).await.unwrap().unwrap()
+                .try_get("", "retained").unwrap();
+            assert_eq!(retained_after,retained_before);
             assert_eq!(
                 serde_json::to_value(
                     repo.lifecycle_result(task, &owner, expected.result_id)
@@ -1199,7 +1336,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                         .unwrap()
                 )
                 .unwrap(),
-                serde_json::to_value(DeliveryInput::Delivery(expected.clone())).unwrap()
+                serde_json::to_value(DeliveryInput::Delivery(AcceptedDeliveryInput {
+                    result: expected.clone(), previous_result_id: previous_input,
+                })).unwrap()
             );
             assert!(matches!(
                 repo.lifecycle_result(
@@ -1305,6 +1444,12 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
         let original_previous_result_id=assignment.previous_result_id;
         let original_assignment_id=assignment.assignment_id;
+        if i == 0 {
+            db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
+            let late = repo.lifecycle_read(task, &reader).await.unwrap();
+            assert_eq!(late.runtime_state, RuntimeState::Running);
+            assert_eq!(late.receipt, proposed);
+        }
         cursor = repo
             .lifecycle_command(
                 task,
@@ -1332,7 +1477,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             vec![accepted.result_id.into(),original_assignment_id.into(),task.into()])).await.unwrap().unwrap().try_get("","payload").unwrap();
         assert_eq!(persisted,serde_json::to_value(accepted).unwrap());
         assert_eq!(serde_json::to_value(repo.lifecycle_result(task,&owner,accepted.result_id).await.unwrap()).unwrap(),
-            serde_json::to_value(DeliveryInput::Delivery(accepted.clone())).unwrap());
+            serde_json::to_value(DeliveryInput::Delivery(AcceptedDeliveryInput {
+                result: accepted.clone(), previous_result_id: original_previous_result_id,
+            })).unwrap());
         if started.task.stage == LifecycleStage::Deployment {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
@@ -1361,6 +1508,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             history_after_handoff
         );
         assert_eq!(count(&db, "sdlc_outbox").await, outbox_after_handoff);
+        previous_input = assignment_input;
         previous_accepted = cursor.result.clone();
         assert!(previous_accepted.is_some());
         previous_producer = Some(role_producer);
@@ -1368,7 +1516,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         assert_eq!(canonical.task_id, task);
         assert_eq!(canonical.stage, cursor.task.stage.canonical());
         assert_eq!(canonical.status, Some(cursor.task.status));
-        if matches!(canonical.stage, Stage::Development | Stage::Review) {
+        if matches!(canonical.stage, Stage::Development | Stage::Review)
+            && canonical.status == Some(LifecycleStatus::Ready)
+        {
             let id: Uuid = db
                 .query_one(statement(
                     "SELECT status_id FROM issues WHERE id=$1",
@@ -1383,12 +1533,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         }
     }
     assert_eq!(ready_ids.len(), 2);
-    assert_eq!(execution_keys.len(), 6);
+    assert_eq!(execution_keys.len(), 4);
     assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
     assert_ne!(ready_ids[0].0, ready_ids[1].0);
     assert_eq!(ready_ids[0].1, ready_ids[1].1);
-    assert_eq!(cursor.task.status, LifecycleStatus::Completed);
-    assert_eq!(count(&db, "sdlc_delivery_results").await, 6);
+    assert_eq!(cursor.task.stage, LifecycleStage::Testing);
+    assert_eq!(cursor.task.status, LifecycleStatus::Ready);
+    assert_eq!(cursor.task.runtime, RuntimeState::Queued);
+    assert_eq!(count(&db, "sdlc_delivery_results").await, 4);
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
     for candidate in repo.metadata_outbox(task, &owner, 0, 100).await.unwrap() {
         let event = candidate

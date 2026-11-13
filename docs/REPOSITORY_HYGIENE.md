@@ -36,8 +36,8 @@ assets, включая plugin dist, разрешены.
 
 Локальные hooks проверяют index и конкретные отправляемые SHA. Перед их установкой
 проверить существующий core.hooksPath; shared worktrees используют общий Git config.
-Не перезаписывать чужие hooks. Серверный короткий PR/push workflow проверяет
-точный candidate commit: локальные hooks можно обойти.
+Не перезаписывать чужие hooks. GitHub Actions workflows удалены. Проверку
+точного candidate commit выполнять явно перед merge: локальные hooks можно обойти.
 
 ```sh
 git config --local core.hooksPath .githooks

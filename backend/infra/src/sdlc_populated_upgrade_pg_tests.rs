@@ -767,6 +767,89 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     .await;
 }
 
+// Reconstruct only the published 095 creation rows. The current writer rejects
+// this retired contract; the upgrade still verifies its retained replay below.
+async fn seed_predecessor_draft(
+    repo: &PostgresSdlcRepository,
+    original: &OriginalData,
+    actor: &Principal,
+    command: &CreateDraftCommand,
+) -> CreatedDraft {
+    assert!(command.flow.is_none() && command.interaction_protocol.is_none());
+    let tx = repo.db.begin().await.unwrap();
+    assert!(
+        crate::legacy_schema_fixture::pre_admission_schema(&tx)
+            .await
+            .unwrap()
+    );
+    let (user, prefix) = PostgresSdlcRepository::project_access(&tx, original.project, actor)
+        .await
+        .unwrap();
+    let number: i64 = tx
+        .query_one(statement(
+            "SELECT allocate_project_issue_number($1) AS number",
+            vec![original.project.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "number")
+        .unwrap();
+    let task = Uuid::now_v7();
+    let result = CreatedDraft {
+        interaction_protocol: None,
+        tracker_instance_id: repo.config.instance_id.clone(),
+        project_id: original.project,
+        task_id: task,
+        root_task_id: task,
+        task_key: format!("{prefix}-{number}"),
+        owner_subject: actor.subject.clone(),
+        stage: DraftStage::Draft,
+    };
+    let state = TaskState {
+        status: None,
+        retained_fields: Default::default(),
+        draft_submode: None,
+        tracker_instance_id: repo.config.instance_id.clone(),
+        project_id: original.project,
+        task_id: task,
+        root_task_id: task,
+        owner_subject: actor.subject.clone(),
+        stage: Stage::Draft,
+        confirmation_revision: None,
+        assignment: None,
+        questions: vec![],
+        revisions: vec![],
+        confirmations: vec![],
+        evidence: vec![],
+    };
+    exec(&tx, "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,priority,labels,position,time_spent_seconds)
+        VALUES($1,$2,$3,'task',(SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1),$4,$5,$6,'medium','[]',0,0)",
+        vec![task.into(),original.project.into(),result.task_key.clone().into(),command.title.clone().into(),command.description.clone().into(),user.into()]).await.unwrap();
+    exec(
+        &tx,
+        "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id)
+        SELECT $1,id,NULL,status_id,$2 FROM issues WHERE id=$3",
+        vec![Uuid::now_v7().into(), user.into(), task.into()],
+    )
+    .await
+    .unwrap();
+    exec(&tx, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state) VALUES($1,$2,$3,$1,$4,$5)",
+        vec![task.into(),repo.config.instance_id.clone().into(),original.project.into(),actor.subject.clone().into(),json_value(&state).unwrap()]).await.unwrap();
+    exec(&tx, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,input_snapshot_ref,input_title,input_description,input_sha256)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        vec![original.project.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),
+        app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap().into(),
+        task.into(),json_value(&result).unwrap(),Uuid::now_v7().into(),command.title.clone().into(),command.description.clone().into(),
+        app::sdlc::pm_draft_input_hash(&command.title,&command.description).unwrap().into()]).await.unwrap();
+    exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'task.created',$3)",
+        vec![Uuid::now_v7().into(),task.into(),json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":original.project,"task_id":task,"root_task_id":task,"owner_subject":actor.subject,
+        "stage":"Draft","requirement_revision":null,"result":result}).into()]).await.unwrap();
+    tx.commit().await.unwrap();
+    result
+}
+
 async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history_seed() {
     let names: Vec<String> = migration::Migrator::migrations()
         .iter()
@@ -816,6 +899,17 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
             "m20261027_0000108_configured_critical_lifecycle",
             "m20261028_0000109_configured_initial_adoption",
             "m20261028_0000110_configured_checkpoint_absence",
+            "m20261029_0000111_configured_analysis_start",
+            "m20261103_0000112_workspace_source_reference",
+            "m20261103_0000113_decomposition",
+            "m20261103_0000112_configured_analysis_auto_start",
+            "m20261104_0000113_native_task_artifacts",
+            "m20261106_0000114_native_read_scope_attenuation",
+            "m20261107_0000115_agent_stage_status",
+            "m20261108_0000116_reviewer_terminal",
+            "m20261110_0000116_untimed_delivery_binding",
+            "m20261110_0000117_linear_delivery",
+            "m20261111_0000118_plan_content_dispatch",
         ]
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
@@ -886,11 +980,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     let create = create("upgrade:original:draft", None);
     let create_body = serde_json::to_value(&create).unwrap();
     assert!(create_body.get("flow").is_none());
-    let (draft, replayed) = repo
-        .create_draft(original.project, &owner, create.clone())
-        .await
-        .unwrap();
-    assert!(!replayed);
+    let draft = seed_predecessor_draft(&repo, &original, &owner, &create).await;
     assert_eq!(
         draft.task_key, "UPG-42",
         "trashed issue number must remain consumed"

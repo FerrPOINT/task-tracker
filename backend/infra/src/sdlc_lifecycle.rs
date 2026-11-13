@@ -16,8 +16,12 @@ fn original_result_assignment(
     task: Uuid,
     id: Uuid,
 ) -> Result<DeliveryAssignment, AppError> {
+    let payload = payload.ok_or_else(corrupt)?;
+    if payload.get("previous_result_id").is_none() {
+        return Err(corrupt());
+    }
     let assignment: DeliveryAssignment =
-        serde_json::from_value(payload.ok_or_else(corrupt)?).map_err(|_| corrupt())?;
+        serde_json::from_value(payload).map_err(|_| corrupt())?;
     if assignment.assignment_id != id
         || assignment.task_id != task
         || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(&assignment)?
@@ -55,7 +59,7 @@ fn accepted_result_readback(
         .as_object()
         .ok_or_else(corrupt)?
         .contains_key("previous_result_id");
-    let mut result: AcceptedDeliveryResult =
+    let result: AcceptedDeliveryResult =
         serde_json::from_value(payload.clone()).map_err(|_| corrupt())?;
     if result.result_id != id
         || result.task_id != task
@@ -67,9 +71,7 @@ fn accepted_result_readback(
     {
         return Err(corrupt());
     }
-    // The immutable original assignment is the only predecessor owner. Old
-    // payloads are enriched in memory; neither history nor agent reports change.
-    result.previous_result_id = assignment.previous_result_id;
+    // Validate against the original assignment without rewriting accepted bytes.
     Ok(result)
 }
 
@@ -398,7 +400,7 @@ pub(super) fn exact_fence(
 ) -> Result<(), AppError> {
     let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
     let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
-    if expected.expected_lease_version > lease.version
+    if lease.version != expected.expected_lease_version
         || expected.expected_lease_version < 1
         || assignment.assignment_id != expected.assignment_id
         || assignment.execution_id != expected.execution_id
@@ -412,7 +414,7 @@ pub(super) fn exact_fence(
         || assignment.routing != receipt.task.routing
         || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(assignment)?
     {
-        return Err(AppError::conflict("stale delivery ownership fence"));
+        return Err(AppError::conflict("stale delivery fence"));
     }
     Ok(())
 }
@@ -677,12 +679,12 @@ impl PostgresSdlcRepository {
             assignment_hash: String::new(),
         };
         assignment.assignment_hash = app::sdlc_lifecycle::assignment_hash(&assignment)?;
-        let lease = DeliveryOwnership {
+        let lease = DeliveryBinding {
             lease_id: assignment.lease_id,
             version: 1,
             holder_subject: actor.subject.clone(),
             claimed_at: observed_at,
-            heartbeat_at: observed_at,
+            heartbeat_at: None,
             expires_at: None,
         };
         exec(tx, "INSERT INTO sdlc_delivery_assignments(assignment_id,execution_id,task_id,agent_id,payload)
@@ -1155,9 +1157,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
         } else {
             let assignment_id = row.try_get::<Uuid>("", "assignment_id").map_err(map_db)?;
             let assignment = retained_result_assignment(&tx, task, assignment_id).await?;
-            DeliveryInput::Delivery(accepted_result_readback(
-                &payload, task, result_id, &assignment,
-            )?)
+            DeliveryInput::Delivery(AcceptedDeliveryInput {
+                result: accepted_result_readback(&payload, task, result_id, &assignment)?,
+                previous_result_id: assignment.previous_result_id,
+            })
         };
         tx.commit().await.map_err(map_db)?;
         Ok(result)
@@ -1235,7 +1238,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     || assignment.fencing_token != expected.fencing_token
                     || assignment.lease_id != expected.lease_id
                     || lease.lease_id != expected.lease_id
-                    || expected.expected_lease_version > lease.version
+                    || expected.expected_lease_version != lease.version
                     || terminal.as_ref().is_some_and(|terminal| assignment.assignment_hash != terminal.assignment_hash)
                     || assignment.assignment_hash
                         != app::sdlc_lifecycle::assignment_hash(assignment)?
@@ -1476,11 +1479,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::StartAnalysis { .. } => {
                 unreachable!("handled before scheduler admission")
             }
+            LifecycleCommand::Heartbeat { .. } => unreachable!("historical renewal is replay-only"),
             LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
             LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
             LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
-            // Lease renewals are audited in operations, not mirrored into business chat.
-            LifecycleCommand::Heartbeat { .. } => None,
             LifecycleCommand::BindRun { .. } => Some("delivery.run_bound"),
             LifecycleCommand::Complete { .. } => Some("delivery.result_accepted"),
         };

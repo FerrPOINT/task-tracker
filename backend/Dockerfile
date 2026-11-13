@@ -23,6 +23,7 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
+ARG CARGO_BUILD_JOBS=1
 RUN cargo build --locked --release --bin server --bin migration
 
 FROM debian:bookworm-slim

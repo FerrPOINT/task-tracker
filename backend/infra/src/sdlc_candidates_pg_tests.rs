@@ -159,7 +159,8 @@ impl Fixture {
                 self.project,
                 &self.owner,
                 CreateDraftCommand {
-                    interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
+                    interaction_protocol: flow
+                        .map(|_| domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                     flow,
                     title: key.into(),
                     description: "Synthetic test input, not live execution".into(),
@@ -318,14 +319,37 @@ async fn pm_completion_queues_analysis_once_and_readback_does_not_dispatch() {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
 async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstream() {
-    let mut f = Fixture::new().await;
+    let f = Fixture::new().await;
     let mut expected = vec![];
     for key in ["first", "second", "third"] {
         expected.push(f.queued_analysis(key, true).await);
     }
     f.confirmed("consent-without-completion", false).await;
     f.draft("unconfirmed", Some(DraftFlow::SingleTaskV1)).await;
-    f.draft("legacy", None).await;
+    // Historical storage is a read-only neighbor, not a supported creation API.
+    let legacy = Uuid::new_v4();
+    let legacy_state = TaskState {
+        status: None,
+        retained_fields: Default::default(),
+        draft_submode: None,
+        tracker_instance_id: "candidates-test".into(),
+        project_id: f.project,
+        task_id: legacy,
+        root_task_id: legacy,
+        owner_subject: f.owner.subject.clone(),
+        stage: Stage::Draft,
+        confirmation_revision: None,
+        assignment: None,
+        questions: vec![],
+        revisions: vec![],
+        confirmations: vec![],
+        evidence: vec![],
+    };
+    exec(&f.db, "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,reporter_id,priority,labels,position,time_spent_seconds)
+        SELECT $1,$2,'CAND-999','task',(SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1),'Historical draft',id,'medium','[]',0,0 FROM users WHERE central_sub=$3",
+        vec![legacy.into(),f.project.into(),f.owner.subject.clone().into()]).await.unwrap();
+    exec(&f.db, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state) VALUES($1,'candidates-test',$2,$1,$3,$4)",
+        vec![legacy.into(),f.project.into(),f.owner.subject.clone().into(),json_value(&legacy_state).unwrap()]).await.unwrap();
     expected.sort();
     let before = f.snapshot().await;
     // Discovery exposes the completed PM handoff, without assigning or dispatching.

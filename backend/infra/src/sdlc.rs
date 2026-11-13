@@ -1741,6 +1741,9 @@ impl SdlcRepository for PostgresSdlcRepository {
         let mut context = state.context(actor);
         if state.configured_cli() {
             context.assignment = lifecycle::configured_assignment(&tx, &state, actor).await?;
+            if !matches!(state.stage, Stage::Draft | Stage::Backlog) {
+                context.workflow_task_key = None;
+            }
             context.selected_source_policy = Self::selected_source_policy(&tx, &state).await?;
             if state.stage == Stage::Architecture && context.selected_source_policy.is_none() {
                 return Err(AppError::Unavailable(
@@ -1748,6 +1751,13 @@ impl SdlcRepository for PostgresSdlcRepository {
                 ));
             }
             if let Some(current) = lifecycle::current(&tx, task).await? {
+                if !matches!(state.stage, Stage::Draft | Stage::Backlog) {
+                    context.workflow_task_key = current
+                        .assignment
+                        .as_ref()
+                        .and_then(|assignment| assignment.execution.as_ref())
+                        .map(|execution| execution.key.clone());
+                }
                 context.previous_result_id = current.task.previous_result_id;
                 if current
                     .assignment

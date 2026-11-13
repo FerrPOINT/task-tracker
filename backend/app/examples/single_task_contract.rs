@@ -131,12 +131,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assignment_hash: String::new(),
         };
         assignment.assignment_hash = app::sdlc_lifecycle::assignment_hash(&assignment)?;
-        let lease = DeliveryOwnership {
+        let lease = DeliveryBinding {
             lease_id: assignment.lease_id,
             version: 1,
             holder_subject: scheduler_subject.clone(),
             claimed_at: now,
-            heartbeat_at: now,
+            heartbeat_at: None,
             expires_at: None,
         };
         readbacks.push(LifecycleReadback {

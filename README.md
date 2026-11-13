@@ -19,7 +19,6 @@
   <img src="https://img.shields.io/badge/Redis-8-dc2626?style=flat-square&logo=redis&logoColor=white" alt="Redis 8" />
   <img src="https://img.shields.io/badge/React-19-38bdf8?style=flat-square&logo=react&logoColor=0f172a" alt="React 19" />
   <img src="https://img.shields.io/badge/OpenAPI-6BA539?style=flat-square&logo=openapiinitiative&logoColor=white" alt="OpenAPI" />
-  <img src="https://img.shields.io/badge/CI-.github%2Fworkflows%2Fci.yml-15803d?style=flat-square" alt="Repository CI" />
 </p>
 
 ---
@@ -188,7 +187,7 @@ flowchart TD
 
 | Проверка | Команда |
 |---|---|
-| README contract tests | `python3 -m unittest scripts.tests.test_verify_readme -v` |
+| README contract tests | `python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_dockerfile_budget -v` |
 | README assets и anchors | `python3 scripts/verify_readme.py` |
 | Setup / dependencies | `just setup` / `just db-up` / `just db-down` |
 | Backend dev | `just backend-dev` |
@@ -200,7 +199,7 @@ flowchart TD
 | Compose contract | `docker compose config -q` |
 | Full gates | `just gate` / `just test` / `just e2e` |
 
-GitHub Actions прогоняет docs-гейт, backend fmt/clippy/tests, OpenAPI drift и frontend gates (typecheck/tests/lint/build). Browser E2E и тяжёлые проверки запускаются локально по необходимости.
+GitHub Actions workflows удалены. Docs, backend fmt/clippy/tests, OpenAPI drift и frontend gates (typecheck/tests/lint/build) выполняются локально по выбранной области. Browser E2E и тяжёлые проверки остаются отдельными gates; команды — в [CI/CD](docs/CI_CD.md).
 
 ## Карта проекта
 

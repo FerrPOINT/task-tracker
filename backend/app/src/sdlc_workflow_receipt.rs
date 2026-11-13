@@ -265,23 +265,46 @@ mod credential_tests {
     #[test]
     fn catalog_roles_receive_distinct_sensitive_readback_credentials() {
         let mut reader = WorkflowReceiptReader::new("http://workflow:8811", "pm-fixture").unwrap();
-        reader.configure_role_tokens(BTreeMap::from([
-            ("developer".into(), "developer-fixture".into()),
-            ("research_assistant".into(), "research-fixture".into()),
-        ])).unwrap();
+        reader
+            .configure_role_tokens(BTreeMap::from([
+                ("developer".into(), "developer-fixture".into()),
+                ("research_assistant".into(), "research-fixture".into()),
+            ]))
+            .unwrap();
         assert_eq!(reader.authorization, "Bearer pm-fixture");
-        assert_eq!(reader.role_authorizations["research_assistant"], "Bearer research-fixture");
-        assert_eq!(reader.role_authorizations["developer"], "Bearer developer-fixture");
-        assert!(reader.role_authorizations.values().all(header::HeaderValue::is_sensitive));
+        assert_eq!(
+            reader.role_authorizations["research_assistant"],
+            "Bearer research-fixture"
+        );
+        assert_eq!(
+            reader.role_authorizations["developer"],
+            "Bearer developer-fixture"
+        );
+        assert!(
+            reader
+                .role_authorizations
+                .values()
+                .all(header::HeaderValue::is_sensitive)
+        );
         assert!(!reader.role_authorizations.contains_key("unknown"));
     }
 
     #[test]
     fn invalid_role_or_header_is_rejected_before_readback() {
-        for (role, token) in [("Research", "fixture"), ("../other", "fixture"),
-                             ("r", "fixture"), ("research", ""), ("research", "bad\r\nheader")] {
-            let mut reader = WorkflowReceiptReader::new("http://workflow:8811", "pm-fixture").unwrap();
-            assert!(reader.configure_role_tokens(BTreeMap::from([(role.into(), token.into())])).is_err());
+        for (role, token) in [
+            ("Research", "fixture"),
+            ("../other", "fixture"),
+            ("r", "fixture"),
+            ("research", ""),
+            ("research", "bad\r\nheader"),
+        ] {
+            let mut reader =
+                WorkflowReceiptReader::new("http://workflow:8811", "pm-fixture").unwrap();
+            assert!(
+                reader
+                    .configure_role_tokens(BTreeMap::from([(role.into(), token.into())]))
+                    .is_err()
+            );
         }
     }
 }

@@ -41,20 +41,12 @@ impl NativeRequest {
             issuer: actor.issuer.clone(),
             subject: actor.context.user_id.clone(),
         };
-        let expiry = actor.lifetime.local_valid_until().min(
-            actor
-                .lifetime
-                .source_observed_at
-                .checked_add(AdmissionValidity::MAX_AGE_SECONDS)
-                .ok_or(AppError::Forbidden)?,
-        );
-        let validity = AdmissionValidity {
-            observed_at: actor.lifetime.source_observed_at,
-            valid_until: expiry,
-        };
-        let window = SpaceOwnerAuthority::confirmed(identity.clone(), validity)
-            .ok_or(AppError::Forbidden)?
-            .restrict_deadline(actor.lifetime.monotonic_deadline());
+        let validity = actor.confirmation_validity().map_err(|_| AppError::Forbidden)?;
+        let mut window = SpaceOwnerAuthority::confirmed(identity.clone(), validity)
+            .ok_or(AppError::Forbidden)?;
+        if let Some(deadline) = actor.lifetime.monotonic_deadline() {
+            window = window.restrict_deadline(deadline);
+        }
         Ok(Self {
             identity,
             window,

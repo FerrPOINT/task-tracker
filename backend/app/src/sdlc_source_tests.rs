@@ -115,7 +115,7 @@ fn current(binding: &TaskSourceBinding, routing: &TaskRoutingSnapshot) -> Lifecy
 }
 
 #[test]
-fn only_current_developer_ownership_allows_workspace_preparation_without_clock_expiry() {
+fn only_the_current_developer_assignment_allows_workspace_preparation_without_renewal() {
     let (state, confirmation, routing, mut policy) = fixture();
     let workspace = Uuid::new_v4();
     policy.source.development_workspace_id = Some(workspace);
@@ -146,16 +146,16 @@ fn only_current_developer_ownership_allows_workspace_preparation_without_clock_e
         machine_subject: "test-developer".into(),
     });
     let source = readback(Some(binding.clone()), Some(reserved.clone())).unwrap();
-    assert!(workspace_preparation_authorized(&source, &execution));
+    assert!(workspace_preparation_allowed(&source, &execution));
     execution.assignment.as_mut().unwrap().version += 1;
-    assert!(!workspace_preparation_authorized(&source, &execution));
+    assert!(!workspace_preparation_allowed(&source, &execution));
     execution.assignment.as_mut().unwrap().version -= 1;
     reserved.observed_at += chrono::Duration::days(30);
     let later = readback(Some(binding.clone()), Some(reserved.clone())).unwrap();
-    assert!(workspace_preparation_authorized(&later, &execution));
+    assert!(workspace_preparation_allowed(&later, &execution));
     reserved.receipt.lease.as_mut().unwrap().expires_at = None;
     let permanent = readback(Some(binding), Some(reserved)).unwrap();
-    assert!(workspace_preparation_authorized(&permanent, &execution));
+    assert!(workspace_preparation_allowed(&permanent, &execution));
 }
 
 #[test]

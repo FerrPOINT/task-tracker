@@ -5,8 +5,8 @@ use domain::{
     MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
     MemoryIssueRepository, MemoryIssueStatusHistoryRepository, MemoryLabelRepository,
     MemoryNotificationRepository, MemoryProjectMemberRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Project,
-    ProjectRepository, StatusCategory, User, UserRepository,
+    MemorySprintRepository, MemoryUserRepository, Project, ProjectRepository, StatusCategory, User,
+    UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -53,8 +53,12 @@ fn test_config() -> Arc<AppConfig> {
     })
 }
 
-async fn spawn_server_with_notifications()
--> (String, reqwest::Client, Arc<MemoryNotificationRepository>) {
+async fn spawn_server_with_notifications() -> (
+    String,
+    reqwest::Client,
+    Arc<MemoryNotificationRepository>,
+    Arc<AppContext>,
+) {
     let user = test_user();
     let mut project = Project {
         id: shared::ProjectId::from_uuid(
@@ -177,7 +181,7 @@ async fn spawn_server_with_notifications()
         boards: boards.clone(),
         sprints: sprints.clone(),
         comments: Arc::new(MemoryCommentRepository::default()),
-        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        worklogs: Arc::new(issues.worklog_repository()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
         statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
@@ -200,7 +204,7 @@ async fn spawn_server_with_notifications()
         repos,
         Arc::new(InMemoryStorage::default()),
     ));
-    let router = api::router(ctx.clone()).with_state(ctx);
+    let router = api::router(ctx.clone()).with_state(ctx.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let url = format!("http://{addr}");
@@ -208,7 +212,43 @@ async fn spawn_server_with_notifications()
         axum::serve(listener, router).await.unwrap();
     });
     let client = reqwest::Client::new();
-    (url, client, notifications)
+    (url, client, notifications, ctx)
+}
+
+async fn seed_issue(
+    ctx: &AppContext,
+    summary: &str,
+    description: Option<String>,
+) -> serde_json::Value {
+    let board = ctx
+        .repos
+        .boards
+        .get_default_by_project_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let actor = test_user().id;
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            app::commands::CreateIssueCommand {
+                operation_id: None,
+                project_key: ProjectKey::new("TT"),
+                issue_type: shared::IssueType::Task,
+                status_id: board.columns[0].id.to_string(),
+                summary: summary.into(),
+                description,
+                reporter_id: actor,
+                priority: shared::Priority::Medium,
+                assignee_id: None,
+                actor_id: actor,
+                custom_fields: Default::default(),
+            },
+            actor,
+        )
+        .await
+        .unwrap();
+    serde_json::to_value(issue).unwrap()
 }
 
 fn run(url: &str, token: &str, args: &[&str], input: Option<&str>) -> serde_json::Value {
@@ -252,8 +292,8 @@ fn run(url: &str, token: &str, args: &[&str], input: Option<&str>) -> serde_json
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn task_lifecycle_against_real_application_api() {
-    let (url, client, _) = spawn_server_with_notifications().await;
+async fn supported_task_operations_against_real_application_api() {
+    let (url, client, _, ctx) = spawn_server_with_notifications().await;
     let auth: serde_json::Value = client
         .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
@@ -266,21 +306,24 @@ async fn task_lifecycle_against_real_application_api() {
         .await
         .unwrap();
     let token = auth["access_token"].as_str().unwrap();
-    let issue = run(
-        &url,
-        token,
-        &[
-            "issue",
-            "create",
-            "--project-key",
-            "TT",
-            "--summary",
-            "CLI fixture",
-            "--from-file",
-            "-",
-        ],
-        Some("Описание из stdin"),
+    // Generic creation/transition belong to SDLC; CLI must keep these retired.
+    for command in ["create", "transition"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_task-tracker"))
+            .args(["issue", command])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("unrecognized subcommand"));
+    }
+    assert!(
+        ctx.repos
+            .issues
+            .list(domain::IssueQuery::default())
+            .await
+            .unwrap()
+            .is_empty()
     );
+    let issue = seed_issue(&ctx, "CLI fixture", Some("Описание из fixture".into())).await;
     let key = issue["key"].as_str().unwrap();
     let id = issue["id"].as_str().unwrap();
     run(&url, token, &["statuses"], None);
@@ -350,19 +393,7 @@ async fn task_lifecycle_against_real_application_api() {
         &["issue", "update", key, "--summary", "Changed", "--unassign"],
         None,
     );
-    let target = run(
-        &url,
-        token,
-        &[
-            "issue",
-            "create",
-            "--project-key",
-            "TT",
-            "--summary",
-            "Target",
-        ],
-        None,
-    );
+    let target = seed_issue(&ctx, "Target", None).await;
     run(
         &url,
         token,
@@ -409,18 +440,6 @@ async fn task_lifecycle_against_real_application_api() {
         None,
     );
     assert_eq!(std::fs::read(out).unwrap(), b"fixture file");
-    run(
-        &url,
-        token,
-        &[
-            "issue",
-            "transition",
-            key,
-            "--to",
-            "00000000-0000-0000-0000-000000000003",
-        ],
-        None,
-    );
     run(&url, token, &["issue", "delete", key], None);
     run(
         &url,

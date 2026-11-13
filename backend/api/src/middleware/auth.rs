@@ -393,8 +393,7 @@ pub(crate) async fn verified_request(
         frame.monotonic_deadline().into(),
         pdlc_auth_core::human_request::with_human_request(
             user.id.as_uuid(),
-            central,
-            verified.application_access.clone(),
+            &verified,
             app::space_access::with_request_context(frame.clone(), next.run(req)),
         ),
     )

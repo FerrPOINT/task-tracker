@@ -264,8 +264,8 @@ function PlanPanel({ issueId }: { issueId: string }) {
     plan && plan.content.source?.requirements_hash !== query.data.current_source?.requirements_hash,
   )
   return (
-    <div className="min-w-0 space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+    <div className="min-w-0 space-y-4">
+      <div className="flex max-w-4xl flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-1 text-sm">
           {plan ? (
             <>

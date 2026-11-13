@@ -95,7 +95,7 @@ describe('ProjectCustomFieldsPage', () => {
     const user = userEvent.setup()
     render(wrapper(<ProjectCustomFieldsPage />))
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить поля.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить дополнительные поля.')
     await user.click(screen.getByRole('button', { name: /повторить/i }))
     expect(refetch).toHaveBeenCalledOnce()
   })

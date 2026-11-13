@@ -44,9 +44,69 @@ Unsubmitted assignment сохраняется для обычного продо
 Нового cancel API/CLI нет.
 
 Namespace source публикует `execution.workspace_preparation_authorized` и только
-при этом proof — `workspace_preparation_commit`. Старое поле
-`workspace_preparation_expires_at` равно null и не даёт полномочий.
+при этом proof — `workspace_preparation_commit`. Поле
+`workspace_preparation_expires_at` больше не публикуется; часы не дают полномочий.
 OpenAPI/client parity экспортируется из квалифицированного Rust candidate.
+
+GET `/api/v1/issues/{id}` возвращает `IssueDetailResponse`: прежние поля
+`IssueResponse` и обязательный `lifecycle` из той же проекции, что у доски.
+`lifecycle.enrolled=true` означает существующий сохранённый SDLC-процесс;
+обычная задача имеет `false`, начальную Draft и не получает выдуманный status.
+Этот признак не даёт доступа к приватному SDLC context. PATCH/restore и другие
+mutation receipts сохраняют `IssueResponse`; клиент перечитывает detail после
+изменения, не заменяя его неполным receipt. Отсутствующая metadata — ошибка
+контракта, а не неявное отсутствие процесса.
+
+## Retained Analysis Operation Keys
+
+The CLI reads an original analysis reservation/result operation through
+`GET /api/v1/issues/{id}/sdlc/analysis-reservation/operations?idempotency_key=...`
+and `GET /api/v1/issues/{id}/sdlc/analysis-result/operations?idempotency_key=...`.
+The key is one UTF-8 query value. Its original bytes, including `/`, are retained;
+the shared Base client continues to reject encoded slash in URL paths. These
+routes call the existing readback owner with the same access checks and no-store
+response. They never submit or retry a command.
+
+Tracker owns the temporary compatibility paths ending in
+`operations/{idempotency_key}`. They remain read-only for already published CLI
+artifacts. Remove those two paths only after the supported Fleet/CLI cohort has
+been updated and its active clients are verified to use the query contract;
+their removal belongs to that explicit contract rollout. There is no transport
+fallback or alternate operation store.
+
+## SDLC JSON Rejections And Current Execution
+
+The existing stage-starts and delivery-proposals POST routes preserve extractor
+HTTP statuses (422 for an invalid DTO, 400 for syntax, 415 for content type).
+They return the existing error.code/message JSON envelope and Cache-Control:
+no-store instead of an unstructured extractor body. Messages describe the known
+request contract without echoing arbitrary field names, values or documents.
+They do not repair or resubmit the request.
+
+Configured delivery context.workflow_task_key identifies the current reserved
+assignment.execution.key; it is absent while no delivery assignment exists.
+The retained PM key and historical operation responses are unchanged. No new
+route, request/response field or database column is introduced.
+
+## Untimed Delivery Binding (Source Candidate)
+
+The existing lifecycle routes and fence fields are unchanged. Current `receipt.lease`
+contains `lease_id`, `version`, `holder_subject`, and `claimed_at`; ownership has no
+heartbeat or expiry. New receipts omit both archival time fields. Saved operation
+readbacks retain their original dates and hashes and are not current authority.
+Current mutations require the exact `expected_lease_version`; heartbeat is no longer
+a current command. Native Unknown still blocks unsafe continuation or capacity release.
+Namespace execution metadata no longer publishes `workspace_preparation_expires_at`;
+the existing preparation commit is exposed only for the exact current Developer assignment.
+Generic CLI JSON consumers need no new command; agent/Hermes images are unchanged.
+This source change is not installed or live-qualified by this documentation.
+
+Старые Analysis writers удалены из HTTP router и OpenAPI: `POST .../analysis-reservation`,
+`POST .../analysis-reservation/heartbeat` и `POST .../analysis-result` больше не
+исполняются. Текущая запись выполняется через существующий `POST .../sdlc/lifecycle`,
+без legacy fallback. GET резервации, configuration-preflight и original-key
+readback результата сохранены с прежними проверками доступа; исторические данные
+не переписываются. Configured PM completion остаётся зарегистрированным.
 
 ## Embedded Decomposition
 
@@ -725,12 +785,11 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 > **Single source of truth:** актуальная OpenAPI-схема лежит в [`openapi/openapi.json`](../openapi/openapi.json). Backend генерирует её из `utoipa`-аннотаций Rust-хендлеров, а фронт получает из неё TypeScript-клиент. Ручная документация ниже — для контекста, но при расхождении приоритет у `openapi/openapi.json`.
 
-Доска проекта `GET /api/v1/projects/{project_key}/board` возвращает секцию
-`sdlc` для включённого проекта или при наличии видимых задач SDLC.
-`stages` задаёт порядок колонок, а `tasks` связывает ID карточки с её
+Доска проекта `GET /api/v1/projects/{project_key}/board` возвращает обязательную
+секцию `sdlc`. `stages` задаёт порядок колонок, а `tasks` связывает ID карточки с
 канонической стадией и операционным статусом. Историческая задача без
-операционного статуса возвращается без поля `status`. Обычные колонки
-остаются в `columns`. Стадии SDLC меняются штатными переходами Tracker.
+операционного статуса возвращается без поля `status`. Стадии SDLC меняются
+штатными переходами Tracker; прежних workflow-колонок в ответе доски нет.
 
 ## Базовая информация
 
@@ -798,14 +857,20 @@ password/register/refresh endpoints являются legacy-контрактом
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/projects/{project_key}/backlog` | Бэклог проекта |
-| GET | `/projects/{project_key}/board` | Доска проекта |
-| POST | `/projects/{project_key}/board/move` | Перемещение задачи по колонкам |
+| GET | `/projects/{project_key}/board` | Девять стадий SDLC и задачи агентного цикла |
 | GET, POST | `/projects/{project_key}/labels` | Метки проекта / создание |
 | GET, POST | `/projects/{project_key}/sprints` | Спринты проекта / создание |
 | GET, PATCH | `/projects/{project_key}/sprints/{sprint_id}` | Спринт: получение / PATCH / удаление |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/close` | Закрытие спринта |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/issues` | Перенос задач в спринт |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/remove-issue` | Убрать задачу из спринта |
+
+Ответ доски содержит обязательный `sdlc` со стадиями и задачами канонического
+агентного цикла. Порядок стадий задаёт `LifecycleStage::BOARD_ORDER`;
+операционное состояние этапа передаётся отдельно. UI показывает компактные
+карточки, а число колонок определяется доступной шириной. Контракт доски,
+доступ и выбор задач принадлежат серверу; UI не восстанавливает прежние
+workflow-колонки или manual move.
 
 #### Backlog pagination
 
@@ -2382,3 +2447,20 @@ as other agent business commands. Historical delivery grants can read retained
 results; they cannot authorize a new proposal. Global `admin` scope does not
 turn a service account into an assigned producer. Standard scopes for other
 products remain compatible with the ordinary CLI credential.
+
+## SSE: разрыв последовательности invalidation
+
+`GET /api/v1/events` сохраняет именованные `tracker` события и проверки
+видимости. При отставании подписчика broadcast stream выдаёт отдельное событие
+`resync_required` с `data: {}` без resource IDs. Клиент перечитывает только
+активные разрешённые запросы. То же перечитывание выполняется при первом open
+и reconnect через существующий Base authenticated transport. Gap не является
+снимком данных и не разрешает доступ к ресурсам другого пользователя.
+
+## Immutable delivery predecessor
+
+`GET /api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}` keeps the existing
+authorization and `{source, receipt}` envelope. Delivery receipts additionally
+expose required nullable `previous_result_id` from the original assignment that
+produced that accepted result. The legacy analysis variant and mutation receipts
+retain their original shapes. Stored history is not rewritten by this read.

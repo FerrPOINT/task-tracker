@@ -16,6 +16,8 @@ import {
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 import { SdlcPanel } from './SdlcPanel'
+import { useSdlcSnapshot } from '../model/use-sdlc'
+import type { IssueDetail } from '@/api/issue'
 import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
@@ -121,14 +123,18 @@ const event: MetadataEvent = {
   },
 }
 
-function mount(issueId = task) {
+function nativeLifecycle(issueId: string): IssueDetail['lifecycle'] {
+  return { issue_id: issueId, enrolled: true, stage: 'Draft' }
+}
+
+function mount(issueId = task, lifecycle = nativeLifecycle(issueId)) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const result = render(
     <ThemeProvider>
       <QueryClientProvider client={client}>
-        <SdlcPanel key={issueId} issueId={issueId} />
+        <SdlcPanel key={issueId} issueId={issueId} lifecycle={lifecycle} />
       </QueryClientProvider>
     </ThemeProvider>,
   )
@@ -154,6 +160,102 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   afterEach(() => {
     cleanup()
     useAuthStore.getState().logout()
+  })
+
+  it.each([task, 'ordinary-with-a-different-id'])(
+    'does not query private SDLC resources for ordinary task %s',
+    async (issueId) => {
+      mount(issueId, { issue_id: issueId, enrolled: false, stage: 'Draft' })
+      expect(screen.getByText(/No SDLC process is registered/)).toBeVisible()
+      expect(getSdlcSnapshot).not.toHaveBeenCalled()
+      expect(getSdlcMetadata).not.toHaveBeenCalled()
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+    },
+  )
+
+  it('reads a persisted Draft even though its stage matches an ordinary task', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        requirement_revision: null,
+        permissions: { can_answer: false, can_confirm: false },
+      },
+      requirements: null,
+      intent: null,
+    })
+    mount()
+    await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledWith(task, expect.anything()))
+    expect(screen.queryByText(/No SDLC process is registered/)).not.toBeInTheDocument()
+  })
+
+  it('leads with the current stage and the owner action instead of protocol identifiers', async () => {
+    mount()
+    expect(await screen.findByRole('heading', { name: 'Development progress' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Now' })).toHaveTextContent('Clarification')
+    expect(screen.getByRole('region', { name: 'Your next step' })).toHaveTextContent(
+      'Review the requirements below. Confirmation records this version; it does not start execution.',
+    )
+    expect(screen.getByText(hash)).not.toBeVisible()
+    expect(screen.queryByText('tracker-test')).not.toBeInTheDocument()
+  })
+
+  it('keeps queued Analysis identifiers available only in collapsed technical details', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(structuredClone(queued))
+    mount()
+    expect(
+      await screen.findByText(
+        'Analysis was queued. Execution start is not confirmed by this record.',
+      ),
+    ).not.toBeVisible()
+    expect(screen.getByText(intent.operation_key)).not.toBeVisible()
+    expect(screen.getByText(intent.intent_id)).not.toBeVisible()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
+
+  it('explains unavailable permission without offering an invented execution action', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: { ...initial.context, permissions: { can_answer: false, can_confirm: false } },
+    })
+    mount()
+    expect(await screen.findByRole('region', { name: 'Your next step' })).toHaveTextContent(
+      'Requirements can be confirmed by the task owner after the required checks pass.',
+    )
+    expect(
+      screen.queryByRole('button', { name: /start|cancel execution/i }),
+    ).not.toBeInTheDocument()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the task description reader with the SDLC panel without changing routing admission', async () => {
+    function DescriptionReadback() {
+      const { snapshot } = useSdlcSnapshot(task, nativeLifecycle(task))
+      return <output aria-label="task brief">{snapshot.data?.requirements?.goal}</output>
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <ThemeProvider>
+        <QueryClientProvider client={client}>
+          <DescriptionReadback />
+          <SdlcPanel issueId={task} lifecycle={nativeLifecycle(task)} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText('task brief')).toHaveTextContent(
+        'Exact goal shown to the owner',
+      ),
+    )
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      requirements: { ...initial.requirements!, goal: 'Updated task description' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh SDLC state' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('task brief')).toHaveTextContent('Updated task description'),
+    )
+    expect(confirmRequirements).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -227,7 +329,9 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   it('distinguishes missing context from Draft without requirements', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue(null)
     const view = mount()
-    expect(await screen.findByText('No SDLC context')).toBeInTheDocument()
+    expect(
+      await screen.findByText('This task is not connected to the development process.'),
+    ).toBeInTheDocument()
     expect(getSdlcMetadata).not.toHaveBeenCalled()
     view.unmount()
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
@@ -250,7 +354,9 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(status))
       mount()
       expect(await screen.findByRole('alert')).toBeInTheDocument()
-      expect(screen.queryByText('No SDLC context')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('This task is not connected to the development process.'),
+      ).not.toBeInTheDocument()
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     },
   )
@@ -288,7 +394,9 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       finish(receipt)
     })
     expect(
-      await screen.findByText('Analysis / Ready · Queued, awaiting admission'),
+      await screen.findByText(
+        'Analysis was queued. Execution start is not confirmed by this record.',
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText(intentId)).toBeInTheDocument()
     expect(screen.getByText(`analysis:${confirmationId}`)).toBeInTheDocument()
@@ -301,7 +409,9 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     fireEvent.click(await screen.findByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
     expect(
-      await screen.findByText('Requirements confirmation saved; refreshing queue state'),
+      await screen.findByText(
+        'This requirements version has been confirmed. Refreshing task state.',
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Analysis \/ Ready/)).not.toBeInTheDocument()
   })
@@ -333,7 +443,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       screen.queryByText(/Analysis \/ Ready|queued_for_analysis|Completed/),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByText('Analysis intent was not found; queue state is not verified'),
+      screen.queryByText('The analysis request could not be verified. Refresh task state.'),
     ).not.toBeInTheDocument()
   })
   it('reuses the confirmation operation key after an unknown POST result', async () => {
@@ -341,7 +451,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     mount()
     fireEvent.click(await screen.findByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
-    await screen.findByText('SDLC or Central Auth is unavailable')
+    await screen.findByText('Development process data is temporarily unavailable.')
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeEnabled(),
     )
@@ -356,10 +466,10 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(confirmRequirements).mockResolvedValue(receipt)
     mount()
     const choice = await screen.findByRole('checkbox', {
-      name: 'Publish with routing policy version 5',
+      name: 'Use execution configuration version 5',
     })
     expect(choice).not.toBeChecked()
-    expect(screen.getByText(/Native readiness and dispatch are not granted/)).toBeInTheDocument()
+    expect(screen.getByText(/Selecting it does not start the agents/)).toBeInTheDocument()
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
     )
@@ -390,7 +500,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(confirmRequirements).mockResolvedValue(receipt)
       mount()
       const choice = await screen.findByRole('checkbox', {
-        name: 'Publish with routing policy version 5',
+        name: 'Use execution configuration version 5',
       })
       expect(choice).not.toBeChecked()
       expect(getSdlcRoutingPolicy).toHaveBeenCalledWith(
@@ -476,7 +586,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -503,7 +613,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       'The selected policy is not current or its source is unavailable. Refresh and explicitly review the choice.',
     )
     expect(
-      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
     ).toBeChecked()
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
     expect(confirmRequirements).not.toHaveBeenCalled()
@@ -520,7 +630,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -554,11 +664,11 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(policy)
       mount()
       const choice = await screen.findByRole('checkbox', {
-        name: 'Publish with routing policy version 5',
+        name: 'Use execution configuration version 5',
       })
       expect(choice).not.toBeChecked()
-      const publication = screen.getByRole('region', { name: 'SDLC publication' })
-      fireEvent.click(within(publication).getByText('Seven-role policy references'))
+      const publication = screen.getByRole('region', { name: 'Execution configuration' })
+      fireEvent.click(within(publication).getByText('Configuration technical details'))
       expect(within(publication).getAllByText(label)).toHaveLength(7)
       expect(within(publication).queryByText(absentLabel)).not.toBeInTheDocument()
       const route = policy.routes.analyst
@@ -568,7 +678,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         }),
       ).toBeInTheDocument()
       expect(
-        within(publication).getByText(/Native readiness and dispatch are not granted/),
+        within(publication).getByText(/Selecting it does not start the agents/),
       ).toBeInTheDocument()
       if (policy.contract_version === 2) {
         expect(
@@ -588,7 +698,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(confirmRequirements).mockResolvedValue(receipt)
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
     fireEvent.click(
@@ -610,7 +720,9 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     })
     mount()
     expect(
-      await screen.findByText('Analysis / Ready · Queued, awaiting admission'),
+      await screen.findByText(
+        'Analysis was queued. Execution start is not confirmed by this record.',
+      ),
     ).toBeInTheDocument()
     expect(
       screen.getByText('Analyst / single-task-v1:analyst / analysis / business'),
@@ -624,7 +736,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(confirmRequirements).mockResolvedValue(receipt)
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
     fireEvent.click(
@@ -644,7 +756,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -657,15 +769,15 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
     await screen.findByText(/The selected policy is not current/)
     expect(
-      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
     ).toBeChecked()
     expect(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
     ).toBeChecked()
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
     expect(confirmRequirements).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }))
-    const current = screen.getByRole('checkbox', { name: 'Publish with routing policy version 6' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }))
+    const current = screen.getByRole('checkbox', { name: 'Use execution configuration version 6' })
     expect(current).not.toBeChecked()
     fireEvent.click(current)
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeEnabled()
@@ -675,7 +787,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(confirmRequirements).mockRejectedValue(new SdlcRequestError(409))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -683,7 +795,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
     await screen.findByText(/The selected policy is not current/)
     expect(
-      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
     ).toBeChecked()
     expect(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -696,7 +808,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(confirmRequirements).mockRejectedValue(new SdlcRequestError(503))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -706,7 +818,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     await screen.findByText(/Saved data · refresh failed/)
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
     expect(
-      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
     ).toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
     expect(confirmRequirements).toHaveBeenCalledOnce()
@@ -734,7 +846,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
           ),
         ).toBeInTheDocument()
       expect(
-        screen.queryByRole('checkbox', { name: /Publish with routing/ }),
+        screen.queryByRole('checkbox', { name: /Use execution configuration/ }),
       ).not.toBeInTheDocument()
       expect(confirmRequirements).not.toHaveBeenCalled()
     },
@@ -742,8 +854,10 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   it('withholds choice while source loads and never fetches it for a non-owner', async () => {
     vi.mocked(getSdlcRoutingPolicy).mockReturnValue(new Promise(() => {}))
     const view = mount()
-    await screen.findByRole('status', { name: 'Loading published routing policy' })
-    expect(screen.queryByRole('checkbox', { name: /Publish with routing/ })).not.toBeInTheDocument()
+    await screen.findByRole('status', { name: 'Loading project execution configuration' })
+    expect(
+      screen.queryByRole('checkbox', { name: /Use execution configuration/ }),
+    ).not.toBeInTheDocument()
     view.unmount()
     vi.mocked(getSdlcRoutingPolicy).mockClear()
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
@@ -764,7 +878,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
       mount()
       fireEvent.click(
-        await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+        await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
       )
       fireEvent.click(
         screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
@@ -776,11 +890,11 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       expect(confirmRequirements).not.toHaveBeenCalled()
       if (status === 403)
         expect(
-          screen.queryByRole('checkbox', { name: /Publish with routing/ }),
+          screen.queryByRole('checkbox', { name: /Use execution configuration/ }),
         ).not.toBeInTheDocument()
       else
         expect(
-          screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+          screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
         ).toBeChecked()
     },
   )
@@ -788,7 +902,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
     mount()
     fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+      await screen.findByRole('checkbox', { name: 'Use execution configuration version 5' }),
     )
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
       ...initial,
@@ -799,7 +913,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     await screen.findByRole('checkbox', { name: 'I confirm the requirements of revision 3' })
     await waitFor(() =>
       expect(
-        screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+        screen.getByRole('checkbox', { name: 'Use execution configuration version 5' }),
       ).not.toBeChecked(),
     )
     expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
@@ -879,11 +993,15 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: after === '0' ? [event] : [],
     }))
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(await within(history).findByText('Analysis intent queued')).toBeInTheDocument()
+    expect(within(history).getByText('Page 1')).toBeInTheDocument()
+    expect(within(history).queryByText(/cursor/i)).not.toBeInTheDocument()
     fireEvent.click(within(history).getByRole('button', { name: 'Next events' }))
     await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledWith(task, '19', expect.anything()))
-    expect(await within(history).findByText('No events after this sequence')).toBeInTheDocument()
+    expect(
+      await within(history).findByText('There are no events on this page.'),
+    ).toBeInTheDocument()
   })
   it('does not render a failed metadata refresh as an empty or current history', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
@@ -896,15 +1014,15 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: [event],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     await within(history).findByText('Analysis intent queued')
     vi.mocked(getSdlcMetadata).mockRejectedValue(new SdlcRequestError(503))
     fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
     expect(
-      await within(history).findByText('SDLC or Central Auth is unavailable'),
+      await within(history).findByText('Development process data is temporarily unavailable.'),
     ).toBeInTheDocument()
     expect(within(history).getByText(/Saved data · refresh failed/)).toBeInTheDocument()
-    expect(within(history).queryByText('No events after this sequence')).not.toBeInTheDocument()
+    expect(within(history).queryByText('There are no events on this page.')).not.toBeInTheDocument()
     expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
   })
   it('renders reservation history as prepared and still awaiting admission', async () => {
@@ -935,7 +1053,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       events: [reserved],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(
       await within(history).findByText('Analysis assignment prepared, awaiting admission'),
     ).toBeInTheDocument()
@@ -970,7 +1088,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       ],
     })
     mount()
-    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    const history = await screen.findByRole('region', { name: 'Development history' })
     expect(await within(history).findByText('Analysis result accepted')).toBeInTheDocument()
     expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
   })
@@ -986,21 +1104,21 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     vi.mocked(getSdlcSnapshot).mockResolvedValue({ ...queued, intent: null })
     mount()
     expect(
-      await screen.findByText('Analysis intent was not found; queue state is not verified'),
+      await screen.findByText('The analysis request could not be verified. Refresh task state.'),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Analysis \/ Ready/)).not.toBeInTheDocument()
   })
   it.each([
     ['delivery.queued', 'Delivery queued', 'Работа поставлена в очередь'],
-    ['delivery.reconciled', 'Delivery reconciled', 'Состояние выполнения сверено'],
+    ['delivery.reconciled', 'Delivery reconciled', 'Состояние выполнения обновлено'],
     [
       'delivery.assignment_reserved',
       'Delivery assignment prepared, awaiting admission',
-      'Назначение подготовлено, допуск ожидается',
+      'Исполнитель подготовлен; запуск ещё не подтверждён',
     ],
-    ['delivery.lease_renewed', 'Delivery lease renewed', 'Аренда назначения продлена'],
-    ['delivery.run_bound', 'Delivery run bound', 'Запуск привязан к назначению'],
-    ['delivery.result_accepted', 'Delivery result accepted', 'Результат выполнения принят'],
+    ['delivery.lease_renewed', 'Delivery lease renewed', 'Срок назначения исполнителя продлён'],
+    ['delivery.run_bound', 'Delivery run bound', 'Запуск связан с назначением'],
+    ['delivery.result_accepted', 'Delivery result accepted', 'Результат этапа принят'],
   ] as const)(
     'translates lifecycle history %s without granting owner actions',
     async (kind, en, ru) => {
@@ -1042,7 +1160,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         events: [lifecycleEvent],
       })
       mount()
-      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      const history = await screen.findByRole('region', { name: 'Development history' })
       expect(await within(history).findByText(en)).toBeInTheDocument()
       await act(() => i18n.changeLanguage('ru'))
       expect(await within(history).findByText(ru)).toBeInTheDocument()
@@ -1068,7 +1186,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         },
       },
       en: 'Delivery proposal submitted',
-      ru: 'Предложение результата сохранено',
+      ru: 'Результат передан на проверку',
     },
     {
       event: {
@@ -1089,7 +1207,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         },
       },
       en: 'PM feedback recorded',
-      ru: 'Сообщение владельца для PM сохранено',
+      ru: 'Сообщение владельца передано менеджеру проекта',
     },
     {
       event: {
@@ -1115,7 +1233,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         },
       },
       en: 'PM execution completed',
-      ru: 'Выполнение PM завершено',
+      ru: 'Менеджер проекта завершил работу',
     },
   ] satisfies { event: MetadataEvent; en: string; ru: string }[])(
     'translates $event.event_type without treating it as owner confirmation',
@@ -1130,7 +1248,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         events: [recorded],
       })
       mount()
-      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      const history = await screen.findByRole('region', { name: 'Development history' })
       expect(await within(history).findByText(en)).toBeInTheDocument()
       await act(() => i18n.changeLanguage('ru'))
       expect(await within(history).findByText(ru)).toBeInTheDocument()

@@ -69,7 +69,9 @@ pub enum DeliveryResultCommand {
         result: Uuid,
     },
     /// Set Completed with Workflow evidence; application waits for native terminal before handoff
-    #[command(after_long_help = "Configured agents can omit idempotency_key. The CLI derives delivery-result:<assignment_id> from the proposal fence. Read the operation using that same key.")]
+    #[command(
+        after_long_help = "Configured agents can omit idempotency_key. The CLI derives delivery-result:<assignment_id> from the proposal fence. Read the operation using that same key."
+    )]
     Propose {
         #[arg(long)]
         task: Uuid,
@@ -118,7 +120,9 @@ fn configured_delivery_proposal(mut input: Value) -> Result<Value> {
         .as_str()
         .and_then(|value| Uuid::parse_str(value).ok())
         .filter(|id| !id.is_nil())
-        .ok_or_else(|| anyhow::anyhow!("configured delivery result requires fence.assignment_id"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("configured delivery result requires fence.assignment_id")
+        })?;
     let key = format!("delivery-result:{assignment}");
     if let Some(supplied) = input.get("idempotency_key") {
         anyhow::ensure!(

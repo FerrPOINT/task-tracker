@@ -79,8 +79,15 @@ export function useTrackerEvents() {
     return connectAuthenticatedEventStream({
       url: '/api/v1/events',
       token,
-      eventTypes: ['tracker'],
-      onEvent: (_type, payload) => {
+      eventTypes: ['tracker', 'resync_required'],
+      onOpen: () => {
+        void qc.invalidateQueries({ type: 'active' })
+      },
+      onEvent: (type, payload) => {
+        if (type === 'resync_required') {
+          void qc.invalidateQueries({ type: 'active' })
+          return
+        }
         const evt = payload as TrackerEvent
         const pk = evt.project_key
         switch (evt.type) {

@@ -25,6 +25,22 @@ assignment/fence/holder и отсутствие принятого binding; hold
 освобождаются в этой же транзакции. Одного отсутствия binding недостаточно.
 Новых таблиц нет; прежние receipts и исторические retry-строки не переписываются.
 
+## Untimed Delivery Binding
+
+Обе опубликованные миграции116 сохраняют полные имена: Reviewer terminal и
+untimed delivery binding. Независимые патчи функций допускают оба порядка
+обновления без переписывания применённой миграции, строки или receipt.
+
+Forward116 меняет только current projection и действующие SQL guards. Binding
+остаётся в `sdlc_delivery_heads.execution`; `sdlc_delivery_tasks` — существующий view.
+Current view исключает архивные heartbeat/expiry, сохраняя assignment, holder,
+lease ID и version, включая ранее сохранённые versions. Новые записи не содержат
+временных полей. Операции, raw heads до следующего обычного изменения, hashes,
+assignment history и PM execution leases миграция не переписывает.
+Запись текущего binding неизменна до явного завершения/terminal reconciliation;
+переход от архивного представления допускает только удаление двух временных полей,
+без смены holder, identity или version. Capacity не освобождается по времени.
+
 ## Встроенная Декомпозиция
 
 Migration 0113 добавляет `issue_plan_revisions` и `issue_plan_operations`.
@@ -53,7 +69,9 @@ Stage и status — разные поля. Целевые переходы: аг
 Новый PM receipt относится к Draft/Completed; приложение сохраняет отдельную
 Analysis/Ready queue. Assignment/lease/binding нового delivery до резервирования
 отсутствуют; старый PM receipt не становится текущим назначением Analyst.
-Rework limit без handoff и финальный DevOps сохраняют Completed.
+Текущая линейная передача не выбирает Rework и не увеличивает cycle. Reviewer
+и Tester передают работу дальше при обоих verdict; финальный DevOps сохраняет
+Deployment/Completed. Старые cycle и принятые результаты остаются в истории.
 
 Принятый main f98faed9 уже содержит [automatic Analyst handoff](contracts/CONFIGURED_CLI_V1.md#automatic-analyst-handoff-coordinated-source-change).
 Его forward112 связывает autoqueue с completion-транзакцией; сохранённые
@@ -2429,3 +2447,45 @@ ties that journal row to the existing projection permit, so a historical receipt
 cannot authorize another initial transition. A partial unique task index and
 deferred exact intent/queue/outbox checks prevent duplicate or detached starts.
 No new table, permit family, task tree or scheduler is introduced.
+
+## Delivery result input projection
+
+The accepted output and mutation receipt keep their immutable original stored
+shape. The existing lifecycle result GET returns that output flattened with
+required nullable `previous_result_id`, read from the result's original immutable
+assignment. An explicit null is the legitimate initial input. Missing or
+inconsistent assignment provenance is an error; the current task cursor is not
+a source for historical result inputs. This projection does not rewrite stored
+results, assignments, receipts or operation hashes.
+
+## Operator root lifetime and request confirmation
+
+The effective Auth SDK is selected by `.namespace-base-revision`. An explicitly
+persistent service root retains `source_expires_at = None`; missing lifetime
+fields remain invalid. Existing namespace/native REST confirmation is a separate
+fixed proof from the original verified observation, supplied by the canonical
+SDK `confirmation_validity()` helper. It never becomes a credential expiry or
+an accepted assignment/runtime timer. Finite child, human, namespace and
+application proof bounds continue to intersect the original owner clocks.
+
+## Convergence119 двух опубликованных историй
+
+Штатный Migrator выбирает принятую историю по уже применённым полным именам.
+Published/main сохраняет Reviewer116, untimed116, linear117 и plan-dispatch118.
+Installed-история сохраняет unsubmitted116, persistent117 и unsent-stop118.
+Исторический ProjectRepository marker независимо сохраняет свой прежний путь.
+Смешанная или неизвестная история не принимается как новая исходная точка.
+
+Обе истории дополняются одной `m20261114_0000119_current_delivery_contract`.
+Она проверяет полные прежние тела head/reconciliation guards до записи, применяет
+недостающие изменения будущих переходов/плана и устанавливает один clock-free
+current binding и точный version CAS. Reconcile допускает настоящий terminal
+либо проверенный never_submitted/Stop исходного Reserve; новый retry_unsubmitted
+и heartbeat запрещены. Старые команды доступны только через исходный read/replay.
+Ни assignment/result/operation receipts, ни прежние applied_at/name не изменяются;
+новый applied marker принадлежит реальному успешно выполненному forward119.
+
+Relevanter с опубликованными 30 миграциями до project_repository_catalog98
+использует Published-путь. Для него отдельный тест фиксирует точный список имён;
+это fixture схемы, а не копия установленной базы. OpenAPI выпускается штатным
+Rust producer после компиляции объединённых DTO, ручной generated-схемы нет.

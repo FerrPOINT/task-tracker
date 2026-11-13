@@ -6,7 +6,7 @@ import i18n from '@/shared/i18n/test-config'
 import { pdlcLocales } from '@pdlc/ui/i18n'
 import { CommentsPanel } from './CommentList'
 
-const mocks = vi.hoisted(() => ({ remove: vi.fn(), pending: false }))
+const mocks = vi.hoisted(() => ({ remove: vi.fn(), pending: false, writing: false }))
 vi.mock('../model/use-comments', () => ({
   useComments: () => ({
     data: [
@@ -22,7 +22,7 @@ vi.mock('../model/use-comments', () => ({
     ],
     isLoading: false,
   }),
-  useCreateComment: () => ({ mutateAsync: vi.fn() }),
+  useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: mocks.writing }),
   useUpdateComment: () => ({ mutateAsync: vi.fn() }),
   useDeleteComment: () => ({ mutate: mocks.remove, isPending: mocks.pending }),
 }))
@@ -30,6 +30,7 @@ beforeEach(() => {
   i18n.addResource('ru', 'translation', 'common.confirm', pdlcLocales.ru.common.confirm)
   mocks.remove.mockReset()
   mocks.pending = false
+  mocks.writing = false
 })
 afterEach(cleanup)
 const panel = () => (
@@ -83,4 +84,22 @@ it('keeps the pending confirmation open and prevents cancellation or duplicate w
   view.rerender(panel())
   await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
   expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+})
+
+it('keeps the active composer while its write is pending instead of switching to an existing comment', async () => {
+  const user = userEvent.setup()
+  const view = render(panel())
+  await user.click(screen.getByRole('button', { name: 'Добавить комментарий' }))
+  const editor = screen.getByRole('textbox')
+  await user.type(editor, 'Pending draft')
+  mocks.writing = true
+  view.rerender(panel())
+  expect(screen.getByRole('button', { name: 'Изменить' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'Изменить' }))
+  expect(screen.getByRole('textbox')).toBe(editor)
+  expect(editor).toHaveValue('Pending draft')
+  mocks.writing = false
+  view.rerender(panel())
+  await user.click(screen.getByRole('button', { name: 'Изменить' }))
+  expect(screen.getByRole('textbox')).toHaveValue('Keep this comment')
 })

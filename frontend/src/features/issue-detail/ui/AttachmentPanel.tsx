@@ -98,16 +98,18 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
   }
 
   return (
-    <div className="space-y-3" data-testid="attachment-panel">
+    <div className="space-y-4" data-testid="attachment-panel">
       <SectionHeader
         level={3}
         title={
           <span className="inline-flex items-center gap-2">
             <Paperclip className="h-4 w-4" aria-hidden />
             {t('attachments.title')}
+            {attachments.length > 0 && (
+              <span className="text-text-muted">({attachments.length})</span>
+            )}
           </span>
         }
-        context={attachments.length > 0 ? `(${attachments.length})` : undefined}
         actions={
           <>
             <input

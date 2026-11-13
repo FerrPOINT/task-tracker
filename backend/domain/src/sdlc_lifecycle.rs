@@ -97,6 +97,8 @@ pub enum LifecycleStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SdlcBoardTask {
     pub issue_id: Uuid,
+    /// A persisted process exists; this grants no access to private SDLC context.
+    pub enrolled: bool,
     pub stage: LifecycleStage,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LifecycleStatus>,
@@ -433,19 +435,6 @@ pub struct PmFeedbackCheckpoint {
     pub previous_run_terminal: ArtifactReceipt,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PmFeedbackResumeContract {
-    pub feedback_message_id: Uuid,
-    pub fence: MachineFence,
-    pub checkpoint_id: Uuid,
-    pub checkpoint_version: i64,
-    pub previous_run_id: Uuid,
-    pub lease_id: Uuid,
-    pub lease_version: i64,
-    pub resume_operation_key: String,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalReceipt {
@@ -512,9 +501,7 @@ impl LifecycleCommand {
             | Self::Reserve {
                 idempotency_key, ..
             }
-            | Self::Heartbeat {
-                idempotency_key, ..
-            }
+            | Self::Heartbeat { idempotency_key, .. }
             | Self::BindRun {
                 idempotency_key, ..
             }
@@ -542,38 +529,30 @@ pub struct AcceptedDeliveryResult {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+/// Read projection of immutable accepted output and its original assignment input.
+/// Mutation receipts keep the original stored AcceptedDeliveryResult shape.
+#[derive(Clone, Debug, PartialEq, utoipa::ToSchema)]
+pub struct AcceptedDeliveryInput {
+    #[serde(flatten)]
+    pub result: AcceptedDeliveryResult,
+    #[schema(required = true, nullable = true)]
+    pub previous_result_id: Option<Uuid>,
+}
+
+impl Serialize for AcceptedDeliveryInput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut value = serde_json::to_value(&self.result).map_err(serde::ser::Error::custom)?;
+        value["previous_result_id"] = serde_json::to_value(self.previous_result_id)
+            .map_err(serde::ser::Error::custom)?;
+        value.serialize(serializer)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
 #[serde(tag = "source", content = "receipt", rename_all = "snake_case")]
 pub enum DeliveryInput {
-    Delivery(AcceptedDeliveryResult),
+    Delivery(AcceptedDeliveryInput),
     LegacyAnalysis(crate::sdlc_reservation::AnalysisResultReceipt),
-}
-
-/// Stable assignment ownership. Timestamps survive historical receipt readback;
-/// current ownership has no expiration and does not depend on a renewal timer.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct DeliveryOwnership {
-    pub lease_id: Uuid,
-    #[schema(minimum = 1, maximum = 9007199254740991i64)]
-    pub version: i64,
-    pub holder_subject: String,
-    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
-    pub claimed_at: DateTime<Utc>,
-    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
-    pub heartbeat_at: DateTime<Utc>,
-    #[serde(default, serialize_with = "ownership_expiration")]
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-fn ownership_expiration<S: serde::Serializer>(
-    value: &Option<DateTime<Utc>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match value {
-        Some(value) => crate::sdlc_execution_lease::utc_nanos(value, serializer),
-        None => serializer.serialize_none(),
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -581,9 +560,78 @@ fn ownership_expiration<S: serde::Serializer>(
 pub struct LifecycleReceipt {
     pub task: LifecycleTask,
     pub assignment: Option<DeliveryAssignment>,
-    pub lease: Option<DeliveryOwnership>,
+    pub lease: Option<DeliveryBinding>,
     pub binding: Option<RunBinding>,
     pub result: Option<AcceptedDeliveryResult>,
+}
+
+/// Current assignment fencing; retained timestamps are archival data, not authority.
+#[derive(Clone, Debug, PartialEq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeliveryBinding {
+    pub lease_id: Uuid,
+    pub version: i64,
+    pub holder_subject: String,
+    pub claimed_at: DateTime<Utc>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub heartbeat_at: Option<DateTime<Utc>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl Serialize for DeliveryBinding {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let timestamp = |value: DateTime<Utc>| value.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+        let mut value = serde_json::json!({"lease_id":self.lease_id,"version":self.version,
+            "holder_subject":self.holder_subject,"claimed_at":timestamp(self.claimed_at)});
+        if let Some(heartbeat) = self.heartbeat_at {
+            value["heartbeat_at"] = serde_json::json!(timestamp(heartbeat));
+            value["expires_at"] = serde_json::json!(self.expires_at.map(timestamp));
+        }
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for DeliveryBinding {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Retained {
+            lease_id: Uuid,
+            version: i64,
+            holder_subject: String,
+            claimed_at: DateTime<Utc>,
+            #[serde(default)]
+            heartbeat_at: Option<DateTime<Utc>>,
+            #[serde(default)]
+            expires_at: Option<DateTime<Utc>>,
+        }
+        let encoded = serde_json::Value::deserialize(deserializer)?;
+        let explicit_expiration = encoded.get("expires_at").is_some();
+        let value: Retained = serde_json::from_value(encoded).map_err(serde::de::Error::custom)?;
+        if value.lease_id.is_nil()
+            || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&value.version)
+            || value.holder_subject.trim().is_empty()
+            || (value.heartbeat_at.is_some() && !explicit_expiration)
+            || (value.heartbeat_at.is_none() && value.expires_at.is_some())
+        {
+            return Err(serde::de::Error::custom("invalid delivery binding"));
+        }
+        Ok(Self {
+            lease_id: value.lease_id,
+            version: value.version,
+            holder_subject: value.holder_subject,
+            claimed_at: value.claimed_at,
+            heartbeat_at: value.heartbeat_at,
+            expires_at: value.expires_at,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -751,4 +799,80 @@ pub trait LifecycleRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<LifecycleReceipt, AppError>;
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn retained() -> serde_json::Value {
+        json!({"lease_id":Uuid::from_u128(1),"version":357,"holder_subject":"scheduler",
+            "claimed_at":"2026-11-09T17:00:00.000000000Z",
+            "heartbeat_at":"2026-11-09T17:58:21.000000000Z",
+            "expires_at":"2026-11-09T17:58:51.000000000Z"})
+    }
+
+    #[test]
+    fn retained_binding_roundtrips_without_changing_dates_or_identity() {
+        let saved = retained();
+        let binding: DeliveryBinding = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(binding).unwrap(), saved);
+        let pm: crate::sdlc_execution_lease::ExecutionLease =
+            serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(pm).unwrap(), saved);
+    }
+
+    #[test]
+    fn untimed_binding_omits_archival_dates_and_preserves_the_current_fence() {
+        let mut saved = retained();
+        let fields = saved.as_object_mut().unwrap();
+        fields.remove("heartbeat_at");
+        fields.remove("expires_at");
+        let binding: DeliveryBinding = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(binding.version, 357);
+        assert!(binding.heartbeat_at.is_none() && binding.expires_at.is_none());
+        assert_eq!(serde_json::to_value(binding).unwrap(), saved);
+        assert!(
+            serde_json::from_value::<crate::sdlc_execution_lease::ExecutionLease>(saved).is_err()
+        );
+    }
+
+    #[test]
+    fn partial_archive_pairs_and_invalid_core_fields_are_rejected() {
+        for field in ["heartbeat_at", "expires_at"] {
+            let mut saved = retained();
+            saved.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<DeliveryBinding>(saved).is_err());
+        }
+        for (field, value) in [
+            ("lease_id", json!(Uuid::nil())),
+            ("version", json!(0)),
+            ("holder_subject", json!("")),
+            ("unexpected", json!(true)),
+        ] {
+            let mut saved = retained();
+            saved[field] = value;
+            assert!(serde_json::from_value::<DeliveryBinding>(saved).is_err());
+        }
+    }
+
+    #[test]
+    fn historical_heartbeat_decodes_only_for_original_operation_readback() {
+        let command = serde_json::from_value::<LifecycleCommand>(json!({
+                "operation":"heartbeat","idempotency_key":"retired",
+                "fence":{"assignment_id":Uuid::from_u128(2),"execution_id":Uuid::from_u128(3),
+                    "fencing_token":1,"lease_id":Uuid::from_u128(1),"expected_lease_version":357}
+            })).unwrap();
+        assert!(matches!(command, LifecycleCommand::Heartbeat { .. }));
+        assert_eq!(command.key(), "retired");
+    }
+
+    #[test]
+    fn retained_permanent_ownership_keeps_its_explicit_null_expiration() {
+        let mut saved = retained();
+        saved["expires_at"] = serde_json::Value::Null;
+        let binding: DeliveryBinding = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(binding).unwrap(), saved);
+    }
 }

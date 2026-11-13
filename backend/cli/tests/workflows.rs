@@ -465,7 +465,9 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--key",
                 "lease key 1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%201"),
+            format!(
+                "/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations?idempotency_key=lease%20key%201"
+            ),
         ),
         (
             vec![
@@ -478,7 +480,9 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--key",
                 "result key 1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%201"),
+            format!(
+                "/api/v1/issues/{TASK}/sdlc/analysis-result/operations?idempotency_key=result%20key%201"
+            ),
         ),
     ] {
         success(&server.run(&args, None).await);
@@ -506,7 +510,7 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
     assert_eq!(invalid.status.code(), Some(2));
     assert_eq!(server.requests().len(), 10);
 
-    // Operation keys remain one opaque path segment, including encoded slashes.
+    // Opaque keys use query values so the shared Base path guard stays strict.
     for (args, path) in [
         (
             vec![
@@ -517,9 +521,11 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--task",
                 TASK,
                 "--key",
-                "lease key/1",
+                "lease-key/1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%2F1"),
+            format!(
+                "/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations?idempotency_key=lease-key%2F1"
+            ),
         ),
         (
             vec![
@@ -530,9 +536,11 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--task",
                 TASK,
                 "--key",
-                "result key/1",
+                "result-key/1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%2F1"),
+            format!(
+                "/api/v1/issues/{TASK}/sdlc/analysis-result/operations?idempotency_key=result-key%2F1"
+            ),
         ),
     ] {
         let before = server.requests().len();
@@ -875,126 +883,60 @@ async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
 }
 
 #[tokio::test]
-async fn sdlc_analysis_commands_forward_json_payloads_without_extra_contracts() {
+async fn sdlc_analysis_retired_writers_are_absent_from_help_and_rejected_before_http() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
-    let reserve = json!({
-        "intent_id": "22222222-2222-2222-2222-222222222222",
-        "expected_requirement_revision": 2,
-        "content_hash": "a".repeat(64),
-        "expected_routing_snapshot_id": "33333333-3333-3333-3333-333333333333",
-        "idempotency_key": "reserve-key"
-    });
-    let heartbeat = json!({
-        "assignment_id": "44444444-4444-4444-4444-444444444444",
-        "execution_id": "55555555-5555-5555-5555-555555555555",
-        "expected_lease_version": 1,
-        "idempotency_key": "heartbeat-key"
-    });
-    let result = json!({
-        "assignment_id": "44444444-4444-4444-4444-444444444444",
-        "execution_id": "55555555-5555-5555-5555-555555555555",
-        "fencing_token": "66666666-6666-6666-6666-666666666666",
-        "requirement_revision": 2,
-        "content_hash": "a".repeat(64),
-        "terminal_receipt_ref": "workflow://terminal/1",
-        "terminal_receipt_sha256": "b".repeat(64),
-        "architecture_input_sha256": "c".repeat(64),
-        "idempotency_key": "result-key"
-    });
-    let server = Server::start(vec![
+    let server = Server::start(vec![]).await;
+    for (group, supported, retired) in [
         (
-            201,
-            json!({"assignment":{"assignment_id":"44444444-4444-4444-4444-444444444444"}}),
+            "reservation",
+            vec!["read", "operation"],
+            vec!["reserve", "heartbeat"],
         ),
-        (
-            200,
-            json!({"assignment":{"assignment_id":"44444444-4444-4444-4444-444444444444"}}),
-        ),
-        (201, json!({"next_stage":"Architecture"})),
-    ])
-    .await;
-
-    success(
-        &server
-            .run(
-                &[
-                    "sdlc",
-                    "analysis",
-                    "reservation",
-                    "reserve",
-                    "--task",
-                    TASK,
-                    "--from-file",
-                    "-",
-                ],
-                Some(&reserve.to_string()),
-            )
-            .await,
-    );
-    success(
-        &server
-            .run(
-                &[
-                    "sdlc",
-                    "analysis",
-                    "reservation",
-                    "heartbeat",
-                    "--task",
-                    TASK,
-                    "--from-file",
-                    "-",
-                ],
-                Some(&heartbeat.to_string()),
-            )
-            .await,
-    );
-    success(
-        &server
-            .run(
-                &[
-                    "sdlc",
-                    "analysis",
-                    "result",
-                    "submit",
-                    "--task",
-                    TASK,
-                    "--from-file",
-                    "-",
-                ],
-                Some(&result.to_string()),
-            )
-            .await,
-    );
-
-    let requests = server.requests();
-    for request in &requests {
-        assert_eq!(request.method, "POST");
-        assert!(request.key.is_none());
+        ("result", vec!["operation"], vec!["submit"]),
+    ] {
+        let output = server
+            .run(&["sdlc", "analysis", group, "--help"], None)
+            .await;
+        assert!(output.status.success());
+        let help = String::from_utf8(output.stdout).unwrap();
+        for command in supported {
+            assert!(
+                help.lines()
+                    .any(|line| line.split_whitespace().next() == Some(command)),
+                "missing {group} {command}"
+            );
+        }
+        for command in retired {
+            assert!(
+                !help
+                    .lines()
+                    .any(|line| line.split_whitespace().next() == Some(command)),
+                "retired {group} {command} still advertised"
+            );
+            let output = server
+                .run(
+                    &[
+                        "sdlc",
+                        "analysis",
+                        group,
+                        command,
+                        "--task",
+                        TASK,
+                        "--from-file",
+                        "-",
+                    ],
+                    None,
+                )
+                .await;
+            assert_eq!(output.status.code(), Some(2));
+            assert!(
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .contains(&format!("unrecognized subcommand '{command}'"))
+            );
+        }
     }
-    assert_eq!(
-        requests[0].path,
-        format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation")
-    );
-    assert_eq!(
-        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
-        reserve
-    );
-    assert_eq!(
-        requests[1].path,
-        format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/heartbeat")
-    );
-    assert_eq!(
-        serde_json::from_slice::<Value>(&requests[1].body).unwrap(),
-        heartbeat
-    );
-    assert_eq!(
-        requests[2].path,
-        format!("/api/v1/issues/{TASK}/sdlc/analysis-result")
-    );
-    assert_eq!(
-        serde_json::from_slice::<Value>(&requests[2].body).unwrap(),
-        result
-    );
+    assert!(server.requests().is_empty());
 }
 
 #[tokio::test]

@@ -715,22 +715,8 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
         DeliveryResult::Analyst { .. } => LifecycleStage::Architecture,
         DeliveryResult::Architect { .. } => LifecycleStage::Development,
         DeliveryResult::Developer { .. } => LifecycleStage::Review,
-        DeliveryResult::Reviewer {
-            verdict: ReviewVerdict::Approved,
-            ..
-        } => LifecycleStage::Testing,
-        DeliveryResult::Tester {
-            verdict: TestVerdict::Passed,
-            ..
-        } => LifecycleStage::Deployment,
-        DeliveryResult::Reviewer {
-            verdict: ReviewVerdict::Rework,
-            ..
-        }
-        | DeliveryResult::Tester {
-            verdict: TestVerdict::Rework,
-            ..
-        } => LifecycleStage::Rework,
+        DeliveryResult::Reviewer { .. } => LifecycleStage::Testing,
+        DeliveryResult::Tester { .. } => LifecycleStage::Deployment,
         DeliveryResult::DevOps { .. } => LifecycleStage::Deployment,
     };
     let version = task
@@ -742,15 +728,6 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
     task.resume_chat_id = None;
-    if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
-        // Work is completed, not approved; no handoff means no reset to Ready.
-        task.status = LifecycleStatus::Completed;
-        task.waiting_reason = Some("rework_limit_reached".into());
-        return Ok(());
-    }
-    if next == LifecycleStage::Rework {
-        task.cycle += 1;
-    }
     task.stage = next;
     if matches!(result, DeliveryResult::DevOps { .. }) {
         task.status = LifecycleStatus::Completed;
@@ -937,74 +914,6 @@ pub fn validate_new_pm_feedback(state: &domain::sdlc::TaskState) -> Result<(), A
         ));
     }
     Ok(())
-}
-
-pub fn pm_feedback_resume_contract(
-    state: &domain::sdlc::TaskState,
-    feedback: &PmFeedbackReceipt,
-    checkpoint: &PmFeedbackCheckpoint,
-    lease: &domain::sdlc_execution_lease::ExecutionLeaseReadback,
-) -> Result<PmFeedbackResumeContract, AppError> {
-    state.require_root()?;
-    let assignment = state
-        .assignment
-        .as_ref()
-        .ok_or_else(|| AppError::conflict("current PM assignment required"))?;
-    if !matches!(
-        state.stage,
-        domain::sdlc::Stage::Draft | domain::sdlc::Stage::Clarification
-    ) || feedback.task_id != state.task_id
-        || feedback.project_id != state.project_id
-        || feedback.root_task_id != state.task_id
-        || feedback.owner_subject != state.owner_subject
-        || feedback.tracker_instance_id != state.tracker_instance_id
-        || feedback.fence != checkpoint.fence
-        || lease.fence != checkpoint.fence
-        || lease.binding.task_id != state.task_id
-        || lease.binding.root_task_id != state.task_id
-        || lease.binding.project_id != state.project_id
-        || lease.binding.tracker_instance_id != state.tracker_instance_id
-        || lease.binding.owner_subject != state.owner_subject
-        || checkpoint.fence.assignment_id != assignment.assignment_id
-        || checkpoint.fence.execution_id != assignment.execution_id
-        || checkpoint.fence.agent_id != assignment.agent_id
-        || checkpoint.fence.assignment_version != assignment.version
-        || checkpoint.checkpoint_id.is_nil()
-        || checkpoint.previous_run_id.is_nil()
-        || !(1..=MAX_SAFE_VERSION).contains(&checkpoint.checkpoint_version)
-    {
-        return Err(AppError::conflict(
-            "PM feedback checkpoint/current execution mismatch or business lifecycle frozen",
-        ));
-    }
-    validate_artifact(&checkpoint.previous_run_terminal)?;
-    let current = lease
-        .current
-        .as_ref()
-        .ok_or_else(|| AppError::conflict("PM feedback lease readback absent"))?;
-    if current.holder_subject != assignment.machine_subject {
-        return Err(AppError::Forbidden);
-    }
-    if current.expires_at <= lease.observed_at
-        || !matches!(
-            lease.state,
-            domain::sdlc_execution_lease::ExecutionLeaseState::Active
-        )
-    {
-        return Err(AppError::conflict(
-            "pm_feedback_expired_lease_requires_guarded_resume_reconciliation",
-        ));
-    }
-    Ok(PmFeedbackResumeContract {
-        feedback_message_id: feedback.message_id,
-        fence: checkpoint.fence.clone(),
-        checkpoint_id: checkpoint.checkpoint_id,
-        checkpoint_version: checkpoint.checkpoint_version,
-        previous_run_id: checkpoint.previous_run_id,
-        lease_id: current.lease_id,
-        lease_version: current.version,
-        resume_operation_key: format!("pm-feedback:{}", feedback.message_id),
-    })
 }
 
 #[cfg(test)]

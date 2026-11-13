@@ -171,40 +171,8 @@ impl IssueServiceImpl {
         }
     }
 
-    /// Create a notification and publish a real-time SSE event.
-    async fn create_notification(&self, notification: domain::Notification) {
-        let recipient_id = notification.recipient_id;
-        let event_type = notification.event_type.as_ref();
-        let actor_is_recipient = notification.actor_id == Some(recipient_id);
-        let allowed = match self.notification_settings.get_settings(recipient_id).await {
-            Ok(settings) => {
-                (settings.notify_own_changes || !actor_is_recipient)
-                    && !settings
-                        .disabled_event_types
-                        .iter()
-                        .any(|value| value.as_ref() == event_type)
-            }
-            // Missing settings preserve the existing default delivery behavior.
-            Err(shared::AppError::NotFound(_)) => !actor_is_recipient,
-            Err(_) => return,
-        };
-        if allowed && self.notifications.save(&notification).await.is_ok() {
-            self.events
-                .publish(shared::TrackerEvent::NotificationCreated {
-                    recipient_id: recipient_id.to_string(),
-                });
-        }
-    }
-
     async fn issue_recipients(&self, issue: &Issue) -> Vec<UserId> {
-        let mut recipients = vec![issue.reporter_id];
-        if let Some(assignee_id) = issue.assignee_id {
-            recipients.push(assignee_id);
-        }
-        if let Ok(watchers) = self.watchers.list_by_issue(issue.id).await {
-            recipients.extend(watchers.into_iter().map(|watcher| watcher.user_id));
-        }
-        recipients
+        super::helpers::issue_notification_recipients(&self.watchers, issue).await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -219,29 +187,19 @@ impl IssueServiceImpl {
         body: Option<String>,
         metadata: serde_json::Value,
     ) {
-        let mut seen = HashSet::new();
-        let action_url = format!("/issues/{}", issue.id);
-        for recipient_id in recipients {
-            if !seen.insert(recipient_id) {
-                continue;
-            }
-            self.create_notification(domain::Notification {
-                id: shared::NotificationId::new(),
-                recipient_id,
-                event_type: event_type.into(),
-                entity_type: "issue".into(),
-                entity_id: Some(issue.id.as_uuid()),
-                actor_id: Some(actor_id),
-                title: title.clone().into(),
-                body: body.clone().map(Into::into),
-                is_read: false,
-                read_at: None,
-                action_url: Some(action_url.clone().into()),
-                metadata: metadata.clone(),
-                created_at: shared::now(),
-            })
-            .await;
-        }
+        super::helpers::notify_recipients(
+            &self.notifications,
+            &self.notification_settings,
+            &self.events,
+            recipients,
+            issue,
+            actor_id,
+            event_type,
+            title,
+            body,
+            metadata,
+        )
+        .await;
     }
 
     async fn require_active_user(&self, user_id: UserId, field: &str) -> Result<(), AppError> {
@@ -627,6 +585,37 @@ impl crate::context::IssueService for IssueServiceImpl {
             .require_project_access(issue.project_id, requester)
             .await?;
         Ok(issue.id)
+    }
+
+    async fn get_details(
+        &self,
+        id: IssueId,
+        requester: UserId,
+    ) -> Result<crate::dto::IssueDetailDto, AppError> {
+        let issue = self.issues.get_by_id(id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
+        let mut tasks = self.boards.sdlc_tasks(issue.project_id, &[id]).await?;
+        let persisted = match tasks.as_slice() {
+            [] => None,
+            [task] if task.issue_id == id.as_uuid() => tasks.pop(),
+            _ => {
+                return Err(AppError::internal(
+                    "invalid single-issue lifecycle projection",
+                ));
+            }
+        };
+        let lifecycle = crate::dto::project_issue_lifecycle(id.as_uuid(), persisted);
+        let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
+        let issue = super::helpers::build_issue_dto(
+            self.users.clone(),
+            self.labels.clone(),
+            issue,
+            name.as_str(),
+        )
+        .await?;
+        Ok(crate::dto::IssueDetailDto { issue, lifecycle })
     }
 
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError> {

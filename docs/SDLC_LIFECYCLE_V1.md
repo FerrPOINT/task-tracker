@@ -281,7 +281,8 @@ main/PR116 и предыдущие PM foundation/B-SDLC-01/B-SDLC-05 source edit
 
 Девять стадий: Draft, Backlog, Analysis, Architecture, Development, Review,
 Testing, Rework, Deployment. Операционные статусы Ready/InProgress/Completed
-независимы от stage. В UI: Готово/В работе/Завершено. Waiting/blocked/queued —
+независимы от stage. В UI состояние текущего этапа отображается как
+«Ожидает выполнения» / «В работе» / «Этап завершён». Waiting/blocked/queued —
 derived scheduler states, не новая стадия и не четвёртый операционный статус.
 
 Target aggregates (конкретные SQL migrations — дальнейшая реализация):
@@ -346,7 +347,12 @@ Accepted history/evidence не переписывается. После barrier 
 Development/Ready aggregate → Review → Testing → Deployment/Completed.
 Root завершает собственный Deployment + acceptance, не rollup children.
 
-## Terminal transitions
+## Целевые terminal transitions
+
+Ниже сохранена target-модель прежнего протокола. Для нового Reviewer Complete
+и остальных single-task ролей текущий source-контракт — линейная передача без
+Rework; см. раздел «Линейная Передача Ролей Без Rework» в конце документа.
+Эта историческая таблица не задаёт текущую политику исполнения.
 
 `completeAssignedStage(sessionId, runId, expectedTaskRevision, outcome,
 findings?, operationKey)` — название target capability, не CLI-команда.
@@ -395,3 +401,31 @@ findings empty/late; retry vs cycle; cycle limit; insufficient capacity; TTL с
 живым run; stale fences; mode injection; context token mutation; permission leak.
 Текущие generic CRUD/status/links переиспользуются; новые guarded lifecycle команды
 не заменять автоматизацией UI или обычным issue transition.
+
+## Линейная Передача Ролей Без Rework (source 2026-11-10)
+
+Агент первой фазой вызывает guarded Start и проверяет InProgress. Последней,
+после принятого финального отчёта Workflow, сохраняет обычную сводку Task и сам
+завершает текущее назначение с проверкой Completed. При complete=false он продолжает
+следующую фазу. Workflow complete=true сам по себе не меняет статус Tracker.
+
+После настоящего native terminal Tracker передаёт задачу Analysis → Architecture
+→ Development → Review → Testing → Deployment, сбрасывая статус в Ready для
+следующего агента. Reviewer сохраняет approved/rework и PR comments, Tester —
+passed/rework и фактические проверки; оба исхода передают работу дальше. Стадия
+Rework автоматически не выбирается, cycle не увеличивается. Completed означает
+выполненную работу роли, а не отсутствие дефектов. После DevOps остаются
+Deployment/Completed и runtime Terminal; следующего назначения нет.
+
+Сводка принятого Workflow отчёта публикуется обычным комментарием Task в существующем
+доступе назначения. Новые API доступа к задаче не нужны. Fleet выполняет прежний
+native terminal/Complete; агент не получает scheduler credentials. Старые принятые
+результаты и переходы не переписываются. Возврат на исправление и повторные циклы
+Developer ↔ Reviewer ↔ Tester остаются следующим этапом. Дефекты не снимают
+авторизацию, обязательные входы или проверки допустимости реального deployment.
+
+Forward-миграция 0117 меняет только будущие назначения следующей стадии в
+`sdlc_delivery_result_gate`; ранее применённая 0116 и её результаты сохраняются.
+Проверки producer, живого назначения/lease, proposal и terminal receipt остаются.
+Прежние миграции и строки истории не изменяются; откат нового контракта — только
+новой согласованной миграцией, без удаления принятых результатов.

@@ -475,7 +475,9 @@ impl TaskSourceRepository for PostgresSdlcRepository {
             && let Some(assignment) = current.receipt.assignment.as_ref()
         {
             *workspace_preparation_commit = match assignment.stage {
-                domain::sdlc_lifecycle::LifecycleStage::Development => Some(binding.base_commit.clone()),
+                domain::sdlc_lifecycle::LifecycleStage::Development => {
+                    Some(binding.base_commit.clone())
+                }
                 domain::sdlc_lifecycle::LifecycleStage::Rework => {
                     // Follow the immutable accepted predecessor chain from the
                     // finding, rather than trusting the current Git branch head.

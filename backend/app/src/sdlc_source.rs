@@ -213,10 +213,7 @@ pub fn configured_source_binding(
 
 /// The existing namespace reader may prove checkout preparation while Fleet
 /// holds the exact Developer reservation. This does not authorize a run.
-pub fn workspace_preparation_authorized(
-    source: &TaskSourceReadback,
-    execution: &SdlcContext,
-) -> bool {
+pub fn workspace_preparation_allowed(source: &TaskSourceReadback, execution: &SdlcContext) -> bool {
     let TaskSourceReadback::Blocked {
         reason: SourceBlockReason::ExecutionNotRunning,
         binding: Some(source),
@@ -227,9 +224,11 @@ pub fn workspace_preparation_authorized(
         return false;
     };
     let receipt = &current.receipt;
-    let (Some(assignment), Some(lease), Some(exposed)) = (
-        receipt.assignment.as_ref(), receipt.lease.as_ref(), execution.assignment.as_ref(),
-    ) else { return false; };
+    let (Some(assignment), Some(lease), Some(exposed)) =
+        (&receipt.assignment, &receipt.lease, &execution.assignment)
+    else {
+        return false;
+    };
     source.development_workspace_id.is_some()
         && execution.task_id == source.task_id
         && execution.status == Some(LifecycleStatus::Ready)

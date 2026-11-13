@@ -41,7 +41,10 @@ pub fn human_route_machine(subject: &str) -> bool {
 
 pub async fn binding_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
     let subjects = if req.method() == axum::http::Method::GET {
-        &["TT_NAMESPACE__OWNER_SUBJECTS", "TT_NAMESPACE__READER_SUBJECTS"][..]
+        &[
+            "TT_NAMESPACE__OWNER_SUBJECTS",
+            "TT_NAMESPACE__READER_SUBJECTS",
+        ][..]
     } else {
         &["TT_NAMESPACE__OWNER_SUBJECTS"][..]
     };
@@ -379,12 +382,13 @@ pub async fn task_context(
             .source_repository()?
             .task_source(id, &actor)
             .await?;
-        let workspace_preparation_authorized =
-            app::sdlc_source::workspace_preparation_authorized(&source, &execution);
+        let workspace_preparation_allowed =
+            app::sdlc_source::workspace_preparation_allowed(&source, &execution);
         let workspace_preparation_commit = match &source {
             domain::sdlc_source::TaskSourceReadback::Blocked {
-                workspace_preparation_commit, ..
-            } if workspace_preparation_authorized => workspace_preparation_commit.clone(),
+                workspace_preparation_commit,
+                ..
+            } if workspace_preparation_allowed => workspace_preparation_commit.clone(),
             _ => None,
         };
         let source_binding = app::sdlc_source::configured_source_binding(source)?;
@@ -396,8 +400,7 @@ pub async fn task_context(
             "assignment": execution.assignment,
             "requirement_revision": execution.requirement_revision,
             "source_binding": source_binding,
-            "workspace_preparation_authorized": workspace_preparation_authorized,
-            "workspace_preparation_expires_at": null,
+            "workspace_preparation_authorized": workspace_preparation_allowed,
             "workspace_preparation_commit": workspace_preparation_commit,
         });
     }
@@ -833,12 +836,7 @@ pub async fn owner_v2_auth(mut req: Request, next: Next) -> Result<Response, Sta
     if !may_apply_space_owner_v2(&verified.context, registered) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let validity = shared::space_access::AdmissionValidity::confirmed(
-        verified.lifetime.source_observed_at,
-        verified.lifetime.local_valid_until(),
-        i64::MAX,
-    )
-    .ok_or(StatusCode::UNAUTHORIZED)?;
+    let validity = verified.confirmation_validity().map_err(|_| StatusCode::UNAUTHORIZED)?;
     let authority = shared::space_lifecycle::SpaceOwnerAuthority::confirmed(
         shared::space_access::CentralIdentity {
             issuer: verified.issuer,

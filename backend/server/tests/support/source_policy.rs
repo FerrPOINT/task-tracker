@@ -53,7 +53,35 @@ pub async fn verify(
     }
     let mut injected = command;
     injected["verification"] = json!({"fixture":"untrusted caller"});
-    post(client, &policy, administrator, &injected, 422).await;
+    let tables = [
+        "sdlc_source_policy_revisions",
+        "sdlc_source_policy_operations",
+        "sdlc_draft_source_enrollments",
+        "sdlc_task_source_bindings",
+        "sdlc_outbox",
+    ];
+    let mut before = Vec::new();
+    for table in tables {
+        before.push(count(db, table).await);
+    }
+    // Unknown fields are rejected by Axum's Json extractor, not a JSON AppError.
+    let response = client
+        .post(&policy)
+        .bearer_auth(administrator)
+        .json(&injected)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, 422, "{policy}: {body}");
+    for (table, expected) in tables.into_iter().zip(before) {
+        assert_eq!(
+            count(db, table).await,
+            expected,
+            "rejection mutated {table}"
+        );
+    }
     let enroll = json!({"expected_preflight_sha256":"a".repeat(64),"source_revision":1,
         "policy_hash":"b".repeat(64),"idempotency_key":"enrollment-http"});
     for (token, expected) in [

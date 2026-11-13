@@ -180,13 +180,11 @@ fn configured(current: &LifecycleReceipt, config: &SdlcConfig) -> Result<(), App
     Ok(())
 }
 
-/// Expiry blocks new agent proposals/holds. Terminal reconciliation still needs exact custody,
-/// but may happen after expiry; expiry never supplies terminal evidence.
+/// Both proposals and terminal reconciliation require the exact current assignment fence.
 fn current_custody<'a>(
     current: &'a LifecycleReceipt,
     fence: &DeliveryFence,
     holder: &str,
-    live_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<(&'a DeliveryAssignment, &'a RunBinding), AppError> {
     crate::sdlc_lifecycle::validate_fence(fence)?;
     let task = &current.task;
@@ -218,10 +216,7 @@ fn current_custody<'a>(
         || assignment.lease_id != fence.lease_id
         || lease.lease_id != fence.lease_id
         || !positive(lease.version)
-        || fence.expected_lease_version > lease.version
-        // Historical producer fences survive unchanged ownership; scheduler
-        // handoff remains an exact ownership-version CAS.
-        || (live_at.is_none() && lease.version != fence.expected_lease_version)
+        || lease.version != fence.expected_lease_version
         || lease.holder_subject != holder
         || binding.chat_id.is_nil()
         || binding.run_id.is_nil()
@@ -247,7 +242,6 @@ fn prepare_blocker(
         current,
         &proposal.fence,
         &config.reservation_scheduler_subject,
-        Some(allocation.observed_at),
     )?;
     crate::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
     if actor.subject != binding.machine_subject {
@@ -345,7 +339,7 @@ pub fn replay_blocker(
 }
 
 /// Required inside all existing Complete/Reserve/EnsureQueued/Reconcile-progress transactions.
-/// Heartbeat and exact terminal handoff remain available while held.
+/// Exact terminal handoff remains available while held.
 pub fn ensure_technical_progress_allowed(
     current: &LifecycleReceipt,
     blocker: Option<&CriticalBlockerReceipt>,
@@ -433,7 +427,7 @@ pub fn return_to_pm(
 ) -> Result<CriticalPolicyChange, AppError> {
     crate::sdlc_reservation::scheduler(actor, config)?;
     configured(current, config)?;
-    current_custody(current, &command.review.fence, &actor.subject, None)?;
+    current_custody(current, &command.review.fence, &actor.subject)?;
     match_blocker(current, blocker, &command.review)?;
     if blocker.role == DeliveryRole::Analyst {
         return Err(AppError::conflict("Analyst cannot return a task to PM"));
@@ -484,7 +478,6 @@ pub fn authorize_critical_pm_blocker_read(
     review: &domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
     current: &domain::sdlc_pm_draft::PmDraftReservation,
     lease: Option<&domain::sdlc_execution_lease::ExecutionLeaseReceipt>,
-    observed_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), AppError> {
     if state.configured_cli() {
         crate::sdlc_configured_cli::authorize_configured_pm(state, actor)?;
@@ -544,8 +537,6 @@ pub fn authorize_critical_pm_blocker_read(
         || lease.lease.holder_subject != actor.subject
         || !positive(lease.lease.version)
         || lease.lease.claimed_at > lease.lease.heartbeat_at
-        || lease.lease.heartbeat_at > observed_at
-        || observed_at >= lease.lease.expires_at
     {
         return Err(AppError::Forbidden);
     }

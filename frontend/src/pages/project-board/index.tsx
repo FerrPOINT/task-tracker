@@ -1,11 +1,9 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
-  RadioGroup,
-  TextLink,
   Card,
   CardContent,
-  Badge,
+  CardTitle,
   PageHeader,
   ProjectAvatar,
   Button,
@@ -14,7 +12,7 @@ import {
   UserAvatar,
 } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
-import { useParams, useSearchParams } from 'react-router'
+import { useParams } from 'react-router'
 import { List } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -24,52 +22,36 @@ import type { components } from '@/api/generated'
 
 export type Issue = components['schemas']['IssueResponse']
 
-function IssueCard({ issue, compact, status }: { issue: Issue; compact: boolean; status?: string }) {
-  const { t } = useTranslation()
+function IssueCard({ issue, status }: { issue: Issue; status?: string }) {
   return (
-    <Card asChild surface="raised">
-      <article>
-        <CardContent density={compact ? 'compact' : 'default'}>
-          <div className="flex items-start gap-2">
-            <TextLink asChild className="min-w-0 flex-1">
-              <Link to={`/issues/${issue.id}`}>
-                <div className="text-xs text-text-muted">{issue.key}</div>
-                <div
-                  className={`${compact ? 'my-0.5' : 'my-0.5 md:my-1'} break-words text-sm font-medium`}
-                >
-                  {issue.summary}
-                </div>
-              </Link>
-            </TextLink>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <PriorityBadge priority={issue.priority} />
-              <Badge tone="muted">
-                {t(`issueType.${issue.issue_type.toLowerCase()}`, {
-                  defaultValue: issue.issue_type,
-                })}
-              </Badge>
+    <Card asChild interactive surface="raised">
+      <Link to={`/issues/${issue.id}`} aria-label={`${issue.key} ${issue.summary}`}>
+        <article>
+          <CardContent density="compact" className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-text-muted">{issue.key}</span>
+              {issue.assignee_id && (
+                <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
+              )}
             </div>
-            {status && <Badge tone="muted">{status}</Badge>}
-            <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
-          </div>
-        </CardContent>
-      </article>
+            <CardTitle className="break-words">{issue.summary}</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              {status && <span className="text-xs text-text-muted">{status}</span>}
+              <PriorityBadge priority={issue.priority} />
+            </div>
+          </CardContent>
+        </article>
+      </Link>
     </Card>
   )
 }
 
 function SdlcBoard({
-  projectKey,
   sdlc,
   issues,
-  compact,
 }: {
-  projectKey: string
   sdlc: components['schemas']['SdlcBoardResponse']
   issues: Issue[]
-  compact: boolean
 }) {
   const { t } = useTranslation()
   const tasks = new Map(sdlc.tasks.map((task) => [task.issue_id, task]))
@@ -78,7 +60,7 @@ function SdlcBoard({
       <div
         role="region"
         aria-label={t('board.columns')}
-        className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
+        className="grid min-w-0 gap-3 md:grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))]"
       >
         {sdlc.stages.map((stage) => {
           const stageIssues = issues.filter((issue) => tasks.get(issue.id)?.stage === stage)
@@ -95,7 +77,6 @@ function SdlcBoard({
                     <IssueCard
                       key={issue.id}
                       issue={issue}
-                      compact={compact}
                       status={status ? t(`board.sdlcStatus.${status}`) : undefined}
                     />
                   )
@@ -104,11 +85,6 @@ function SdlcBoard({
                   <p className="text-xs text-text-muted">{t('board.emptyStatus')}</p>
                 )}
               </div>
-              {stage === 'Draft' && (
-                <CreateTaskAction projectKey={projectKey} variant="dashed" className="m-2">
-                  {t('board.create')}
-                </CreateTaskAction>
-              )}
             </section>
           )
         })}
@@ -120,48 +96,21 @@ function SdlcBoard({
 export function ProjectBoardPage() {
   const { t } = useTranslation()
   const { projectKey } = useParams<{ projectKey?: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
   const key = projectKey ?? ''
   const { data: board, isLoading, error } = useBoard(key)
   if (isLoading) return <LoadingState message={t('issue.loading')} />
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
-  const { issues, sprint } = board
-  const density = searchParams.get('density') === 'compact' ? 'compact' : 'comfortable'
-
-  function setDensity(nextDensity: 'comfortable' | 'compact') {
-    const next = new URLSearchParams(searchParams)
-    if (nextDensity === 'compact') next.set('density', 'compact')
-    else next.delete('density')
-    setSearchParams(next, { replace: true })
-  }
+  const { issues, sdlc } = board
 
   const header = (
     <div className="mb-4">
       <PageHeader
-        title={t('board.title', {
-          projectName: key,
-          sprintName: sprint?.name ?? t('board.backlog'),
-        })}
-        leading={<ProjectAvatar projectKey={key ?? ''} />}
-        context={t('board.subtitle', {
-          backlog: board.backlog_total,
-          remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
-        })}
+        title={t('board.title', { projectName: key })}
+        leading={<ProjectAvatar projectKey={key} />}
+        context={t('board.subtitle', { count: sdlc.tasks.length })}
         actions={
           <>
-            <div className="hidden md:block">
-              <RadioGroup
-                appearance="segmented"
-                label={t('board.density')}
-                value={density}
-                onValueChange={(value) => setDensity(value as 'comfortable' | 'compact')}
-                options={(['comfortable', 'compact'] as const).map((value) => ({
-                  value,
-                  label: t(`board.density${value === 'compact' ? 'Compact' : 'Comfortable'}`),
-                }))}
-              />
-            </div>
             <Button
               variant="outline"
               size="sm"
@@ -174,6 +123,9 @@ export function ProjectBoardPage() {
                 <span className="hidden sm:inline">{t('board.backlog')}</span>
               </Link>
             </Button>
+            <CreateTaskAction projectKey={key} aria-label={t('board.create')} size="sm">
+              {t('board.create')}
+            </CreateTaskAction>
           </>
         }
       />
@@ -183,7 +135,7 @@ export function ProjectBoardPage() {
   return (
     <div className="min-w-0">
       {header}
-      <SdlcBoard projectKey={key} sdlc={board.sdlc} issues={issues} compact={density === 'compact'} />
+      <SdlcBoard sdlc={board.sdlc} issues={issues} />
     </div>
   )
 }

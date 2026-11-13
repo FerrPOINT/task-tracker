@@ -101,7 +101,7 @@ struct Running {
     head: LifecycleReceipt,
     producer: Principal,
     evidence: domain::attachment_artifact::AttachmentArtifact,
-    design: Option<ArtifactReceipt>,
+    result: DeliveryResult,
 }
 
 fn fence(head: &LifecycleReceipt) -> DeliveryFence {
@@ -240,30 +240,33 @@ async fn output(
         .unwrap()
         .unwrap()
         .artifact();
-    let design = if head.task.stage == LifecycleStage::Architecture {
-        Some(crate::sdlc::configured_test_support::architect_design(
-            &f.repo, task, &producer, &head,
-        ).await)
-    } else { None };
+    let result = match head.task.stage {
+        LifecycleStage::Analysis => DeliveryResult::Analyst {
+            analysis: evidence.receipt.clone(),
+        },
+        LifecycleStage::Architecture => DeliveryResult::Architect {
+            design: crate::sdlc::configured_test_support::save_architect_plan(
+                &f.repo,
+                task,
+                &producer,
+                &head,
+                "critical:architect-plan",
+            )
+            .await,
+        },
+        _ => panic!("fixture supports only its actual Analyst/Architect assignments"),
+    };
     Running {
         task,
         head,
         producer,
         evidence,
-        design,
+        result,
     }
 }
 
 fn result(r: &Running) -> DeliveryResult {
-    match r.head.task.stage {
-        LifecycleStage::Analysis => DeliveryResult::Analyst {
-            analysis: r.evidence.receipt.clone(),
-        },
-        LifecycleStage::Architecture => DeliveryResult::Architect {
-            design: r.design.clone().expect("Architect fixture must publish its plan"),
-        },
-        _ => panic!("fixture supports only its actual Analyst/Architect assignments"),
-    }
+    r.result.clone()
 }
 
 fn completion_request(r: &Running) -> (SubmitDeliveryProposal, TerminalReceipt) {
@@ -504,14 +507,8 @@ async fn critical_pg_scenario() {
     eprintln!("critical_pg.phase.hold.begin");
     let (one, actual) = Box::pin(async {
     let frozen_body = body.clone();
-    // A heartbeat cannot replace or advance the permanent assignment fence.
-    let before_heartbeat = snapshot(&f, r.task).await;
-    assert!(matches!(f.repo.lifecycle_command(
-        r.task, &f.writer, LifecycleCommand::Heartbeat {
-            fence: fence(&r.head), idempotency_key: "before-critical-heartbeat".into(),
-        },
-    ).await, Err(AppError::Conflict(_))));
-    assert_eq!(snapshot(&f, r.task).await, before_heartbeat);
+    // Fresh reads do not mutate assignment custody or its version.
+    r.head = f.repo.lifecycle_read(r.task, &f.reader).await.unwrap().receipt;
     assert_eq!(body.fence.expected_lease_version, r.head.lease.as_ref().unwrap().version);
     let before = snapshot(&f, r.task).await;
     let initial_routing = r.head.task.routing.clone();
@@ -723,21 +720,19 @@ async fn critical_pg_scenario() {
 
     eprintln!("critical_pg.phase.progress.begin");
     Box::pin(async {
-        // Rejected heartbeat leaves the original Held receipt and its fence unchanged.
-        let held_before_heartbeat = snapshot(&f, r.task).await;
-        assert!(matches!(f.repo.lifecycle_command(
-            r.task, &f.writer, LifecycleCommand::Heartbeat {
-                fence: fence(&actual), idempotency_key: "held-heartbeat".into(),
-            },
-        ).await, Err(AppError::Conflict(_))));
-        assert_eq!(snapshot(&f, r.task).await, held_before_heartbeat);
-        r.head = actual.clone();
-        let replay_after_heartbeat = f
+        r.head = f
+            .repo
+            .lifecycle_read(r.task, &f.reader)
+            .await
+            .unwrap()
+            .receipt;
+        assert_eq!(r.head, actual);
+        let replay_after_read = f
             .repo
             .submit_critical_blocker_with_storage(r.task, &r.producer, body.clone(), &CorruptBytes)
             .await
             .unwrap();
-        assert_eq!(replay_after_heartbeat, (one.clone(), true));
+        assert_eq!(replay_after_read, (one.clone(), true));
         assert_eq!(
             f.repo
                 .critical_blocker_operation(r.task, &r.producer, &body.idempotency_key)
@@ -960,7 +955,7 @@ async fn return_held_to_pm(
             ));
             assert_eq!(snapshot(f, r.task).await, before);
         }
-        // Caller must preserve the body but refresh ALL current CAS fields after heartbeat.
+        // Every current CAS component remains exact without an ownership clock.
         for mismatch in 0..10 {
             let mut invalid = command.clone();
             match mismatch {

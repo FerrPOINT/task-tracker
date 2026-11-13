@@ -200,7 +200,7 @@ async fn authority(
         {
             return Err(AppError::Forbidden);
         }
-        ensure_live(tx, &head).await?;
+        ensure_running(&head)?;
     }
     Ok(Authority {
         user,
@@ -209,7 +209,7 @@ async fn authority(
     })
 }
 
-async fn ensure_live(_tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Result<(), AppError> {
+fn ensure_running(head: &LifecycleReceipt) -> Result<(), AppError> {
     let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
     let lease = head.lease.as_ref().ok_or(AppError::Forbidden)?;
     if head.task.runtime != RuntimeState::Running
@@ -218,7 +218,7 @@ async fn ensure_live(_tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Resu
         || lease.version < 1
     {
         return Err(AppError::conflict(
-            "artifact publisher not running or ownership changed",
+            "artifact publisher not running or binding invalid",
         ));
     }
     // The scheduler owns this lease. Agent identity is the run binding, never lease.holder_subject.
@@ -431,8 +431,8 @@ pub(crate) async fn publish(
         .get(&issue.to_string(), item.storage_key.as_ref())
         .await?;
     app::attachment_artifacts::verify_bytes(&item, &retained)?;
-    // Locks retain assignment/ACL throughout I/O; check the actual clock again before metadata commit.
-    ensure_live(&tx, &auth.head).await?;
+    // Locks retain assignment/ACL throughout I/O and metadata commit.
+    ensure_running(&auth.head)?;
     let metadata = serde_json::json!({
         "id": item.id.as_uuid(), "issue_id": issue.as_uuid(), "author_id": auth.user,
         "file_name": item.file_name, "content_type": item.content_type,
