@@ -193,7 +193,7 @@ impl ReworkFixture {
                 project,
                 &owner,
                 CreateDraftCommand {
-                    interaction_protocol: None,
+                    interaction_protocol: Some(domain::sdlc::InteractionProtocol::ConfiguredCliV1),
                     flow: Some(DraftFlow::SingleTaskV1),
                     title: "One actual Tracker task".into(),
                     description: "Synthetic persisted Reviewer and Tester rework fixture".into(),
