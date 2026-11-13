@@ -2244,6 +2244,69 @@ async fn dashboard_get_propagates_repo_error() {
 }
 
 #[tokio::test]
+async fn issue_detail_rejects_foreign_or_duplicate_lifecycle_rows_after_authorization() {
+    use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Projection {
+        rows: Vec<SdlcBoardTask>,
+        reads: Arc<AtomicUsize>,
+    }
+    #[async_trait::async_trait]
+    impl BoardRepository for Projection {
+        async fn sdlc_tasks(&self, _: ProjectId, _: &[IssueId]) -> Result<Vec<SdlcBoardTask>, AppError> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            Ok(self.rows.clone())
+        }
+        async fn get_by_id(&self, id: shared::BoardId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_by_id(id).await
+        }
+        async fn get_default_by_project(&self, id: ProjectId) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_default_by_project(id).await
+        }
+        async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError> {
+            domain::StubBoardRepository.get_default_by_project_key(key).await
+        }
+        async fn save(&self, board: &Board) -> Result<(), AppError> {
+            domain::StubBoardRepository.save(board).await
+        }
+    }
+
+    let (base, owner) = ctx_with_demo_data().await;
+    let issue = create_demo_issue(&base, &owner, "Detail lifecycle contract").await;
+    let native = SdlcBoardTask {
+        issue_id: issue.as_uuid(), enrolled: true, stage: LifecycleStage::Draft, status: None,
+    };
+    let foreign = SdlcBoardTask { issue_id: uuid::Uuid::new_v4(), ..native.clone() };
+    for (rows, enrolled) in [
+        (vec![], Some(false)),
+        (vec![native.clone()], Some(true)),
+        (vec![foreign], None),
+        (vec![native.clone(), native.clone()], None),
+    ] {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let repos = Arc::new(domain::Repositories {
+            boards: Arc::new(Projection { rows, reads: reads.clone() }),
+            ..(*base.repos).clone()
+        });
+        let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+        let result = ctx.services.issue.get_details(issue, owner.id).await;
+        if let Some(enrolled) = enrolled {
+            let detail = result.unwrap();
+            assert_eq!(detail.lifecycle.enrolled, enrolled);
+            assert_eq!(detail.lifecycle.issue_id, issue.as_uuid());
+            assert_eq!(detail.lifecycle.stage, LifecycleStage::Draft);
+            assert_eq!(detail.lifecycle.status, None);
+        } else {
+            assert!(matches!(result, Err(AppError::Internal(_))));
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+        assert!(ctx.services.issue.get_details(issue, UserId::new()).await.is_err());
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
 async fn search_propagates_repo_error() {
     let ctx = failing_context();
     assert_internal(

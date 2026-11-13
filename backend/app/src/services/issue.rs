@@ -596,10 +596,15 @@ impl crate::context::IssueService for IssueServiceImpl {
         self.authz
             .require_project_access(issue.project_id, requester)
             .await?;
-        let tasks = self.boards.sdlc_tasks(issue.project_id, &[id]).await?;
+        let mut tasks = self.boards.sdlc_tasks(issue.project_id, &[id]).await?;
+        let persisted = match tasks.as_slice() {
+            [] => None,
+            [task] if task.issue_id == id.as_uuid() => tasks.pop(),
+            _ => return Err(AppError::internal("invalid single-issue lifecycle projection")),
+        };
         let lifecycle = crate::dto::project_issue_lifecycle(
             id.as_uuid(),
-            tasks.into_iter().find(|task| task.issue_id == id.as_uuid()),
+            persisted,
         );
         let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
         let issue = super::helpers::build_issue_dto(
