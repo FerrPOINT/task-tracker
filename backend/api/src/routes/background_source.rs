@@ -193,8 +193,7 @@ pub async fn read(
     if !owner.is_current() || !verified.lifetime.is_current() {
         return Err(AppError::Forbidden);
     }
-    let until = chrono::DateTime::from_timestamp(verified.lifetime.local_valid_until(), 0)
-        .ok_or(AppError::Unauthorized)?;
+    let valid_until = source_deadline(&verified, owner.decision.expires_at)?;
     Ok(Json(SourceAccess {
         schema: "fleet/background-source-access/v1",
         tracker_instance_id,
@@ -205,6 +204,27 @@ pub async fn read(
         sources_included: query.sources,
         source_revision,
         repositories,
-        valid_until: owner.decision.expires_at.min(until),
+        valid_until,
     }))
 }
+
+fn source_deadline(
+    verified: &pdlc_auth_core::service_bridge::VerifiedCentralToken,
+    owner_until: chrono::DateTime<chrono::Utc>,
+) -> Result<chrono::DateTime<chrono::Utc>, AppError> {
+    if !verified.lifetime.is_current() {
+        return Err(AppError::Unauthorized);
+    }
+    if owner_until <= chrono::Utc::now() {
+        return Err(AppError::Forbidden);
+    }
+    match verified.lifetime.local_valid_until() {
+        Some(until) => Ok(owner_until
+            .min(chrono::DateTime::from_timestamp(until, 0).ok_or(AppError::Unauthorized)?)),
+        None => Ok(owner_until),
+    }
+}
+
+#[cfg(test)]
+#[path = "background_source_tests.rs"]
+mod tests;
