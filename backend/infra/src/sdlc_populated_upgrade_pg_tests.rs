@@ -890,7 +890,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     assert!(!namespace.try_get::<bool>("", "namespace_managed").unwrap());
     assert_eq!(namespace.try_get::<i64>("", "high_water_mark").unwrap(), 41);
     assert!(scalar_json(&db,"SELECT to_jsonb(to_regclass('public.sdlc_routing_snapshot_inventory') IS NULL) AS value",vec![]).await.as_bool().unwrap());
-    let repo = PostgresSdlcRepository::connect(&url, config(original.project, false))
+    let repo = PostgresSdlcRepository::connect(&url, config())
         .await
         .unwrap();
     let owner = actor("owner", true, vec![]);

@@ -298,7 +298,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_disabled_
     exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'LC','Lifecycle',$2,$3)",vec![project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
     exec(&db,"INSERT INTO boards(id,project_id,name,columns) SELECT default_board_id,id,'Lifecycle','[]' FROM projects WHERE id=$1",vec![project.into()]).await.unwrap();
     exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub<>'owner'",vec![project.into()]).await.unwrap();
-    let mut repo = PostgresSdlcRepository::connect(
+    let repo = PostgresSdlcRepository::connect(
         &url,
         SdlcConfig {
             instance_id: "lifecycle-test".into(),

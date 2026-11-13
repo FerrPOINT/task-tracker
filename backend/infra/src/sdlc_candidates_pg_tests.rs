@@ -318,7 +318,7 @@ async fn pm_completion_queues_analysis_once_and_readback_does_not_dispatch() {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; no live agents"]
 async fn actual_configured_discovery_is_read_only_and_never_auto_starts_downstream() {
-    let mut f = Fixture::new().await;
+    let f = Fixture::new().await;
     let mut expected = vec![];
     for key in ["first", "second", "third"] {
         expected.push(f.queued_analysis(key, true).await);
