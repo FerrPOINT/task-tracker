@@ -41,7 +41,10 @@ pub fn human_route_machine(subject: &str) -> bool {
 
 pub async fn binding_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
     let subjects = if req.method() == axum::http::Method::GET {
-        &["TT_NAMESPACE__OWNER_SUBJECTS", "TT_NAMESPACE__READER_SUBJECTS"][..]
+        &[
+            "TT_NAMESPACE__OWNER_SUBJECTS",
+            "TT_NAMESPACE__READER_SUBJECTS",
+        ][..]
     } else {
         &["TT_NAMESPACE__OWNER_SUBJECTS"][..]
     };
