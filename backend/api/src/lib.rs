@@ -128,6 +128,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_reservation::configuration_preflight,
         routes::sdlc_reservation::operation,
         routes::sdlc_reservation::result_operation,
+        routes::sdlc_reservation::operation_by_key,
+        routes::sdlc_reservation::result_operation_by_key,
         routes::sdlc_reservation::complete_pm_draft,
         routes::sdlc_reservation::pm_completion,
         routes::sdlc_reservation::pm_completion_operation,

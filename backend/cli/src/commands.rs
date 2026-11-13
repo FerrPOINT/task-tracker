@@ -609,7 +609,7 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
                 SdlcAnalysisReservationCommand::Operation { task, key } => {
                     api.get(&sdlc_path(
                         task,
-                        &format!("/analysis-reservation/operations/{}", enc(&key)),
+                        &format!("/analysis-reservation/operations?idempotency_key={}", enc(&key)),
                     ))
                     .await
                 }
@@ -618,7 +618,7 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
                 SdlcAnalysisResultCommand::Operation { task, key } => {
                     api.get(&sdlc_path(
                         task,
-                        &format!("/analysis-result/operations/{}", enc(&key)),
+                        &format!("/analysis-result/operations?idempotency_key={}", enc(&key)),
                     ))
                     .await
                 }

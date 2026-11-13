@@ -1,5 +1,22 @@
 # API v1 Specification — Task Tracker
 
+## Retained Analysis Operation Keys
+
+The CLI reads an original analysis reservation/result operation through
+`GET /api/v1/issues/{id}/sdlc/analysis-reservation/operations?idempotency_key=...`
+and `GET /api/v1/issues/{id}/sdlc/analysis-result/operations?idempotency_key=...`.
+The key is one UTF-8 query value. Its original bytes, including `/`, are retained;
+the shared Base client continues to reject encoded slash in URL paths. These
+routes call the existing readback owner with the same access checks and no-store
+response. They never submit or retry a command.
+
+Tracker owns the temporary compatibility paths ending in
+`operations/{idempotency_key}`. They remain read-only for already published CLI
+artifacts. Remove those two paths only after the supported Fleet/CLI cohort has
+been updated and its active clients are verified to use the query contract;
+their removal belongs to that explicit contract rollout. There is no transport
+fallback or alternate operation store.
+
 ## SDLC JSON Rejections And Current Execution
 
 The existing stage-starts and delivery-proposals POST routes preserve extractor
