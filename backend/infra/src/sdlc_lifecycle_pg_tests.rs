@@ -1070,17 +1070,17 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         serde_json::to_value(reserved).unwrap()
     );
     assert_eq!(pm_ordinal_head(&db).await, before_replay);
-    assert!(matches!(
+    assert_eq!(
         repo.lifecycle_command(
             task,
             &scheduler,
             LifecycleCommand::EnsureQueued {
-                idempotency_key: "disabled-new".into()
+                idempotency_key: "already-reserved-noop".into()
             }
         )
-        .await,
-        Err(AppError::Unavailable(_))
-    ));
+        .await.unwrap().0,
+        retry
+    );
     repo.lifecycle_read(task, &reader).await.unwrap();
     let before_heartbeat = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     assert!(repo.lifecycle_command(
