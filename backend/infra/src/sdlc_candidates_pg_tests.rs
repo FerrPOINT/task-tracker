@@ -159,7 +159,7 @@ impl Fixture {
                 self.project,
                 &self.owner,
                 CreateDraftCommand {
-                    interaction_protocol: None,
+                    interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
                     flow,
                     title: key.into(),
                     description: "Synthetic test input, not live execution".into(),

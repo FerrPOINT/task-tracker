@@ -504,21 +504,15 @@ async fn critical_pg_scenario() {
     eprintln!("critical_pg.phase.hold.begin");
     let (one, actual) = Box::pin(async {
     let frozen_body = body.clone();
-    // Fleet heartbeat advances the SERVER lease; the caller's startup fence stays untouched.
-    r.head = f
-        .repo
-        .lifecycle_command(
-            r.task,
-            &f.writer,
-            LifecycleCommand::Heartbeat {
-                fence: fence(&r.head),
-                idempotency_key: "before-critical-heartbeat".into(),
-            },
-        )
-        .await
-        .unwrap()
-        .0;
-    assert!(body.fence.expected_lease_version < r.head.lease.as_ref().unwrap().version);
+    // A heartbeat cannot replace or advance the permanent assignment fence.
+    let before_heartbeat = snapshot(&f, r.task).await;
+    assert!(matches!(f.repo.lifecycle_command(
+        r.task, &f.writer, LifecycleCommand::Heartbeat {
+            fence: fence(&r.head), idempotency_key: "before-critical-heartbeat".into(),
+        },
+    ).await, Err(AppError::Conflict(_))));
+    assert_eq!(snapshot(&f, r.task).await, before_heartbeat);
+    assert_eq!(body.fence.expected_lease_version, r.head.lease.as_ref().unwrap().version);
     let before = snapshot(&f, r.task).await;
     let initial_routing = r.head.task.routing.clone();
     // The database itself rejects a proposal-only commit, not just an application error path.
@@ -729,21 +723,15 @@ async fn critical_pg_scenario() {
 
     eprintln!("critical_pg.phase.progress.begin");
     Box::pin(async {
-        // Existing Heartbeat remains usable and does not change the original Held receipt.
-        let heartbeat = f
-            .repo
-            .lifecycle_command(
-                r.task,
-                &f.writer,
-                LifecycleCommand::Heartbeat {
-                    fence: fence(&actual),
-                    idempotency_key: "held-heartbeat".into(),
-                },
-            )
-            .await
-            .unwrap()
-            .0;
-        r.head = heartbeat;
+        // Rejected heartbeat leaves the original Held receipt and its fence unchanged.
+        let held_before_heartbeat = snapshot(&f, r.task).await;
+        assert!(matches!(f.repo.lifecycle_command(
+            r.task, &f.writer, LifecycleCommand::Heartbeat {
+                fence: fence(&actual), idempotency_key: "held-heartbeat".into(),
+            },
+        ).await, Err(AppError::Conflict(_))));
+        assert_eq!(snapshot(&f, r.task).await, held_before_heartbeat);
+        r.head = actual.clone();
         let replay_after_heartbeat = f
             .repo
             .submit_critical_blocker_with_storage(r.task, &r.producer, body.clone(), &CorruptBytes)

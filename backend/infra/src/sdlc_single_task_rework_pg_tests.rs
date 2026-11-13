@@ -269,7 +269,7 @@ impl ReworkFixture {
         owner_subject: &str,
         scheduler_subject: &str,
     ) -> (Self, LifecycleReceipt) {
-        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, None, None).await
+        Self::with_draft_protocol(source, document, owner_subject, scheduler_subject, Some(InteractionProtocol::ConfiguredCliV1), None).await
     }
 
     async fn with_draft_protocol(
