@@ -587,6 +587,31 @@ impl crate::context::IssueService for IssueServiceImpl {
         Ok(issue.id)
     }
 
+    async fn get_details(
+        &self,
+        id: IssueId,
+        requester: UserId,
+    ) -> Result<crate::dto::IssueDetailDto, AppError> {
+        let issue = self.issues.get_by_id(id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
+        let tasks = self.boards.sdlc_tasks(issue.project_id, &[id]).await?;
+        let lifecycle = crate::dto::project_issue_lifecycle(
+            id.as_uuid(),
+            tasks.into_iter().find(|task| task.issue_id == id.as_uuid()),
+        );
+        let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
+        let issue = super::helpers::build_issue_dto(
+            self.users.clone(),
+            self.labels.clone(),
+            issue,
+            name.as_str(),
+        )
+        .await?;
+        Ok(crate::dto::IssueDetailDto { issue, lifecycle })
+    }
+
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(id).await?;
         self.authz

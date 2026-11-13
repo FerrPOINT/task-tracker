@@ -2000,6 +2000,7 @@ impl BoardRepository for BoardRepo {
                     .map_err(AppError::internal)?;
                 Ok(SdlcBoardTask {
                     issue_id: row.try_get("", "task_id").map_err(crate::db_error::map)?,
+                    enrolled: true,
                     stage: LifecycleStage::from_legacy(stage),
                     status,
                 })

@@ -1,5 +1,14 @@
 # API v1 Specification — Task Tracker
 
+GET `/api/v1/issues/{id}` возвращает `IssueDetailResponse`: прежние поля
+`IssueResponse` и обязательный `lifecycle` из той же проекции, что у доски.
+`lifecycle.enrolled=true` означает существующий сохранённый SDLC-процесс;
+обычная задача имеет `false`, начальную Draft и не получает выдуманный status.
+Этот признак не даёт доступа к приватному SDLC context. PATCH/restore и другие
+mutation receipts сохраняют `IssueResponse`; клиент перечитывает detail после
+изменения, не заменяя его неполным receipt. Отсутствующая metadata — ошибка
+контракта, а не неявное отсутствие процесса.
+
 ## Retained Analysis Operation Keys
 
 The CLI reads an original analysis reservation/result operation through

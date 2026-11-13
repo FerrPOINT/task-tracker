@@ -2160,6 +2160,7 @@ async fn unified_board_reads_saved_stages_without_automation_and_checks_project_
             self.reads.fetch_add(1, Ordering::SeqCst);
             Ok(vec![SdlcBoardTask {
                 issue_id: self.task.as_uuid(),
+                enrolled: true,
                 stage: LifecycleStage::Testing,
                 status: Some(LifecycleStatus::InProgress),
             }])

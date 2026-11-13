@@ -103,6 +103,24 @@ pub struct IssueDto {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+/// Authorized detail metadata is separate from mutation receipts.
+pub struct IssueDetailDto {
+    pub issue: IssueDto,
+    pub lifecycle: domain::sdlc_lifecycle::SdlcBoardTask,
+}
+
+pub(crate) fn project_issue_lifecycle(
+    issue_id: uuid::Uuid,
+    persisted: Option<domain::sdlc_lifecycle::SdlcBoardTask>,
+) -> domain::sdlc_lifecycle::SdlcBoardTask {
+    persisted.unwrap_or(domain::sdlc_lifecycle::SdlcBoardTask {
+        issue_id,
+        enrolled: false,
+        stage: domain::sdlc_lifecycle::LifecycleStage::Draft,
+        status: None,
+    })
+}
+
 impl IssueDto {
     pub fn from_issue(
         issue: Issue,
@@ -206,8 +224,6 @@ impl BoardDto {
         self,
         tasks: Vec<domain::sdlc_lifecycle::SdlcBoardTask>,
     ) -> Result<SdlcBoard, shared::AppError> {
-        use domain::sdlc_lifecycle::{LifecycleStage, SdlcBoardTask};
-
         let mut tasks: std::collections::HashMap<_, _> = tasks
             .into_iter()
             .map(|task| (task.issue_id.to_string(), task))
@@ -216,17 +232,10 @@ impl BoardDto {
             .issues
             .into_iter()
             .map(|issue| {
-                let task = match tasks.remove(&issue.id) {
-                    Some(task) => task,
-                    // Historical issue statuses do not prove SDLC progress.
-                    // Keep those cards visible at the initial stage without
-                    // enrolling them, changing their status or inventing a run.
-                    None => SdlcBoardTask {
-                        issue_id: issue.id.parse().map_err(shared::AppError::internal)?,
-                        stage: LifecycleStage::Draft,
-                        status: None,
-                    },
-                };
+                let task = project_issue_lifecycle(
+                    issue.id.parse().map_err(shared::AppError::internal)?,
+                    tasks.remove(&issue.id),
+                );
                 Ok((issue, task))
             })
             .collect::<Result<Vec<_>, shared::AppError>>()?;
