@@ -58,8 +58,8 @@ vi.mock('@/shared/api/hooks', () => ({
         tasks: fixture.empty
           ? []
           : [
-              { issue_id: 'i1', stage: 'Development', status: fixture.status },
-              { issue_id: 'i2', stage: 'Review', status: 'Ready' },
+              { issue_id: 'i1', enrolled: true, stage: 'Development', status: fixture.status },
+              { issue_id: 'i2', enrolled: true, stage: 'Review', status: 'Ready' },
             ],
       },
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },

@@ -84,7 +84,7 @@ vi.mock('@/shared/api/hooks', () => ({
           'Rework',
           'Deployment',
         ],
-        tasks: [{ issue_id: issueData.id, stage: 'Development', status: 'Ready' }],
+        tasks: [{ issue_id: issueData.id, enrolled: true, stage: 'Development', status: 'Ready' }],
       },
       issues: [],
       project_id: 'p1',
