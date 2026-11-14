@@ -12,7 +12,7 @@ async fn successful_terminal_finalizes_original_result_without_restoring_assignm
     for (index, outcome) in ["success", "failed", "cancelled", "newer_head", "newer_assignment", "race"].into_iter().enumerate() {
         if index != 0 {
             let project = queued.task.routing.project_id;
-            let policy = f.repo.routing_policy(project, &f.owner).await.unwrap();
+            let policy = f.repo.routing_policy(project, &f.owner, None).await.unwrap();
             let draft = f.repo.create_draft(project, &f.owner, CreateDraftCommand {
                 interaction_protocol: Some(InteractionProtocol::ConfiguredCliV1),
                 flow: Some(DraftFlow::SingleTaskV1), title: format!("Terminal result {outcome}"),
@@ -137,10 +137,11 @@ async fn successful_terminal_finalizes_original_result_without_restoring_assignm
             f.repo.submit_delivery_proposal(f.task, &producer, proposal.clone()),
             f.repo.submit_delivery_proposal(f.task, &producer, proposal.clone()));
         let (left, right) = (left.unwrap(), right.unwrap());
-        assert_eq!(left.0, right.0);
+        assert_eq!(serde_json::to_value(&left.0).unwrap(), serde_json::to_value(&right.0).unwrap());
         assert_ne!(left.1, right.1);
         assert_eq!(f.repo.lifecycle_read(f.task, &f.reader).await.unwrap().receipt, stopped);
-        assert_eq!(f.repo.delivery_proposal_operation(f.task, &f.reader, &proposal.idempotency_key).await.unwrap(), left.0);
+        assert_eq!(serde_json::to_value(f.repo.delivery_proposal_operation(f.task, &f.reader, &proposal.idempotency_key).await.unwrap()).unwrap(),
+            serde_json::to_value(&left.0).unwrap());
         let complete = LifecycleCommand::Complete { fence: fence.clone(), result: output,
             terminal: TerminalReceipt { chat_id: binding.chat_id,run_id: binding.run_id,
                 fleet_receipt: observation.receipt, workflow_receipt: proposal.workflow_receipt.clone(),
