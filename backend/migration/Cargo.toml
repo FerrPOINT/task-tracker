@@ -17,3 +17,6 @@ serde_json = "1.0"
 
 [dependencies.sea-orm]
 workspace = true
+
+[dev-dependencies]
+sea-orm = { workspace = true, features = ["mock"] }

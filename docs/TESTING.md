@@ -1,5 +1,14 @@
 # Стратегия тестирования Task Tracker
 
+## Тестовый драйвер ORM
+
+Функция SeaORM mock включается только в dev-dependencies модулей infra
+и migration, которым нужен MockDatabase. Общая workspace-зависимость
+сохраняет PostgreSQL, rustls, macros, JSON, UUID и chrono без тестового драйвера.
+Обычный server graph проверяется с cargo tree -p server --edges features,no-dev;
+тестовые графы сохраняют mock. Компиляция server и тесты этих двух модулей
+проверяются отдельно; описание графа не заменяет исполнение тестов.
+
 ## Current Execution And Reviewer Handoff
 
 The 2026-11-11 source regressions cover the current delivery execution key after
