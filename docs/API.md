@@ -2484,7 +2484,23 @@ result, requirements and owner confirmation remain unchanged. A changed stage's
 agent UUID clears only the current resume-chat hint; original chats/runs remain
 historical. Same-key replay/read uses the existing lifecycle operation route and
 returns the original receipt even after later policy or assignment changes.
-`ensure_queued` keeps the frozen routing. Both explicit interventions reset the
-separate automatic transient retry counter; repeated explicit owner operations
-are not limited by that automatic retry budget. Unknown acceptance never permits
-another dispatch.
+`ensure_queued` keeps the frozen routing. Both explicit interventions clear historical
+automatic-retry metadata; it is not a current recovery budget. Unknown acceptance
+never permits another dispatch.
+
+
+### Explicit Stop recovery
+
+Fresh lifecycle `reconcile` accepts only `recovery:{"disposition":"stop"}`.
+The existing exact terminal or never-submitted evidence, assignment holder,
+fence, current scope and original reservation checks remain mandatory. Stop
+releases custody and leaves the task terminal; it does not complete business
+work or automatically send a new request. A separate explicit `ensure_queued`
+or `resume_with_current_routing` may queue proven closed, unassigned Ready work
+without a recovery-count cap.
+
+`retry_transient` and `retry_unsubmitted` are historical decode/read/exact-key
+replay shapes only. Fresh calls reject without effects; original-key replay is
+resolved before fresh-command validation. Active OpenAPI advertises only Stop.
+Forward121 enforces this same rule in the existing SQL reconciliation owner,
+preserving historical records and immutable original results.

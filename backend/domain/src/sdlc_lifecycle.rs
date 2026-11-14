@@ -7,7 +7,6 @@ use shared::AppError;
 use uuid::Uuid;
 
 pub const POOL_LIMIT: u8 = 2;
-pub const MAX_TRANSIENT_RETRIES: u8 = 3;
 pub const MAX_REWORK_CYCLES: u8 = 3;
 pub const DELIVERY_GRANT_PREFIX: &str = "task-tracker:sdlc:delivery:";
 
@@ -227,6 +226,7 @@ pub struct LifecycleTask {
     pub stage: LifecycleStage,
     pub status: LifecycleStatus,
     pub cycle: u8,
+    /// Retained automatic-retry metadata; current recovery never increments it.
     pub transient_retries: u8,
     pub waiting_reason: Option<String>,
     pub runtime: RuntimeState,
@@ -250,6 +250,7 @@ pub enum RecoveryDisposition {
     Stop,
     /// Historical expiry recovery; only original operation-key replay is supported.
     RetryUnsubmitted,
+    /// Historical automatic recovery; only original operation-key replay is supported.
     RetryTransient {
         replay_safety_receipt: ArtifactReceipt,
     },

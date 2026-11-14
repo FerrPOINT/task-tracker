@@ -433,7 +433,7 @@ async fn explicit_routing_resume_preserves_confirmed_source_history_and_selects_
     migration::Migrator::up(&f.db,None).await.unwrap();
     assert_eq!(f.journal_snapshot().await,old_history);
     let old_ledger_after:Json=f.db.query_one(statement(
-        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m WHERE version<>'m20261114_0000120_routing_resume'",vec![]))
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m WHERE version NOT IN ('m20261114_0000120_routing_resume','m20261114_0000121_explicit_recovery')",vec![]))
         .await.unwrap().unwrap().try_get("","payload").unwrap();
     assert_eq!(old_ledger_after,old_ledger);
     let mut routes=serde_json::to_value(&f.frozen.policy.routes).unwrap();
@@ -491,8 +491,8 @@ async fn explicit_routing_resume_preserves_confirmed_source_history_and_selects_
     let retained:Json=f.db.query_one(statement("SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1",
         vec![f.task.into()])).await.unwrap().unwrap().try_get("","payload").unwrap();
     assert_eq!(retained,old_source);
-    // More deliberate interventions than the automatic retry budget remain valid.
-    for index in 0..=MAX_TRANSIENT_RETRIES + 1 {
+    // Explicit interventions remain valid beyond the historical retry count.
+    for index in 0..5 {
         let assignment=new_reserved.assignment.as_ref().unwrap();
         let stop=LifecycleCommand::Reconcile { fence:delivery_fence(&new_reserved),terminal:None,
             never_submitted:Some(NeverSubmittedObservation { assignment_hash:assignment.assignment_hash.clone(),
@@ -512,6 +512,112 @@ async fn explicit_routing_resume_preserves_confirmed_source_history_and_selects_
     assert_eq!(count(&f.db,"sdlc_task_routing_snapshots").await,1);
     assert_eq!(count(&f.db,"sdlc_task_routing_generations").await,1);
     println!("TRACKER_ROUTING_RESUME_120=closed_current_policy_new_assignment_original_source_and_history_preserved");
+}
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn retired_recovery_replays_history_and_rejects_new_writes_after_upgrade() {
+    let (f, queued) = ReworkFixture::with_schema_tail(None, None, "owner", "scheduler",
+        Some("m20261114_0000120_routing_resume")).await;
+    let reserve = LifecycleCommand::Reserve { expected_task_version: queued.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()), idempotency_key: "retired:old-reserve".into() };
+    let reserved = f.repo.lifecycle_command(f.task, &f.scheduler, reserve).await.unwrap().0;
+    let binding = RunBinding { chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        machine_subject: f.producers["analyst"].subject.clone(), dispatch_receipt: artifact("retired-original-native") };
+    let running = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::BindRun {
+        fence: delivery_fence(&reserved), binding: binding.clone(), idempotency_key: "retired:old-bind".into(),
+    }).await.unwrap().0;
+    let historical = LifecycleCommand::Reconcile { fence: delivery_fence(&running), never_submitted: None,
+        terminal: Some(RuntimeTerminalObservation { assignment_hash: running.assignment.as_ref().unwrap().assignment_hash.clone(),
+            chat_id: binding.chat_id, run_id: binding.run_id, state: RuntimeTerminalState::Failed,
+            receipt: artifact("retired-original-terminal") }),
+        recovery: RecoveryDisposition::RetryTransient { replay_safety_receipt: artifact("retired-original-replay") },
+        idempotency_key: "retired:original-recovery".into() };
+    // A legitimate pre121 journal: use its then-current SQL guard and exact old
+    // projection, never a runnable legacy application helper or disabled trigger.
+    let tx = f.db.begin().await.unwrap();
+    let state = f.repo.load(&tx, f.task, &f.scheduler).await.unwrap();
+    let mut original = current(&tx, f.task).await.unwrap().unwrap();
+    assert_eq!(original, running);
+    exec(&tx, "INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+        vec![reserved.assignment.as_ref().unwrap().assignment_id.into(), f.task.into(), json_value(&historical).unwrap()]).await.unwrap();
+    exec(&tx, "DELETE FROM sdlc_delivery_holds WHERE task_id=$1", vec![f.task.into()]).await.unwrap();
+    original.task.version += 1;
+    original.task.status = LifecycleStatus::Ready;
+    original.task.runtime = RuntimeState::Queued;
+    original.task.transient_retries = 1;
+    original.task.resume_chat_id = Some(binding.chat_id);
+    original.task.waiting_reason = Some("transient_retry_queued".into());
+    original.assignment = None; original.lease = None; original.binding = None; original.result = None;
+    PostgresSdlcRepository::save_delivery_projection(&tx, &f.scheduler, &original, false).await.unwrap();
+    let event_id = Uuid::now_v7();
+    exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
+        VALUES($1,$2,$3,$4,$5,$6)", vec![f.task.into(), f.scheduler.subject.clone().into(), historical.key().into(),
+        app::sdlc::canonical_hash(&historical).unwrap().into(), json_value(&original).unwrap(), event_id.into()]).await.unwrap();
+    let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":state.project_id,"task_id":f.task,"root_task_id":f.task,"owner_subject":state.owner_subject,
+        "stage":original.task.stage,"requirement_revision":original.task.routing.requirement_revision,"result":original});
+    exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'delivery.reconciled',$3)",
+        vec![event_id.into(), f.task.into(), payload.into()]).await.unwrap();
+    tx.commit().await.unwrap();
+    let before = f.journal_snapshot().await;
+    let history: Json = f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m",vec![]))
+        .await.unwrap().unwrap().try_get("", "payload").unwrap();
+    // A legitimate nondefault function attribute must survive the body-only upgrade.
+    f.db.execute_unprepared("ALTER FUNCTION public.sdlc_delivery_reconciliation_gate() SET search_path TO public").await.unwrap();
+    let identity_sql = "SELECT jsonb_build_object('oid',oid::text,'owner',proowner::text,'acl',proacl::text,
+        'security_definer',prosecdef,'configuration',proconfig) AS payload
+        FROM pg_proc WHERE oid=to_regprocedure('public.sdlc_delivery_reconciliation_gate()')";
+    let function_identity: Json = f.db.query_one(statement(identity_sql,vec![])).await.unwrap().unwrap().try_get("", "payload").unwrap();
+    migration::Migrator::up(&f.db, None).await.unwrap();
+    assert_eq!(f.journal_snapshot().await, before);
+    let prefix: Json = f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload
+        FROM seaql_migrations m WHERE version<>'m20261114_0000121_explicit_recovery'",vec![]))
+        .await.unwrap().unwrap().try_get("", "payload").unwrap();
+    assert_eq!(prefix, history);
+    let after_identity: Json = f.db.query_one(statement(identity_sql,vec![])).await.unwrap().unwrap().try_get("", "payload").unwrap();
+    assert_eq!(after_identity, function_identity);
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,historical.clone()).await.unwrap(),(original.clone(),true));
+    assert_eq!(f.repo.lifecycle_operation(f.task,&f.reader,historical.key()).await.unwrap(),original);
+    let next_reserve = LifecycleCommand::Reserve { expected_task_version: original.task.version,
+        machine_subject: Some(f.producers["analyst"].subject.clone()), idempotency_key: "retired:new-reserve".into() };
+    let next = f.repo.lifecycle_command(f.task,&f.scheduler,next_reserve.clone()).await.unwrap().0;
+    for (index, recovery) in [RecoveryDisposition::RetryUnsubmitted, RecoveryDisposition::RetryTransient {
+        replay_safety_receipt: artifact("no-new-retry"),
+    }].into_iter().enumerate() {
+        let unsent = matches!(recovery,RecoveryDisposition::RetryUnsubmitted);
+        let command = LifecycleCommand::Reconcile { fence: delivery_fence(&next),
+            terminal: if unsent { None } else { Some(RuntimeTerminalObservation {
+                assignment_hash: next.assignment.as_ref().unwrap().assignment_hash.clone(), chat_id: binding.chat_id,
+                run_id: Uuid::new_v4(), state: RuntimeTerminalState::Failed, receipt: artifact("no-new-terminal") }) },
+            never_submitted: if unsent { Some(NeverSubmittedObservation {
+                assignment_hash: next.assignment.as_ref().unwrap().assignment_hash.clone(), reservation_key: next_reserve.key().into(),
+                reservation_payload_sha256: app::sdlc::canonical_hash(&next_reserve).unwrap(),
+            }) } else { None }, recovery, idempotency_key: format!("retired:new:{index}") };
+        let before = f.journal_snapshot().await;
+        assert!(matches!(f.repo.lifecycle_command(f.task,&f.scheduler,command.clone()).await,Err(AppError::Conflict(_))));
+        assert_eq!(f.journal_snapshot().await,before);
+        let rejected = f.db.execute(statement("INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+            vec![next.assignment.as_ref().unwrap().assignment_id.into(), f.task.into(), json_value(&command).unwrap()])).await.unwrap_err();
+        assert!(rejected.to_string().contains("SDLC fresh reconciliation requires explicit Stop"),"{rejected}");
+        assert_eq!(f.journal_snapshot().await,before);
+    }
+    let stopped = f.repo.lifecycle_command(f.task,&f.scheduler,LifecycleCommand::Reconcile {
+        fence: delivery_fence(&next), terminal: None, never_submitted: Some(NeverSubmittedObservation {
+            assignment_hash: next.assignment.as_ref().unwrap().assignment_hash.clone(), reservation_key: next_reserve.key().into(),
+            reservation_payload_sha256: app::sdlc::canonical_hash(&next_reserve).unwrap(),
+        }), recovery: RecoveryDisposition::Stop, idempotency_key: "retired:explicit-stop".into(),
+    }).await.unwrap().0;
+    assert_eq!(stopped.task.runtime,RuntimeState::Terminal);
+    assert_eq!(stopped.task.transient_retries,original.task.transient_retries);
+    let queue = LifecycleCommand::EnsureQueued { idempotency_key: "retired:explicit-queue".into() };
+    let resumed = f.repo.lifecycle_command(f.task,&f.scheduler,queue.clone()).await.unwrap().0;
+    assert_eq!(resumed.task.runtime,RuntimeState::Queued);
+    assert_eq!(resumed.task.transient_retries,0);
+    assert_eq!(resumed.task.routing,original.task.routing);
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,queue).await.unwrap(),(resumed,true));
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,historical).await.unwrap(),(original,true));
+    println!("TRACKER_EXPLICIT_RECOVERY_121=historical_retry_replayed_current_retries_denied_stop_and_manual_queue_preserved");
 }
 
 impl ReworkFixture {

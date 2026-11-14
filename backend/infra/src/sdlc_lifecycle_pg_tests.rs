@@ -1007,11 +1007,19 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             receipt: artifact("verified-terminal"),
         }),
         never_submitted: None,
-        recovery: RecoveryDisposition::RetryTransient {
-            replay_safety_receipt: artifact("safe-replay"),
-        },
+        recovery: RecoveryDisposition::Stop,
         idempotency_key: "reconcile".into(),
     };
+    let mut retired = reconcile.clone();
+    if let LifecycleCommand::Reconcile { recovery, idempotency_key, .. } = &mut retired {
+        *recovery = RecoveryDisposition::RetryTransient { replay_safety_receipt: artifact("historical-safe-replay") };
+        *idempotency_key = "retired:no-new-retry".into();
+    }
+    let before_retired = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+    let operations_before = count(&db, "sdlc_delivery_operations").await;
+    assert!(repo.lifecycle_command(task, &scheduler, retired).await.is_err());
+    assert_eq!(repo.lifecycle_read(task, &reader).await.unwrap().receipt, before_retired);
+    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations_before);
     let (recovered, _) = repo
         .lifecycle_command(task, &scheduler, reconcile.clone())
         .await
@@ -1026,6 +1034,11 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             .unwrap()
             .1
     );
+    assert_eq!(recovered.task.runtime, RuntimeState::Terminal);
+    assert_eq!(recovered.task.waiting_reason.as_deref(), Some("runtime_terminal_requires_intervention"));
+    let (recovered, _) = repo.lifecycle_command(task, &scheduler, LifecycleCommand::EnsureQueued {
+        idempotency_key: "explicit-after-failed-terminal".into(),
+    }).await.unwrap();
     let (mut retry, _) = repo
         .lifecycle_command(
             task,
@@ -1039,7 +1052,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         )
         .await
         .unwrap();
-    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
+    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 1);
     let retry_context = repo.context(task, &producer).await.unwrap();
     assert_eq!(
         retry_context.workflow_task_key.as_deref(),

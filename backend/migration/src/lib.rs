@@ -52,6 +52,7 @@ mod m20261110_0000117_linear_delivery;
 mod m20261111_0000118_plan_content_dispatch;
 mod m20261114_0000119_current_delivery_contract;
 mod m20261114_0000120_routing_resume;
+mod m20261114_0000121_explicit_recovery;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -139,6 +140,7 @@ impl MigratorTrait for InstalledOwnershipMigrator {
             Box::new(m20261113_0000118_delivery_unsent_stop::Migration),
             Box::new(m20261114_0000119_current_delivery_contract::Migration),
             Box::new(m20261114_0000120_routing_resume::Migration),
+            Box::new(m20261114_0000121_explicit_recovery::Migration),
         ]);
         migrations
     }
@@ -207,6 +209,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261111_0000118_plan_content_dispatch::Migration),
             Box::new(m20261114_0000119_current_delivery_contract::Migration),
             Box::new(m20261114_0000120_routing_resume::Migration),
+            Box::new(m20261114_0000121_explicit_recovery::Migration),
         ]
     }
 }

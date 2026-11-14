@@ -422,6 +422,21 @@ impl Modify for SecurityAddon {
             })
         });
 
+        // Retired recovery variants retain their history codec, not new-write authority.
+        let RefOr::T(Schema::OneOf(recovery)) = components.schemas
+            .get_mut("RecoveryDisposition").expect("RecoveryDisposition schema") else {
+            panic!("RecoveryDisposition must remain a tagged recovery union");
+        };
+        recovery.items.retain(|variant| {
+            let RefOr::T(Schema::Object(recovery)) = variant else { return false };
+            let Some(RefOr::T(Schema::Object(disposition))) = recovery.properties.get("disposition") else {
+                return false;
+            };
+            disposition.enum_values.as_ref().is_some_and(|values| {
+                values.len() == 1 && values[0] == "stop"
+            })
+        });
+
         components.add_security_scheme(
             "bearer",
             SecurityScheme::Http(

@@ -425,7 +425,7 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
 /// Historical requests remain decodable and replayable by their original key.
 pub fn validate_active_command(command: &LifecycleCommand) -> Result<(), AppError> {
     if matches!(command, LifecycleCommand::Heartbeat { .. }
-        | LifecycleCommand::Reconcile { recovery: RecoveryDisposition::RetryUnsubmitted, .. })
+        | LifecycleCommand::Reconcile { recovery: RecoveryDisposition::RetryUnsubmitted | RecoveryDisposition::RetryTransient { .. }, .. })
     {
         return Err(AppError::conflict("assignment ownership persists until result or confirmed terminal reconciliation"));
     }
@@ -747,13 +747,8 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     Ok(())
 }
 
-/// A transport error after dispatch is unknown acceptance, never a retry permit.
-pub fn transient_retry_allowed(retries: u8, safely_replayable: bool) -> bool {
-    safely_replayable && retries < MAX_TRANSIENT_RETRIES
-}
-
 /// Explicit scheduler intervention after a closed run without an accepted result.
-/// A deliberate new intervention resets the automatic transient retry budget; it never reopens an assignment.
+/// A deliberate new intervention clears historical automatic retry metadata; it never reopens an assignment.
 pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
     if task.runtime != RuntimeState::Terminal {
         return Ok(());
@@ -816,8 +811,8 @@ pub fn reconcile_terminal(
     terminal: &RuntimeTerminalObservation,
     recovery: &RecoveryDisposition,
 ) -> Result<(), AppError> {
-    if matches!(recovery, RecoveryDisposition::RetryUnsubmitted) {
-        return Err(AppError::conflict("native terminal cannot attest never-submitted work"));
+    if !matches!(recovery, RecoveryDisposition::Stop) {
+        return Err(AppError::conflict("current recovery requires explicit Stop"));
     }
     if !matches!(
         task.runtime,
@@ -830,31 +825,11 @@ pub fn reconcile_terminal(
         .checked_add(1)
         .filter(|v| *v <= MAX_SAFE_VERSION)
         .ok_or_else(|| AppError::conflict("task version exhausted"))?;
-    if let RecoveryDisposition::RetryTransient { .. } = recovery {
-        if terminal.state != RuntimeTerminalState::Failed {
-            return Err(AppError::conflict("transient failure readback required"));
-        }
-    }
     task.version = version;
     task.status = LifecycleStatus::Ready;
     task.resume_chat_id = Some(terminal.chat_id);
-    if matches!(recovery, RecoveryDisposition::RetryTransient { .. })
-        && task.transient_retries < MAX_TRANSIENT_RETRIES
-    {
-        task.transient_retries += 1;
-        task.runtime = RuntimeState::Queued;
-        task.waiting_reason = Some("transient_retry_queued".into());
-    } else {
-        task.runtime = RuntimeState::Terminal;
-        task.waiting_reason = Some(
-            if matches!(recovery, RecoveryDisposition::RetryTransient { .. }) {
-                "transient_retry_limit_reached"
-            } else {
-                "runtime_terminal_requires_intervention"
-            }
-            .into(),
-        );
-    }
+    task.runtime = RuntimeState::Terminal;
+    task.waiting_reason = Some("runtime_terminal_requires_intervention".into());
     Ok(())
 }
 

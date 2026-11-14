@@ -10,8 +10,9 @@ fn accepted_histories_have_distinct_immutable_tails_and_one_shared_119() {
         (true, crate::InstalledProjectRepositoryMigrator::migrations()),
     ] {
         let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-        assert_eq!(names[names.len()-2], Migration.name());
-        assert_eq!(names.last().copied(), Some("m20261114_0000120_routing_resume"));
+        assert_eq!(names[names.len()-3], Migration.name());
+        assert_eq!(names[names.len()-2], "m20261114_0000120_routing_resume");
+        assert_eq!(names.last().copied(), Some("m20261114_0000121_explicit_recovery"));
         assert_eq!(names.iter().filter(|name| **name == Migration.name()).count(), 1);
         assert_eq!(names.contains(&"m20261113_0000118_delivery_unsent_stop"), installed);
         assert_eq!(names.contains(&"m20261111_0000118_plan_content_dispatch"), !installed);
@@ -69,7 +70,7 @@ async fn qualification<M: MigratorTrait>(fresh: bool, foreign: bool) {
         }
         crate::Migrator::up(&db, None).await.unwrap();
         let after = ledger(&db).await;
-        let tail = [Migration.name(), "m20261114_0000120_routing_resume"];
+        let tail = [Migration.name(), "m20261114_0000120_routing_resume", "m20261114_0000121_explicit_recovery"];
         assert_eq!(after.iter().filter(|(name, _)| !tail.contains(&name.as_str())).cloned().collect::<Vec<_>>(), original);
         assert_eq!(after.len(), original.len() + tail.len());
         for name in tail {
@@ -79,6 +80,7 @@ async fn qualification<M: MigratorTrait>(fresh: bool, foreign: bool) {
     assert_eq!(function(&db, "sdlc_delivery_head_gate").await.unwrap(), primary_head().unwrap());
     let reconciliation = function(&db, "sdlc_delivery_reconciliation_gate").await.unwrap();
     assert!(reconciliation.contains("SDLC unsent Stop requires the unbound original reservation"));
+    assert!(reconciliation.contains("IS DISTINCT FROM 'stop'"));
     assert!(reconciliation.contains("= (head#>>'{lease,version}')::bigint"));
     let accepted = ledger(&db).await;
     crate::Migrator::up(&db, None).await.unwrap();
@@ -182,4 +184,20 @@ async fn relevanter_exact_30_name_ledger_upgrades_without_rewriting_history() {
     let accepted = ledger(&db).await;
     crate::Migrator::up(&db, None).await.unwrap();
     assert_eq!(ledger(&db).await, accepted);
+}
+
+#[tokio::test]
+#[ignore = "requires fresh owned TT_PROJECT_COMPAT_TEST_DATABASE_URL ending _pdlc4_compat_test"]
+async fn current_120_refuses_a_foreign_recovery_guard_without_writes() {
+    let db = fresh_db().await;
+    let count = crate::PublishedMigrator::migrations().iter().position(|m|
+        m.name() == "m20261114_0000121_explicit_recovery").unwrap();
+    crate::PublishedMigrator::up(&db, Some(count.try_into().unwrap())).await.unwrap();
+    let original = ledger(&db).await;
+    db.execute_unprepared("CREATE OR REPLACE FUNCTION public.sdlc_delivery_reconciliation_gate() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NEW; END$$;")
+        .await.unwrap();
+    let changed = function(&db, "sdlc_delivery_reconciliation_gate").await.unwrap();
+    assert!(crate::Migrator::up(&db, None).await.is_err());
+    assert_eq!(ledger(&db).await, original);
+    assert_eq!(function(&db, "sdlc_delivery_reconciliation_gate").await.unwrap(), changed);
 }

@@ -421,6 +421,20 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_schema_exposes_only_explicit_stop_recovery_and_retains_history_codec() {
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let variants = spec["components"]["schemas"]["RecoveryDisposition"]["oneOf"].as_array().unwrap();
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0]["properties"]["disposition"]["enum"], serde_json::json!(["stop"]));
+        for saved in [serde_json::json!({"disposition":"retry_unsubmitted"}),
+            serde_json::json!({"disposition":"retry_transient","replay_safety_receipt":{
+                "reference":"fixture://original-replay","sha256":"a".repeat(64)}})] {
+            let old: domain::sdlc_lifecycle::RecoveryDisposition = serde_json::from_value(saved.clone()).unwrap();
+            assert_eq!(serde_json::to_value(old).unwrap(), saved);
+        }
+    }
+
+    #[test]
     fn routing_resume_schema_and_request_require_both_explicit_cas_versions() {
         let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
         let variants = spec["components"]["schemas"]["LifecycleCommand"]["oneOf"].as_array().unwrap();

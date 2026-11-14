@@ -499,10 +499,33 @@ fn legacy_clarification_maps_to_draft_without_mutating_history() {
 }
 
 #[test]
-fn transient_retries_require_safe_replay_and_are_bounded_at_three() {
-    for retries in 0..=4 {
-        assert_eq!(transient_retry_allowed(retries, true), retries < 3);
-        assert!(!transient_retry_allowed(retries, false));
+fn retired_recovery_roundtrips_but_cannot_mutate_current_work() {
+    let terminal = RuntimeTerminalObservation {
+        assignment_hash: "a".repeat(64), chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        state: RuntimeTerminalState::Failed, receipt: artifact("historical-terminal"),
+    };
+    let fence = DeliveryFence { assignment_id: Uuid::new_v4(), execution_id: Uuid::new_v4(),
+        fencing_token: 1, lease_id: Uuid::new_v4(), expected_lease_version: 1 };
+    for recovery in [RecoveryDisposition::RetryUnsubmitted, RecoveryDisposition::RetryTransient {
+        replay_safety_receipt: artifact("historical-replay-safety"),
+    }] {
+        let unsent = matches!(recovery, RecoveryDisposition::RetryUnsubmitted);
+        let command = LifecycleCommand::Reconcile {
+            fence: fence.clone(), terminal: if unsent { None } else { Some(terminal.clone()) },
+            never_submitted: if unsent { Some(NeverSubmittedObservation {
+                assignment_hash: "a".repeat(64), reservation_key: "original:reserve".into(),
+                reservation_payload_sha256: "b".repeat(64),
+            }) } else { None }, recovery: recovery.clone(), idempotency_key: "historical:recovery".into(),
+        };
+        let saved = serde_json::to_value(&command).unwrap();
+        let decoded: LifecycleCommand = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&decoded).unwrap(), saved);
+        validate_command(&decoded).unwrap();
+        assert!(validate_active_command(&decoded).is_err());
+        let mut current = task();
+        let before = current.clone();
+        assert!(reconcile_terminal(&mut current, &terminal, &recovery).is_err());
+        assert_eq!(current, before);
     }
 }
 
@@ -690,42 +713,32 @@ fn delivery_grants_are_canonical_single_task_capabilities_not_generic_permission
 }
 
 #[test]
-fn verified_terminal_recovery_keeps_stage_and_bounds_retries_without_business_result() {
+fn verified_terminal_stop_preserves_business_context_and_requires_explicit_intervention() {
     let mut state = task();
-    let stage = state.stage;
-    let task_id = state.task_id;
     let terminal = RuntimeTerminalObservation {
-        assignment_hash: "a".repeat(64),
-        chat_id: Uuid::new_v4(),
-        run_id: Uuid::new_v4(),
-        state: RuntimeTerminalState::Failed,
-        receipt: artifact("actual-runtime-terminal"),
+        assignment_hash: "a".repeat(64), chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        state: RuntimeTerminalState::Failed, receipt: artifact("actual-runtime-terminal"),
     };
-    let recovery = RecoveryDisposition::RetryTransient {
-        replay_safety_receipt: artifact("safe-operation-readback"),
-    };
-    for retry in 1..=3 {
+    for _ in 0..6 {
         state.runtime = RuntimeState::Unknown;
-        reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
-        assert_eq!(state.stage, stage);
-        assert_eq!(state.task_id, task_id);
-        assert_eq!(state.transient_retries, retry);
-        assert_eq!(state.runtime, RuntimeState::Queued);
+        let before = state.clone();
+        reconcile_terminal(&mut state, &terminal, &RecoveryDisposition::Stop).unwrap();
+        assert_eq!(state.stage, before.stage);
+        assert_eq!(state.task_id, before.task_id);
+        assert_eq!(state.previous_result_id, before.previous_result_id);
+        assert_eq!(state.transient_retries, before.transient_retries);
+        assert_eq!(state.runtime, RuntimeState::Terminal);
+        assert_eq!(state.status, LifecycleStatus::Ready);
         assert_eq!(state.resume_chat_id, Some(terminal.chat_id));
-        assert_eq!(state.previous_result_id, None);
+        assert_eq!(state.waiting_reason.as_deref(), Some("runtime_terminal_requires_intervention"));
+        ensure_queued(&mut state).unwrap();
+        assert_eq!(state.runtime, RuntimeState::Queued);
+        assert_eq!(state.transient_retries, 0);
     }
-    state.runtime = RuntimeState::Unknown;
-    reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
-    assert_eq!(state.runtime, RuntimeState::Terminal);
-    assert_eq!(state.status, LifecycleStatus::Ready);
-    assert_eq!(
-        state.waiting_reason.as_deref(),
-        Some("transient_retry_limit_reached")
-    );
 }
 
 #[test]
-fn explicit_queue_intervention_preserves_inputs_and_resets_only_automatic_retry_budget() {
+fn explicit_queue_intervention_preserves_inputs_and_clears_historical_retry_metadata() {
     let mut state = task();
     state.stage = LifecycleStage::Development;
     state.status = LifecycleStatus::Ready;
@@ -762,9 +775,9 @@ fn explicit_queue_intervention_preserves_inputs_and_resets_only_automatic_retry_
         assert_eq!(state, before);
     }
     state = original.clone();
-    for _ in 0..=MAX_TRANSIENT_RETRIES + 2 {
+    for _ in 0..6 {
         state.runtime = RuntimeState::Terminal;
-        state.transient_retries = MAX_TRANSIENT_RETRIES;
+        state.transient_retries = 3; // Archived pre121 counter, never a current recovery limit.
         ensure_queued(&mut state).unwrap();
         assert_eq!(state.runtime, RuntimeState::Queued);
         assert_eq!(state.transient_retries, 0);
@@ -956,7 +969,7 @@ fn routing_resume_fixture() -> (LifecycleReceipt, RoutingPolicy) {
     task.resume_chat_id = Some(Uuid::new_v4());
     task.previous_result_id = Some(Uuid::new_v4());
     task.cycle = 2;
-    task.transient_retries = MAX_TRANSIENT_RETRIES;
+    task.transient_retries = 3; // Retained historical metadata.
     let mut policy = task.routing.policy.clone();
     policy.version += 1;
     policy.routes.analyst.fleet_config_revision += 1;

@@ -2509,3 +2509,21 @@ same task/project/owner/confirmation/requirements/content hash and all original
 namespace/workspace/source-policy fields and sealed source hash. Discovery uses
 the original Analysis intent and PM completion for that same confirmed business
 identity, without fabricating another intent or PM completion.
+
+
+## Explicit recovery without automatic retries
+
+Forward121 replaces only the fresh-admission condition in the existing
+`sdlc_delivery_reconciliation_gate` after checking its complete119/120 body.
+New rows require `recovery.disposition=stop`; the historical CHECK remains able
+to represent old retry rows. Function OID/owner/ACL/attributes, existing trigger, all rows
+and migration history are preserved. Unexpected current function bodies cause
+migration refusal before any replacement.
+
+`LifecycleTask.transient_retries` and the original assignment `attempt` remain
+archival metadata for saved receipts. No current recovery increments the
+counter or uses it to choose terminal versus queued. Confirmed Stop retains it;
+explicit queue/resume clears it for new work while preserving original receipts.
+Old counter-range constraints describe retained payload shape, not a current
+execution or recovery allowance. Unknown native acceptance is never closed by
+count, time, missing journal or an automatic retry.
