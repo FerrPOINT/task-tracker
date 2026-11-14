@@ -17,11 +17,16 @@
 | Route | Page | Notes |
 |-------|------|-------|
 | `/login` | `pages/login` | Login form |
-| `/register` | `pages/register` | Registration form |
+| `/register` | Redirect | Переход на `/login` |
+| `/sso/callback` | `pages/sso-callback` | Публичное завершение PKCE и возврат на исходный маршрут |
 
 ## 4. Protected Routes (AppShell)
 
-Все protected-роуты обёрнуты в `RequireAuth` и используют `AppShell` layout.
+Все protected-роуты обёрнуты в `SpaceSessionBoundary` и `RequireAuth`, используют
+`AppShell` layout. При включённом доступе к пространствам смена identity или
+policy/context epoch очищает приватный query cache и формы. Публичные login и
+SSO callback находятся снаружи этой границы: принятие сессии не перемонтирует
+незавершённый обмен code и возврат на исходный маршрут.
 
 | Route | Page | Notes |
 |-------|------|-------|
