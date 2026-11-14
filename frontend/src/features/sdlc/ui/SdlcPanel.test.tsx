@@ -196,20 +196,21 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(screen.getByRole('region', { name: 'Your next step' })).toHaveTextContent(
       'Review the requirements below. Confirmation records this version; it does not start execution.',
     )
-    expect(screen.getByText(hash)).not.toBeVisible()
+    expect(screen.queryByText(hash)).not.toBeInTheDocument()
     expect(screen.queryByText('tracker-test')).not.toBeInTheDocument()
   })
 
-  it('keeps queued Analysis identifiers available only in collapsed technical details', async () => {
+  it('shows queued Analysis without rendering protocol identifiers', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue(structuredClone(queued))
     mount()
     expect(
       await screen.findByText(
         'Analysis was queued. Execution start is not confirmed by this record.',
       ),
-    ).not.toBeVisible()
-    expect(screen.getByText(intent.operation_key)).not.toBeVisible()
-    expect(screen.getByText(intent.intent_id)).not.toBeVisible()
+    ).toBeVisible()
+    expect(screen.queryByText(intent.operation_key)).not.toBeInTheDocument()
+    expect(screen.queryByText(intent.intent_id)).not.toBeInTheDocument()
+    expect(document.querySelector('details')).toBeNull()
     expect(confirmRequirements).not.toHaveBeenCalled()
   })
 
@@ -374,7 +375,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       button,
     )
     expect(button).toBeDisabled()
-    expect(screen.getByText(hash)).toBeInTheDocument()
+    expect(screen.queryByText(hash)).not.toBeInTheDocument()
     expect(confirmRequirements).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('I confirm the requirements of revision 2', { exact: true }))
     expect(
@@ -398,8 +399,8 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
         'Analysis was queued. Execution start is not confirmed by this record.',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText(intentId)).toBeInTheDocument()
-    expect(screen.getByText(`analysis:${confirmationId}`)).toBeInTheDocument()
+    expect(screen.queryByText(intentId)).not.toBeInTheDocument()
+    expect(screen.queryByText(`analysis:${confirmationId}`)).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByText(/running|InProgress|Completed/)).not.toBeInTheDocument()
   })
@@ -650,16 +651,11 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(confirmRequirements).not.toHaveBeenCalled()
   })
   it.each([
-    ['v1', routingPolicy, 'Package commit / manifest hash', 'Instruction profile / manifest hash'],
-    [
-      'v2',
-      singleTaskRoutingPolicy,
-      'Instruction profile / manifest hash',
-      'Package commit / manifest hash',
-    ],
+    ['v1', routingPolicy],
+    ['v2', singleTaskRoutingPolicy],
   ] as const)(
-    'shows only the actual %s source references without inventing package fields',
-    async (_family, makePolicy, label, absentLabel) => {
+    'shows %s configuration roles without rendering protocol references',
+    async (_family, makePolicy) => {
       const policy = makePolicy(task)
       vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(policy)
       mount()
@@ -668,28 +664,26 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       })
       expect(choice).not.toBeChecked()
       const publication = screen.getByRole('region', { name: 'Execution configuration' })
-      fireEvent.click(within(publication).getByText('Configuration technical details'))
-      expect(within(publication).getAllByText(label)).toHaveLength(7)
-      expect(within(publication).queryByText(absentLabel)).not.toBeInTheDocument()
+      const roles = within(publication).getByRole('list', { name: 'Configuration roles' })
+      expect(within(roles).getAllByRole('listitem')).toHaveLength(7)
+      expect(publication.querySelector('details')).toBeNull()
+      expect(within(publication).queryByText('SHA-256')).not.toBeInTheDocument()
       const route = policy.routes.analyst
-      expect(
-        within(publication).getByText(`${route.workflow_id} / ${route.workflow_key}`, {
-          exact: false,
-        }),
-      ).toBeInTheDocument()
+      for (const value of [
+        policy.routing_hash,
+        route.agent_id,
+        route.workflow_catalog_sha256,
+        ...(policy.contract_version === 1
+          ? [policy.routes.analyst.package_commit, policy.routes.analyst.package_manifest_sha256]
+          : [
+              policy.routes.analyst.instruction_profile,
+              policy.routes.analyst.instruction_manifest_sha256,
+            ]),
+      ])
+        expect(publication).not.toHaveTextContent(value)
       expect(
         within(publication).getByText(/Selecting it does not start the agents/),
       ).toBeInTheDocument()
-      if (policy.contract_version === 2) {
-        expect(
-          within(publication).getAllByText(
-            `single-task-v1 / ${policy.routes.analyst.instruction_manifest_sha256}`,
-          ),
-        ).toHaveLength(7)
-        expect(
-          within(publication).queryByText(/4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58/),
-        ).not.toBeInTheDocument()
-      }
       expect(confirmRequirements).not.toHaveBeenCalled()
     },
   )
@@ -725,8 +719,8 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       ),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('Analyst / single-task-v1:analyst / analysis / business'),
-    ).toBeInTheDocument()
+      screen.queryByText('Analyst / single-task-v1:analyst / analysis / business'),
+    ).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
     expect(confirmRequirements).not.toHaveBeenCalled()
@@ -964,7 +958,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   it('removes cached private pins when fresh ACL denies access', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
     mount()
-    await screen.findByText(intentId)
+    await screen.findByText('Analysis was queued. Execution start is not confirmed by this record.')
     vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(403))
     const refresh = screen.getByRole('button', { name: 'Refresh SDLC state' })
     await waitFor(() => expect(refresh).toBeEnabled())
@@ -996,6 +990,12 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     const history = await screen.findByRole('region', { name: 'Development history' })
     expect(await within(history).findByText('Analysis intent queued')).toBeInTheDocument()
     expect(within(history).getByText('Page 1')).toBeInTheDocument()
+    expect(history.querySelector('details')).toBeNull()
+    expect(within(history).queryByText(event.event_id)).not.toBeInTheDocument()
+    expect(within(history).queryByText(event.metadata_sha256)).not.toBeInTheDocument()
+    expect(
+      within(history).getByText('Analysis intent queued').closest('li')?.querySelector('time'),
+    ).toHaveAttribute('dateTime', event.created_at)
     expect(within(history).queryByText(/cursor/i)).not.toBeInTheDocument()
     fireEvent.click(within(history).getByRole('button', { name: 'Next events' }))
     await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledWith(task, '19', expect.anything()))

@@ -9,7 +9,6 @@ import {
   SectionHeader,
 } from '@pdlc/ui/ui'
 import {
-  Disclosure,
   Button,
   DescriptionItem,
   EmptyState,
@@ -299,46 +298,22 @@ export function SdlcPanel({
         {context.stage === 'Analysis' &&
           context.status == null &&
           (intent ? (
-            <Disclosure summary={t('sdlc.intent')}>
-              <ContentSection asChild dividers="both">
-                <section aria-label={t('sdlc.intent')} className="mb-5">
-                  <SectionHeader level={3} title={<>{t('sdlc.intent')}</>} className="mb-2" />
-                  <p className="mb-3 font-medium text-text-primary">
-                    {t('sdlc.awaitingAdmission')}
-                  </p>
-                  <Disclosure summary={t('sdlc.technicalDetails')}>
-                    <dl>
-                      <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
-                        {intent.intent_id}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.confirmationRef')}>
-                        {intent.confirmation_id}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.revision')}>
-                        {intent.requirement_revision}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label="SHA-256">
-                        {intent.content_hash}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.operationKey')}>
-                        {intent.operation_key}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.routing')}>
-                        {intent.role} / {intent.workflow} / {intent.mode} / {intent.scope}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.cycleAttempt')}>
-                        {intent.cycle} / {intent.attempt}
-                      </DescriptionItem>
-                      <DescriptionItem layout="inline" label={t('sdlc.createdAt')}>
-                        <time dateTime={intent.created_at}>
-                          {new Date(intent.created_at).toLocaleString()}
-                        </time>
-                      </DescriptionItem>
-                    </dl>
-                  </Disclosure>
-                </section>
-              </ContentSection>
-            </Disclosure>
+            <ContentSection asChild dividers="both">
+              <section aria-label={t('sdlc.intent')} className="mb-5">
+                <SectionHeader level={3} title={t('sdlc.intent')} className="mb-2" />
+                <p className="mb-3 font-medium text-text-primary">{t('sdlc.awaitingAdmission')}</p>
+                <dl>
+                  <DescriptionItem layout="inline" label={t('sdlc.revision')}>
+                    {intent.requirement_revision}
+                  </DescriptionItem>
+                  <DescriptionItem layout="inline" label={t('sdlc.createdAt')}>
+                    <time dateTime={intent.created_at}>
+                      {new Date(intent.created_at).toLocaleString()}
+                    </time>
+                  </DescriptionItem>
+                </dl>
+              </section>
+            </ContentSection>
           ) : (
             <ErrorState message={t('sdlc.noIntent')} onRetry={() => void snapshot.refetch()} />
           ))}
@@ -429,77 +404,14 @@ export function SdlcPanel({
                                   {displayedPolicy.version}
                                 </DescriptionItem>
                               </dl>
-                              <Disclosure
-                                className="mb-3 min-w-0"
-                                summary={<>{t('sdlc.publication.references')}</>}
+                              <ul
+                                className="mb-3 list-inside list-disc"
+                                aria-label={t('sdlc.publication.rolesTitle')}
                               >
-                                <dl>
-                                  <DescriptionItem layout="inline" label="SHA-256">
-                                    {displayedPolicy.routing_hash}
-                                  </DescriptionItem>
-                                </dl>
-                                <ResourceList>
-                                  {Object.values(routingRoles).map((role) => {
-                                    const route = displayedPolicy.routes[role]
-                                    return (
-                                      <ResourceListRow asChild key={role}>
-                                        <section>
-                                          <SectionHeader
-                                            level={5}
-                                            title={<>{t(`sdlc.publication.roles.${role}`)}</>}
-                                            className="mb-1"
-                                          />
-                                          <dl>
-                                            <DescriptionItem
-                                              layout="inline"
-                                              label={t('sdlc.publication.agent')}
-                                            >
-                                              {route.agent_id}
-                                            </DescriptionItem>
-                                            <DescriptionItem
-                                              layout="inline"
-                                              label={t('sdlc.publication.effectiveRevision')}
-                                            >
-                                              {route.fleet_config_revision}
-                                            </DescriptionItem>
-                                            {displayedPolicy.contract_version === 1 ? (
-                                              <DescriptionItem
-                                                layout="inline"
-                                                label={t('sdlc.publication.package')}
-                                              >
-                                                {route.package_commit} /{' '}
-                                                {route.package_manifest_sha256}
-                                              </DescriptionItem>
-                                            ) : (
-                                              <DescriptionItem
-                                                layout="inline"
-                                                label={t('sdlc.publication.instructionProfile')}
-                                              >
-                                                {route.instruction_profile} /{' '}
-                                                {route.instruction_manifest_sha256}
-                                              </DescriptionItem>
-                                            )}
-                                            <DescriptionItem
-                                              layout="inline"
-                                              label={t('sdlc.publication.workflow')}
-                                            >
-                                              {route.namespace_id} / {route.namespace_name} /{' '}
-                                              {route.workflow_id} / {route.workflow_key}
-                                            </DescriptionItem>
-                                            <DescriptionItem
-                                              layout="inline"
-                                              label={t('sdlc.publication.profile')}
-                                            >
-                                              {route.profile} / {route.workflow_catalog_version} /{' '}
-                                              {route.workflow_catalog_sha256}
-                                            </DescriptionItem>
-                                          </dl>
-                                        </section>
-                                      </ResourceListRow>
-                                    )
-                                  })}
-                                </ResourceList>
-                              </Disclosure>
+                                {Object.values(routingRoles).map((role) => (
+                                  <li key={role}>{t(`sdlc.publication.roles.${role}`)}</li>
+                                ))}
+                              </ul>
                               <Checkbox
                                 label={t('sdlc.publication.select', {
                                   version: displayedPolicy.version,
@@ -537,13 +449,6 @@ export function SdlcPanel({
                 )}
               </Fieldset>
             )}
-            <Disclosure summary={t('sdlc.revisionDetails')}>
-              <dl className="mb-4">
-                <DescriptionItem layout="inline" label="SHA-256">
-                  {requirements.content_hash}
-                </DescriptionItem>
-              </dl>
-            </Disclosure>
           </section>
         ) : (
           <EmptyState message={t('sdlc.noRequirements')} />
@@ -631,28 +536,6 @@ export function SdlcPanel({
                                   }
                                 />
                               )}
-                            <Disclosure
-                              className="min-w-0"
-                              tone="muted"
-                              summary={<>{t('sdlc.eventPin')}</>}
-                            >
-                              <dl>
-                                <DescriptionItem layout="inline" label={t('sdlc.eventSequence')}>
-                                  {event.sequence}
-                                </DescriptionItem>
-                                <DescriptionItem layout="inline" label={t('sdlc.eventRef')}>
-                                  {event.event_id}
-                                </DescriptionItem>
-                                {event.event_type === 'analysis.intent_created' && (
-                                  <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
-                                    {event.payload.resource.intent_id}
-                                  </DescriptionItem>
-                                )}
-                                <DescriptionItem layout="inline" label="SHA-256">
-                                  {event.metadata_sha256}
-                                </DescriptionItem>
-                              </dl>
-                            </Disclosure>
                           </li>
                         </ResourceListRow>
                       ))}

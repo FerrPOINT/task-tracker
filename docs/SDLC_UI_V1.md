@@ -236,9 +236,11 @@ pin и exact routing version/hash либо legacy omission. Unknown POST не р
 автоматически; пока fresh context readback не получен, cached permissions не
 разрешают повторную запись. Новый credential/revision/hash не наследует согласие.
 
-Названия семи ролей и labels локализованы; technical IDs, package/catalog refs и
-hash доступны в явно раскрываемом details. Refs означают только preparation,
-`verification:declared`, `native_ready:false`, `dispatch_allowed:false`.
+Названия семи ролей локализованы. Конфигурация показывает версию и семь ролей;
+technical IDs, package/catalog refs, hashes и скрытые details не выводятся.
+Принятая policy означает только preparation: `verification:declared`,
+`native_ready:false`, `dispatch_allowed:false`. Точные commands/CAS и права
+сохраняются; отображаемый текст не заменяет их проверку.
 Response guard использует generated aliases и проверяет project/instance/version,
 pinned package commit/catalog3, exact role/profile/key mapping и отсутствие
 duplicate agent/namespace/workflow. Проверка ссылки не является native attestation.
@@ -299,9 +301,11 @@ analysis / business`, cycle 0 / attempt 0 and `analysis:<confirmation UUID>`.
 Operation identity remains Tracker-issued and authoritative; the browser's
 confirmation idempotency key is not an assignment operation key or fence.
 
-The UI consumes all eleven generated metadata event variants, including
-`analysis.intent_created` and `analysis.assignment_reserved`, as historical events. It displays actual event ref,
-sequence, timestamp, metadata hash and Analysis intent/revision references.
+The UI consumes generated metadata event variants, including
+`analysis.intent_created` and `analysis.assignment_reserved`, as historical events.
+It shows the translated event, timestamp and existing result reader. Internal
+IDs, sequence, metadata hashes and intent operation keys are not rendered,
+including hidden details. The analysis queue retains its revision and date.
 It never interprets an event as assignment acceptance, a run or terminal success.
 
 ## State And Freshness
@@ -399,3 +403,7 @@ Tracker-only prepared reservation wire/capacity/heartbeat/readback теперь 
 Machine native capabilities и trusted ACK/verified-stop остаются blockers.
 Operation hash/key, capacity/fences/lease и outbox остаются Tracker authoritative;
 expiry не освобождает live/unknown capacity. Явный UI opt-in эти gates не снимает.
+
+Nullable status исторической SDLC-задачи означает отсутствие статуса;
+неизвестный stage/status остаётся ошибкой чтения. Сохранённые metadata
+и существующие контракты подтверждения не меняются.
