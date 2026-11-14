@@ -12,6 +12,7 @@ COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 RUN pnpm install --frozen-lockfile
 
 COPY task-tracker/frontend/ ./
+RUN pnpm run generate:api
 ARG VITE_NAMESPACE_ENABLED="false"
 ENV VITE_NAMESPACE_ENABLED=${VITE_NAMESPACE_ENABLED}
 ARG VITE_PLATFORM_BRANDING_URL=""

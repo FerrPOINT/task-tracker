@@ -485,7 +485,7 @@ fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
 
 #[test]
 fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runtime() {
-    for change in 0..11 {
+    for change in (0..11).filter(|change| *change != 8) {
         let mut f = Fixture::new(LifecycleStage::Architecture);
         match change {
             0 => f.proposal.requirement_revision += 1,
@@ -833,5 +833,15 @@ fn analyst_cannot_create_a_pm_hold_for_either_business_question_kind() {
         assert_eq!(f.current, before);
         assert_eq!(f.proposal, proposal);
         assert!(ensure_technical_progress_allowed(&f.current, None).is_ok());
+    }
+}
+
+#[test]
+fn critical_proposal_uses_identity_after_historical_deadline_or_null_expiration() {
+    for expiry in [Some(Utc::now() - Duration::days(60)), None] {
+        let mut f = Fixture::new(LifecycleStage::Architecture);
+        f.current.lease.as_mut().unwrap().expires_at = expiry;
+        f.now += Duration::days(365);
+        assert!(f.plan().is_ok());
     }
 }

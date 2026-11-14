@@ -155,7 +155,7 @@ GET `P/delivery-proposals/operations/{key}`, POST `P/pm-feedback` and
 GET `P/pm-feedback/operations/{key}`. Parent owns handlers, OpenAPI and registration.
 
 `LifecycleCommand` currently has an internal `operation` discriminator with
-snake_case values `ensure_queued`, `reserve`, `heartbeat`, `bind_run`, `complete`, `reconcile`.
+snake_case values `ensure_queued`, `resume_with_current_routing`, `reserve`, `bind_run`, `complete`, `reconcile` (`heartbeat` is historical replay only).
 
 After a terminal run without an accepted typed result, the scheduler can explicitly
 call the existing `ensure_queued` command after correcting the cause. It queues
@@ -221,6 +221,13 @@ available against a real server. Workflow's final instruction must execute
 these calls, reconcile unknown acceptance using readback, then exit the runtime.
 It must not merely tell an operator that work is complete.
 
+Architect `design` references this task's immutable
+`/api/v1/issues/{task}/decomposition/revisions/{revision}` with the canonical
+content SHA256. Tracker checks the saved revision, task and sealed requirements
+at proposal and again in atomic Complete. A missing plan or an attachment cannot
+replace that contract. Historical reads remain unchanged. Fleet passes the
+receipt unchanged to Complete and does not download the plan as an attachment.
+
 Role outputs are:
 
 | role | Required result |
@@ -272,11 +279,14 @@ lifecycle operation reconciliation is scheduler-subject-only with exactly
 `task-tracker:read`; POST commands use its separate exactly-write credential.
 
 `Reconcile` requires `fence`, `terminal:{assignment_hash,chat_id,run_id,state,receipt}`,
-`recovery:{disposition:"stop"}` or `{disposition:"retry_transient",replay_safety_receipt}`,
-and `idempotency_key`. Terminal state is `succeeded|failed|cancelled`, never running.
-Only failed, safely replayable transient operations can retry, at most three times.
+`recovery:{disposition:"stop"}` and `idempotency_key`. Terminal state is
+`succeeded|failed|cancelled`, never running. The current command cannot retry or
+queue automatically. Historical `retry_transient` and `retry_unsubmitted` remain
+readable and replayable only under their exact original operation key.
 An immutable reconciliation precedes hold release, with no result/stage advance.
-The next assignment gets new execution/fence/attempt and must bind the previous chat.
+A separate explicit `ensure_queued` or `resume_with_current_routing` may queue
+closed unassigned Ready work. It has no recovery-count budget, retains the stage
+and business source, and preserves the previous chat when its agent is unchanged.
 
 ## PM feedback and resume boundary
 
@@ -524,8 +534,9 @@ authorization is unchanged except denial of the new assignment-scoped machine gr
    queries; SQL cross-ledger gates and the existing common capacity mutex remain.
 5. Complete Fleet's existing consumer: lease heartbeat, actual run binding,
    proposal delivery, runtime terminal, guarded terminal acceptance, and unknown
-   acceptance readbacks. Retry policy permits at most three safely replayable
-   transient retries. Tracker exposes guarded reconciliation, not a second scheduler.
+   acceptance readbacks. Confirmed Stop releases custody without automatic retry;
+   a separate explicit owner intervention may queue new work. Tracker exposes
+   guarded reconciliation, not a second scheduler.
    Unknown runtime acceptance must never produce another run.
 6. Register the two PM resume methods above and wire typed input, guarded lease
    resume and actual checkpoint/rebind in Fleet/Workflow. Keep
@@ -579,3 +590,23 @@ after PM business completion; guarded resume without a duplicate runtime run.
 Local performed checks are formatting and `git diff --check` only. Source tests
 were added but not executed. Full lifecycle, proposals and feedback need the
 above parent registrations before any real HTTP/runtime acceptance can be claimed.
+
+
+Explicit catalog/config modernization of already confirmed work uses lifecycle
+`resume_with_current_routing` with the reviewed current project-policy version
+and current terminal task version. It atomically appends a new routing snapshot
+and queues only proven-unassigned Ready work; it does not restart an Unknown run,
+reconfirm requirements or rewrite accepted history. `ensure_queued` deliberately
+retains frozen routing. Both explicit operations clear historical automatic-retry metadata;
+that metadata grants no current retry authority. Base/Workflow catalog publication and Fleet configuration activation
+remain their existing owners and do not silently rewrite a task's routing.
+
+
+Forward121 closes fresh `Reconcile` writes to `Stop` in the existing SQL mutation
+owner after matching its complete normalized119/120 definition. It preserves
+all historical reconciliation rows, operation results, assignments, timestamps
+and function OID/owner/ACL/attributes. Retired recovery variants keep their history codec
+but are excluded from the active OpenAPI schema and rejected after original-key
+replay lookup. Unknown custody still requires original native readback, never a
+retry permission. `transient_retries` is historical metadata, not an execution
+or recovery budget; current commands never increment it.

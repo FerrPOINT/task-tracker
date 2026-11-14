@@ -79,6 +79,16 @@ mod tests {
         )
     }
 
+    struct Through118<M>(std::marker::PhantomData<fn() -> M>);
+
+    #[async_trait::async_trait]
+    impl<M: MigratorTrait> MigratorTrait for Through118<M> {
+        fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+            M::migrations().into_iter().take_while(|m|
+                m.name() != "m20261114_0000119_current_delivery_contract").collect()
+        }
+    }
+
     async fn assert_upgrade<M: MigratorTrait>() {
         let url = std::env::var("TT_PROJECT_COMPAT_TEST_DATABASE_URL")
             .expect("fresh owned *_pdlc4_compat_test database required");
@@ -116,7 +126,7 @@ mod tests {
         assert!(old.contains("tracker_authorize_native_task_content"));
         assert!(!old.contains("issue_plan_revisions"));
 
-        crate::Migrator::up(&db, None).await.unwrap();
+        Through118::<M>::up(&db, None).await.unwrap();
         let (same_oid, restored) = definition(&db).await;
         assert_eq!(oid, same_oid);
         assert!(restored.contains("'issue_plan_revisions','issue_plan_operations'"));
@@ -138,7 +148,7 @@ mod tests {
             original_ledger,
         );
         assert_eq!(current_ledger.len(), original_ledger.len() + 1);
-        crate::Migrator::up(&db, None).await.unwrap();
+        Through118::<M>::up(&db, None).await.unwrap();
         assert_eq!(definition(&db).await, (oid, restored));
         assert_eq!(ledger(&db).await, current_ledger);
         assert!(Migration.down(&SchemaManager::new(&db)).await.is_err());

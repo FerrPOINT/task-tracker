@@ -10704,6 +10704,13 @@
           "output": {
             "$ref": "#/components/schemas/DeliveryResult"
           },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "previous_stage": {
             "$ref": "#/components/schemas/LifecycleStage"
           },
@@ -14320,7 +14327,6 @@
             "type": "object",
             "required": [
               "fence",
-              "terminal",
               "recovery",
               "idempotency_key",
               "operation"
@@ -14332,6 +14338,16 @@
               "idempotency_key": {
                 "type": "string"
               },
+              "never_submitted": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NeverSubmittedObservation"
+                  }
+                ]
+              },
               "operation": {
                 "type": "string",
                 "enum": [
@@ -14342,7 +14358,14 @@
                 "$ref": "#/components/schemas/RecoveryDisposition"
               },
               "terminal": {
-                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RuntimeTerminalObservation"
+                  }
+                ]
               }
             }
           },
@@ -14360,6 +14383,38 @@
                 "type": "string",
                 "enum": [
                   "ensure_queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_task_version",
+              "expected_routing_policy_version",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "expected_routing_policy_version": {
+                "type": "integer",
+                "format": "int64",
+                "maximum": 9007199254740991,
+                "minimum": 1
+              },
+              "expected_task_version": {
+                "type": "integer",
+                "format": "int64",
+                "maximum": 9007199254740991,
+                "minimum": 1
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "resume_with_current_routing"
                 ]
               }
             }
@@ -14601,6 +14656,7 @@
           "transient_retries": {
             "type": "integer",
             "format": "int32",
+            "description": "Retained automatic-retry metadata; current recovery never increments it.",
             "minimum": 0
           },
           "version": {
@@ -17756,6 +17812,26 @@
         },
         "additionalProperties": false
       },
+      "NeverSubmittedObservation": {
+        "type": "object",
+        "required": [
+          "assignment_hash",
+          "reservation_key",
+          "reservation_payload_sha256"
+        ],
+        "properties": {
+          "assignment_hash": {
+            "type": "string"
+          },
+          "reservation_key": {
+            "type": "string"
+          },
+          "reservation_payload_sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "NotificationListResponse": {
         "type": "object",
         "required": [
@@ -19990,24 +20066,6 @@
                 "enum": [
                   "stop"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "replay_safety_receipt",
-              "disposition"
-            ],
-            "properties": {
-              "disposition": {
-                "type": "string",
-                "enum": [
-                  "retry_transient"
-                ]
-              },
-              "replay_safety_receipt": {
-                "$ref": "#/components/schemas/ArtifactReceipt"
               }
             }
           }

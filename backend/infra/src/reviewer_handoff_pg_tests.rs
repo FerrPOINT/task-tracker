@@ -27,6 +27,7 @@ pub(super) async fn complete_released_review(
         result_id: Uuid::now_v7(),
         assignment_id: expected.assignment_id,
         task_id: f.task,
+        previous_result_id: None,
         terminal: terminal.clone(),
         output: result.clone(),
         previous_stage: LifecycleStage::Review,

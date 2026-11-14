@@ -7,7 +7,6 @@ use shared::AppError;
 use uuid::Uuid;
 
 pub const POOL_LIMIT: u8 = 2;
-pub const MAX_TRANSIENT_RETRIES: u8 = 3;
 pub const MAX_REWORK_CYCLES: u8 = 3;
 pub const DELIVERY_GRANT_PREFIX: &str = "task-tracker:sdlc:delivery:";
 
@@ -227,6 +226,7 @@ pub struct LifecycleTask {
     pub stage: LifecycleStage,
     pub status: LifecycleStatus,
     pub cycle: u8,
+    /// Retained automatic-retry metadata; current recovery never increments it.
     pub transient_retries: u8,
     pub waiting_reason: Option<String>,
     pub runtime: RuntimeState,
@@ -248,9 +248,20 @@ pub enum RuntimeTerminalState {
 #[serde(tag = "disposition", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecoveryDisposition {
     Stop,
+    /// Historical expiry recovery; only original operation-key replay is supported.
+    RetryUnsubmitted,
+    /// Historical automatic recovery; only original operation-key replay is supported.
     RetryTransient {
         replay_safety_receipt: ArtifactReceipt,
     },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NeverSubmittedObservation {
+    pub assignment_hash: String,
+    pub reservation_key: String,
+    pub reservation_payload_sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -444,17 +455,34 @@ pub enum LifecycleCommand {
     },
     Reconcile {
         fence: DeliveryFence,
-        terminal: RuntimeTerminalObservation,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        terminal: Option<RuntimeTerminalObservation>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        never_submitted: Option<NeverSubmittedObservation>,
         recovery: RecoveryDisposition,
         idempotency_key: String,
     },
     EnsureQueued {
         idempotency_key: String,
     },
+    ResumeWithCurrentRouting {
+        #[serde(deserialize_with = "safe_version")]
+        #[schema(minimum = 1, maximum = 9007199254740991i64)]
+        expected_task_version: i64,
+        #[serde(deserialize_with = "safe_version")]
+        #[schema(minimum = 1, maximum = 9007199254740991i64)]
+        expected_routing_policy_version: i64,
+        idempotency_key: String,
+    },
     Reserve {
         expected_task_version: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         machine_subject: Option<String>,
+        idempotency_key: String,
+    },
+    /// Historical operation decoding/replay only; new renewals are rejected.
+    Heartbeat {
+        fence: DeliveryFence,
         idempotency_key: String,
     },
     BindRun {
@@ -479,10 +507,12 @@ impl LifecycleCommand {
             Self::Reconcile {
                 idempotency_key, ..
             } => idempotency_key,
-            Self::EnsureQueued { idempotency_key }
+            Self::ResumeWithCurrentRouting { idempotency_key, .. }
+            | Self::EnsureQueued { idempotency_key }
             | Self::Reserve {
                 idempotency_key, ..
             }
+            | Self::Heartbeat { idempotency_key, .. }
             | Self::BindRun {
                 idempotency_key, ..
             }
@@ -499,6 +529,8 @@ pub struct AcceptedDeliveryResult {
     pub result_id: Uuid,
     pub assignment_id: Uuid,
     pub task_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_result_id: Option<Uuid>,
     pub terminal: TerminalReceipt,
     pub output: DeliveryResult,
     pub previous_stage: LifecycleStage,
@@ -510,12 +542,21 @@ pub struct AcceptedDeliveryResult {
 
 /// Read projection of immutable accepted output and its original assignment input.
 /// Mutation receipts keep the original stored AcceptedDeliveryResult shape.
-#[derive(Clone, Debug, Serialize, PartialEq, utoipa::ToSchema)]
+#[derive(Clone, Debug, PartialEq, utoipa::ToSchema)]
 pub struct AcceptedDeliveryInput {
     #[serde(flatten)]
     pub result: AcceptedDeliveryResult,
     #[schema(required = true, nullable = true)]
     pub previous_result_id: Option<Uuid>,
+}
+
+impl Serialize for AcceptedDeliveryInput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut value = serde_json::to_value(&self.result).map_err(serde::ser::Error::custom)?;
+        value["previous_result_id"] = serde_json::to_value(self.previous_result_id)
+            .map_err(serde::ser::Error::custom)?;
+        value.serialize(serializer)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
@@ -536,35 +577,35 @@ pub struct LifecycleReceipt {
 }
 
 /// Current assignment fencing; retained timestamps are archival data, not authority.
-#[derive(Clone, Debug, Serialize, PartialEq, utoipa::ToSchema)]
+#[derive(Clone, Debug, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryBinding {
     pub lease_id: Uuid,
     pub version: i64,
     pub holder_subject: String,
-    #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
     pub claimed_at: DateTime<Utc>,
     #[serde(
         default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "binding_time"
+        skip_serializing_if = "Option::is_none"
     )]
     pub heartbeat_at: Option<DateTime<Utc>>,
     #[serde(
         default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "binding_time"
+        skip_serializing_if = "Option::is_none"
     )]
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-fn binding_time<S: serde::Serializer>(
-    value: &Option<DateTime<Utc>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match value {
-        Some(value) => crate::sdlc_execution_lease::utc_nanos(value, serializer),
-        None => serializer.serialize_none(),
+impl Serialize for DeliveryBinding {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let timestamp = |value: DateTime<Utc>| value.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+        let mut value = serde_json::json!({"lease_id":self.lease_id,"version":self.version,
+            "holder_subject":self.holder_subject,"claimed_at":timestamp(self.claimed_at)});
+        if let Some(heartbeat) = self.heartbeat_at {
+            value["heartbeat_at"] = serde_json::json!(timestamp(heartbeat));
+            value["expires_at"] = serde_json::json!(self.expires_at.map(timestamp));
+        }
+        value.serialize(serializer)
     }
 }
 
@@ -582,14 +623,14 @@ impl<'de> Deserialize<'de> for DeliveryBinding {
             #[serde(default)]
             expires_at: Option<DateTime<Utc>>,
         }
-        let value = Retained::deserialize(deserializer)?;
+        let encoded = serde_json::Value::deserialize(deserializer)?;
+        let explicit_expiration = encoded.get("expires_at").is_some();
+        let value: Retained = serde_json::from_value(encoded).map_err(serde::de::Error::custom)?;
         if value.lease_id.is_nil()
             || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&value.version)
             || value.holder_subject.trim().is_empty()
-            || !matches!(
-                (value.heartbeat_at, value.expires_at),
-                (None, None) | (Some(_), Some(_))
-            )
+            || (value.heartbeat_at.is_some() && !explicit_expiration)
+            || (value.heartbeat_at.is_none() && value.expires_at.is_some())
         {
             return Err(serde::de::Error::custom("invalid delivery binding"));
         }
@@ -736,6 +777,14 @@ pub trait LifecycleRepository: Send + Sync {
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError>;
 
+    /// Result-only custody lookup. It never restores an active assignment.
+    async fn delivery_proposal_context(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        fence: &DeliveryFence,
+    ) -> Result<LifecycleReceipt, AppError>;
+
     async fn delivery_proposal_operation(
         &self,
         task: Uuid,
@@ -828,14 +877,23 @@ mod binding_tests {
     }
 
     #[test]
-    fn heartbeat_is_not_a_current_lifecycle_command() {
-        assert!(
-            serde_json::from_value::<LifecycleCommand>(json!({
-                "operation":"heartbeat","idempotency_key":"retired",
-                "fence":{"assignment_id":Uuid::from_u128(2),"execution_id":Uuid::from_u128(3),
-                    "fencing_token":1,"lease_id":Uuid::from_u128(1),"expected_lease_version":357}
-            }))
-            .is_err()
-        );
+    fn historical_heartbeat_decodes_only_for_original_operation_readback() {
+        let saved = json!({
+            "operation":"heartbeat","idempotency_key":"retired",
+            "fence":{"assignment_id":Uuid::from_u128(2),"execution_id":Uuid::from_u128(3),
+                "fencing_token":1,"lease_id":Uuid::from_u128(1),"expected_lease_version":357}
+        });
+        let command = serde_json::from_value::<LifecycleCommand>(saved.clone()).unwrap();
+        assert!(matches!(command, LifecycleCommand::Heartbeat { .. }));
+        assert_eq!(command.key(), "retired");
+        assert_eq!(serde_json::to_value(command).unwrap(), saved);
+    }
+
+    #[test]
+    fn retained_permanent_ownership_keeps_its_explicit_null_expiration() {
+        let mut saved = retained();
+        saved["expires_at"] = serde_json::Value::Null;
+        let binding: DeliveryBinding = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(binding).unwrap(), saved);
     }
 }

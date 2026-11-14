@@ -1,5 +1,55 @@
 # API v1 Specification — Task Tracker
 
+## Accepted Result Predecessor
+
+`GET /api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}` возвращает прежний
+`DeliveryInput` envelope. В `AcceptedDeliveryResult` добавлен optional
+`previous_result_id`; `None` не сериализуется. Источник — точное исходное immutable
+назначение результата, а не ссылка из агентского отчёта. Старый payload без поля
+обогащается при чтении без изменения истории. Несовпадение явного pointer,
+чужая association task/assignment/result или отсутствие original assignment —
+409 `delivery ledger inconsistent`. Legacy Analysis и права чтения не меняются.
+
+Канонический `openapi/openapi.json` сформирован фактическим Rust exporter из
+`120cc7f65faa12d8d30cca1b7bc935fea4a69355`:
+SHA256 `25d64e1ffbb85003fc9c5d44f8d61036333da7c155beb4d28470975e9b1bb77c`.
+Текущий контракт включает `resume_with_current_routing` с обеими CAS-версиями;
+исторический `heartbeat` не рекламируется как активная команда.
+Optional UUID `AcceptedDeliveryResult.previous_result_id` не входит в `required`.
+Frontend-клиент генерируется из этой схемы штатной
+командой `pnpm generate:api` и не хранится в Git. Публикация схемы не меняет
+runtime artifact или исторические receipts.
+
+## Persistent Technical Assignment Ownership
+
+`POST /api/v1/issues/{id}/sdlc/lifecycle` сохраняет Reserve/BindRun/Complete и
+исходный operation-key readback. Current `receipt.lease` имеет тип DeliveryOwnership:
+`lease_id`, `version`, `holder_subject`, `claimed_at`, `heartbeat_at` сохранены,
+`expires_at` равен null. Исторические timestamps читаются, а exact-key replay
+возвращает исходный receipt. Время не освобождает ownership или capacity.
+Reserve не принимает `lease_seconds`; новые `heartbeat` и `retry_unsubmitted`
+отклоняются после проверки исторического replay.
+
+Unsubmitted assignment сохраняется для обычного продолжения того же назначения.
+Само отсутствие Tracker binding не доказывает отсутствие native POST или lost ACK.
+Освобождение использует accepted result, `reconcile` с настоящим terminal receipt
+или явный Stop доказанно неотправленной работы. В последнем случае Fleet сначала
+атомарно запрещает dispatch своего запуска, затем отправляет существующий
+`reconcile`: `terminal` отсутствует, `recovery.disposition: stop`,
+`never_submitted` содержит исходные `assignment_hash`, `reservation_key` и
+`reservation_payload_sha256`. Tracker проверяет holder/fence, исходный Reserve,
+его hash и assignment, Ready/Reserved, отсутствие binding и наличие capacity hold.
+Одна транзакция сохраняет reconciliation, освобождает custody и переводит runtime
+в Terminal с `waiting_reason: cancelled_before_submission`. Стадия и история
+сохраняются; автоматического retry нет. Повтор читает исходный ключ даже после
+освобождения назначения. Unknown native outcome требует прежнего readback.
+Нового cancel API/CLI нет.
+
+Namespace source публикует `execution.workspace_preparation_authorized` и только
+при этом proof — `workspace_preparation_commit`. Поле
+`workspace_preparation_expires_at` больше не публикуется; часы не дают полномочий.
+OpenAPI/client parity экспортируется из квалифицированного Rust candidate.
+
 GET `/api/v1/issues/{id}` возвращает `IssueDetailResponse`: прежние поля
 `IssueResponse` и обязательный `lifecycle` из той же проекции, что у доски.
 `lifecycle.enrolled=true` означает существующий сохранённый SDLC-процесс;
@@ -2416,3 +2466,41 @@ authorization and `{source, receipt}` envelope. Delivery receipts additionally
 expose required nullable `previous_result_id` from the original assignment that
 produced that accepted result. The legacy analysis variant and mutation receipts
 retain their original shapes. Stored history is not rewritten by this read.
+
+
+### Explicit routing resume of closed downstream work
+
+The existing `POST /api/v1/issues/{id}/sdlc/lifecycle` accepts
+`{"operation":"resume_with_current_routing","expected_task_version":12,"expected_routing_policy_version":9,"idempotency_key":"owner-reviewed-resume"}`.
+The caller is the configured reservation scheduler with its exact `task-tracker:write`
+credential. This is an explicit owner operation, never background reconciliation.
+It requires current configured single-task root work in Ready/terminal, with no
+assignment, lease, binding, result or capacity hold. Running, Unknown, stale CAS,
+foreign project policy and unresolved critical blockers reject without effects.
+
+The transaction appends an immutable runtime routing generation from the current
+reviewed project policy and queues the same task. Stage, cycle, previous accepted
+result, requirements and owner confirmation remain unchanged. A changed stage's
+agent UUID clears only the current resume-chat hint; original chats/runs remain
+historical. Same-key replay/read uses the existing lifecycle operation route and
+returns the original receipt even after later policy or assignment changes.
+`ensure_queued` keeps the frozen routing. Both explicit interventions clear historical
+automatic-retry metadata; it is not a current recovery budget. Unknown acceptance
+never permits another dispatch.
+
+
+### Explicit Stop recovery
+
+Fresh lifecycle `reconcile` accepts only `recovery:{"disposition":"stop"}`.
+The existing exact terminal or never-submitted evidence, assignment holder,
+fence, current scope and original reservation checks remain mandatory. Stop
+releases custody and leaves the task terminal; it does not complete business
+work or automatically send a new request. A separate explicit `ensure_queued`
+or `resume_with_current_routing` may queue proven closed, unassigned Ready work
+without a recovery-count cap.
+
+`retry_transient` and `retry_unsubmitted` are historical decode/read/exact-key
+replay shapes only. Fresh calls reject without effects; original-key replay is
+resolved before fresh-command validation. Active OpenAPI advertises only Stop.
+Forward121 enforces this same rule in the existing SQL reconciliation owner,
+preserving historical records and immutable original results.

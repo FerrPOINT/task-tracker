@@ -1,5 +1,30 @@
 # Дата-модель Task Tracker
 
+## Predecessor Принятого Delivery Result
+
+`sdlc_delivery_assignments.payload.previous_result_id` — единственный владелец
+связи с предыдущим принятым результатом. Новый Complete копирует этот pointer
+из исходной строки assignment в `sdlc_delivery_results.payload.previous_result_id`.
+Read model проверяет result/assignment/task identity, исходный assignment hash
+и объявленный pointer. Для старого payload без поля связь читается из того же
+assignment; строки истории не переписываются. Новых таблиц и миграций нет.
+
+## Постоянное владение техническим назначением
+
+Forward117 сохраняет assignments, operation results, outbox и исторические
+timestamps. Только в текущем JSON `sdlc_delivery_heads.execution` поле
+`lease.expires_at` становится null; отдельной SQL-колонки здесь нет. Переход
+использует прежний projection permit. IDs, holder, version, fencing, assignment
+hash, capacity hold и business state сохраняются. Historical PM/Analysis не меняются.
+
+Ownership не продлевается и не истекает. Старые heartbeat/retry_unsubmitted keys
+доступны для read/replay; новые heartbeat и автоматическое освобождение запрещены.
+Forward118 допускает `reconcile/stop` с подтверждением Fleet об отмене до отправки.
+Те же immutable reconciliation/operation ledgers проверяют исходный Reserve,
+assignment/fence/holder и отсутствие принятого binding; hold и текущая custody
+освобождаются в этой же транзакции. Одного отсутствия binding недостаточно.
+Новых таблиц нет; прежние receipts и исторические retry-строки не переписываются.
+
 ## Untimed Delivery Binding
 
 Обе опубликованные миграции116 сохраняют полные имена: Reviewer terminal и
@@ -2442,3 +2467,63 @@ fixed proof from the original verified observation, supplied by the canonical
 SDK `confirmation_validity()` helper. It never becomes a credential expiry or
 an accepted assignment/runtime timer. Finite child, human, namespace and
 application proof bounds continue to intersect the original owner clocks.
+
+## Convergence119 двух опубликованных историй
+
+Штатный Migrator выбирает принятую историю по уже применённым полным именам.
+Published/main сохраняет Reviewer116, untimed116, linear117 и plan-dispatch118.
+Installed-история сохраняет unsubmitted116, persistent117 и unsent-stop118.
+Исторический ProjectRepository marker независимо сохраняет свой прежний путь.
+Смешанная или неизвестная история не принимается как новая исходная точка.
+
+Обе истории дополняются одной `m20261114_0000119_current_delivery_contract`.
+Она проверяет полные прежние тела head/reconciliation guards до записи, применяет
+недостающие изменения будущих переходов/плана и устанавливает один clock-free
+current binding и точный version CAS. Reconcile допускает настоящий terminal
+либо проверенный never_submitted/Stop исходного Reserve; новый retry_unsubmitted
+и heartbeat запрещены. Старые команды доступны только через исходный read/replay.
+Ни assignment/result/operation receipts, ни прежние applied_at/name не изменяются;
+новый applied marker принадлежит реальному успешно выполненному forward119.
+
+Relevanter с опубликованными 30 миграциями до project_repository_catalog98
+использует Published-путь. Для него отдельный тест фиксирует точный список имён;
+это fixture схемы, а не копия установленной базы. OpenAPI выпускается штатным
+Rust producer после компиляции объединённых DTO, ручной generated-схемы нет.
+
+
+## Runtime routing generations after explicit terminal intervention
+
+Forward120 extends the existing immutable `sdlc_task_routing_generations` owner.
+The new `resume` provenance family is exclusive with the existing critical-PM
+family: original critical blocker/execution/completion/operation references are
+still mandatory for critical generations and retain their original trigger.
+Resume stores the exact prior closed receipt, CAS command and scheduler operation
+identity; deferred validation requires the same atomic lifecycle result/outbox.
+The inventory remains the existing union of initial and subsequent snapshots.
+No historical snapshot, assignment, result, source binding or operation is rewritten.
+
+A TaskSourceBinding belongs to the exact owner-confirmed business/code source.
+Its `routing_snapshot_id` is immutable creation context, not a requirement to keep
+an obsolete runtime/catalog version. A runtime-only routing resume preserves the
+same task/project/owner/confirmation/requirements/content hash and all original
+namespace/workspace/source-policy fields and sealed source hash. Discovery uses
+the original Analysis intent and PM completion for that same confirmed business
+identity, without fabricating another intent or PM completion.
+
+
+## Explicit recovery without automatic retries
+
+Forward121 replaces only the fresh-admission condition in the existing
+`sdlc_delivery_reconciliation_gate` after checking its complete119/120 body.
+New rows require `recovery.disposition=stop`; the historical CHECK remains able
+to represent old retry rows. Function OID/owner/ACL/attributes, existing trigger, all rows
+and migration history are preserved. Unexpected current function bodies cause
+migration refusal before any replacement.
+
+`LifecycleTask.transient_retries` and the original assignment `attempt` remain
+archival metadata for saved receipts. No current recovery increments the
+counter or uses it to choose terminal versus queued. Confirmed Stop retains it;
+explicit queue/resume clears it for new work while preserving original receipts.
+Old counter-range constraints describe retained payload shape, not a current
+execution or recovery allowance. Unknown native acceptance is never closed by
+count, time, missing journal or an automatic retry.

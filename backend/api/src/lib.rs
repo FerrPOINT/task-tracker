@@ -17,6 +17,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::openapi::{
     info::License,
     path::Operation,
+    schema::Schema,
+    RefOr,
     security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme},
 };
 use utoipa::{Modify, OpenApi};
@@ -404,6 +406,36 @@ impl Modify for SecurityAddon {
         let components = openapi
             .components
             .get_or_insert_with(utoipa::openapi::Components::new);
+
+        // Heartbeat remains decodable for immutable operation history, not a current HTTP command.
+        let RefOr::T(Schema::OneOf(commands)) = components.schemas
+            .get_mut("LifecycleCommand").expect("LifecycleCommand schema") else {
+            panic!("LifecycleCommand must remain a tagged command union");
+        };
+        commands.items.retain(|variant| {
+            let RefOr::T(Schema::Object(command)) = variant else { return true };
+            let Some(RefOr::T(Schema::Object(operation))) = command.properties.get("operation") else {
+                return true;
+            };
+            !operation.enum_values.as_ref().is_some_and(|values| {
+                values.len() == 1 && values[0] == "heartbeat"
+            })
+        });
+
+        // Retired recovery variants retain their history codec, not new-write authority.
+        let RefOr::T(Schema::OneOf(recovery)) = components.schemas
+            .get_mut("RecoveryDisposition").expect("RecoveryDisposition schema") else {
+            panic!("RecoveryDisposition must remain a tagged recovery union");
+        };
+        recovery.items.retain(|variant| {
+            let RefOr::T(Schema::Object(recovery)) = variant else { return false };
+            let Some(RefOr::T(Schema::Object(disposition))) = recovery.properties.get("disposition") else {
+                return false;
+            };
+            disposition.enum_values.as_ref().is_some_and(|values| {
+                values.len() == 1 && values[0] == "stop"
+            })
+        });
 
         components.add_security_scheme(
             "bearer",

@@ -14,10 +14,11 @@ JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND is
 JOIN sdlc_routing_snapshot_inventory s ON s.task_id=t.task_id AND s.project_id=t.project_id
 JOIN sdlc_confirmations c ON c.task_id=t.task_id AND c.id=s.confirmation_id
 JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id
- AND COALESCE(intent.routing_snapshot_id,intent.review_routing_snapshot_id)=s.snapshot_id
+ AND intent.confirmation_id=s.confirmation_id AND intent.requirement_revision=s.requirement_revision
+ AND intent.content_hash=s.content_hash
 LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
 LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
- AND started.command->>'operation'='start_analysis' AND s.generation=1
+ AND started.command->>'operation'='start_analysis'
  AND EXISTS(SELECT 1 FROM sdlc_configured_pm_completions completed
      WHERE completed.task_id=t.task_id AND completed.completion_id=(started.command->>'pm_completion_id')::uuid
        AND completed.confirmation_id=c.id AND completed.requirement_revision=s.requirement_revision
@@ -25,10 +26,12 @@ LEFT JOIN sdlc_delivery_operations started ON started.task_id=t.task_id
        AND (started.actor_subject=t.owner_subject OR
             (started.actor_subject=completed.actor_subject AND started.transaction_id=completed.transaction_id
              AND started.idempotency_key='pm-analysis:'||completed.completion_id::text)))
-LEFT JOIN sdlc_task_routing_generations generation ON generation.task_id=t.task_id AND generation.snapshot_id=s.snapshot_id
-LEFT JOIN sdlc_critical_pm_lifecycle_operations reviewed ON reviewed.operation_id=generation.operation_id
- AND reviewed.kind='complete' AND reviewed.configured_completion_id=generation.configured_completion_id
- AND reviewed.result->>'confirmation_id'=c.id::text AND reviewed.after_state->'lifecycle'->'routing'=s.payload
+LEFT JOIN sdlc_critical_pm_lifecycle_operations reviewed ON reviewed.task_id=t.task_id
+ AND reviewed.kind='complete' AND reviewed.configured_completion_id IS NOT NULL
+ AND reviewed.result->>'confirmation_id'=c.id::text
+ AND reviewed.after_state#>>'{lifecycle,routing,confirmation_id}'=c.id::text
+ AND reviewed.after_state#>>'{lifecycle,routing,requirement_revision}'=s.requirement_revision::text
+ AND reviewed.after_state#>>'{lifecycle,routing,content_hash}'=s.content_hash
 WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
   AND t.state->'flow'='"single-task-v1"'::jsonb

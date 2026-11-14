@@ -43,10 +43,17 @@ mod m20261103_0000113_decomposition;
 mod m20261104_0000113_native_task_artifacts;
 mod m20261106_0000114_native_read_scope_attenuation;
 mod m20261107_0000115_agent_stage_status;
+mod m20261112_0000116_delivery_unsubmitted_recovery;
+mod m20261112_0000117_persistent_delivery_ownership;
+mod m20261113_0000118_delivery_unsent_stop;
 mod m20261108_0000116_reviewer_terminal;
 mod m20261110_0000116_untimed_delivery_binding;
 mod m20261110_0000117_linear_delivery;
 mod m20261111_0000118_plan_content_dispatch;
+mod m20261114_0000119_current_delivery_contract;
+mod m20261114_0000120_routing_resume;
+mod m20261114_0000121_explicit_recovery;
+mod m20261114_0000122_terminal_result_custody;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -62,6 +69,8 @@ mod m20261022_0000103_identity_deletion;
 pub struct Migrator;
 struct PublishedMigrator;
 struct ProjectRepositoryMigrator;
+pub struct InstalledOwnershipMigrator;
+struct InstalledProjectRepositoryMigrator;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
@@ -76,13 +85,17 @@ impl MigratorTrait for Migrator {
         C: ConnectionTrait,
     {
         let history = Self::get_migration_models(db).await?;
-        if history
-            .iter()
-            .any(|m| m.version == "m20261016_0000096_project_repositories")
-        {
-            ProjectRepositoryMigrator::get_migration_with_status(db).await
-        } else {
-            PublishedMigrator::get_migration_with_status(db).await
+        let project_repositories = history.iter().any(|m|
+            m.version == "m20261016_0000096_project_repositories");
+        let installed_ownership = history.iter().any(|m| matches!(m.version.as_str(),
+            "m20261112_0000116_delivery_unsubmitted_recovery"
+            | "m20261112_0000117_persistent_delivery_ownership"
+            | "m20261113_0000118_delivery_unsent_stop"));
+        match (project_repositories, installed_ownership) {
+            (false, false) => PublishedMigrator::get_migration_with_status(db).await,
+            (true, false) => ProjectRepositoryMigrator::get_migration_with_status(db).await,
+            (false, true) => InstalledOwnershipMigrator::get_migration_with_status(db).await,
+            (true, true) => InstalledProjectRepositoryMigrator::get_migration_with_status(db).await,
         }
     }
 }
@@ -90,7 +103,11 @@ impl MigratorTrait for Migrator {
 #[async_trait::async_trait]
 impl MigratorTrait for ProjectRepositoryMigrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        let mut migrations = PublishedMigrator::migrations();
+        project_repository_history(PublishedMigrator::migrations())
+    }
+}
+
+fn project_repository_history(mut migrations: Vec<Box<dyn MigrationTrait>>) -> Vec<Box<dyn MigrationTrait>> {
         let index = migrations
             .iter()
             .position(|m| m.name() == "m20261017_0000097_task_source_binding")
@@ -103,6 +120,30 @@ impl MigratorTrait for ProjectRepositoryMigrator {
             index + 1,
             Box::new(m20261016_0000096_task_source_compatibility::Migration),
         );
+        migrations
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for InstalledProjectRepositoryMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        project_repository_history(InstalledOwnershipMigrator::migrations())
+    }
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for InstalledOwnershipMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        let mut migrations: Vec<_> = PublishedMigrator::migrations().into_iter()
+            .take_while(|m| m.name() != "m20261108_0000116_reviewer_terminal").collect();
+        migrations.extend([
+            Box::new(m20261112_0000116_delivery_unsubmitted_recovery::Migration) as Box<dyn MigrationTrait>,
+            Box::new(m20261112_0000117_persistent_delivery_ownership::Migration),
+            Box::new(m20261113_0000118_delivery_unsent_stop::Migration),
+            Box::new(m20261114_0000119_current_delivery_contract::Migration),
+            Box::new(m20261114_0000120_routing_resume::Migration),
+            Box::new(m20261114_0000121_explicit_recovery::Migration),
+            Box::new(m20261114_0000122_terminal_result_custody::Migration),
+        ]);
         migrations
     }
 }
@@ -168,6 +209,10 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261110_0000116_untimed_delivery_binding::Migration),
             Box::new(m20261110_0000117_linear_delivery::Migration),
             Box::new(m20261111_0000118_plan_content_dispatch::Migration),
+            Box::new(m20261114_0000119_current_delivery_contract::Migration),
+            Box::new(m20261114_0000120_routing_resume::Migration),
+            Box::new(m20261114_0000121_explicit_recovery::Migration),
+            Box::new(m20261114_0000122_terminal_result_custody::Migration),
         ]
     }
 }

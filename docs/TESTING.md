@@ -687,3 +687,26 @@ by the earlier 24-case bootstrap-retry qualification:
 Focused UI case: `keeps confirmed requirements at Backlog without inventing
 Analysis or PM completion`. Historical intent readback tests remain separate.
 Use existing owned Compose/PG transport for native qualification; no live DB.
+
+
+## Explicit recovery121 source gate
+
+Current recovery tests must reject fresh `retry_transient` and
+`retry_unsubmitted` without mutation while retaining exact original operation
+replay. The API schema must advertise only Stop. Keep the historical decoder
+and binding roundtrip tests; do not change old journal bytes to current shapes.
+
+The existing lifecycle fixture selector
+`sdlc::lifecycle::regression_tests::rework_tests::retired_recovery_replays_history_and_rejects_new_writes_after_upgrade`
+seeds a legitimate pre121 retry journal through its then-current SQL guard,
+then applies121 and checks full journal/ledger-prefix preservation, function
+OID/owner/ACL/attributes, original-key replay, fresh repository and SQL denial, and
+Stop plus explicit queue. Its required marker is
+`TRACKER_EXPLICIT_RECOVERY_121=historical_retry_replayed_current_retries_denied_stop_and_manual_queue_preserved`.
+Use a fresh owned `TT_LIFECYCLE_TEST_DATABASE_URL` ending `_lifecycle_test`.
+
+The routing-resume fixture still starts at119 and now migrates through120/121,
+retaining original source and journal data. Migration foreign-function refusal
+uses `m20261114_0000119_current_delivery_contract::tests::current_120_refuses_a_foreign_recovery_guard_without_writes`
+with fresh `TT_PROJECT_COMPAT_TEST_DATABASE_URL` ending `_pdlc4_compat_test`.
+These source declarations do not claim compiled or PostgreSQL execution PASS.

@@ -92,13 +92,13 @@ impl crate::sdlc::SdlcService {
             }
             let lifecycle = self
                 .lifecycle_repository()?
-                .lifecycle_read(task, actor)
+                .delivery_proposal_context(task, actor, &command.fence)
                 .await?;
             let reader = self.configured_workflow.as_ref().ok_or_else(|| {
                 AppError::Unavailable("Workflow receipt reader is not configured".into())
             })?;
             reader
-                .read_delivery(&state, &lifecycle.receipt, &command.workflow_receipt)
+                .read_delivery(&state, &lifecycle, &command.workflow_receipt)
                 .await?;
         }
         self.lifecycle_repository()?
@@ -328,9 +328,25 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
         LifecycleCommand::Reconcile {
             fence,
             terminal,
+            never_submitted,
             recovery,
             ..
         } => {
+            if let Some(observation) = never_submitted {
+                if terminal.is_some()
+                    || !matches!(recovery, RecoveryDisposition::Stop | RecoveryDisposition::RetryUnsubmitted)
+                    || !sha256(&observation.assignment_hash)
+                    || !sha256(&observation.reservation_payload_sha256)
+                {
+                    return Err(AppError::validation("exact never-submitted reservation proof required"));
+                }
+                crate::sdlc::validate_key(&observation.reservation_key)?;
+                return validate_fence(fence);
+            }
+            let terminal = terminal.as_ref().ok_or_else(|| AppError::validation("reconciliation observation required"))?;
+            if matches!(recovery, RecoveryDisposition::RetryUnsubmitted) {
+                return Err(AppError::validation("never-submitted observation required"));
+            }
             if terminal.chat_id.is_nil()
                 || terminal.run_id.is_nil()
                 || !sha256(&terminal.assignment_hash)
@@ -353,6 +369,13 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
             }
             fence
         }
+        LifecycleCommand::ResumeWithCurrentRouting { expected_task_version, expected_routing_policy_version, .. } => {
+            if !(1..=MAX_SAFE_VERSION).contains(expected_task_version)
+                || !(1..=MAX_SAFE_VERSION).contains(expected_routing_policy_version) {
+                return Err(AppError::validation("invalid routing resume version"));
+            }
+            return Ok(());
+        }
         LifecycleCommand::EnsureQueued { .. } => return Ok(()),
         LifecycleCommand::Reserve {
             expected_task_version,
@@ -363,6 +386,7 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
             }
             return Ok(());
         }
+        LifecycleCommand::Heartbeat { fence, .. } => fence,
         LifecycleCommand::BindRun { fence, binding, .. } => {
             if binding.chat_id.is_nil()
                 || binding.run_id.is_nil()
@@ -396,6 +420,16 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
         }
     };
     validate_fence(fence)
+}
+
+/// Historical requests remain decodable and replayable by their original key.
+pub fn validate_active_command(command: &LifecycleCommand) -> Result<(), AppError> {
+    if matches!(command, LifecycleCommand::Heartbeat { .. }
+        | LifecycleCommand::Reconcile { recovery: RecoveryDisposition::RetryUnsubmitted | RecoveryDisposition::RetryTransient { .. }, .. })
+    {
+        return Err(AppError::conflict("assignment ownership persists until result or confirmed terminal reconciliation"));
+    }
+    Ok(())
 }
 
 pub fn validate_fence(fence: &DeliveryFence) -> Result<(), AppError> {
@@ -673,10 +707,13 @@ pub fn issue_mapping_keys(task: &LifecycleTask) -> Result<(String, String), AppE
     ))
 }
 
-/// Apply only after the repository accepts the exact live fence and terminal run.
+/// Apply only after the repository accepts the exact original fence and terminal
+/// run, either still bound or retained as an unchanged successful reconciliation.
 pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Result<(), AppError> {
-    if task.status != LifecycleStatus::Completed
-        || task.runtime != RuntimeState::Running
+    let completed = task.status == LifecycleStatus::Completed && task.runtime == RuntimeState::Running;
+    let reconciled = task.status == LifecycleStatus::Ready && task.runtime == RuntimeState::Terminal
+        && task.waiting_reason.as_deref() == Some("runtime_terminal_requires_intervention");
+    if !(completed || reconciled)
         || task.cycle > MAX_REWORK_CYCLES
         || task.stage.role() != Some(result.role())
     {
@@ -713,13 +750,8 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     Ok(())
 }
 
-/// A transport error after dispatch is unknown acceptance, never a retry permit.
-pub fn transient_retry_allowed(retries: u8, safely_replayable: bool) -> bool {
-    safely_replayable && retries < MAX_TRANSIENT_RETRIES
-}
-
 /// Explicit scheduler intervention after a closed run without an accepted result.
-/// Reuses the existing bounded attempt counter; it never reopens an assignment.
+/// A deliberate new intervention clears historical automatic retry metadata; it never reopens an assignment.
 pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
     if task.runtime != RuntimeState::Terminal {
         return Ok(());
@@ -729,17 +761,51 @@ pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
             "only unfinished terminal work can be queued",
         ));
     }
-    if task.transient_retries >= MAX_TRANSIENT_RETRIES {
-        return Err(AppError::conflict("delivery retry limit reached"));
-    }
     task.version = task
         .version
         .checked_add(1)
         .filter(|v| *v <= MAX_SAFE_VERSION)
         .ok_or_else(|| AppError::conflict("task version exhausted"))?;
-    task.transient_retries += 1;
+    task.transient_retries = 0;
     task.runtime = RuntimeState::Queued;
     task.waiting_reason = Some("queued_after_intervention".into());
+    Ok(())
+}
+
+
+/// Explicitly select current project routing for new work, retaining the old immutable snapshot.
+pub fn resume_with_current_routing(
+    receipt: &mut LifecycleReceipt,
+    policy: &domain::sdlc_routing::RoutingPolicy,
+    expected_task_version: i64,
+    expected_policy_version: i64,
+    snapshot_id: Uuid,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    let task = &receipt.task;
+    let old = &task.routing;
+    crate::sdlc_draft_flow::validate_policy(policy, old.project_id, &old.tracker_instance_id)?;
+    if task.version != expected_task_version || policy.version != expected_policy_version
+        || task.runtime != RuntimeState::Terminal || task.status != LifecycleStatus::Ready
+        || task.stage.role().is_none() || snapshot_id.is_nil() || snapshot_id == old.snapshot_id
+        || receipt.assignment.is_some() || receipt.lease.is_some()
+        || receipt.binding.is_some() || receipt.result.is_some()
+        || old.contract_version != 2 || old.task_id != task.task_id || old.root_task_id != task.task_id {
+        return Err(AppError::conflict("routing resume requires exact unassigned terminal work and current policy"));
+    }
+    let role = task.stage.role().unwrap().key();
+    let agent = |routes: &domain::sdlc_routing::RoleRoutes| {
+        routes.entries().into_iter().find(|(key, _)| *key == role).unwrap().1.agent_id
+    };
+    let preserve_chat = agent(&old.policy.routes) == agent(&policy.routes);
+    let routing = domain::sdlc_routing::TaskRoutingSnapshot {
+        snapshot_id, policy: policy.clone(), created_at: observed_at, ..old.clone()
+    };
+    let mut next = task.clone();
+    ensure_queued(&mut next)?;
+    if !preserve_chat { next.resume_chat_id = None; }
+    next.routing = routing;
+    receipt.task = next;
     Ok(())
 }
 
@@ -748,6 +814,9 @@ pub fn reconcile_terminal(
     terminal: &RuntimeTerminalObservation,
     recovery: &RecoveryDisposition,
 ) -> Result<(), AppError> {
+    if !matches!(recovery, RecoveryDisposition::Stop) {
+        return Err(AppError::conflict("current recovery requires explicit Stop"));
+    }
     if !matches!(
         task.runtime,
         RuntimeState::Running | RuntimeState::Reserved | RuntimeState::Unknown
@@ -759,31 +828,25 @@ pub fn reconcile_terminal(
         .checked_add(1)
         .filter(|v| *v <= MAX_SAFE_VERSION)
         .ok_or_else(|| AppError::conflict("task version exhausted"))?;
-    if let RecoveryDisposition::RetryTransient { .. } = recovery {
-        if terminal.state != RuntimeTerminalState::Failed {
-            return Err(AppError::conflict("transient failure readback required"));
-        }
-    }
     task.version = version;
     task.status = LifecycleStatus::Ready;
     task.resume_chat_id = Some(terminal.chat_id);
-    if matches!(recovery, RecoveryDisposition::RetryTransient { .. })
-        && task.transient_retries < MAX_TRANSIENT_RETRIES
-    {
-        task.transient_retries += 1;
-        task.runtime = RuntimeState::Queued;
-        task.waiting_reason = Some("transient_retry_queued".into());
-    } else {
-        task.runtime = RuntimeState::Terminal;
-        task.waiting_reason = Some(
-            if matches!(recovery, RecoveryDisposition::RetryTransient { .. }) {
-                "transient_retry_limit_reached"
-            } else {
-                "runtime_terminal_requires_intervention"
-            }
-            .into(),
-        );
+    task.runtime = RuntimeState::Terminal;
+    task.waiting_reason = Some("runtime_terminal_requires_intervention".into());
+    Ok(())
+}
+
+/// Fleet has atomically cancelled its original, provably unsent reservation.
+/// Storage validates that reservation and excludes a bound run before calling.
+pub fn stop_never_submitted(task: &mut LifecycleTask) -> Result<(), AppError> {
+    if task.runtime != RuntimeState::Reserved || task.status != LifecycleStatus::Ready {
+        return Err(AppError::conflict("unstarted reserved work required"));
     }
+    task.version = task.version.checked_add(1)
+        .filter(|v| *v <= MAX_SAFE_VERSION)
+        .ok_or_else(|| AppError::conflict("task version exhausted"))?;
+    task.runtime = RuntimeState::Terminal;
+    task.waiting_reason = Some("cancelled_before_submission".into());
     Ok(())
 }
 

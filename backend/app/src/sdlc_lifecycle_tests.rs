@@ -6,6 +6,55 @@ use domain::sdlc_routing::{
 };
 
 #[test]
+fn historical_unsubmitted_observation_decodes_but_cannot_release_current_ownership() {
+    let raw = serde_json::json!({"operation":"reconcile","fence":{
+        "assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),"fencing_token":1,
+        "lease_id":Uuid::new_v4(),"expected_lease_version":1},
+        "never_submitted":{"assignment_hash":"a".repeat(64),"reservation_key":"reserve:original",
+            "reservation_payload_sha256":"b".repeat(64)},
+        "recovery":{"disposition":"retry_unsubmitted"},"idempotency_key":"recover:original"});
+    let command: LifecycleCommand = serde_json::from_value(raw.clone()).unwrap();
+    validate_command(&command).unwrap();
+    assert!(validate_active_command(&command).is_err());
+    assert!(serde_json::to_value(&command).unwrap().get("terminal").is_none());
+    let mut stop = raw.clone();
+    stop["recovery"] = serde_json::json!({"disposition":"stop"});
+    let command: LifecycleCommand = serde_json::from_value(stop.clone()).unwrap();
+    validate_command(&command).unwrap();
+    validate_active_command(&command).unwrap();
+    stop["never_submitted"] = serde_json::Value::Null;
+    assert!(validate_command(&serde_json::from_value(stop).unwrap()).is_err());
+}
+
+#[test]
+fn never_submitted_stop_keeps_stage_inputs_without_retry_or_native_identity() {
+    let mut state = task();
+    state.runtime = RuntimeState::Reserved;
+    state.status = LifecycleStatus::Ready;
+    let before = state.clone();
+    stop_never_submitted(&mut state).unwrap();
+    let mut expected = before.clone();
+    expected.version += 1;
+    expected.runtime = RuntimeState::Terminal;
+    expected.waiting_reason = Some("cancelled_before_submission".into());
+    assert_eq!(state, expected);
+    for runtime in [RuntimeState::Queued, RuntimeState::Running, RuntimeState::Unknown, RuntimeState::Terminal] {
+        let mut wrong = before.clone();
+        wrong.runtime = runtime;
+        let original = wrong.clone();
+        assert!(stop_never_submitted(&mut wrong).is_err());
+        assert_eq!(wrong, original);
+    }
+    for status in [LifecycleStatus::InProgress, LifecycleStatus::Completed] {
+        let mut wrong = before.clone();
+        wrong.status = status;
+        let original = wrong.clone();
+        assert!(stop_never_submitted(&mut wrong).is_err());
+        assert_eq!(wrong, original);
+    }
+}
+
+#[test]
 fn explicit_start_command_is_closed_and_has_no_owner_or_dispatch_override() {
     use serde_json::json;
     let raw = json!({"operation":"start_analysis","pm_completion_id":Uuid::new_v4(),"idempotency_key":"start"});
@@ -450,10 +499,33 @@ fn legacy_clarification_maps_to_draft_without_mutating_history() {
 }
 
 #[test]
-fn transient_retries_require_safe_replay_and_are_bounded_at_three() {
-    for retries in 0..=4 {
-        assert_eq!(transient_retry_allowed(retries, true), retries < 3);
-        assert!(!transient_retry_allowed(retries, false));
+fn retired_recovery_roundtrips_but_cannot_mutate_current_work() {
+    let terminal = RuntimeTerminalObservation {
+        assignment_hash: "a".repeat(64), chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        state: RuntimeTerminalState::Failed, receipt: artifact("historical-terminal"),
+    };
+    let fence = DeliveryFence { assignment_id: Uuid::new_v4(), execution_id: Uuid::new_v4(),
+        fencing_token: 1, lease_id: Uuid::new_v4(), expected_lease_version: 1 };
+    for recovery in [RecoveryDisposition::RetryUnsubmitted, RecoveryDisposition::RetryTransient {
+        replay_safety_receipt: artifact("historical-replay-safety"),
+    }] {
+        let unsent = matches!(recovery, RecoveryDisposition::RetryUnsubmitted);
+        let command = LifecycleCommand::Reconcile {
+            fence: fence.clone(), terminal: if unsent { None } else { Some(terminal.clone()) },
+            never_submitted: if unsent { Some(NeverSubmittedObservation {
+                assignment_hash: "a".repeat(64), reservation_key: "original:reserve".into(),
+                reservation_payload_sha256: "b".repeat(64),
+            }) } else { None }, recovery: recovery.clone(), idempotency_key: "historical:recovery".into(),
+        };
+        let saved = serde_json::to_value(&command).unwrap();
+        let decoded: LifecycleCommand = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&decoded).unwrap(), saved);
+        validate_command(&decoded).unwrap();
+        assert!(validate_active_command(&decoded).is_err());
+        let mut current = task();
+        let before = current.clone();
+        assert!(reconcile_terminal(&mut current, &terminal, &recovery).is_err());
+        assert_eq!(current, before);
     }
 }
 
@@ -641,42 +713,32 @@ fn delivery_grants_are_canonical_single_task_capabilities_not_generic_permission
 }
 
 #[test]
-fn verified_terminal_recovery_keeps_stage_and_bounds_retries_without_business_result() {
+fn verified_terminal_stop_preserves_business_context_and_requires_explicit_intervention() {
     let mut state = task();
-    let stage = state.stage;
-    let task_id = state.task_id;
     let terminal = RuntimeTerminalObservation {
-        assignment_hash: "a".repeat(64),
-        chat_id: Uuid::new_v4(),
-        run_id: Uuid::new_v4(),
-        state: RuntimeTerminalState::Failed,
-        receipt: artifact("actual-runtime-terminal"),
+        assignment_hash: "a".repeat(64), chat_id: Uuid::new_v4(), run_id: Uuid::new_v4(),
+        state: RuntimeTerminalState::Failed, receipt: artifact("actual-runtime-terminal"),
     };
-    let recovery = RecoveryDisposition::RetryTransient {
-        replay_safety_receipt: artifact("safe-operation-readback"),
-    };
-    for retry in 1..=3 {
+    for _ in 0..6 {
         state.runtime = RuntimeState::Unknown;
-        reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
-        assert_eq!(state.stage, stage);
-        assert_eq!(state.task_id, task_id);
-        assert_eq!(state.transient_retries, retry);
-        assert_eq!(state.runtime, RuntimeState::Queued);
+        let before = state.clone();
+        reconcile_terminal(&mut state, &terminal, &RecoveryDisposition::Stop).unwrap();
+        assert_eq!(state.stage, before.stage);
+        assert_eq!(state.task_id, before.task_id);
+        assert_eq!(state.previous_result_id, before.previous_result_id);
+        assert_eq!(state.transient_retries, before.transient_retries);
+        assert_eq!(state.runtime, RuntimeState::Terminal);
+        assert_eq!(state.status, LifecycleStatus::Ready);
         assert_eq!(state.resume_chat_id, Some(terminal.chat_id));
-        assert_eq!(state.previous_result_id, None);
+        assert_eq!(state.waiting_reason.as_deref(), Some("runtime_terminal_requires_intervention"));
+        ensure_queued(&mut state).unwrap();
+        assert_eq!(state.runtime, RuntimeState::Queued);
+        assert_eq!(state.transient_retries, 0);
     }
-    state.runtime = RuntimeState::Unknown;
-    reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
-    assert_eq!(state.runtime, RuntimeState::Terminal);
-    assert_eq!(state.status, LifecycleStatus::Ready);
-    assert_eq!(
-        state.waiting_reason.as_deref(),
-        Some("transient_retry_limit_reached")
-    );
 }
 
 #[test]
-fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
+fn explicit_queue_intervention_preserves_inputs_and_clears_historical_retry_metadata() {
     let mut state = task();
     state.stage = LifecycleStage::Development;
     state.status = LifecycleStatus::Ready;
@@ -686,7 +748,7 @@ fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
     ensure_queued(&mut state).unwrap();
     assert_eq!(state.runtime, RuntimeState::Queued);
     assert_eq!(state.version, original.version + 1);
-    assert_eq!(state.transient_retries, 1);
+    assert_eq!(state.transient_retries, 0);
     assert_eq!(state.task_id, original.task_id);
     assert_eq!(state.stage, original.stage);
     assert_eq!(state.routing, original.routing);
@@ -713,10 +775,13 @@ fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
         assert_eq!(state, before);
     }
     state = original.clone();
-    state.transient_retries = MAX_TRANSIENT_RETRIES;
-    let before = state.clone();
-    assert!(ensure_queued(&mut state).is_err());
-    assert_eq!(state, before);
+    for _ in 0..6 {
+        state.runtime = RuntimeState::Terminal;
+        state.transient_retries = 3; // Archived pre121 counter, never a current recovery limit.
+        ensure_queued(&mut state).unwrap();
+        assert_eq!(state.runtime, RuntimeState::Queued);
+        assert_eq!(state.transient_retries, 0);
+    }
 }
 
 #[test]
@@ -852,4 +917,126 @@ fn configured_original_proposal_receipt_has_its_own_frozen_identity() {
         authorize_configured_proposal_receipt(&actor, &receipt, &assignment, "changed-owner")
             .is_err()
     );
+}
+
+#[test]
+fn persistent_ownership_preserves_historical_wire_and_closed_current_commands() {
+    use serde_json::json;
+    let old = json!({"lease_id":Uuid::new_v4(),"version":3,"holder_subject":"scheduler",
+        "claimed_at":"2026-01-01T00:00:00.000000000Z","heartbeat_at":"2026-01-01T00:00:10.000000000Z",
+        "expires_at":"2026-01-01T00:00:40.000000000Z"});
+    let history: DeliveryBinding = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&history).unwrap(), old);
+    let mut current = history.clone();
+    current.expires_at = None;
+    let encoded = serde_json::to_value(&current).unwrap();
+    assert!(encoded["expires_at"].is_null());
+    assert_eq!(encoded["lease_id"], old["lease_id"]);
+    assert_eq!(encoded["version"], old["version"]);
+    assert_eq!(encoded["holder_subject"], old["holder_subject"]);
+    let reserve = json!({"operation":"reserve","expected_task_version":1,"idempotency_key":"reserve"});
+    let command: LifecycleCommand = serde_json::from_value(reserve.clone()).unwrap();
+    validate_active_command(&command).unwrap();
+    let mut timed = reserve;
+    timed["lease_seconds"] = json!(30);
+    assert!(serde_json::from_value::<LifecycleCommand>(timed).is_err());
+    let fence = DeliveryFence { assignment_id:Uuid::new_v4(),execution_id:Uuid::new_v4(),
+        fencing_token:1,lease_id:current.lease_id,expected_lease_version:current.version };
+    let renewal = LifecycleCommand::Heartbeat { fence:fence.clone(),idempotency_key:"retired-heartbeat".into() };
+    validate_command(&renewal).unwrap();
+    assert!(validate_active_command(&renewal).is_err());
+
+}
+
+
+fn routing_resume_fixture() -> (LifecycleReceipt, RoutingPolicy) {
+    let mut task = task();
+    let mut routes = serde_json::json!({});
+    for (i, role) in ["project_manager", "analyst", "architect", "developer", "reviewer", "tester", "devops"].iter().enumerate() {
+        let suffix = role.replace('_', "-");
+        routes[*role] = serde_json::json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":2,
+            "instruction_profile":"single-task-v1","instruction_manifest_sha256":"a".repeat(64),
+            "namespace_id":(i+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
+            "workflow_id":(i+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),
+            "profile":format!("single-task-v1-{suffix}"),"workflow_catalog_version":1,"workflow_catalog_sha256":"b".repeat(64)});
+    }
+    task.routing.contract_version = 2;
+    task.routing.policy.contract_version = 2;
+    task.routing.policy.routes = serde_json::from_value(routes).unwrap();
+    task.routing.policy.routing_hash = crate::sdlc::canonical_hash(&task.routing.policy.routes).unwrap();
+    task.runtime = RuntimeState::Terminal;
+    task.status = LifecycleStatus::Ready;
+    task.resume_chat_id = Some(Uuid::new_v4());
+    task.previous_result_id = Some(Uuid::new_v4());
+    task.cycle = 2;
+    task.transient_retries = 3; // Retained historical metadata.
+    let mut policy = task.routing.policy.clone();
+    policy.version += 1;
+    policy.routes.analyst.fleet_config_revision += 1;
+    policy.routing_hash = crate::sdlc::canonical_hash(&policy.routes).unwrap();
+    (LifecycleReceipt { task, assignment: None, lease: None, binding: None, result: None }, policy)
+}
+
+#[test]
+fn routing_resume_preserves_confirmed_business_context_for_every_downstream_stage() {
+    for stage in [LifecycleStage::Analysis, LifecycleStage::Architecture, LifecycleStage::Development,
+        LifecycleStage::Review, LifecycleStage::Testing, LifecycleStage::Rework, LifecycleStage::Deployment] {
+        let (mut receipt, policy) = routing_resume_fixture();
+        receipt.task.stage = stage;
+        let original = receipt.clone();
+        resume_with_current_routing(&mut receipt, &policy, original.task.version, policy.version,
+            Uuid::new_v4(), Utc::now()).unwrap();
+        assert_eq!(receipt.task.stage, original.task.stage);
+        assert_eq!(receipt.task.cycle, original.task.cycle);
+        assert_eq!(receipt.task.previous_result_id, original.task.previous_result_id);
+        assert_eq!(receipt.task.resume_chat_id, original.task.resume_chat_id);
+        assert_eq!(receipt.task.routing.confirmation_id, original.task.routing.confirmation_id);
+        assert_eq!(receipt.task.routing.requirement_revision, original.task.routing.requirement_revision);
+        assert_eq!(receipt.task.routing.content_hash, original.task.routing.content_hash);
+        assert_eq!(receipt.task.routing.policy, policy);
+        assert_ne!(receipt.task.routing.snapshot_id, original.task.routing.snapshot_id);
+        assert_eq!(receipt.task.version, original.task.version + 1);
+        assert_eq!(receipt.task.runtime, RuntimeState::Queued);
+        assert_eq!(receipt.task.transient_retries, 0);
+    }
+}
+
+#[test]
+fn routing_resume_rejects_live_custody_foreign_policy_and_stale_cas_without_effects() {
+    let (original, policy) = routing_resume_fixture();
+    for runtime in [RuntimeState::Queued, RuntimeState::Reserved, RuntimeState::Running, RuntimeState::Unknown] {
+        let mut changed = original.clone(); changed.task.runtime = runtime;
+        let before = changed.clone();
+        assert!(resume_with_current_routing(&mut changed, &policy, original.task.version,
+            policy.version, Uuid::new_v4(), Utc::now()).is_err());
+        assert_eq!(changed, before);
+    }
+    for (task_version, policy_version, foreign) in [(original.task.version+1,policy.version,false),
+        (original.task.version,policy.version+1,false),(original.task.version,policy.version,true)] {
+        let mut changed = original.clone(); let mut selected = policy.clone();
+        if foreign { selected.project_id = Uuid::new_v4(); }
+        assert!(resume_with_current_routing(&mut changed, &selected, task_version, policy_version,
+            Uuid::new_v4(), Utc::now()).is_err());
+        assert_eq!(changed, original);
+    }
+    let mut changed = original.clone();
+    changed.binding = Some(RunBinding { chat_id:Uuid::new_v4(), run_id:Uuid::new_v4(),
+        machine_subject:"original-producer".into(), dispatch_receipt:artifact("original-dispatch") });
+    let before = changed.clone();
+    assert!(resume_with_current_routing(&mut changed, &policy, original.task.version,policy.version,
+        Uuid::new_v4(),Utc::now()).is_err());
+    assert_eq!(changed,before);
+    let mut legacy = original.clone(); legacy.task.routing.contract_version = 1;
+    assert!(resume_with_current_routing(&mut legacy,&policy,original.task.version,policy.version,
+        Uuid::new_v4(),Utc::now()).is_err());
+}
+
+#[test]
+fn routing_resume_drops_only_the_current_chat_hint_when_the_assigned_agent_changes() {
+    let (mut receipt, mut policy) = routing_resume_fixture();
+    policy.routes.analyst.agent_id = Uuid::new_v4();
+    policy.routing_hash = crate::sdlc::canonical_hash(&policy.routes).unwrap();
+    let version = receipt.task.version;
+    resume_with_current_routing(&mut receipt,&policy,version,policy.version,Uuid::new_v4(),Utc::now()).unwrap();
+    assert_eq!(receipt.task.resume_chat_id,None);
 }

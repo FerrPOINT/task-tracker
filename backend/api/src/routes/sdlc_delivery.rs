@@ -404,6 +404,7 @@ mod tests {
                 "start_analysis",
                 "reconcile",
                 "ensure_queued",
+                "resume_with_current_routing",
                 "reserve",
                 "bind_run",
                 "complete"
@@ -417,6 +418,41 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn lifecycle_schema_exposes_only_explicit_stop_recovery_and_retains_history_codec() {
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let variants = spec["components"]["schemas"]["RecoveryDisposition"]["oneOf"].as_array().unwrap();
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0]["properties"]["disposition"]["enum"], serde_json::json!(["stop"]));
+        for saved in [serde_json::json!({"disposition":"retry_unsubmitted"}),
+            serde_json::json!({"disposition":"retry_transient","replay_safety_receipt":{
+                "reference":"fixture://original-replay","sha256":"a".repeat(64)}})] {
+            let old: domain::sdlc_lifecycle::RecoveryDisposition = serde_json::from_value(saved.clone()).unwrap();
+            assert_eq!(serde_json::to_value(old).unwrap(), saved);
+        }
+    }
+
+    #[test]
+    fn routing_resume_schema_and_request_require_both_explicit_cas_versions() {
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let variants = spec["components"]["schemas"]["LifecycleCommand"]["oneOf"].as_array().unwrap();
+        let resume_schema = variants.iter().find(|variant|
+            variant["properties"]["operation"]["enum"][0] == "resume_with_current_routing").unwrap();
+        for field in ["expected_task_version","expected_routing_policy_version","idempotency_key"] {
+            assert!(resume_schema["required"].as_array().unwrap().contains(&serde_json::json!(field)));
+        }
+        let resume = serde_json::json!({"operation":"resume_with_current_routing",
+            "expected_task_version":7,"expected_routing_policy_version":9,"idempotency_key":"reviewed:resume"});
+        let parsed: LifecycleCommand = serde_json::from_value(resume.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(),resume);
+        for field in ["expected_task_version","expected_routing_policy_version"] {
+            let mut omitted=resume.clone();omitted.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<LifecycleCommand>(omitted).is_err());
+            let mut zero=resume.clone();zero[field]=serde_json::json!(0);
+            assert!(serde_json::from_value::<LifecycleCommand>(zero).is_err());
+        }
     }
 
     fn stage_start_bodies() -> [serde_json::Value; 2] {

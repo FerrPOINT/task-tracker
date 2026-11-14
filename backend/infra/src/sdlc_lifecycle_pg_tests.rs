@@ -75,6 +75,82 @@ fn delivery_fence(receipt: &LifecycleReceipt) -> DeliveryFence {
     }
 }
 
+fn predecessor_fixture() -> (DeliveryAssignment, AcceptedDeliveryResult) {
+    let task=Uuid::new_v4();
+    let project=Uuid::new_v4();
+    let created_at=chrono::Utc::now();
+    let routing=json!({"contract_version":1,"snapshot_id":Uuid::new_v4(),"tracker_instance_id":"fixture",
+        "project_id":project,"task_id":task,"root_task_id":task,"confirmation_id":Uuid::new_v4(),
+        "requirement_revision":1,"content_hash":"a".repeat(64),"created_at":created_at,
+        "policy":{"contract_version":1,"tracker_instance_id":"fixture","project_id":project,"version":1,
+            "routing_hash":"b".repeat(64),"routes":routes(),"verification":"declared","native_ready":false,
+            "dispatch_allowed":false,"author_subject":"owner","created_at":created_at}});
+    let mut assignment:DeliveryAssignment=parse(json!({"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
+        "task_id":task,"owner_subject":"owner","role":"tester","stage":"Testing","cycle":0,"attempt":1,
+        "agent_id":Uuid::new_v4(),"machine_subject":"tester-machine","routing":routing,
+        "previous_result_id":Uuid::new_v4(),"fencing_token":1,"lease_id":Uuid::new_v4(),"assignment_hash":""}));
+    assignment.assignment_hash=app::sdlc_lifecycle::assignment_hash(&assignment).unwrap();
+    let result=AcceptedDeliveryResult {
+        result_id:Uuid::new_v4(),assignment_id:assignment.assignment_id,task_id:task,
+        previous_result_id:assignment.previous_result_id,
+        terminal:TerminalReceipt {chat_id:Uuid::new_v4(),run_id:Uuid::new_v4(),fleet_receipt:artifact("terminal"),
+            workflow_receipt:artifact("workflow"),output_sha256:"c".repeat(64)},
+        output:DeliveryResult::Tester {verdict:TestVerdict::Passed,report:artifact("tester")},
+        previous_stage:LifecycleStage::Testing,next_stage:LifecycleStage::Deployment,
+        next_status:LifecycleStatus::Ready,cycle:0,created_at,
+    };
+    (assignment,result)
+}
+
+#[test]
+fn accepted_result_predecessor_matches_original_assignment_and_none_stays_optional() {
+    let (mut assignment,mut expected)=predecessor_fixture();
+    for predecessor in [assignment.previous_result_id,None] {
+        assignment.previous_result_id=predecessor;
+        assignment.assignment_hash=app::sdlc_lifecycle::assignment_hash(&assignment).unwrap();
+        expected.previous_result_id=predecessor;
+        let payload=serde_json::to_value(&expected).unwrap();
+        assert_eq!(payload.get("previous_result_id").is_some(),predecessor.is_some());
+        let original=original_result_assignment(Some(serde_json::to_value(&assignment).unwrap()),expected.task_id,expected.assignment_id).unwrap();
+        assert_eq!(accepted_result_readback(&payload,expected.task_id,expected.result_id,&original).unwrap(),expected);
+    }
+}
+
+#[test]
+fn historical_result_predecessor_is_enriched_without_rewriting_payload() {
+    let (assignment,expected)=predecessor_fixture();
+    let mut payload=serde_json::to_value(&expected).unwrap();
+    payload.as_object_mut().unwrap().remove("previous_result_id");
+    let before=payload.clone();
+    assert!(serde_json::from_value::<AcceptedDeliveryResult>(payload.clone()).unwrap().previous_result_id.is_none());
+    let readback = AcceptedDeliveryInput {
+        result: accepted_result_readback(&payload,expected.task_id,expected.result_id,&assignment).unwrap(),
+        previous_result_id: assignment.previous_result_id,
+    };
+    assert!(readback.result.previous_result_id.is_none());
+    assert_eq!(serde_json::to_value(readback).unwrap(),serde_json::to_value(expected).unwrap());
+    assert_eq!(payload,before,"the immutable historical payload must not be rewritten");
+}
+
+#[test]
+fn accepted_result_predecessor_rejects_mismatch_foreign_or_missing_original_assignment() {
+    let (assignment,expected)=predecessor_fixture();
+    let payload=serde_json::to_value(&expected).unwrap();
+    assert!(original_result_assignment(None,expected.task_id,expected.assignment_id).is_err());
+    for value in [json!(Uuid::new_v4()),Json::Null,json!("invalid-uuid")] {
+        let mut changed=payload.clone(); changed["previous_result_id"]=value;
+        assert!(accepted_result_readback(&changed,expected.task_id,expected.result_id,&assignment).is_err());
+    }
+    for field in ["task_id","assignment_id","result_id"] {
+        let mut changed=payload.clone(); changed[field]=json!(Uuid::new_v4());
+        assert!(accepted_result_readback(&changed,expected.task_id,expected.result_id,&assignment).is_err());
+    }
+    for field in ["task_id","assignment_id","previous_result_id"] {
+        let mut foreign=serde_json::to_value(&assignment).unwrap(); foreign[field]=json!(Uuid::new_v4());
+        assert!(original_result_assignment(Some(foreign),expected.task_id,expected.assignment_id).is_err());
+    }
+}
+
 async fn start_delivery(
     repo: &PostgresSdlcRepository,
     task: Uuid,
@@ -918,7 +994,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
     assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
     let reconcile = LifecycleCommand::Reconcile {
         fence: stale,
-        terminal: RuntimeTerminalObservation {
+        terminal: Some(RuntimeTerminalObservation {
             assignment_hash: reserved
                 .assignment
                 .as_ref()
@@ -929,12 +1005,21 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             run_id: binding.run_id,
             state: RuntimeTerminalState::Failed,
             receipt: artifact("verified-terminal"),
-        },
-        recovery: RecoveryDisposition::RetryTransient {
-            replay_safety_receipt: artifact("safe-replay"),
-        },
+        }),
+        never_submitted: None,
+        recovery: RecoveryDisposition::Stop,
         idempotency_key: "reconcile".into(),
     };
+    let mut retired = reconcile.clone();
+    if let LifecycleCommand::Reconcile { recovery, idempotency_key, .. } = &mut retired {
+        *recovery = RecoveryDisposition::RetryTransient { replay_safety_receipt: artifact("historical-safe-replay") };
+        *idempotency_key = "retired:no-new-retry".into();
+    }
+    let before_retired = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
+    let operations_before = count(&db, "sdlc_delivery_operations").await;
+    assert!(repo.lifecycle_command(task, &scheduler, retired).await.is_err());
+    assert_eq!(repo.lifecycle_read(task, &reader).await.unwrap().receipt, before_retired);
+    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations_before);
     let (recovered, _) = repo
         .lifecycle_command(task, &scheduler, reconcile.clone())
         .await
@@ -949,6 +1034,11 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             .unwrap()
             .1
     );
+    assert_eq!(recovered.task.runtime, RuntimeState::Terminal);
+    assert_eq!(recovered.task.waiting_reason.as_deref(), Some("runtime_terminal_requires_intervention"));
+    let (recovered, _) = repo.lifecycle_command(task, &scheduler, LifecycleCommand::EnsureQueued {
+        idempotency_key: "explicit-after-failed-terminal".into(),
+    }).await.unwrap();
     let (mut retry, _) = repo
         .lifecycle_command(
             task,
@@ -962,7 +1052,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         )
         .await
         .unwrap();
-    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
+    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 1);
     let retry_context = repo.context(task, &producer).await.unwrap();
     assert_eq!(
         retry_context.workflow_task_key.as_deref(),
@@ -1024,13 +1114,14 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             &scheduler,
             LifecycleCommand::Reconcile {
                 fence: delivery_fence(&retry),
-                terminal: RuntimeTerminalObservation {
+                terminal: Some(RuntimeTerminalObservation {
                     assignment_hash: retry.assignment.as_ref().unwrap().assignment_hash.clone(),
                     chat_id: binding.chat_id,
                     run_id: Uuid::new_v4(),
                     state: RuntimeTerminalState::Succeeded,
                     receipt: artifact("closed-without-result"),
-                },
+                }),
+                never_submitted: None,
                 recovery: RecoveryDisposition::Stop,
                 idempotency_key: "explicit-stop".into(),
             },
@@ -1053,7 +1144,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
     assert!(!replayed);
     assert_eq!(queued_again.task.runtime, RuntimeState::Queued);
     assert_eq!(queued_again.task.version, stopped.task.version + 1);
-    assert_eq!(queued_again.task.transient_retries, 2);
+    assert_eq!(queued_again.task.transient_retries, 0);
     assert_eq!(queued_again.task.routing, stopped.task.routing);
     assert_eq!(
         queued_again.task.previous_result_id,
@@ -1094,7 +1185,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         .await
         .unwrap()
         .0;
-    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 3);
+    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 1);
     assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
     let before_replay = pm_ordinal_head(&db).await;
     assert!(
@@ -1234,8 +1325,8 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             let retained_before: Json = db.query_one(statement(retained_sql,
                 vec![task.into(),expected.result_id.into()])).await.unwrap().unwrap()
                 .try_get("", "retained").unwrap();
-            assert!(retained_before["result"].get("previous_result_id").is_none(),
-                "the read projection must not rewrite immutable accepted results");
+            assert_eq!(retained_before["result"], serde_json::to_value(expected).unwrap(),
+                "the accepted receipt retains its producer's exact predecessor representation");
             let input = repo
                 .lifecycle_result(task, &role_producer, expected.result_id)
                 .await
@@ -1364,6 +1455,8 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         assert_eq!(proposed.assignment, started.assignment);
         assert_eq!(proposed.binding, started.binding);
         assert_eq!(count(&db, "sdlc_delivery_holds").await, 1);
+        let original_previous_result_id=assignment.previous_result_id;
+        let original_assignment_id=assignment.assignment_id;
         if i == 0 {
             db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
             let late = repo.lifecycle_read(task, &reader).await.unwrap();
@@ -1391,7 +1484,16 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
             .unwrap()
             .0;
         assert_eq!(cursor.task.version, proposed.task.version + 1);
-        if matches!(started.task.stage, LifecycleStage::Deployment) {
+        let accepted=cursor.result.as_ref().unwrap();
+        assert_eq!(accepted.previous_result_id,original_previous_result_id);
+        let persisted:Json=db.query_one(statement("SELECT payload FROM sdlc_delivery_results WHERE result_id=$1 AND assignment_id=$2 AND task_id=$3",
+            vec![accepted.result_id.into(),original_assignment_id.into(),task.into()])).await.unwrap().unwrap().try_get("","payload").unwrap();
+        assert_eq!(persisted,serde_json::to_value(accepted).unwrap());
+        assert_eq!(serde_json::to_value(repo.lifecycle_result(task,&owner,accepted.result_id).await.unwrap()).unwrap(),
+            serde_json::to_value(DeliveryInput::Delivery(AcceptedDeliveryInput {
+                result: accepted.clone(), previous_result_id: original_previous_result_id,
+            })).unwrap());
+        if started.task.stage == LifecycleStage::Deployment {
             assert_eq!(cursor.task.status, LifecycleStatus::Completed);
             assert_eq!(cursor.task.runtime, RuntimeState::Terminal);
         } else {

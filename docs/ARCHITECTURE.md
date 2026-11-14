@@ -1,5 +1,53 @@
 # Архитектура Task Tracker
 
+Образ backend включает существующую команду `task-tracker-migrate up`
+(пакет `migration`). Base запускает её с `DATABASE_URL` действующей базы
+после остановки писателя и до старта новой версии при изменении схемы.
+Это применение миграции вперёд без копирования данных; `fresh` и `down`
+при штатном обновлении не используются.
+
+Отмена до отправки использует существующий Reconcile/Stop и те же ledgers.
+Fleet владеет фактом запрета native dispatch, Tracker — освобождением назначения.
+Tracker принимает точное подтверждение исходного Reserve только для Ready/Reserved
+без binding; terminal observation и native ID не выдумываются. Отмена сохраняется
+атомарно с освобождением hold и не ставит задачу в очередь повторно. Неизвестный
+исход отправки требует сверки прежнего запуска. Forward118 обновляет SQL guard
+этого контракта, сохраняя исторические операции и запрет освобождения по времени.
+
+## Владение назначением без TTL
+
+Technical Workflow receipt сверяется с `assignment.execution.key`, выделенным
+этому назначению. Сохранённый `TaskState.workflow_task_key` относится к PM history
+и не подменяет technical execution. PM completion сохраняет собственный контракт.
+
+Forward122 позволяет завершить исходный результат после уже сохранённой успешной
+native reconciliation через те же producer proposal и scheduler Complete.
+Единый SQL custody owner требует точного неизменённого stop receipt, исходных
+assignment/binding/fence и Succeeded, актуальных requirements и отсутствия более
+нового назначения. Изменение head после stop, Failed и Cancelled закрывают этот
+путь. Исходный producer подтверждает proposal своими текущими credentials;
+Workflow, artifact, discussion и project/owner проверки сохраняются. Proposal
+остаётся immutable записью без изменения terminal head; Complete атомарно
+принимает typed result и выбирает следующую стадию. Старые журналы не меняются,
+active assignment/lease не восстанавливаются, новый анализ не запускается.
+Прежний producer может читать собственную pending custody, но context не
+объявляет её активным назначением и не выдаёт новый dispatch grant. Forward122
+и source tests требуют отдельной квалификации; это не заявление live acceptance.
+
+Для single-task-v1/configured-cli-v1 назначение принадлежит одному holder до
+принятого результата или подтверждённого terminal Stop. Часы и restart Fleet не передают ownership
+и не создают попытку. Stable assignment, fence, operation keys, project/owner
+authorization и один capacity hold сохраняются. Отсутствие native journal означает
+продолжение того же назначения. Unknown outcome требует исходного readback.
+
+Текущий DTO — DeliveryBinding без временных полей. Исторические delivery receipts
+с прежними датами либо явным expires_at=null остаются читаемыми без изменения байтов;
+PM ExecutionLease сохраняет отдельный строгий контракт. Installed Forward117
+нормализовал свой current head через прежние permits. Unsubmitted назначение продолжается;
+новой команды отмены нет. Capacity освобождают прежние accepted result/known
+terminal Stop, а lost ACK требует readback, не отмены по отсутствию binding.
+[Решение и границы](adr/0013-persistent-technical-ownership.md).
+
 На странице задачи основная область показывает цель, объём работ и критерии
 из ревизии требований, указанной в авторизованном SDLC context. Это read-only
 представление существующего snapshot API. Хранимое `issue.description` не

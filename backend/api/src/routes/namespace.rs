@@ -400,6 +400,7 @@ pub async fn task_context(
             "assignment": execution.assignment,
             "requirement_revision": execution.requirement_revision,
             "source_binding": source_binding,
+            "workspace_preparation_authorized": workspace_preparation_allowed,
             "workspace_preparation_commit": workspace_preparation_commit,
         });
     }
