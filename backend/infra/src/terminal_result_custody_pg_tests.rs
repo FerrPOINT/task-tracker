@@ -113,12 +113,14 @@ async fn successful_terminal_finalizes_original_result_without_restoring_assignm
                 advanced.unwrap().0
             } else { f.repo.lifecycle_command(f.task, &f.scheduler, queue).await.unwrap().0 };
             assert!(next.task.version > stopped.task.version);
-            if outcome == "newer_assignment" {
-                f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reserve {
+            let newer = if outcome == "newer_assignment" {
+                let reserve = LifecycleCommand::Reserve {
                     expected_task_version: next.task.version, machine_subject: Some(producer.subject.clone()),
                     idempotency_key: "terminal:newer:reserve".into(),
-                }).await.unwrap();
-            }
+                };
+                let reserved = f.repo.lifecycle_command(f.task, &f.scheduler, reserve.clone()).await.unwrap().0;
+                Some((reserve, reserved))
+            } else { None };
             let before = f.journal_snapshot().await;
             assert!(f.repo.delivery_proposal_context(f.task, &producer, &fence).await.is_err());
             if outcome != "race" {
@@ -131,6 +133,24 @@ async fn successful_terminal_finalizes_original_result_without_restoring_assignm
                 idempotency_key: format!("fleet-delivery-complete:{}", binding.run_id) };
             assert!(f.repo.lifecycle_command(f.task, &f.scheduler, complete).await.is_err());
             assert_eq!(f.journal_snapshot().await, before);
+            if let Some((reserve, reserved)) = newer {
+                let assignment = reserved.assignment.as_ref().unwrap();
+                assert_eq!(before["holds"].as_array().unwrap().len(), 1);
+                assert_eq!(before["holds"][0]["assignment_id"], assignment.assignment_id.to_string());
+                // This case intentionally retained a real newer capacity hold.
+                // Close only its unbound reservation before the next task uses the same agent.
+                let closed = f.repo.lifecycle_command(f.task, &f.scheduler, LifecycleCommand::Reconcile {
+                    fence: delivery_fence(&reserved), terminal: None,
+                    never_submitted: Some(NeverSubmittedObservation {
+                        assignment_hash: assignment.assignment_hash.clone(),
+                        reservation_key: reserve.key().into(),
+                        reservation_payload_sha256: app::sdlc::canonical_hash(&reserve).unwrap(),
+                    }), recovery: RecoveryDisposition::Stop,
+                    idempotency_key: "terminal:newer:explicit-stop".into(),
+                }).await.unwrap().0;
+                assert!(closed.assignment.is_none() && closed.binding.is_none() && closed.lease.is_none());
+                assert_eq!(f.journal_snapshot().await["holds"], json!([]));
+            }
             continue;
         }
         let (left, right) = tokio::join!(
