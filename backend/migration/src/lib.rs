@@ -53,6 +53,7 @@ mod m20261111_0000118_plan_content_dispatch;
 mod m20261114_0000119_current_delivery_contract;
 mod m20261114_0000120_routing_resume;
 mod m20261114_0000121_explicit_recovery;
+mod m20261114_0000122_terminal_result_custody;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -141,6 +142,7 @@ impl MigratorTrait for InstalledOwnershipMigrator {
             Box::new(m20261114_0000119_current_delivery_contract::Migration),
             Box::new(m20261114_0000120_routing_resume::Migration),
             Box::new(m20261114_0000121_explicit_recovery::Migration),
+            Box::new(m20261114_0000122_terminal_result_custody::Migration),
         ]);
         migrations
     }
@@ -210,6 +212,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261114_0000119_current_delivery_contract::Migration),
             Box::new(m20261114_0000120_routing_resume::Migration),
             Box::new(m20261114_0000121_explicit_recovery::Migration),
+            Box::new(m20261114_0000122_terminal_result_custody::Migration),
         ]
     }
 }

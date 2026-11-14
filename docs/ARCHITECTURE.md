@@ -16,6 +16,24 @@ Tracker принимает точное подтверждение исходн�
 
 ## Владение назначением без TTL
 
+Technical Workflow receipt сверяется с `assignment.execution.key`, выделенным
+этому назначению. Сохранённый `TaskState.workflow_task_key` относится к PM history
+и не подменяет technical execution. PM completion сохраняет собственный контракт.
+
+Forward122 позволяет завершить исходный результат после уже сохранённой успешной
+native reconciliation через те же producer proposal и scheduler Complete.
+Единый SQL custody owner требует точного неизменённого stop receipt, исходных
+assignment/binding/fence и Succeeded, актуальных requirements и отсутствия более
+нового назначения. Изменение head после stop, Failed и Cancelled закрывают этот
+путь. Исходный producer подтверждает proposal своими текущими credentials;
+Workflow, artifact, discussion и project/owner проверки сохраняются. Proposal
+остаётся immutable записью без изменения terminal head; Complete атомарно
+принимает typed result и выбирает следующую стадию. Старые журналы не меняются,
+active assignment/lease не восстанавливаются, новый анализ не запускается.
+Прежний producer может читать собственную pending custody, но context не
+объявляет её активным назначением и не выдаёт новый dispatch grant. Forward122
+и source tests требуют отдельной квалификации; это не заявление live acceptance.
+
 Для single-task-v1/configured-cli-v1 назначение принадлежит одному holder до
 принятого результата или подтверждённого terminal Stop. Часы и restart Fleet не передают ownership
 и не создают попытку. Stable assignment, fence, operation keys, project/owner

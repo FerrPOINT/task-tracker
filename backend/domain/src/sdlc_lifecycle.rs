@@ -777,6 +777,14 @@ pub trait LifecycleRepository: Send + Sync {
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError>;
 
+    /// Result-only custody lookup. It never restores an active assignment.
+    async fn delivery_proposal_context(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        fence: &DeliveryFence,
+    ) -> Result<LifecycleReceipt, AppError>;
+
     async fn delivery_proposal_operation(
         &self,
         task: Uuid,

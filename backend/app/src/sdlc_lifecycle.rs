@@ -92,13 +92,13 @@ impl crate::sdlc::SdlcService {
             }
             let lifecycle = self
                 .lifecycle_repository()?
-                .lifecycle_read(task, actor)
+                .delivery_proposal_context(task, actor, &command.fence)
                 .await?;
             let reader = self.configured_workflow.as_ref().ok_or_else(|| {
                 AppError::Unavailable("Workflow receipt reader is not configured".into())
             })?;
             reader
-                .read_delivery(&state, &lifecycle.receipt, &command.workflow_receipt)
+                .read_delivery(&state, &lifecycle, &command.workflow_receipt)
                 .await?;
         }
         self.lifecycle_repository()?
@@ -707,10 +707,13 @@ pub fn issue_mapping_keys(task: &LifecycleTask) -> Result<(String, String), AppE
     ))
 }
 
-/// Apply only after the repository accepts the exact live fence and terminal run.
+/// Apply only after the repository accepts the exact original fence and terminal
+/// run, either still bound or retained as an unchanged successful reconciliation.
 pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Result<(), AppError> {
-    if task.status != LifecycleStatus::Completed
-        || task.runtime != RuntimeState::Running
+    let completed = task.status == LifecycleStatus::Completed && task.runtime == RuntimeState::Running;
+    let reconciled = task.status == LifecycleStatus::Ready && task.runtime == RuntimeState::Terminal
+        && task.waiting_reason.as_deref() == Some("runtime_terminal_requires_intervention");
+    if !(completed || reconciled)
         || task.cycle > MAX_REWORK_CYCLES
         || task.stage.role() != Some(result.role())
     {

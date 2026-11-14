@@ -10,9 +10,10 @@ fn accepted_histories_have_distinct_immutable_tails_and_one_shared_119() {
         (true, crate::InstalledProjectRepositoryMigrator::migrations()),
     ] {
         let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-        assert_eq!(names[names.len()-3], Migration.name());
-        assert_eq!(names[names.len()-2], "m20261114_0000120_routing_resume");
-        assert_eq!(names.last().copied(), Some("m20261114_0000121_explicit_recovery"));
+        assert_eq!(names[names.len()-4], Migration.name());
+        assert_eq!(names[names.len()-3], "m20261114_0000120_routing_resume");
+        assert_eq!(names[names.len()-2], "m20261114_0000121_explicit_recovery");
+        assert_eq!(names.last().copied(), Some("m20261114_0000122_terminal_result_custody"));
         assert_eq!(names.iter().filter(|name| **name == Migration.name()).count(), 1);
         assert_eq!(names.contains(&"m20261113_0000118_delivery_unsent_stop"), installed);
         assert_eq!(names.contains(&"m20261111_0000118_plan_content_dispatch"), !installed);
@@ -70,7 +71,7 @@ async fn qualification<M: MigratorTrait>(fresh: bool, foreign: bool) {
         }
         crate::Migrator::up(&db, None).await.unwrap();
         let after = ledger(&db).await;
-        let tail = [Migration.name(), "m20261114_0000120_routing_resume", "m20261114_0000121_explicit_recovery"];
+        let tail = [Migration.name(), "m20261114_0000120_routing_resume", "m20261114_0000121_explicit_recovery", "m20261114_0000122_terminal_result_custody"];
         assert_eq!(after.iter().filter(|(name, _)| !tail.contains(&name.as_str())).cloned().collect::<Vec<_>>(), original);
         assert_eq!(after.len(), original.len() + tail.len());
         for name in tail {

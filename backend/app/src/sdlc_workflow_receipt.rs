@@ -125,6 +125,10 @@ impl WorkflowReceiptReader {
     ) -> Result<ConfiguredWorkflowReceipt, AppError> {
         let assignment = lifecycle.assignment.as_ref().ok_or_else(mismatch)?;
         let binding = lifecycle.binding.as_ref().ok_or_else(mismatch)?;
+        // The retained TaskState key belongs to PM history. Each technical
+        // assignment owns its separately allocated Workflow execution key.
+        let execution = assignment.execution.as_ref().ok_or_else(mismatch)?;
+        execution.validate().map_err(|_| mismatch())?;
         let authorization = self
             .role_authorizations
             .get(assignment.role.key())
@@ -136,12 +140,7 @@ impl WorkflowReceiptReader {
             )
             .await?;
         let (receipt, observed) = decode_artifact(&bytes)?;
-        let key = state
-            .retained_fields
-            .get("workflow_task_key")
-            .and_then(Value::as_str)
-            .ok_or_else(mismatch)?;
-        if receipt.task != key
+        if receipt.task != execution.key
             || receipt.tracker_task_id != state.task_id
             || receipt.owner_subject != state.owner_subject
             || receipt.assignment_ref != assignment.assignment_id
@@ -261,6 +260,103 @@ fn decode_artifact(bytes: &[u8]) -> Result<(ConfiguredWorkflowReceipt, Artifact)
 #[cfg(test)]
 mod credential_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn delivery_readback_uses_original_technical_execution_not_retained_pm_key() {
+        use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
+        use domain::sdlc_lifecycle::LifecycleReceipt;
+        use std::sync::{Arc, Mutex};
+        use uuid::Uuid;
+
+        let task = Uuid::new_v4();
+        let agent = Uuid::new_v4();
+        let subject = Uuid::new_v4().to_string();
+        let state: TaskState = serde_json::from_value(json!({
+            "tracker_instance_id":"test", "project_id":Uuid::new_v4(),
+            "task_id":task, "root_task_id":task, "owner_subject":Uuid::new_v4(),
+            "stage":"Analysis", "confirmation_revision":null, "assignment":null,
+            "questions":[], "revisions":[], "confirmations":[], "evidence":[],
+            "interaction_protocol":"configured-cli-v1", "workflow_task_key":"SDLC-11"
+        })).unwrap();
+        let route = json!({"agent_id":agent,"fleet_config_revision":1,"namespace_id":"9",
+            "namespace_name":"Analyst","workflow_id":"9","workflow_key":"analyst",
+            "profile":"single-task-v1","instruction_profile":"single-task-v1",
+            "instruction_manifest_sha256":"a".repeat(64),
+            "workflow_catalog_version":1,"workflow_catalog_sha256":"a".repeat(64)});
+        let routes: serde_json::Map<String, Value> = [
+            "project_manager", "analyst", "architect", "developer", "reviewer", "tester", "devops",
+        ].into_iter().map(|role| (role.into(), route.clone())).collect();
+        let routing = json!({"contract_version":2,"snapshot_id":Uuid::new_v4(),
+            "tracker_instance_id":"test","project_id":state.project_id,"task_id":task,
+            "root_task_id":task,"confirmation_id":Uuid::new_v4(),"requirement_revision":3,
+            "content_hash":"b".repeat(64),"created_at":chrono::Utc::now(),
+            "policy":{"contract_version":2,"tracker_instance_id":"test","project_id":state.project_id,
+                "version":1,"routing_hash":"c".repeat(64),"routes":routes,"verification":"declared",
+                "native_ready":true,"dispatch_allowed":true,"author_subject":state.owner_subject,
+                "created_at":chrono::Utc::now()}});
+        let assignment = json!({"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
+            "execution":{"ordinal":"12","key":"SDLC-12"},"task_id":task,
+            "owner_subject":state.owner_subject,"role":"analyst","stage":"Analysis","cycle":0,
+            "attempt":1,"agent_id":agent,"machine_subject":subject,"routing":routing,
+            "previous_result_id":null,"fencing_token":8,"lease_id":Uuid::new_v4(),"assignment_hash":"d".repeat(64)});
+        let mut lifecycle: LifecycleReceipt = serde_json::from_value(json!({
+            "task":{"task_id":task,"owner_subject":state.owner_subject,"version":8,"stage":"Analysis",
+                "status":"InProgress","cycle":0,"transient_retries":0,"waiting_reason":null,
+                "runtime":"running","routing":routing,"previous_result_id":null},
+            "assignment":assignment,"lease":null,"result":null,
+            "binding":{"chat_id":Uuid::new_v4(),"run_id":Uuid::new_v4(),"machine_subject":subject,
+                "dispatch_receipt":{"reference":"fixture/dispatch","sha256":"e".repeat(64)}}
+        })).unwrap();
+        let assignment = lifecycle.assignment.as_ref().unwrap();
+        let receipt = json!({"interaction_protocol":"configured-cli-v1","execution_ref":Uuid::new_v4(),
+            "task":"SDLC-12","tracker_task_id":task,"namespace_id":9,"concrete_agent_ref":agent,
+            "assignment_ref":assignment.assignment_id,"tracker_execution_id":assignment.execution_id,
+            "assignment_version":8,"machine_subject":subject,"operation_key":"final-analysis",
+            "request_sha256":"f".repeat(64),"result_version":17,"requirements_revision":null,
+            "requirements_sha256":null,"owner_subject":state.owner_subject,"confirmation_id":null,
+            "history_id":45,"status":"done"});
+        let body = Arc::new(Mutex::new(Value::Null));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let router = Router::new().route("/internal/runtime/terminal-receipt/readback", post(
+            |State(body): State<Arc<Mutex<Value>>>, headers: HeaderMap, Json(selector): Json<Value>| async move {
+                assert_eq!(headers["authorization"], "Bearer analyst-readback");
+                assert_eq!(selector.as_object().unwrap().len(), 2);
+                assert_eq!(selector["interaction_protocol"], "configured-cli-v1");
+                let body = body.lock().unwrap().clone();
+                assert_eq!(selector["workflow_receipt"], body["workflow_receipt"]);
+                Json(body)
+            }
+        )).with_state(body.clone());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let mut reader = WorkflowReceiptReader::new(&origin, "pm-readback").unwrap();
+        reader.configure_role_tokens(BTreeMap::from([("analyst".into(), "analyst-readback".into())])).unwrap();
+        for (field, value, accepted) in [
+            ("task", json!("SDLC-12"), true),
+            ("task", json!("SDLC-11"), false),
+            ("task", json!("SDLC-13"), false),
+            ("assignment_ref", json!(Uuid::new_v4()), false),
+            ("machine_subject", json!(Uuid::new_v4()), false),
+        ] {
+            let mut actual = receipt.clone();
+            actual[field] = value;
+            let artifact = json!({"reference":format!("workflow-configured-cli:{}:45", actual["execution_ref"].as_str().unwrap()),
+                "sha256":crate::sdlc::canonical_hash(&actual).unwrap()});
+            *body.lock().unwrap() = json!({"ok":true,"complete":true,"receipt":actual,"workflow_receipt":artifact});
+            let artifact = serde_json::from_value(artifact).unwrap();
+            let result = reader.read_delivery(&state, &lifecycle, &artifact).await;
+            assert_eq!(result.is_ok(), accepted, "{field}");
+            if accepted {
+                assert_eq!(serde_json::to_value(result.unwrap()).unwrap(), receipt);
+                lifecycle.assignment.as_mut().unwrap().execution = None;
+                assert!(reader.read_delivery(&state, &lifecycle, &artifact).await.is_err());
+                lifecycle.assignment.as_mut().unwrap().execution = Some(
+                    domain::sdlc_lifecycle::DeliveryExecution::from_ordinal(12).unwrap());
+            }
+        }
+        server.abort();
+        assert_eq!(state.retained_fields["workflow_task_key"], "SDLC-11");
+    }
 
     #[test]
     fn catalog_roles_receive_distinct_sensitive_readback_credentials() {

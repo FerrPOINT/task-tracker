@@ -49,6 +49,25 @@ async fn retained_result_assignment(
     original_result_assignment(payload, task, id)
 }
 
+/// The SQL owner checks current custody or the exact unchanged terminal ledger.
+/// This is an input to result validation, never an active-head restoration.
+async fn result_custody(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    expected: &DeliveryFence,
+) -> Result<LifecycleReceipt, AppError> {
+    let row = tx.query_one(statement(
+        "SELECT sdlc_delivery_result_custody($1,$2) AS receipt",
+        vec![state.task_id.into(), expected.assignment_id.into()],
+    )).await.map_err(map_db)?.ok_or_else(corrupt)?;
+    let receipt: LifecycleReceipt = serde_json::from_value(
+        row.try_get::<Json>("", "receipt").map_err(map_db)?,
+    ).map_err(|_| corrupt())?;
+    exact_revision(state, &receipt)?;
+    exact_fence(&receipt, expected)?;
+    Ok(receipt)
+}
+
 fn accepted_result_readback(
     payload: &Json,
     task: Uuid,
@@ -189,11 +208,30 @@ pub(super) async fn configured_assignment(
     };
     exact_revision(state, &receipt)?;
     let Some(assignment) = receipt.assignment.as_ref() else {
-        return if privileged {
-            Ok(None)
-        } else {
-            Err(AppError::Forbidden)
-        };
+        if !privileged {
+            app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+            // Original result custody grants its producer read/bind authority,
+            // not a new active assignment or a new dispatch grant.
+            let row = tx.query_one(statement(
+                "SELECT sdlc_delivery_result_custody(r.task_id,r.assignment_id) AS receipt
+                 FROM sdlc_delivery_reconciliations r
+                 JOIN sdlc_delivery_assignments a USING(assignment_id,task_id)
+                 JOIN sdlc_delivery_operations o ON o.task_id=r.task_id
+                    AND o.idempotency_key=r.payload->>'idempotency_key'
+                 WHERE r.task_id=$1 AND a.payload->>'machine_subject'=$2 AND o.result=$3",
+                vec![state.task_id.into(),actor.subject.clone().into(),json_value(&receipt)?],
+            )).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+            let custody: LifecycleReceipt = serde_json::from_value(
+                row.try_get::<Json>("", "receipt").map_err(map_db)?,
+            ).map_err(|_| corrupt())?;
+            exact_revision(state, &custody)?;
+            if custody.binding.as_ref().is_none_or(|binding| binding.machine_subject != actor.subject)
+                || actor.subject == state.owner_subject
+            {
+                return Err(AppError::Forbidden);
+            }
+        }
+        return Ok(None);
     };
     let subject = assignment
         .machine_subject
@@ -945,6 +983,26 @@ impl LifecycleRepository for PostgresSdlcRepository {
         Ok(receipt)
     }
 
+    async fn delivery_proposal_context(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        expected: &DeliveryFence,
+    ) -> Result<LifecycleReceipt, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = Self::load_binding(&tx, &self.config, task, actor).await?;
+        app::sdlc_configured_cli::authorize_configured_identity(actor)?;
+        let receipt = result_custody(&tx, &state, expected).await?;
+        if receipt.binding.as_ref().is_none_or(|binding| binding.machine_subject != actor.subject)
+            || actor.subject == state.owner_subject
+        {
+            return Err(AppError::Forbidden);
+        }
+        super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(receipt)
+    }
+
     async fn submit_delivery_proposal(
         &self,
         task: Uuid,
@@ -991,11 +1049,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Ok((receipt, true));
         }
         Self::bind_current_task(&tx, &self.config, &state, actor).await?;
-        let grant = producer_grant(&tx, &state, actor, true).await?;
         let mut receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
-        exact_revision(&state, &receipt)?;
+        let custody = result_custody(&tx, &state, &command.fence).await?;
         super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
-        let binding = receipt
+        let binding = custody
             .binding
             .as_ref()
             .ok_or_else(|| AppError::conflict("running producer binding required"))?;
@@ -1003,15 +1060,22 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let observed_at = now(&tx).await?;
-        exact_fence(&receipt, &command.fence)?;
-        if receipt.task.runtime != RuntimeState::Running
-            || receipt.task.status != LifecycleStatus::InProgress
+        let reconciled = receipt.task.runtime == RuntimeState::Terminal;
+        if reconciled && command.idempotency_key != format!("delivery-result:{}", command.fence.assignment_id) {
+            return Err(AppError::conflict("original terminal proposal key required"));
+        }
+        if (!reconciled && (receipt.task.runtime != RuntimeState::Running
+            || receipt.task.status != LifecycleStatus::InProgress))
             || receipt.task.stage.role() != Some(command.result.role())
         {
             return Err(AppError::conflict("proposal does not match running role"));
         }
-        let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
-        app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+        let assignment = custody.assignment.as_ref().ok_or_else(corrupt)?;
+        if assignment.machine_subject.as_deref() != Some(actor.subject.as_str())
+            || actor.subject == state.owner_subject
+        {
+            return Err(AppError::Forbidden);
+        }
         Self::validate_plan_artifact(&tx, &state, &command.result).await?;
         super::discussion::require_stage_comment(
             &tx,
@@ -1058,14 +1122,16 @@ impl LifecycleRepository for PostgresSdlcRepository {
         exec(&tx, "INSERT INTO sdlc_delivery_proposal_operations(task_id,actor_subject,idempotency_key,payload_hash,result)
             VALUES($1,$2,$3,$4,$5)", vec![task.into(),actor.subject.clone().into(),command.idempotency_key.into(),hash.into(),json_value(&proposal)?]).await?;
         // The agent completes its current stage; native settlement still owns the later handoff.
-        receipt.task.status = LifecycleStatus::Completed;
-        receipt.task.version = receipt
-            .task
-            .version
-            .checked_add(1)
-            .filter(|v| *v <= MAX_SAFE_VERSION)
-            .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
-        Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
+        if !reconciled {
+            receipt.task.status = LifecycleStatus::Completed;
+            receipt.task.version = receipt
+                .task
+                .version
+                .checked_add(1)
+                .filter(|v| *v <= MAX_SAFE_VERSION)
+                .ok_or_else(|| AppError::conflict("lifecycle version exhausted"))?;
+            Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
+        }
         let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
             "project_id":state.project_id,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
             "stage":receipt.task.stage,"requirement_revision":receipt.task.routing.requirement_revision,"result":&proposal});
@@ -1088,11 +1154,30 @@ impl LifecycleRepository for PostgresSdlcRepository {
             && !actor.human_session
             && app::sdlc_reservation::reader(actor).is_ok();
         let server_assignment = if server_read {
-            Some(
-                configured_assignment(&tx, &state, actor)
-                    .await?
-                    .ok_or(AppError::Forbidden)?,
-            )
+            let current = configured_assignment(&tx, &state, actor).await?;
+            if current.is_some() {
+                current
+            } else {
+                let id = key.strip_prefix("delivery-result:")
+                    .and_then(|raw| Uuid::parse_str(raw).ok().filter(|id| id.to_string() == raw))
+                    .ok_or(AppError::Forbidden)?;
+                let row = tx.query_one(statement(
+                    "SELECT sdlc_delivery_result_custody($1,$2) AS receipt",
+                    vec![task.into(),id.into()],
+                )).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+                let custody: LifecycleReceipt = serde_json::from_value(
+                    row.try_get::<Json>("", "receipt").map_err(map_db)?,
+                ).map_err(|_| corrupt())?;
+                exact_revision(&state, &custody)?;
+                let original = custody.assignment.ok_or_else(corrupt)?;
+                Some(PmAssignment {
+                    assignment_id: original.assignment_id,
+                    execution_id: original.execution_id,
+                    agent_id: original.agent_id,
+                    version: original.fencing_token,
+                    machine_subject: original.machine_subject.ok_or_else(corrupt)?,
+                })
+            }
         } else {
             None
         };
@@ -1351,15 +1436,20 @@ impl LifecycleRepository for PostgresSdlcRepository {
             | LifecycleCommand::Complete {
                 fence: expected, ..
             } => {
+                let custody = if matches!(command, LifecycleCommand::Complete { .. }) {
+                    result_custody(&tx, &state, expected).await?
+                } else {
+                    receipt.clone()
+                };
                 let hold = tx.query_one(statement(
                     "SELECT assignment_id FROM sdlc_delivery_holds WHERE assignment_id=$1 FOR UPDATE",
                     vec![expected.assignment_id.into()],
                 )).await.map_err(map_db)?;
-                if hold.is_none() {
+                if hold.is_none() && custody.task.runtime != RuntimeState::Terminal {
                     return Err(AppError::conflict("delivery capacity released"));
                 }
                 let observed_at = now(&tx).await?;
-                fence(&receipt, expected, actor)?;
+                fence(&custody, expected, actor)?;
                 match &command {
                     LifecycleCommand::BindRun { binding, .. } => {
                         if receipt
@@ -1401,6 +1491,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     LifecycleCommand::Complete {
                         terminal, result, ..
                     } => {
+                        if custody.task.runtime == RuntimeState::Terminal
+                            && command.key() != format!("fleet-delivery-complete:{}", terminal.run_id)
+                        {
+                            return Err(AppError::conflict("original terminal completion key required"));
+                        }
                         Self::validate_plan_artifact(&tx, &state, result).await?;
                         let row = tx.query_one(statement(
                             "SELECT payload FROM sdlc_delivery_proposals WHERE assignment_id=$1 AND task_id=$2",
@@ -1418,7 +1513,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                                 "terminal differs from retained agent proposal",
                             ));
                         }
-                        let binding = receipt
+                        let binding = custody
                             .binding
                             .as_ref()
                             .ok_or_else(|| AppError::conflict("actual run binding absent"))?;
@@ -1436,7 +1531,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         .await?;
                         let original_assignment =
                             retained_result_assignment(&tx, task, expected.assignment_id).await?;
-                        if receipt.assignment.as_ref() != Some(&original_assignment) {
+                        if custody.assignment.as_ref() != Some(&original_assignment) {
                             return Err(corrupt());
                         }
                         let previous_stage = receipt.task.stage;

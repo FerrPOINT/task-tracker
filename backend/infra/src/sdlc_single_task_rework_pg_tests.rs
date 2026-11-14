@@ -8,6 +8,8 @@ mod decomposition_tests;
 mod reviewer_handoff_tests;
 #[path = "untimed_delivery_binding_pg_tests.rs"]
 mod untimed_binding_tests;
+#[path = "terminal_result_custody_pg_tests.rs"]
+mod terminal_result_tests;
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -433,7 +435,7 @@ async fn explicit_routing_resume_preserves_confirmed_source_history_and_selects_
     migration::Migrator::up(&f.db,None).await.unwrap();
     assert_eq!(f.journal_snapshot().await,old_history);
     let old_ledger_after:Json=f.db.query_one(statement(
-        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m WHERE version NOT IN ('m20261114_0000120_routing_resume','m20261114_0000121_explicit_recovery')",vec![]))
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m WHERE version NOT IN ('m20261114_0000120_routing_resume','m20261114_0000121_explicit_recovery','m20261114_0000122_terminal_result_custody')",vec![]))
         .await.unwrap().unwrap().try_get("","payload").unwrap();
     assert_eq!(old_ledger_after,old_ledger);
     let mut routes=serde_json::to_value(&f.frozen.policy.routes).unwrap();
@@ -572,7 +574,7 @@ async fn retired_recovery_replays_history_and_rejects_new_writes_after_upgrade()
     migration::Migrator::up(&f.db, None).await.unwrap();
     assert_eq!(f.journal_snapshot().await, before);
     let prefix: Json = f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload
-        FROM seaql_migrations m WHERE version<>'m20261114_0000121_explicit_recovery'",vec![]))
+        FROM seaql_migrations m WHERE version NOT IN ('m20261114_0000121_explicit_recovery','m20261114_0000122_terminal_result_custody')",vec![]))
         .await.unwrap().unwrap().try_get("", "payload").unwrap();
     assert_eq!(prefix, history);
     let after_identity: Json = f.db.query_one(statement(identity_sql,vec![])).await.unwrap().unwrap().try_get("", "payload").unwrap();
