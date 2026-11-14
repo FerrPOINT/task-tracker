@@ -131,6 +131,183 @@ async function installSsoMocks(
 }
 
 test.describe('smoke', () => {
+  test('SDLC queue and history omit protocol metadata at supported widths', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installSsoMocks(page, { applications: ['task-tracker', 'fleet-control'] })
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const task = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const project = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const confirmation = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    const intentId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+    const hash = 'a'.repeat(64)
+    const created = '2026-10-03T10:00:00Z'
+    const context = {
+      contract_version: 1,
+      tracker_instance_id: 'tracker-test',
+      project_id: project,
+      task_id: task,
+      root_task_id: task,
+      owner_subject: mockUser.id,
+      stage: 'Analysis',
+      requirement_revision: 2,
+      waiting_reason: 'queued_for_analysis',
+      permissions: { can_answer: false, can_confirm: false },
+      assignment: null,
+    }
+    const intent = {
+      ...context,
+      intent_id: intentId,
+      confirmation_id: confirmation,
+      content_hash: hash,
+      stage: 'Analysis',
+      status: 'Ready',
+      role: 'Analyst',
+      workflow: 'hermes-sdlc:analyst',
+      mode: 'analysis',
+      scope: 'business',
+      cycle: 0,
+      attempt: 0,
+      operation_key: `analysis:${confirmation}`,
+      created_at: created,
+    }
+    let writes = 0
+    await page.route('**/api/v1/**', async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (route.request().method() !== 'GET') {
+        writes++
+        return routeJson(route, { error: 'Read-only display fixture' }, 405)
+      }
+      if (path === '/api/v1/users/me')
+        return routeJson(route, { id: mockUser.id, username: 'demo', display_name: 'Demo User' })
+      if (path === '/api/v1/runtime/services')
+        return routeJson(route, {
+          services: [
+            {
+              key: 'fleet-control',
+              label: 'Fleet',
+              url: 'https://fleet.example.test',
+              ui_url: 'https://fleet.example.test',
+              health: 'unknown',
+              capabilities: [],
+              contract_version: '1.1',
+            },
+          ],
+        })
+      if (path === '/api/v1/namespace-contexts') return routeJson(route, [])
+      if (path === '/api/v1/notifications')
+        return routeJson(route, { notifications: [], unread_count: 0 })
+      if (path === '/api/v1/events')
+        return route.fulfill({ contentType: 'text/event-stream', body: ': fixture\n\n' })
+      if (path === `/api/v1/issues/${task}`)
+        return routeJson(route, {
+          id: task,
+          key: 'DEMO-1',
+          summary: 'Readable development task',
+          description: 'Business requirements',
+          issue_type: 'task',
+          status: 'To Do',
+          status_id: 'todo',
+          priority: 'medium',
+          labels: [],
+          assignee_id: null,
+          assignee_name: null,
+          reporter_id: mockUser.id,
+          reporter_name: 'Demo User',
+          project_key: 'DEMO',
+          project_name: 'Demo Project',
+          sprint_id: null,
+          original_estimate_seconds: null,
+          remaining_estimate_seconds: null,
+          time_spent_seconds: 0,
+          lifecycle: { issue_id: task, enrolled: true, stage: 'Analysis' },
+        })
+      if (path.endsWith('/sdlc/context')) return routeJson(route, context)
+      if (path.endsWith('/sdlc/requirements/2'))
+        return routeJson(route, {
+          revision: 2,
+          content_hash: hash,
+          author_subject: 'pm',
+          created_at: created,
+          goal: 'Business goal remains readable',
+          scope: ['Agreed scope'],
+          exclusions: [],
+          scenarios: [],
+          acceptance_criteria: ['A useful result'],
+          constraints: [],
+          dependencies: [],
+          assumptions: [],
+          checklist: [],
+          prerequisites: [],
+        })
+      if (path.endsWith('/sdlc/analysis-intent')) return routeJson(route, intent)
+      if (path.endsWith('/sdlc/routing-snapshot')) return routeJson(route, {}, 404)
+      if (path.endsWith('/sdlc/events'))
+        return routeJson(route, {
+          contract_version: 1,
+          projection: 'metadata_v1',
+          after: '0',
+          next_after: '19',
+          has_more: false,
+          events: [
+            {
+              sequence: '19',
+              event_id: intentId,
+              task_id: task,
+              event_type: 'analysis.intent_created',
+              created_at: created,
+              metadata_sha256: 'b'.repeat(64),
+              payload: { ...context, current_requirement_revision: 2, resource: intent },
+            },
+          ],
+        })
+      if (path.startsWith('/api/v1/projects/') && path.endsWith('/custom-fields'))
+        return routeJson(route, { fields: [] })
+      for (const [suffix, field] of [
+        ['comments', 'comments'],
+        ['worklogs', 'worklogs'],
+        ['attachments', 'attachments'],
+        ['labels', 'labels'],
+        ['links', 'links'],
+        ['custom-fields', 'values'],
+      ] as const) {
+        if (path.endsWith('/' + suffix)) return routeJson(route, { [field]: [] })
+      }
+      if (path.endsWith('/votes')) return routeJson(route, { total: 0, voted: false, voters: [] })
+      if (path.endsWith('/watchers'))
+        return routeJson(route, { total: 0, watching: false, watchers: [] })
+      return routeJson(route, {}, 404)
+    })
+    await page.goto(`${app}/issues/${task}?tab=sdlc`)
+    const panel = page.getByRole('region', { name: 'SDLC', exact: true })
+    await expect(panel.getByText('Business goal remains readable')).toBeVisible()
+    await expect(panel.locator('time').first()).toBeVisible()
+    await expect(panel.locator('details')).toHaveCount(0)
+    for (const value of [
+      task,
+      confirmation,
+      intentId,
+      hash,
+      intent.operation_key,
+      'b'.repeat(64),
+    ]) {
+      await expect(panel).not.toContainText(value)
+    }
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 1440 })
+      await expect(panel.getByText('Business goal remains readable')).toBeVisible()
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true)
+      await page.screenshot({
+        path: testInfo.outputPath(`sdlc-readable-${width}.png`),
+        fullPage: true,
+      })
+    }
+    expect(writes).toBe(0)
+  })
+
   test('new task entry opens empty PM chat without creating a Draft', async ({
     page,
     baseURL,
