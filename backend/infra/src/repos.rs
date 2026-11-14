@@ -1961,6 +1961,9 @@ impl BoardRepository for BoardRepo {
         project: ProjectId,
         issues: &[IssueId],
     ) -> Result<Vec<domain::sdlc_lifecycle::SdlcBoardTask>, AppError> {
+        if issues.is_empty() {
+            return Ok(vec![]);
+        }
         use domain::sdlc_lifecycle::{LifecycleStage, LifecycleStatus, SdlcBoardTask};
         use sea_orm::{Value, sea_query::ArrayType};
 
@@ -1968,7 +1971,7 @@ impl BoardRepository for BoardRepo {
             .db
             .query_all(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "SELECT s.task_id, s.state->'stage' AS stage, s.state->'status' AS status
+                "SELECT s.task_id, s.state->'stage' AS stage, NULLIF(s.state->'status', 'null'::jsonb) AS status
              FROM sdlc_tasks s
              JOIN sdlc_instance owner ON owner.instance_id = s.tracker_instance_id
              JOIN issues i ON i.id = s.task_id AND i.project_id = s.project_id
