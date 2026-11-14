@@ -10,11 +10,13 @@
 чужая association task/assignment/result или отсутствие original assignment —
 409 `delivery ledger inconsistent`. Legacy Analysis и права чтения не меняются.
 
-Канонический `openapi/openapi.json` опубликован из фактического Rust export
-квалифицированного runtime `3ad3d9bde5030c4230ad285fdec32df12926fa6e`:
-SHA256 `1958ca62c61526a53582e9c5eebb86160af4c1a5119c1b0ec6c566bc293184eb`.
-Изменение схемы — только optional UUID `AcceptedDeliveryResult.previous_result_id`;
-поле не входит в `required`. Frontend-клиент генерируется из этой схемы штатной
+Канонический `openapi/openapi.json` сформирован фактическим Rust exporter из
+`1752287891a2ac65e4ef4fa35ce2ef76a123e43e`:
+SHA256 `e6133ca0aa1c542882bd5f4fc4c58880d9f142d45a7a932208e21b5b4c8d2f47`.
+Текущий контракт включает `resume_with_current_routing` с обеими CAS-версиями;
+исторический `heartbeat` не рекламируется как активная команда.
+Optional UUID `AcceptedDeliveryResult.previous_result_id` не входит в `required`.
+Frontend-клиент генерируется из этой схемы штатной
 командой `pnpm generate:api` и не хранится в Git. Публикация схемы не меняет
 runtime artifact или исторические receipts.
 

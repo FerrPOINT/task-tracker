@@ -14391,6 +14391,38 @@
             "type": "object",
             "required": [
               "expected_task_version",
+              "expected_routing_policy_version",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "expected_routing_policy_version": {
+                "type": "integer",
+                "format": "int64",
+                "maximum": 9007199254740991,
+                "minimum": 1
+              },
+              "expected_task_version": {
+                "type": "integer",
+                "format": "int64",
+                "maximum": 9007199254740991,
+                "minimum": 1
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "resume_with_current_routing"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_task_version",
               "idempotency_key",
               "operation"
             ],
@@ -14412,29 +14444,6 @@
                 "type": "string",
                 "enum": [
                   "reserve"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Historical operation decoding/replay only; new renewals are rejected.",
-            "required": [
-              "fence",
-              "idempotency_key",
-              "operation"
-            ],
-            "properties": {
-              "fence": {
-                "$ref": "#/components/schemas/DeliveryFence"
-              },
-              "idempotency_key": {
-                "type": "string"
-              },
-              "operation": {
-                "type": "string",
-                "enum": [
-                  "heartbeat"
                 ]
               }
             }
