@@ -14656,6 +14656,7 @@
           "transient_retries": {
             "type": "integer",
             "format": "int32",
+            "description": "Retained automatic-retry metadata; current recovery never increments it.",
             "minimum": 0
           },
           "version": {
@@ -20065,39 +20066,6 @@
                 "enum": [
                   "stop"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Historical expiry recovery; only original operation-key replay is supported.",
-            "required": [
-              "disposition"
-            ],
-            "properties": {
-              "disposition": {
-                "type": "string",
-                "enum": [
-                  "retry_unsubmitted"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "replay_safety_receipt",
-              "disposition"
-            ],
-            "properties": {
-              "disposition": {
-                "type": "string",
-                "enum": [
-                  "retry_transient"
-                ]
-              },
-              "replay_safety_receipt": {
-                "$ref": "#/components/schemas/ArtifactReceipt"
               }
             }
           }

@@ -11,8 +11,8 @@
 409 `delivery ledger inconsistent`. Legacy Analysis и права чтения не меняются.
 
 Канонический `openapi/openapi.json` сформирован фактическим Rust exporter из
-`1752287891a2ac65e4ef4fa35ce2ef76a123e43e`:
-SHA256 `e6133ca0aa1c542882bd5f4fc4c58880d9f142d45a7a932208e21b5b4c8d2f47`.
+`120cc7f65faa12d8d30cca1b7bc935fea4a69355`:
+SHA256 `25d64e1ffbb85003fc9c5d44f8d61036333da7c155beb4d28470975e9b1bb77c`.
 Текущий контракт включает `resume_with_current_routing` с обеими CAS-версиями;
 исторический `heartbeat` не рекламируется как активная команда.
 Optional UUID `AcceptedDeliveryResult.previous_result_id` не входит в `required`.
