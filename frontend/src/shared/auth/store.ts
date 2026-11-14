@@ -7,6 +7,7 @@ export const ssoConfig = {
   issuer: import.meta.env.VITE_AUTH_ISSUER ?? 'http://localhost:7701',
   clientId: import.meta.env.VITE_AUTH_CLIENT_ID ?? 'task-tracker',
   namespace: ssoNamespace(import.meta.env.VITE_AUTH_NAMESPACE),
+  callbackPath: `${import.meta.env.BASE_URL}sso/callback`,
 }
 
 export const useAuthStore = createAuthStore({

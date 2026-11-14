@@ -14,19 +14,23 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-describe.each(['sdlc', 'pdlc'])('deployment-owned SSO client in %s namespace', (namespace) => {
-  it.each([
-    { configured: undefined, expected: 'task-tracker' },
-    { configured: 'task-tracker-dev', expected: 'task-tracker-dev' },
-  ])('restores the session with $expected', async ({ configured, expected }) => {
-    vi.stubEnv('VITE_AUTH_CLIENT_ID', configured)
-    vi.stubEnv('VITE_AUTH_NAMESPACE', namespace)
-    const { restoreTrackerSession } = await import('./session')
-    await expect(restoreTrackerSession()).rejects.toThrow('Login required')
-    expect(sso.restoreSso).toHaveBeenCalledWith({
-      issuer: 'http://localhost:8701',
-      clientId: expected,
-      namespace,
+describe.each(['/', '/tracker/'])('deployment below %s', (basePath) => {
+  beforeEach(() => vi.stubEnv('BASE_URL', basePath))
+  describe.each(['sdlc', 'pdlc'])('deployment-owned SSO client in %s namespace', (namespace) => {
+    it.each([
+      { configured: undefined, expected: 'task-tracker' },
+      { configured: 'task-tracker-dev', expected: 'task-tracker-dev' },
+    ])('restores the session with $expected', async ({ configured, expected }) => {
+      vi.stubEnv('VITE_AUTH_CLIENT_ID', configured)
+      vi.stubEnv('VITE_AUTH_NAMESPACE', namespace)
+      const { restoreTrackerSession } = await import('./session')
+      await expect(restoreTrackerSession()).rejects.toThrow('Login required')
+      expect(sso.restoreSso).toHaveBeenCalledWith({
+        issuer: 'http://localhost:8701',
+        clientId: expected,
+        namespace,
+        callbackPath: `${basePath}sso/callback`,
+      })
     })
   })
 })
