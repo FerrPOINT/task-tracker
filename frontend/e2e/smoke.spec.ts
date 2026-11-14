@@ -131,6 +131,108 @@ async function installSsoMocks(
 }
 
 test.describe('smoke', () => {
+  test('foreground SSO callback survives space session admission', async ({ page }, testInfo) => {
+    await installSsoMocks(page, { role: 'admin', applications: ['task-tracker', 'fleet-control'] })
+    const project = {
+      id: '00000000-0000-0000-0000-000000000010',
+      key: 'DEMO',
+      name: 'Demo Project',
+      owner_id: mockUser.id,
+      owner_name: 'Demo User',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    }
+    let writes = 0
+    let catalogReads = 0
+    await page.route('**/api/**', (route) => {
+      const request = route.request(),
+        url = new URL(request.url())
+      if (request.method() !== 'GET') {
+        writes++
+        return route.fulfill({ status: 405 })
+      }
+      if (url.pathname === '/api/v1/users/me')
+        return routeJson(route, {
+          id: mockUser.id,
+          username: 'demo',
+          display_name: 'Demo User',
+          email: 'demo@example.test',
+          is_system_admin: true,
+        })
+      if (url.pathname === '/api/v1/runtime/services')
+        return routeJson(route, {
+          services: [
+            {
+              key: 'fleet-control',
+              label: 'Fleet',
+              url: 'https://fleet.example.test',
+              ui_url: 'https://fleet.example.test',
+              health: 'unknown',
+              capabilities: [],
+              contract_version: '1.1',
+            },
+          ],
+        })
+      if (url.pathname === '/api/v2/projects') {
+        catalogReads++
+        const observed = Math.floor(Date.now() / 1000)
+        return routeJson(route, {
+          schema_version: 2,
+          tracker_instance_id: '00000000-0000-0000-0000-000000000020',
+          identity: { issuer: 'http://localhost:7701', subject: mockUser.id },
+          policy_revision: 1,
+          validity: { observed_at: observed, valid_until: observed + 30 },
+          space: null,
+          total: 1,
+          limit: Number(url.searchParams.get('limit')),
+          offset: Number(url.searchParams.get('offset')),
+          has_more: false,
+          projects: Number(url.searchParams.get('offset')) === 0 ? [project] : [],
+        })
+      }
+      if (url.pathname === '/api/v1/projects') return routeJson(route, { projects: [project] })
+      if (url.pathname === '/api/v1/namespace-contexts') return routeJson(route, [])
+      if (url.pathname === '/api/v1/notifications/unread-count')
+        return routeJson(route, { count: 0 })
+      return route.fulfill({ status: 404 })
+    })
+    let interactiveMainFrame = false
+    let exchanges = 0
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/oidc/token' && request.method() === 'POST')
+        exchanges++
+    })
+    await page.route('**/oidc/authorize**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('prompt') !== 'none') {
+        interactiveMainFrame = route.request().frame() === page.mainFrame()
+        return route.fallback()
+      }
+      const callback = new URL(url.searchParams.get('redirect_uri')!)
+      callback.searchParams.set('error', 'login_required')
+      callback.searchParams.set('state', url.searchParams.get('state') ?? '')
+      return route.fulfill({ status: 302, headers: { location: callback.toString() } })
+    })
+    await page.goto('/projects')
+    await expect(page.getByRole('heading', { name: 'Проекты', exact: true })).toBeVisible()
+    await expect(page.getByText('Demo Project', { exact: true }).last()).toBeVisible()
+    expect(new URL(page.url()).pathname).toBe('/projects')
+    expect(interactiveMainFrame).toBe(true)
+    expect(exchanges).toBe(1)
+    expect(writes).toBe(0)
+    expect(catalogReads).toBeGreaterThan(0)
+    expect(page.url()).not.toMatch(/(?:code|state|access_token)=/)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 1440 })
+      await expect(page.getByRole('heading', { name: 'Проекты', exact: true })).toBeVisible()
+      await page.screenshot({
+        path: testInfo.outputPath(`sso-completed-${width}.png`),
+        fullPage: true,
+      })
+    }
+  })
+
   test('new task entry opens empty PM chat without creating a Draft', async ({
     page,
     baseURL,

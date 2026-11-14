@@ -1,3 +1,4 @@
+import { SpaceSessionBoundary } from '@/shared/auth/space-session-boundary'
 import { RequireAdministrator } from '@pdlc/ui/auth'
 import { LoadingState } from '@pdlc/ui/ui'
 import { NamespacePage } from '@/pages/namespace'
@@ -62,7 +63,11 @@ const withSuspense = (element: React.ReactElement) => (
 export const router = createProductRouter(
   [
     {
-      element: <RequireAuth />,
+      element: (
+        <SpaceSessionBoundary>
+          <RequireAuth />
+        </SpaceSessionBoundary>
+      ),
       children: [
         {
           element: <AppShell />,
