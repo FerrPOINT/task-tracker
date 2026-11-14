@@ -725,7 +725,7 @@ fn verified_terminal_recovery_keeps_stage_and_bounds_retries_without_business_re
 }
 
 #[test]
-fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
+fn explicit_queue_intervention_preserves_inputs_and_resets_only_automatic_retry_budget() {
     let mut state = task();
     state.stage = LifecycleStage::Development;
     state.status = LifecycleStatus::Ready;
@@ -735,7 +735,7 @@ fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
     ensure_queued(&mut state).unwrap();
     assert_eq!(state.runtime, RuntimeState::Queued);
     assert_eq!(state.version, original.version + 1);
-    assert_eq!(state.transient_retries, 1);
+    assert_eq!(state.transient_retries, 0);
     assert_eq!(state.task_id, original.task_id);
     assert_eq!(state.stage, original.stage);
     assert_eq!(state.routing, original.routing);
@@ -762,10 +762,13 @@ fn explicit_queue_intervention_preserves_inputs_and_bounds_new_attempts() {
         assert_eq!(state, before);
     }
     state = original.clone();
-    state.transient_retries = MAX_TRANSIENT_RETRIES;
-    let before = state.clone();
-    assert!(ensure_queued(&mut state).is_err());
-    assert_eq!(state, before);
+    for _ in 0..=MAX_TRANSIENT_RETRIES + 2 {
+        state.runtime = RuntimeState::Terminal;
+        state.transient_retries = MAX_TRANSIENT_RETRIES;
+        ensure_queued(&mut state).unwrap();
+        assert_eq!(state.runtime, RuntimeState::Queued);
+        assert_eq!(state.transient_retries, 0);
+    }
 }
 
 #[test]
@@ -930,4 +933,97 @@ fn persistent_ownership_preserves_historical_wire_and_closed_current_commands() 
     validate_command(&renewal).unwrap();
     assert!(validate_active_command(&renewal).is_err());
 
+}
+
+
+fn routing_resume_fixture() -> (LifecycleReceipt, RoutingPolicy) {
+    let mut task = task();
+    let mut routes = serde_json::json!({});
+    for (i, role) in ["project_manager", "analyst", "architect", "developer", "reviewer", "tester", "devops"].iter().enumerate() {
+        let suffix = role.replace('_', "-");
+        routes[*role] = serde_json::json!({"agent_id":Uuid::new_v4(),"fleet_config_revision":2,
+            "instruction_profile":"single-task-v1","instruction_manifest_sha256":"a".repeat(64),
+            "namespace_id":(i+1).to_string(),"namespace_name":format!("single-task-{suffix}"),
+            "workflow_id":(i+11).to_string(),"workflow_key":format!("single-task-v1:{role}"),
+            "profile":format!("single-task-v1-{suffix}"),"workflow_catalog_version":1,"workflow_catalog_sha256":"b".repeat(64)});
+    }
+    task.routing.contract_version = 2;
+    task.routing.policy.contract_version = 2;
+    task.routing.policy.routes = serde_json::from_value(routes).unwrap();
+    task.routing.policy.routing_hash = crate::sdlc::canonical_hash(&task.routing.policy.routes).unwrap();
+    task.runtime = RuntimeState::Terminal;
+    task.status = LifecycleStatus::Ready;
+    task.resume_chat_id = Some(Uuid::new_v4());
+    task.previous_result_id = Some(Uuid::new_v4());
+    task.cycle = 2;
+    task.transient_retries = MAX_TRANSIENT_RETRIES;
+    let mut policy = task.routing.policy.clone();
+    policy.version += 1;
+    policy.routes.analyst.fleet_config_revision += 1;
+    policy.routing_hash = crate::sdlc::canonical_hash(&policy.routes).unwrap();
+    (LifecycleReceipt { task, assignment: None, lease: None, binding: None, result: None }, policy)
+}
+
+#[test]
+fn routing_resume_preserves_confirmed_business_context_for_every_downstream_stage() {
+    for stage in [LifecycleStage::Analysis, LifecycleStage::Architecture, LifecycleStage::Development,
+        LifecycleStage::Review, LifecycleStage::Testing, LifecycleStage::Rework, LifecycleStage::Deployment] {
+        let (mut receipt, policy) = routing_resume_fixture();
+        receipt.task.stage = stage;
+        let original = receipt.clone();
+        resume_with_current_routing(&mut receipt, &policy, original.task.version, policy.version,
+            Uuid::new_v4(), Utc::now()).unwrap();
+        assert_eq!(receipt.task.stage, original.task.stage);
+        assert_eq!(receipt.task.cycle, original.task.cycle);
+        assert_eq!(receipt.task.previous_result_id, original.task.previous_result_id);
+        assert_eq!(receipt.task.resume_chat_id, original.task.resume_chat_id);
+        assert_eq!(receipt.task.routing.confirmation_id, original.task.routing.confirmation_id);
+        assert_eq!(receipt.task.routing.requirement_revision, original.task.routing.requirement_revision);
+        assert_eq!(receipt.task.routing.content_hash, original.task.routing.content_hash);
+        assert_eq!(receipt.task.routing.policy, policy);
+        assert_ne!(receipt.task.routing.snapshot_id, original.task.routing.snapshot_id);
+        assert_eq!(receipt.task.version, original.task.version + 1);
+        assert_eq!(receipt.task.runtime, RuntimeState::Queued);
+        assert_eq!(receipt.task.transient_retries, 0);
+    }
+}
+
+#[test]
+fn routing_resume_rejects_live_custody_foreign_policy_and_stale_cas_without_effects() {
+    let (original, policy) = routing_resume_fixture();
+    for runtime in [RuntimeState::Queued, RuntimeState::Reserved, RuntimeState::Running, RuntimeState::Unknown] {
+        let mut changed = original.clone(); changed.task.runtime = runtime;
+        let before = changed.clone();
+        assert!(resume_with_current_routing(&mut changed, &policy, original.task.version,
+            policy.version, Uuid::new_v4(), Utc::now()).is_err());
+        assert_eq!(changed, before);
+    }
+    for (task_version, policy_version, foreign) in [(original.task.version+1,policy.version,false),
+        (original.task.version,policy.version+1,false),(original.task.version,policy.version,true)] {
+        let mut changed = original.clone(); let mut selected = policy.clone();
+        if foreign { selected.project_id = Uuid::new_v4(); }
+        assert!(resume_with_current_routing(&mut changed, &selected, task_version, policy_version,
+            Uuid::new_v4(), Utc::now()).is_err());
+        assert_eq!(changed, original);
+    }
+    let mut changed = original.clone();
+    changed.binding = Some(RunBinding { chat_id:Uuid::new_v4(), run_id:Uuid::new_v4(),
+        machine_subject:"original-producer".into(), dispatch_receipt:artifact("original-dispatch") });
+    let before = changed.clone();
+    assert!(resume_with_current_routing(&mut changed, &policy, original.task.version,policy.version,
+        Uuid::new_v4(),Utc::now()).is_err());
+    assert_eq!(changed,before);
+    let mut legacy = original.clone(); legacy.task.routing.contract_version = 1;
+    assert!(resume_with_current_routing(&mut legacy,&policy,original.task.version,policy.version,
+        Uuid::new_v4(),Utc::now()).is_err());
+}
+
+#[test]
+fn routing_resume_drops_only_the_current_chat_hint_when_the_assigned_agent_changes() {
+    let (mut receipt, mut policy) = routing_resume_fixture();
+    policy.routes.analyst.agent_id = Uuid::new_v4();
+    policy.routing_hash = crate::sdlc::canonical_hash(&policy.routes).unwrap();
+    let version = receipt.task.version;
+    resume_with_current_routing(&mut receipt,&policy,version,policy.version,Uuid::new_v4(),Utc::now()).unwrap();
+    assert_eq!(receipt.task.resume_chat_id,None);
 }

@@ -2489,3 +2489,23 @@ Relevanter с опубликованными 30 миграциями до projec
 использует Published-путь. Для него отдельный тест фиксирует точный список имён;
 это fixture схемы, а не копия установленной базы. OpenAPI выпускается штатным
 Rust producer после компиляции объединённых DTO, ручной generated-схемы нет.
+
+
+## Runtime routing generations after explicit terminal intervention
+
+Forward120 extends the existing immutable `sdlc_task_routing_generations` owner.
+The new `resume` provenance family is exclusive with the existing critical-PM
+family: original critical blocker/execution/completion/operation references are
+still mandatory for critical generations and retain their original trigger.
+Resume stores the exact prior closed receipt, CAS command and scheduler operation
+identity; deferred validation requires the same atomic lifecycle result/outbox.
+The inventory remains the existing union of initial and subsequent snapshots.
+No historical snapshot, assignment, result, source binding or operation is rewritten.
+
+A TaskSourceBinding belongs to the exact owner-confirmed business/code source.
+Its `routing_snapshot_id` is immutable creation context, not a requirement to keep
+an obsolete runtime/catalog version. A runtime-only routing resume preserves the
+same task/project/owner/confirmation/requirements/content hash and all original
+namespace/workspace/source-policy fields and sealed source hash. Discovery uses
+the original Analysis intent and PM completion for that same confirmed business
+identity, without fabricating another intent or PM completion.

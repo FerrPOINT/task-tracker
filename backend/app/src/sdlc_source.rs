@@ -266,6 +266,8 @@ pub fn readback(
             }
             let receipt = &current.receipt;
             let routing = &receipt.task.routing;
+            // The sealed source belongs to owner-confirmed business requirements.
+            // Its routing_snapshot_id records creation context, not the current runtime generation.
             if binding.task_id != receipt.task.task_id
                 || binding.root_task_id != binding.task_id
                 || binding.task_id != routing.task_id
@@ -273,7 +275,6 @@ pub fn readback(
                 || binding.owner_subject != receipt.task.owner_subject
                 || binding.project_id != routing.project_id
                 || binding.tracker_instance_id != routing.tracker_instance_id
-                || binding.routing_snapshot_id != routing.snapshot_id
                 || binding.confirmation_id != routing.confirmation_id
                 || binding.requirement_revision != routing.requirement_revision
                 || binding.content_hash != routing.content_hash

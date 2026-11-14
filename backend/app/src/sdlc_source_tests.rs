@@ -399,3 +399,30 @@ async fn missing_registered_source_counterpart_is_not_verified_by_metadata_or_sh
         if reason == "forge_source_verification_counterpart_missing")
     );
 }
+
+
+#[test]
+fn confirmed_source_remains_sealed_across_runtime_routing_generations_only() {
+    let (state, confirmation, routing, policy) = fixture();
+    let binding = freeze_binding(&state,&confirmation,&routing,&policy).unwrap();
+    let original = binding.clone();
+    let mut updated = routing.clone();
+    updated.snapshot_id = Uuid::new_v4();
+    updated.policy.version += 1;
+    updated.policy.routes.developer.fleet_config_revision += 1;
+    updated.policy.routing_hash = crate::sdlc::canonical_hash(&updated.policy.routes).unwrap();
+    let observed = current(&binding,&updated);
+    assert!(matches!(readback(Some(binding.clone()),Some(observed.clone())).unwrap(),TaskSourceReadback::Bound { .. }));
+    assert_eq!(binding,original);
+    assert_eq!(binding.routing_snapshot_id,routing.snapshot_id);
+    assert_ne!(binding.routing_snapshot_id,updated.snapshot_id);
+    for field in ["task_id","project_id","confirmation_id","content_hash","requirement_revision"] {
+        let mut value = serde_json::to_value(&observed).unwrap();
+        let key = format!("/receipt/task/routing/{field}");
+        *value.pointer_mut(&key).unwrap() = if field == "content_hash" { json!("f".repeat(64)) }
+            else if field == "requirement_revision" { json!(2) } else { json!(Uuid::new_v4()) };
+        let changed = serde_json::from_value(value).unwrap();
+        assert!(matches!(readback(Some(binding.clone()),Some(changed)).unwrap(),
+            TaskSourceReadback::Blocked { reason:SourceBlockReason::SourceContextChanged,.. }),"{field}");
+    }
+}

@@ -464,6 +464,15 @@ pub enum LifecycleCommand {
     EnsureQueued {
         idempotency_key: String,
     },
+    ResumeWithCurrentRouting {
+        #[serde(deserialize_with = "safe_version")]
+        #[schema(minimum = 1, maximum = 9007199254740991i64)]
+        expected_task_version: i64,
+        #[serde(deserialize_with = "safe_version")]
+        #[schema(minimum = 1, maximum = 9007199254740991i64)]
+        expected_routing_policy_version: i64,
+        idempotency_key: String,
+    },
     Reserve {
         expected_task_version: i64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -497,7 +506,8 @@ impl LifecycleCommand {
             Self::Reconcile {
                 idempotency_key, ..
             } => idempotency_key,
-            Self::EnsureQueued { idempotency_key }
+            Self::ResumeWithCurrentRouting { idempotency_key, .. }
+            | Self::EnsureQueued { idempotency_key }
             | Self::Reserve {
                 idempotency_key, ..
             }
@@ -859,13 +869,15 @@ mod binding_tests {
 
     #[test]
     fn historical_heartbeat_decodes_only_for_original_operation_readback() {
-        let command = serde_json::from_value::<LifecycleCommand>(json!({
-                "operation":"heartbeat","idempotency_key":"retired",
-                "fence":{"assignment_id":Uuid::from_u128(2),"execution_id":Uuid::from_u128(3),
-                    "fencing_token":1,"lease_id":Uuid::from_u128(1),"expected_lease_version":357}
-            })).unwrap();
+        let saved = json!({
+            "operation":"heartbeat","idempotency_key":"retired",
+            "fence":{"assignment_id":Uuid::from_u128(2),"execution_id":Uuid::from_u128(3),
+                "fencing_token":1,"lease_id":Uuid::from_u128(1),"expected_lease_version":357}
+        });
+        let command = serde_json::from_value::<LifecycleCommand>(saved.clone()).unwrap();
         assert!(matches!(command, LifecycleCommand::Heartbeat { .. }));
         assert_eq!(command.key(), "retired");
+        assert_eq!(serde_json::to_value(command).unwrap(), saved);
     }
 
     #[test]

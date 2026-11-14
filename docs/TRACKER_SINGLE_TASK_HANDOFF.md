@@ -155,7 +155,7 @@ GET `P/delivery-proposals/operations/{key}`, POST `P/pm-feedback` and
 GET `P/pm-feedback/operations/{key}`. Parent owns handlers, OpenAPI and registration.
 
 `LifecycleCommand` currently has an internal `operation` discriminator with
-snake_case values `ensure_queued`, `reserve`, `heartbeat`, `bind_run`, `complete`, `reconcile`.
+snake_case values `ensure_queued`, `resume_with_current_routing`, `reserve`, `bind_run`, `complete`, `reconcile` (`heartbeat` is historical replay only).
 
 After a terminal run without an accepted typed result, the scheduler can explicitly
 call the existing `ensure_queued` command after correcting the cause. It queues
@@ -586,3 +586,13 @@ after PM business completion; guarded resume without a duplicate runtime run.
 Local performed checks are formatting and `git diff --check` only. Source tests
 were added but not executed. Full lifecycle, proposals and feedback need the
 above parent registrations before any real HTTP/runtime acceptance can be claimed.
+
+
+Explicit catalog/config modernization of already confirmed work uses lifecycle
+`resume_with_current_routing` with the reviewed current project-policy version
+and current terminal task version. It atomically appends a new routing snapshot
+and queues only proven-unassigned Ready work; it does not restart an Unknown run,
+reconfirm requirements or rewrite accepted history. `ensure_queued` deliberately
+retains frozen routing. Both explicit operations reset only the automatic retry
+budget. Base/Workflow catalog publication and Fleet configuration activation
+remain their existing owners and do not silently rewrite a task's routing.

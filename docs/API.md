@@ -2464,3 +2464,25 @@ authorization and `{source, receipt}` envelope. Delivery receipts additionally
 expose required nullable `previous_result_id` from the original assignment that
 produced that accepted result. The legacy analysis variant and mutation receipts
 retain their original shapes. Stored history is not rewritten by this read.
+
+
+### Explicit routing resume of closed downstream work
+
+The existing `POST /api/v1/issues/{id}/sdlc/lifecycle` accepts
+`{"operation":"resume_with_current_routing","expected_task_version":12,"expected_routing_policy_version":9,"idempotency_key":"owner-reviewed-resume"}`.
+The caller is the configured reservation scheduler with its exact `task-tracker:write`
+credential. This is an explicit owner operation, never background reconciliation.
+It requires current configured single-task root work in Ready/terminal, with no
+assignment, lease, binding, result or capacity hold. Running, Unknown, stale CAS,
+foreign project policy and unresolved critical blockers reject without effects.
+
+The transaction appends an immutable runtime routing generation from the current
+reviewed project policy and queues the same task. Stage, cycle, previous accepted
+result, requirements and owner confirmation remain unchanged. A changed stage's
+agent UUID clears only the current resume-chat hint; original chats/runs remain
+historical. Same-key replay/read uses the existing lifecycle operation route and
+returns the original receipt even after later policy or assignment changes.
+`ensure_queued` keeps the frozen routing. Both explicit interventions reset the
+separate automatic transient retry counter; repeated explicit owner operations
+are not limited by that automatic retry budget. Unknown acceptance never permits
+another dispatch.

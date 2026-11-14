@@ -10,7 +10,8 @@ fn accepted_histories_have_distinct_immutable_tails_and_one_shared_119() {
         (true, crate::InstalledProjectRepositoryMigrator::migrations()),
     ] {
         let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-        assert_eq!(names.last().copied(), Some(Migration.name()));
+        assert_eq!(names[names.len()-2], Migration.name());
+        assert_eq!(names.last().copied(), Some("m20261114_0000120_routing_resume"));
         assert_eq!(names.iter().filter(|name| **name == Migration.name()).count(), 1);
         assert_eq!(names.contains(&"m20261113_0000118_delivery_unsent_stop"), installed);
         assert_eq!(names.contains(&"m20261111_0000118_plan_content_dispatch"), !installed);
@@ -68,8 +69,12 @@ async fn qualification<M: MigratorTrait>(fresh: bool, foreign: bool) {
         }
         crate::Migrator::up(&db, None).await.unwrap();
         let after = ledger(&db).await;
-        assert_eq!(after.iter().filter(|(name, _)| name != Migration.name()).cloned().collect::<Vec<_>>(), original);
-        assert_eq!(after.len(), original.len() + 1);
+        let tail = [Migration.name(), "m20261114_0000120_routing_resume"];
+        assert_eq!(after.iter().filter(|(name, _)| !tail.contains(&name.as_str())).cloned().collect::<Vec<_>>(), original);
+        assert_eq!(after.len(), original.len() + tail.len());
+        for name in tail {
+            assert_eq!(after.iter().filter(|(version, _)| version == name).count(), 1);
+        }
     }
     assert_eq!(function(&db, "sdlc_delivery_head_gate").await.unwrap(), primary_head().unwrap());
     let reconciliation = function(&db, "sdlc_delivery_reconciliation_gate").await.unwrap();

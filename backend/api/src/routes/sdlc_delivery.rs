@@ -404,6 +404,7 @@ mod tests {
                 "start_analysis",
                 "reconcile",
                 "ensure_queued",
+                "resume_with_current_routing",
                 "reserve",
                 "bind_run",
                 "complete"
@@ -417,6 +418,27 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn routing_resume_schema_and_request_require_both_explicit_cas_versions() {
+        let spec = serde_json::to_value(crate::ApiDoc::openapi()).unwrap();
+        let variants = spec["components"]["schemas"]["LifecycleCommand"]["oneOf"].as_array().unwrap();
+        let resume_schema = variants.iter().find(|variant|
+            variant["properties"]["operation"]["enum"][0] == "resume_with_current_routing").unwrap();
+        for field in ["expected_task_version","expected_routing_policy_version","idempotency_key"] {
+            assert!(resume_schema["required"].as_array().unwrap().contains(&serde_json::json!(field)));
+        }
+        let resume = serde_json::json!({"operation":"resume_with_current_routing",
+            "expected_task_version":7,"expected_routing_policy_version":9,"idempotency_key":"reviewed:resume"});
+        let parsed: LifecycleCommand = serde_json::from_value(resume.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(),resume);
+        for field in ["expected_task_version","expected_routing_policy_version"] {
+            let mut omitted=resume.clone();omitted.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<LifecycleCommand>(omitted).is_err());
+            let mut zero=resume.clone();zero[field]=serde_json::json!(0);
+            assert!(serde_json::from_value::<LifecycleCommand>(zero).is_err());
+        }
     }
 
     fn stage_start_bodies() -> [serde_json::Value; 2] {

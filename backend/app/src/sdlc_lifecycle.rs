@@ -369,6 +369,13 @@ pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
             }
             fence
         }
+        LifecycleCommand::ResumeWithCurrentRouting { expected_task_version, expected_routing_policy_version, .. } => {
+            if !(1..=MAX_SAFE_VERSION).contains(expected_task_version)
+                || !(1..=MAX_SAFE_VERSION).contains(expected_routing_policy_version) {
+                return Err(AppError::validation("invalid routing resume version"));
+            }
+            return Ok(());
+        }
         LifecycleCommand::EnsureQueued { .. } => return Ok(()),
         LifecycleCommand::Reserve {
             expected_task_version,
@@ -746,7 +753,7 @@ pub fn transient_retry_allowed(retries: u8, safely_replayable: bool) -> bool {
 }
 
 /// Explicit scheduler intervention after a closed run without an accepted result.
-/// Reuses the existing bounded attempt counter; it never reopens an assignment.
+/// A deliberate new intervention resets the automatic transient retry budget; it never reopens an assignment.
 pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
     if task.runtime != RuntimeState::Terminal {
         return Ok(());
@@ -756,17 +763,51 @@ pub fn ensure_queued(task: &mut LifecycleTask) -> Result<(), AppError> {
             "only unfinished terminal work can be queued",
         ));
     }
-    if task.transient_retries >= MAX_TRANSIENT_RETRIES {
-        return Err(AppError::conflict("delivery retry limit reached"));
-    }
     task.version = task
         .version
         .checked_add(1)
         .filter(|v| *v <= MAX_SAFE_VERSION)
         .ok_or_else(|| AppError::conflict("task version exhausted"))?;
-    task.transient_retries += 1;
+    task.transient_retries = 0;
     task.runtime = RuntimeState::Queued;
     task.waiting_reason = Some("queued_after_intervention".into());
+    Ok(())
+}
+
+
+/// Explicitly select current project routing for new work, retaining the old immutable snapshot.
+pub fn resume_with_current_routing(
+    receipt: &mut LifecycleReceipt,
+    policy: &domain::sdlc_routing::RoutingPolicy,
+    expected_task_version: i64,
+    expected_policy_version: i64,
+    snapshot_id: Uuid,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    let task = &receipt.task;
+    let old = &task.routing;
+    crate::sdlc_draft_flow::validate_policy(policy, old.project_id, &old.tracker_instance_id)?;
+    if task.version != expected_task_version || policy.version != expected_policy_version
+        || task.runtime != RuntimeState::Terminal || task.status != LifecycleStatus::Ready
+        || task.stage.role().is_none() || snapshot_id.is_nil() || snapshot_id == old.snapshot_id
+        || receipt.assignment.is_some() || receipt.lease.is_some()
+        || receipt.binding.is_some() || receipt.result.is_some()
+        || old.contract_version != 2 || old.task_id != task.task_id || old.root_task_id != task.task_id {
+        return Err(AppError::conflict("routing resume requires exact unassigned terminal work and current policy"));
+    }
+    let role = task.stage.role().unwrap().key();
+    let agent = |routes: &domain::sdlc_routing::RoleRoutes| {
+        routes.entries().into_iter().find(|(key, _)| *key == role).unwrap().1.agent_id
+    };
+    let preserve_chat = agent(&old.policy.routes) == agent(&policy.routes);
+    let routing = domain::sdlc_routing::TaskRoutingSnapshot {
+        snapshot_id, policy: policy.clone(), created_at: observed_at, ..old.clone()
+    };
+    let mut next = task.clone();
+    ensure_queued(&mut next)?;
+    if !preserve_chat { next.resume_chat_id = None; }
+    next.routing = routing;
+    receipt.task = next;
     Ok(())
 }
 

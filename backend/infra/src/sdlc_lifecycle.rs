@@ -1192,7 +1192,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             && matches!(state.stage, Stage::Draft | Stage::Backlog)
             && matches!(
                 command,
-                LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
+                LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::ResumeWithCurrentRouting { .. } | LifecycleCommand::Reserve { .. }
             )
         {
             return Err(AppError::conflict(
@@ -1213,6 +1213,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             LifecycleCommand::Complete { .. }
                 | LifecycleCommand::Reserve { .. }
                 | LifecycleCommand::EnsureQueued { .. }
+                | LifecycleCommand::ResumeWithCurrentRouting { .. }
                 | LifecycleCommand::Reconcile { .. }
         ) {
             super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
@@ -1306,6 +1307,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
                 receipt.lease = None;
                 receipt.binding = None;
                 receipt.result = None;
+            }
+            LifecycleCommand::ResumeWithCurrentRouting { expected_task_version, expected_routing_policy_version, .. } => {
+                self.resume_delivery_routing(&tx, &state, actor, &command, &mut receipt,
+                    *expected_task_version, *expected_routing_policy_version).await?;
             }
             LifecycleCommand::EnsureQueued { .. } => {
                 if receipt.task.runtime == RuntimeState::Terminal
@@ -1481,7 +1486,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             }
             LifecycleCommand::Heartbeat { .. } => unreachable!("historical renewal is replay-only"),
             LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
-            LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
+            LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::ResumeWithCurrentRouting { .. } => Some("delivery.queued"),
             LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
             LifecycleCommand::BindRun { .. } => Some("delivery.run_bound"),
             LifecycleCommand::Complete { .. } => Some("delivery.result_accepted"),

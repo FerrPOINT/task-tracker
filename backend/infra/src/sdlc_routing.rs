@@ -248,6 +248,41 @@ impl PostgresSdlcRepository {
         Ok(snapshot)
     }
 
+    pub(super) async fn resume_delivery_routing(
+        &self,
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        actor: &Principal,
+        command: &domain::sdlc_lifecycle::LifecycleCommand,
+        receipt: &mut domain::sdlc_lifecycle::LifecycleReceipt,
+        expected_task_version: i64,
+        expected_policy_version: i64,
+    ) -> Result<(), AppError> {
+        state.require_root()?;
+        if !state.configured_cli() || state.draft_flow()? != Some(DraftFlow::SingleTaskV1) {
+            return Err(AppError::conflict("routing resume requires current configured single-task work"));
+        }
+        Self::ensure_initial_delivery_idle(tx, state.task_id).await?;
+        let policy = self.single_task_policy(tx, state.project_id).await?;
+        let before = receipt.clone();
+        let observed_at = super::lifecycle::now(tx).await?;
+        app::sdlc_lifecycle::resume_with_current_routing(receipt, &policy,
+            expected_task_version, expected_policy_version, Uuid::now_v7(), observed_at)?;
+        super::lifecycle::exact_revision(state, receipt)?;
+        let snapshot = &receipt.task.routing;
+        let resume = json!({"actor_subject":actor.subject,"idempotency_key":command.key(),
+            "payload_hash":app::sdlc::canonical_hash(command)?,"command":command,"before_receipt":before});
+        exec(tx,"INSERT INTO sdlc_task_routing_generations(task_id,generation,snapshot_id,previous_snapshot_id,
+            confirmation_id,requirement_revision,content_hash,project_id,policy_version,payload,resume)
+            SELECT $1,s.generation+1,$2,$3,$4,$5,$6,$7,$8,$9,
+                $10::jsonb || jsonb_build_object('transaction_id',pg_current_xact_id()::text)
+            FROM sdlc_routing_snapshot_inventory s WHERE s.task_id=$1 AND s.snapshot_id=$3",
+            vec![state.task_id.into(),snapshot.snapshot_id.into(),before.task.routing.snapshot_id.into(),
+                snapshot.confirmation_id.into(),snapshot.requirement_revision.into(),snapshot.content_hash.clone().into(),
+                state.project_id.into(),snapshot.policy.version.into(),json_value(snapshot)?,resume.into()]).await?;
+        Ok(())
+    }
+
     pub(super) async fn read_task_routing(
         &self,
         task: Uuid,

@@ -1131,7 +1131,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
     assert!(!replayed);
     assert_eq!(queued_again.task.runtime, RuntimeState::Queued);
     assert_eq!(queued_again.task.version, stopped.task.version + 1);
-    assert_eq!(queued_again.task.transient_retries, 2);
+    assert_eq!(queued_again.task.transient_retries, 0);
     assert_eq!(queued_again.task.routing, stopped.task.routing);
     assert_eq!(
         queued_again.task.previous_result_id,
@@ -1172,7 +1172,7 @@ async fn canonical_projection_untimed_fence_race_terminal_recovery_and_original_
         .await
         .unwrap()
         .0;
-    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 3);
+    assert_eq!(retry.assignment.as_ref().unwrap().attempt, 1);
     assert_eq!(count(&db, "sdlc_delivery_assignments").await, 3);
     let before_replay = pm_ordinal_head(&db).await;
     assert!(

@@ -386,6 +386,134 @@ async fn complete_initial_pm(
     queued
 }
 
+
+#[tokio::test]
+#[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
+async fn explicit_routing_resume_preserves_confirmed_source_history_and_selects_new_assignment() {
+    use domain::sdlc_source::TaskSourceRepository;
+    use domain::sdlc_candidates::{DeliveryCandidatesQuery,CandidateOperation};
+    let (f,queued) = ReworkFixture::with_schema_tail(None,None,"owner","scheduler",
+        Some("m20261114_0000119_current_delivery_contract")).await;
+    let old_source:Json = f.db.query_one(statement(
+        "SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1",vec![f.task.into()]))
+        .await.unwrap().unwrap().try_get("","payload").unwrap();
+    let reserve = LifecycleCommand::Reserve { expected_task_version:queued.task.version,
+        machine_subject:Some(f.producers["analyst"].subject.clone()),idempotency_key:"routing:old-reserve".into() };
+    let queued_before=f.journal_snapshot().await;
+    assert!(f.repo.lifecycle_command(f.task,&f.scheduler,LifecycleCommand::ResumeWithCurrentRouting {
+        expected_task_version:queued.task.version,expected_routing_policy_version:2,
+        idempotency_key:"routing:busy-queued".into() }).await.is_err());
+    assert_eq!(f.journal_snapshot().await,queued_before);
+    let reserved=f.repo.lifecycle_command(f.task,&f.scheduler,reserve.clone()).await.unwrap().0;
+    let reserved_before=f.journal_snapshot().await;
+    assert!(f.repo.lifecycle_command(f.task,&f.scheduler,LifecycleCommand::ResumeWithCurrentRouting {
+        expected_task_version:reserved.task.version,expected_routing_policy_version:2,
+        idempotency_key:"routing:busy-reserved".into() }).await.is_err());
+    assert_eq!(f.journal_snapshot().await,reserved_before);
+    let binding=RunBinding { chat_id:Uuid::new_v4(),run_id:Uuid::new_v4(),machine_subject:f.producers["analyst"].subject.clone(),
+        dispatch_receipt:artifact("routing-original-dispatch") };
+    let running=f.repo.lifecycle_command(f.task,&f.scheduler,LifecycleCommand::BindRun {
+        fence:delivery_fence(&reserved),binding:binding.clone(),idempotency_key:"routing:old-bind".into() }).await.unwrap().0;
+    for current in [&running] {
+        let before=f.journal_snapshot().await;
+        assert!(f.repo.lifecycle_command(f.task,&f.scheduler,LifecycleCommand::ResumeWithCurrentRouting {
+            expected_task_version:current.task.version,expected_routing_policy_version:2,
+            idempotency_key:format!("routing:busy:{}",current.task.version) }).await.is_err());
+        assert_eq!(f.journal_snapshot().await,before);
+    }
+    let stop=LifecycleCommand::Reconcile { fence:delivery_fence(&running),never_submitted:None,
+        terminal:Some(RuntimeTerminalObservation { assignment_hash:running.assignment.as_ref().unwrap().assignment_hash.clone(),
+            chat_id:binding.chat_id,run_id:binding.run_id,state:RuntimeTerminalState::Failed,
+            receipt:artifact("routing-known-terminal") }),recovery:RecoveryDisposition::Stop,idempotency_key:"routing:stop".into() };
+    let stopped=f.repo.lifecycle_command(f.task,&f.scheduler,stop.clone()).await.unwrap().0;
+    assert_eq!(stopped.task.runtime,RuntimeState::Terminal);
+    let old_history=f.journal_snapshot().await;
+    let old_ledger:Json=f.db.query_one(statement("SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m",vec![]))
+        .await.unwrap().unwrap().try_get("","payload").unwrap();
+    migration::Migrator::up(&f.db,None).await.unwrap();
+    assert_eq!(f.journal_snapshot().await,old_history);
+    let old_ledger_after:Json=f.db.query_one(statement(
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS payload FROM seaql_migrations m WHERE version<>'m20261114_0000120_routing_resume'",vec![]))
+        .await.unwrap().unwrap().try_get("","payload").unwrap();
+    assert_eq!(old_ledger_after,old_ledger);
+    let mut routes=serde_json::to_value(&f.frozen.policy.routes).unwrap();
+    for (role,_) in f.frozen.policy.routes.entries() {
+        routes[role]["fleet_config_revision"]=json!(3);
+        routes[role]["instruction_manifest_sha256"]=json!("c".repeat(64));
+        routes[role]["workflow_catalog_sha256"]=json!("d".repeat(64));
+    }
+    let policy=f.repo.set_routing_policy(f.frozen.project_id,&f.owner,SetRoutingPolicy {
+        expected_version:Some(2),routes:parse(routes),idempotency_key:"routing:current-policy".into() }).await.unwrap().0;
+    let command=LifecycleCommand::ResumeWithCurrentRouting { expected_task_version:stopped.task.version,
+        expected_routing_policy_version:policy.version,idempotency_key:"routing:resume".into() };
+    let before=f.journal_snapshot().await;
+    let foreign=actor("foreign-scheduler",false,vec![]);
+    for actor in [&f.owner,&f.producers["analyst"],&foreign] {
+        assert!(matches!(f.repo.lifecycle_command(f.task,actor,command.clone()).await,Err(AppError::Forbidden)));
+        assert_eq!(f.journal_snapshot().await,before);
+    }
+    for field in ["expected_task_version","expected_routing_policy_version"] {
+        let mut value=serde_json::to_value(&command).unwrap();value[field]=json!(1);
+        assert!(f.repo.lifecycle_command(f.task,&f.scheduler,parse(value)).await.is_err());
+        assert_eq!(f.journal_snapshot().await,before);
+    }
+    let (resumed,replay)=f.repo.lifecycle_command(f.task,&f.scheduler,command.clone()).await.unwrap();
+    assert!(!replay);
+    assert_eq!(resumed.task.routing.policy,policy);
+    assert_ne!(resumed.task.routing.snapshot_id,f.frozen.snapshot_id);
+    assert_eq!(resumed.task.routing.confirmation_id,f.frozen.confirmation_id);
+    assert_eq!(resumed.task.routing.requirement_revision,f.frozen.requirement_revision);
+    assert_eq!(resumed.task.routing.content_hash,f.frozen.content_hash);
+    assert_eq!(resumed.task.stage,stopped.task.stage);
+    assert_eq!(resumed.task.cycle,stopped.task.cycle);
+    assert_eq!(resumed.task.resume_chat_id,Some(binding.chat_id));
+    assert_eq!(resumed.task.previous_result_id,stopped.task.previous_result_id);
+    assert_eq!(resumed.task.transient_retries,0);
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,command.clone()).await.unwrap(),(resumed.clone(),true));
+    assert_eq!(f.repo.lifecycle_operation(f.task,&f.reader,command.key()).await.unwrap(),resumed);
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,stop).await.unwrap(),(stopped.clone(),true));
+    assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,reserve).await.unwrap(),(reserved.clone(),true));
+    let snapshot=f.repo.task_routing_snapshot(f.task,&f.owner).await.unwrap();
+    assert_eq!(snapshot,resumed.task.routing);
+    let candidates=f.repo.delivery_candidates(&f.reader,DeliveryCandidatesQuery {
+        project_id:f.frozen.project_id,after:None,limit:10 }).await.unwrap();
+    assert_eq!(candidates.items.len(),1);
+    assert_eq!(candidates.items[0].next_operation,CandidateOperation::Reserve);
+    let mut next_reserve=LifecycleCommand::Reserve { expected_task_version:resumed.task.version,
+        machine_subject:Some(f.producers["analyst"].subject.clone()),idempotency_key:"routing:new-reserve".into() };
+    let mut new_reserved=f.repo.lifecycle_command(f.task,&f.scheduler,next_reserve.clone()).await.unwrap().0;
+    assert_eq!(new_reserved.assignment.as_ref().unwrap().routing,resumed.task.routing);
+    assert_eq!(new_reserved.assignment.as_ref().unwrap().agent_id,policy.routes.analyst.agent_id);
+    assert_ne!(new_reserved.assignment.as_ref().unwrap().assignment_id,reserved.assignment.as_ref().unwrap().assignment_id);
+    let source=f.repo.task_source(f.task,&f.producers["analyst"]).await.unwrap();
+    let source_value=serde_json::to_value(&source).unwrap();
+    assert_eq!(source_value["binding"],old_source);
+    let retained:Json=f.db.query_one(statement("SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1",
+        vec![f.task.into()])).await.unwrap().unwrap().try_get("","payload").unwrap();
+    assert_eq!(retained,old_source);
+    // More deliberate interventions than the automatic retry budget remain valid.
+    for index in 0..=MAX_TRANSIENT_RETRIES + 1 {
+        let assignment=new_reserved.assignment.as_ref().unwrap();
+        let stop=LifecycleCommand::Reconcile { fence:delivery_fence(&new_reserved),terminal:None,
+            never_submitted:Some(NeverSubmittedObservation { assignment_hash:assignment.assignment_hash.clone(),
+                reservation_key:next_reserve.key().into(),reservation_payload_sha256:app::sdlc::canonical_hash(&next_reserve).unwrap() }),
+            recovery:RecoveryDisposition::Stop,idempotency_key:format!("routing:manual-stop:{index}") };
+        f.repo.lifecycle_command(f.task,&f.scheduler,stop).await.unwrap();
+        let queue=LifecycleCommand::EnsureQueued { idempotency_key:format!("routing:manual-queue:{index}") };
+        let (next,replayed)=f.repo.lifecycle_command(f.task,&f.scheduler,queue.clone()).await.unwrap();
+        assert!(!replayed);assert_eq!(next.task.transient_retries,0);
+        assert_eq!(f.repo.lifecycle_command(f.task,&f.scheduler,queue).await.unwrap(),(next.clone(),true));
+        next_reserve=LifecycleCommand::Reserve { expected_task_version:next.task.version,
+            machine_subject:Some(f.producers["analyst"].subject.clone()),idempotency_key:format!("routing:manual-reserve:{index}") };
+        new_reserved=f.repo.lifecycle_command(f.task,&f.scheduler,next_reserve.clone()).await.unwrap().0;
+        assert_eq!(new_reserved.assignment.as_ref().unwrap().attempt,1);
+    }
+    assert_eq!(pm_history(&f.db,f.task).await,f.pm_history);
+    assert_eq!(count(&f.db,"sdlc_task_routing_snapshots").await,1);
+    assert_eq!(count(&f.db,"sdlc_task_routing_generations").await,1);
+    println!("TRACKER_ROUTING_RESUME_120=closed_current_policy_new_assignment_original_source_and_history_preserved");
+}
+
 impl ReworkFixture {
     async fn new() -> (Self, LifecycleReceipt) {
         Self::with_draft_protocol(None, None, "owner", "scheduler",
