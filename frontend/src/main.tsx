@@ -1,3 +1,4 @@
+import { ssoConfig } from '@/shared/auth/store'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,7 +10,7 @@ import { router } from './app/router'
 import { ThemeProvider, PlatformProvider, PlatformServicesProvider } from '@pdlc/ui/lib'
 import './index.css'
 import { SpaceSessionBoundary } from './shared/auth/space-session-boundary'
-import { relaySsoCallback, ssoNamespace } from '@pdlc/ui/sso'
+import { relaySsoCallback } from '@pdlc/ui/sso'
 import {
   capturePlatformReturn,
   getPlatformProduct,
@@ -44,7 +45,7 @@ function Boot() {
   )
 }
 
-if (!relaySsoCallback(ssoNamespace(import.meta.env.VITE_AUTH_NAMESPACE))) {
+if (!relaySsoCallback(ssoConfig.namespace, ssoConfig.callbackPath)) {
   const root = createRoot(document.getElementById('root')!)
   getPlatformProduct()?.onRetire(() => {
     root.unmount()
